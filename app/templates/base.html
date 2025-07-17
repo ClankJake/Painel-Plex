@@ -12,23 +12,17 @@
     <!-- Favicon atualizado para o ícone da "mula" -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='gold'><path d='M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z'/></svg>">
     
-    <!-- ### INÍCIO DA CORREÇÃO ### -->
-    <!-- Carrega o script principal do Tailwind primeiro -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Agora configura o Tailwind, pois o objeto `tailwind` já existe -->
     <script>
-      // Configura o Tailwind CSS para usar a estratégia de 'class' para o modo escuro.
       tailwind.config = {
         darkMode: 'class',
       }
     </script>
-    <!-- ### FIM DA CORREÇÃO ### -->
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script>
-        // Este script é executado imediatamente para evitar que a página "pisque" com o tema errado.
         if (localStorage.getItem('theme') === 'dark' || 
            (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
           document.documentElement.classList.add('dark');
@@ -52,29 +46,22 @@
         .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border-radius: 0.5rem; font-weight: 600; transition: all 0.2s ease-in-out; border: 1px solid transparent; }
         .btn:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.1); }
         .btn svg { width: 1.25rem; height: 1.25rem; }
-        /* Estilos para o painel de notificações */
         #notification-panel {
-            position: absolute;
-            right: 0;
-            top: 100%;
-            margin-top: 0.5rem;
-            width: 24rem; /* 384px */
             transform-origin: top right;
             transition: all 0.2s ease-out;
         }
-        /* Estilo para o ponto vermelho (badge) */
         #notification-badge {
             position: absolute;
             top: 0;
             right: 0;
-            width: 0.75rem; /* 12px */
-            height: 0.75rem; /* 12px */
+            width: 0.75rem;
+            height: 0.75rem;
             border-radius: 9999px;
-            background-color: #ef4444; /* red-500 */
+            background-color: #ef4444;
             border: 2px solid white;
         }
         .dark #notification-badge {
-            border-color: #1f2937; /* gray-800 */
+            border-color: #1f2937;
         }
     </style>
     {% block extra_head %}{% endblock %}
@@ -89,7 +76,7 @@
                     <div class="flex items-center">
                         <a href="{{ url_for('main.index') if current_user.is_admin() else url_for('main.statistics_page') }}" class="flex-shrink-0 flex items-center gap-2">
                              <svg class="w-8 h-8 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
-                            <span class="text-xl font-bold text-gray-900 dark:text-white">{{ app_title }}</span>
+                            <span class="hidden sm:inline text-xl font-bold text-gray-900 dark:text-white">{{ app_title }}</span>
                         </a>
                     </div>
                     <div class="flex items-center gap-2 md:gap-4">
@@ -117,7 +104,7 @@
                                     <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                                     <div id="notification-badge" class="hidden"></div>
                                 </button>
-                                <div id="notification-panel" class="hidden origin-top-right absolute right-0 mt-2 w-96 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 focus:outline-none" role="menu" aria-orientation="vertical" aria-labelledby="notification-button">
+                                <div id="notification-panel" class="hidden opacity-0 scale-95 origin-top-right fixed top-16 inset-x-4 md:absolute md:top-full md:inset-x-auto md:left-auto md:right-0 md:w-96 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 focus:outline-none" role="menu" aria-orientation="vertical" aria-labelledby="notification-button">
                                     <div class="p-4 flex justify-between items-center border-b border-gray-200 dark:border-gray-700">
                                         <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ _('Notificações') }}</h3>
                                         <button id="clear-all-notifications" class="text-xs text-red-600 dark:text-red-400 hover:underline">{{ _('Limpar Tudo') }}</button>
@@ -129,7 +116,6 @@
                             </div>
                             {% endif %}
 
-                            <!-- Botão de Tema -->
                             <button id="theme-toggle" type="button" title="{{ _('Mudar tema') }}" class="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none">
                                 <svg id="theme-toggle-dark-icon" class="hidden h-5 w-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
                                 <svg id="theme-toggle-light-icon" class="hidden h-5 w-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
@@ -148,7 +134,7 @@
                     </div>
                 </div>
                 <!-- Menu Mobile -->
-                <div id="mobile-menu" class="hidden md:hidden">
+                <div id="mobile-menu" class="hidden md:hidden w-full">
                     <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
                         {% if current_user.is_authenticated and current_user.is_admin() %}
                            <a href="{{ url_for('main.index') }}" class="block px-3 py-2 rounded-md text-base font-medium {% if request.endpoint == 'main.index' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-400 hover:text-white hover:bg-gray-700/60 {% endif %}">{{ _('Início') }}</a>
@@ -231,7 +217,6 @@
     });
     </script>
     
-    <!-- Carrega o ficheiro de utilitários primeiro -->
     <script type="module" src="{{ url_for('static', filename='js/utils.js') }}"></script>
 
     <script id="notifications-script"
@@ -247,7 +232,6 @@
         data-i18n-cancel-button="{{ _('Cancelar') }}"
     ></script>
 
-    <!-- Carrega os scripts específicos da página que dependem dos utilitários -->
     {% block scripts %}{% endblock %}
 </body>
 </html>
