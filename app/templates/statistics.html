@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('Estatísticas') }} - {{ app_title }}{% endblock %}
+
+{% block extra_head %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Apenas estilos que não podem ser feitos com classes do Tailwind permanecem, como a barra de scroll. */
+        .horizontal-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+        .horizontal-scroll::-webkit-scrollbar-track { @apply bg-gray-200 dark:bg-gray-700; border-radius: 4px; }
+        .horizontal-scroll::-webkit-scrollbar-thumb { @apply bg-gray-400 dark:bg-gray-500; border-radius: 4px; }
+        .horizontal-scroll::-webkit-scrollbar-thumb:hover { @apply bg-gray-500 dark:bg-gray-600; }
+    </style>
+{% endblock %}
+
+{% block content %}
+<header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+     <div>
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">
+            {% if current_user.is_admin() %}{{ _('Estatísticas de Uso') }}{% else %}{{ _('Suas Estatísticas') }}{% endif %}
+        </h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1">
+            {% if current_user.is_admin() %}{{ _('Analise os padrões de visualização dos seus usuários.') }}{% else %}{{ _('Veja seu desempenho e histórico de visualização.') }}{% endif %}
+        </p>
+    </div>
+    <div class="flex-shrink-0 flex items-center gap-2">
+         <div class="bg-white dark:bg-gray-800/50 p-1 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center gap-2">
+            <label for="daysFilter" class="text-sm font-medium text-gray-600 dark:text-gray-300 pl-2">{{ _('Período:') }}</label>
+            <select id="daysFilter" class="bg-gray-50 dark:bg-gray-700 border-0 focus:ring-0 text-gray-900 dark:text-white text-sm rounded-lg block w-full p-2">
+                <option value="7" selected>{{ _('Últimos 7 dias') }}</option>
+                <option value="15">{{ _('Últimos 15 dias') }}</option>
+                <option value="30">{{ _('Últimos 30 dias') }}</option>
+                <option value="90">{{ _('Últimos 90 dias') }}</option>
+            </select>
+        </div>
+    </div>
+</header>
+
+<div id="loadingIndicator" class="text-center py-20">
+    <svg class="animate-spin h-10 w-10 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+    <p class="text-lg text-gray-500 dark:text-gray-400 mt-4">{{ _('A carregar dados das estatísticas...') }}</p>
+</div>
+
+<div id="statsContainer" class="hidden space-y-8">
+    
+    {% if current_user.is_admin() %}
+    <!-- ########## Visão do Administrador ########## -->
+    <div id="admin-view">
+        <!-- Cartões de Destaque -->
+        <div id="admin-summary-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"></div>
+
+        <!-- Pódio -->
+        <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+            <h2 class="text-2xl font-semibold mb-6 text-center text-gray-900 dark:text-gray-100">{{ _('Pódio dos Campeões') }}</h2>
+            <div id="podiumContainer" class="flex justify-center items-end gap-4 min-h-[200px]"></div>
+        </div>
+
+        <!-- Tabela de Demais Utilizadores -->
+        <div id="otherUsersSection" class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mt-8 hidden">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Ranking Completo') }}</h3>
+                <div class="flex items-center gap-2">
+                    <label for="itemsPerPage" class="text-sm text-gray-600 dark:text-gray-300">{{ _('Itens por pág:') }}</label>
+                    <select id="itemsPerPage" class="bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm p-1">
+                        <option value="10">10</option><option value="20">20</option><option value="50">50</option>
+                    </select>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-700/50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">#</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{{ _('Utilizador') }}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{{ _('Tempo Assistido') }}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{{ _('Reproduções') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userList" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        <!-- Linhas da tabela serão inseridas aqui -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="paginationControls" class="flex justify-center items-center mt-4 text-sm gap-4"></div>
+        </div>
+
+        <!-- Gráfico Principal -->
+        <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mt-8">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-gray-100">{{ _('Horas Assistidas por Utilizador (Top 15)') }}</h2>
+            <div class="h-96"><canvas id="mainBarChart"></canvas></div>
+        </div>
+    </div>
+    {% else %}
+    <!-- ########## Visão do Utilizador Comum ########## -->
+    <div id="user-view" class="space-y-8">
+        <!-- Análise Pessoal do Utilizador -->
+        <div id="personal-analysis">
+            <!-- Conteúdo será preenchido por JS -->
+        </div>
+
+        <!-- Ranking Geral -->
+        <div id="leaderboard-section" class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Sua Posição no Ranking') }}</h3>
+            <div id="leaderboard-list" class="space-y-3"></div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+ <div id="errorContainer" class="hidden text-center py-10 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg">
+    <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar as estatísticas.') }}</p>
+    <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
+</div>
+
+<!-- Modal para Detalhes do Utilizador (apenas para Admin) -->
+<div id="userDetailsModal" class="modal-backdrop hidden"></div>
+{% endblock %}
+
+{% block scripts %}
+<script id="statistics-script"
+        type="module" 
+        src="{{ url_for('static', filename='js/statistics.js') }}"
+        data-current-user='{{ current_user.to_json() | safe }}'
+        data-stats-url="{{ url_for('stats_api.get_statistics_data') }}"
+        data-user-stats-url="{{ url_for('stats_api.get_user_statistics', username='__USERNAME__') }}"
+        data-i18n-loading-failed="{{ _('Falha ao comunicar com o servidor.') }}"
+        data-i18n-no-data="{{ _('Nenhum dado de visualização encontrado.') }}"
+        data-i18n-user-analysis-error="{{ _('Não foi possível carregar sua análise pessoal:') }}"
+        data-i18n-no-recent-activity="{{ _('Nenhuma atividade recente.') }}"
+        data-i18n-viewed-on="{{ _('Visto em:') }}"
+        data-i18n-no-art="{{ _('Sem Arte') }}"
+        data-i18n-activity-by-weekday="{{ _('Atividade por Dia da Semana') }}"
+        data-i18n-consumed-content="{{ _('Conteúdo Consumido') }}"
+        data-i18n-total-time="{{ _('Tempo Total') }}"
+        data-i18n-movies="{{ _('Filmes') }}"
+        data-i18n-episodes="{{ _('Episódios') }}"
+        data-i18n-favorite-genre="{{ _('Gênero Favorito') }}"
+        data-i18n-not-available="{{ _('N/D') }}"
+        data-i18n-most-recent-items="{{ _('Itens Mais Recentes') }}"
+        data-i18n-hours-watched="{{ _('Horas Assistidas') }}"
+        data-i18n-duration="{{ _('Duração') }}"
+        data-i18n-hours="{{ _('horas') }}"
+        data-i18n-sun="{{ _('Dom') }}"
+        data-i18n-mon="{{ _('Seg') }}"
+        data-i18n-tue="{{ _('Ter') }}"
+        data-i18n-wed="{{ _('Qua') }}"
+        data-i18n-thu="{{ _('Qui') }}"
+        data-i18n-fri="{{ _('Sex') }}"
+        data-i18n-sat="{{ _('Sáb') }}"
+        data-i18n-analysis-of="{{ _('Análise de') }}"
+        data-i18n-analyzing-history="{{ _('A analisar o histórico...') }}"
+        data-i18n-previous="{{ _('Anterior') }}"
+        data-i18n-next="{{ _('Próxima') }}"
+        data-i18n-page-of="{{ _('Página {currentPage} de {totalPages}') }}"
+        data-i18n-no-one-watched="{{ _('Ninguém assistiu nada ainda. Seja o primeiro!') }}"
+        data-i18n-you="{{ _('Você') }}"
+        data-i18n-total-time-watched="{{ _('Tempo Total Assistido') }}"
+        data-i18n-total-plays="{{ _('Total de Reproduções') }}"
+        data-i18n-active-users="{{ _('Utilizadores Ativos') }}"
+        data-i18n-period-champion="{{ _('Campeão do Período') }}"
+        >
+</script>
+{% endblock %}

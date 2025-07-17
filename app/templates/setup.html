@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="{{ get_locale() }}" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ _('Configuração Inicial') }} - {{ config.APP_TITLE or 'Painel Plex' }}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='gold'><path d='M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z'/></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <style>
+        .toast { 
+            position: fixed; 
+            bottom: 1.5rem; 
+            right: 1.5rem; 
+            padding: 1rem 1.5rem; 
+            border-radius: 0.5rem; 
+            color: white; 
+            opacity: 0; 
+            transform: translateY(20px); 
+            transition: opacity 0.3s ease, transform 0.3s ease; 
+            z-index: 9999; 
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { background-color: #10B981; }
+        .toast.error { background-color: #EF4444; }
+        .toast.info { background-color: #3B82F6; }
+
+        .progress-bar-fill-glow {
+            box-shadow: 0 0 10px #f59e0b, 0 0 5px #fde047;
+        }
+        .modal-body::-webkit-scrollbar { width: 6px; }
+        .modal-body::-webkit-scrollbar-track { background: transparent; }
+        .modal-body::-webkit-scrollbar-thumb { @apply bg-gray-400 dark:bg-gray-500 rounded-full; }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-200 transition-colors duration-300" style="font-family: 'Inter', sans-serif;">
+
+    <div id="toast" class="fixed bottom-6 right-6 px-6 py-4 rounded-lg text-white opacity-0 translate-y-5 transition-all duration-300 z-[9999]"></div>
+    
+    <div id="helpModal" class="hidden fixed inset-0 bg-black/75 flex justify-center items-center z-50 backdrop-blur-sm p-4">
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-xl max-w-2xl w-full shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-900 dark:text-white">{{ _('Como Configurar os Notificadores') }}</h3>
+                <button id="closeHelpModal" class="text-gray-400 hover:text-white text-3xl">&times;</button>
+            </div>
+            <div class="modal-body space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                <p>{{ _('Para que as funções de <strong>bloqueio</strong>, <strong>limite de telas</strong> e <strong>limite de teste</strong> funcionem, você precisa configurar dois \'Agentes de Notificação\' (Notification Agents) do tipo \'Script\' no seu Tautulli.')|safe }}</p>
+                <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
+                    <h4 class="font-semibold text-lg">{{ _('Notificadores') }}</h4>
+                    <ol class="list-decimal list-inside text-sm mt-2 space-y-1">
+                        <li>{{ _('Vá para') }} <strong>Settings > Notification Agents > Add a new Notification Agent</strong>.</li>
+                        <li>{{ _('Selecione') }} <strong>Script</strong>.</li>
+                        <li><strong>{{ _('Script Folder') }}</strong>: {{ _('Selecione a pasta onde o') }} <code>kill_stream.py</code> {{ _('do Tautulli está (geralmente na pasta') }} <code>/scripts</code>).</li>
+                        <li><strong>{{ _('Script File') }}</strong>: {{ _('Selecione') }} <code>kill_stream.py</code>.</li>
+                        <li>{{ _('Salve e anote o') }} <strong>Notifier ID</strong> {{ _('que aparece na URL para inserir aqui.') }}</li>
+                        <li>{{ _('Depois de todos configurados, clique nos botões') }} <strong>{{ _('Auto-configurar') }}</strong> {{ _('para aplicar as condições.') }}</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto max-w-3xl px-4 py-8 md:py-16">
+        <div class="text-center mb-10">
+            <h1 class="text-4xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-5xl">{{ _('Configuração Inicial') }}</h1>
+            <p class="mt-4 text-lg text-gray-600 dark:text-gray-400">{{ _('Vamos deixar tudo pronto em poucos passos.') }}</p>
+        </div>
+        
+        <div class="mb-10 px-4">
+            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                <div id="progressBar" class="bg-gradient-to-r from-yellow-300 to-amber-500 h-2.5 rounded-full transition-all duration-500 ease-in-out progress-bar-fill-glow" style="width: 0%"></div>
+            </div>
+            <div id="step-indicator" class="text-center text-sm text-gray-600 dark:text-gray-400 mt-2 font-semibold"></div>
+        </div>
+        
+        <div id="wizardContainer" class="bg-white dark:bg-gray-800/60 backdrop-blur-sm p-6 sm:p-10 rounded-2xl shadow-xl dark:shadow-2xl border border-gray-200 dark:border-gray-700/50 min-h-[420px] flex flex-col justify-center">
+            
+            <div data-step="0" class="wizard-step transition-opacity duration-500 ease-in-out text-center">
+                <svg class="w-20 h-20 text-yellow-400 mx-auto" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
+                <h2 class="text-3xl font-bold text-gray-900 dark:text-white mt-4">{{ _('Bem-vindo ao Painel de Gestão Plex!') }}</h2>
+                <p class="text-gray-600 dark:text-gray-400 mt-4 max-w-lg mx-auto">{{ _('Esta ferramenta foi criada para simplificar a gestão do seu servidor Plex. Com ela, pode facilmente convidar novos utilizadores, gerir os seus acessos, controlar o número de telas simultâneas e visualizar estatísticas detalhadas de uso.') }}</p>
+                <div class="mt-8">
+                    <button type="button" id="start-setup" class="inline-flex items-center justify-center px-4 py-3 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-green-600 text-white hover:bg-green-500 hover:-translate-y-0.5">{{ _('Vamos Começar') }} &rarr;</button>
+                </div>
+            </div>
+
+            <div data-step="1" class="wizard-step hidden opacity-0 transition-opacity duration-500 ease-in-out text-center">
+                <h2 class="text-2xl font-semibold text-yellow-500 dark:text-yellow-400 mb-6">{{ _('1. Autenticação do Administrador') }}</h2>
+                <p class="text-gray-700 dark:text-gray-400 mb-8 max-w-md mx-auto">{{ _('Para começar, faça login com a sua conta principal do Plex. Esta conta será usada para administrar a aplicação.') }}</p>
+                <button type="button" id="login-with-plex" class="inline-flex items-center justify-center px-4 py-3 rounded-lg font-bold transition-transform duration-200 ease-in-out border border-transparent bg-yellow-500 text-gray-900 hover:bg-yellow-600 hover:-translate-y-0.5">
+                    <svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
+                    {{ _('Login com Plex') }}
+                </button>
+            </div>
+
+            <div data-step="2" class="wizard-step hidden opacity-0 transition-opacity duration-500 ease-in-out">
+                <h2 class="text-2xl font-semibold text-yellow-500 dark:text-yellow-400 mb-6">{{ _('2. Selecionar Servidor Plex') }}</h2>
+                <div id="server-list" class="space-y-3 max-h-60 overflow-y-auto pr-2">
+                     <p class="text-center p-8 text-gray-700 dark:text-gray-400">{{ _('Aguardando autenticação...') }}</p>
+                </div>
+                <div class="mt-8 flex justify-between items-center">
+                    <button class="btn-prev inline-flex items-center justify-center px-4 py-3 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-gray-600 text-white hover:bg-gray-500 hover:-translate-y-0.5">&larr; {{ _('Anterior') }}</button>
+                    <button id="next-2" class="inline-flex items-center justify-center px-4 py-3 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-green-600 text-white hover:bg-green-500 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed" disabled>{{ _('Próximo') }} &rarr;</button>
+                </div>
+            </div>
+
+            <div data-step="3" class="wizard-step hidden opacity-0 transition-opacity duration-500 ease-in-out">
+                <h2 class="text-2xl font-semibold text-yellow-500 dark:text-yellow-400 mb-6">{{ _('3. Configurações Finais') }}</h2>
+                <div class="space-y-6">
+                    <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border dark:border-gray-600 space-y-4">
+                        <h4 class="font-semibold text-lg">{{ _('Geral') }}</h4>
+                        <div>
+                            <label for="APP_TITLE" class="block mb-2 text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('Título da Aplicação') }}</label>
+                            <input type="text" id="APP_TITLE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-yellow-500 focus:border-yellow-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" value="{{ config.APP_TITLE or 'Painel Plex' }}">
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border dark:border-gray-600 space-y-4">
+                        <h4 class="font-semibold text-lg flex items-center gap-2">{{ _('Tautulli') }} <button id="showTautulliHelp" type="button" class="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400">
+                             <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                        </button></h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">{{_('Necessário para o ranking de estatísticas e controle de sessões.')}}</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                            <div>
+                                <label for="tautulli_url" class="block mb-2 text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('URL do Tautulli') }}</label>
+                                <input type="text" id="tautulli_url" class="mt-1 block w-full p-2.5 text-sm rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-yellow-500 focus:border-yellow-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="http://127.0.0.1:8181">
+                            </div>
+                            <div>
+                                <label for="tautulli_api_key" class="block mb-2 text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('Chave da API Tautulli') }}</label>
+                                <input type="password" id="tautulli_api_key" class="mt-1 block w-full p-2.5 text-sm rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-yellow-500 focus:border-yellow-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 items-end">
+                            <div>
+                                <label for="blocking_notifier_id" class="block mb-2 text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('ID Notificador (Bloqueio)') }}</label>
+                                <input type="number" id="blocking_notifier_id" class="mt-1 block w-full p-2.5 text-sm rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-yellow-500 focus:border-yellow-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="Ex: 7">
+                            </div>
+                             <button type="button" data-notifier-type="blocking" data-target-id="blocking_notifier_id" class="btn-auto-config inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-indigo-600 hover:bg-indigo-500 text-white text-sm hover:-translate-y-0.5">{{ _('Auto-Configurar') }}</button>
+                            
+                            <div>
+                                <label for="screen_limit_notifier_id" class="block mb-2 text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('ID Notificador (Limite de Tela)') }}</label>
+                                <input type="number" id="screen_limit_notifier_id" class="mt-1 block w-full p-2.5 text-sm rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-yellow-500 focus:border-yellow-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="Ex: 6">
+                            </div>
+                            <button type="button" data-notifier-type="screen_limit" data-target-id="screen_limit_notifier_id" class="btn-auto-config inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-indigo-600 hover:bg-indigo-500 text-white text-sm hover:-translate-y-0.5">{{ _('Auto-Configurar') }}</button>
+                            
+                            <div>
+                                <label for="trial_block_notifier_id" class="block mb-2 text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('ID Notificador (Teste)') }}</label>
+                                <input type="number" id="trial_block_notifier_id" class="mt-1 block w-full p-2.5 text-sm rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-yellow-500 focus:border-yellow-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="Ex: 8">
+                            </div>
+                            <button type="button" data-notifier-type="trial" data-target-id="trial_block_notifier_id" class="btn-auto-config inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-indigo-600 hover:bg-indigo-500 text-white text-sm hover:-translate-y-0.5">{{ _('Auto-Configurar') }}</button>
+                        </div>
+                        <div class="flex items-center gap-2 mt-4">
+                            <button id="testTautulli" type="button" class="inline-flex items-center justify-center px-3 py-2 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-blue-600 hover:bg-blue-500 text-white text-sm hover:-translate-y-0.5">{{ _('Testar Conexão') }}</button>
+                            <span id="tautulli-test-result" class="transition-opacity duration-300"></span>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border dark:border-gray-600 space-y-4">
+                        <h4 class="font-semibold text-lg">{{ _('Overseerr / Jellyseerr') }}</h4>
+                        <div class="flex items-center">
+                            <input id="overseerr_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                            <label for="overseerr_enabled" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar integração') }}</label>
+                        </div>
+                        <div class="space-y-4">
+                            <div>
+                                <label for="overseerr_url" class="block text-sm font-medium text-gray-600 dark:text-gray-300">URL</label>
+                                <input type="url" id="overseerr_url" class="mt-1 block w-full p-2.5 text-sm rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-yellow-500 focus:border-yellow-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="http://127.0.0.1:5055">
+                            </div>
+                            <div>
+                                <label for="overseerr_api_key" class="block text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('Chave da API') }}</label>
+                                <input type="password" id="overseerr_api_key" class="mt-1 block w-full p-2.5 text-sm rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-yellow-500 focus:border-yellow-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white">
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 mt-4">
+                            <button id="testOverseerr" type="button" class="inline-flex items-center justify-center px-3 py-2 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-blue-600 hover:bg-blue-500 text-white text-sm hover:-translate-y-0.5">{{ _('Testar Conexão') }}</button>
+                            <span id="overseerr-test-result" class="transition-opacity duration-300"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-8 flex justify-between items-center">
+                    <button class="btn-prev inline-flex items-center justify-center px-4 py-3 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-gray-600 text-white hover:bg-gray-500 hover:-translate-y-0.5">&larr; {{ _('Anterior') }}</button>
+                    <button id="finish-setup" class="inline-flex items-center justify-center px-4 py-3 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-green-600 text-white hover:bg-green-500 hover:-translate-y-0.5">{{ _('Finalizar e Salvar') }}</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script id="setup-script"
+    type="module" 
+    src="{{ url_for('static', filename='js/setup.js') }}"
+    data-urls-get-plex-auth-context="{{ url_for('auth.get_plex_auth_context') }}"
+    data-urls-check-plex-pin="{{ url_for('auth.check_plex_pin', client_id='__CLIENT_ID__', pin_id=999999) }}"
+    data-urls-save-setup="{{ url_for('system_api.save_setup') }}"
+    data-urls-get-plex-servers="{{ url_for('system_api.get_plex_servers') }}"
+    data-urls-test-tautulli="{{ url_for('system_api.test_tautulli_connection') }}"
+    data-urls-test-overseerr="{{ url_for('system_api.test_overseerr_connection') }}"
+    data-urls-auto-configure-tautulli="{{ url_for('system_api.auto_configure_tautulli_notifier') }}"
+    data-i18n-error="{{ _('Erro') }}"
+    data-i18n-verifying="{{ _('Verificando... Por favor, conclua a autenticação na nova janela.') }}"
+    data-i18n-authenticated="{{ _('Autenticado com sucesso!') }}"
+    data-i18n-verification-error="{{ _('Erro de verificação:') }}"
+    data-i18n-fetching-servers="{{ _('Buscando seus servidores Plex...') }}"
+    data-i18n-select-server="{{ _('Encontramos os seguintes servidores. Selecione qual deseja gerenciar:') }}"
+    data-i18n-no-servers-found="{{ _('Nenhum servidor Plex encontrado.') }}"
+    data-i18n-error-generic="{{ _('Erro:') }}"
+    data-i18n-saving="{{ _('Salvando...') }}"
+    data-i18n-finish-setup="{{ _('Finalizar e Salvar') }}"
+    data-i18n-testing="{{ _('Testando...') }}"
+    data-i18n-auto-configuring="{{ _('Configurando...') }}"
+    data-i18n-auto-configure="{{ _('Auto-Configurar') }}"
+    data-i18n-test-connection="{{ _('Testar Conexão') }}"
+    data-i18n-invalid-response-from-server="{{ _('Resposta inválida do servidor. Verifique os logs da aplicação para mais detalhes.') }}"
+    data-i18n-step0-title="{{ _('Passo 1 de 4: Boas-vindas') }}"
+    data-i18n-step1-title="{{ _('Passo 2 de 4: Autenticação') }}"
+    data-i18n-step2-title="{{ _('Passo 3 de 4: Seleção do Servidor') }}"
+    data-i18n-step3-title="{{ _('Passo 4 de 4: Configurações Finais') }}"
+    data-i18n-provide-notifier-id="{{ _('Por favor, insira um ID de notificador válido.') }}"
+    data-i18n-provide-tautulli-credentials="{{ _('Por favor, preencha a URL e a Chave de API do Tautulli primeiro.') }}"
+></script>
+
+</body>
+</html>
+

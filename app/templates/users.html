@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('Gerenciar Usuários') }} - {{ app_title }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .user-tab.active {
+        @apply border-yellow-500 text-yellow-600 dark:text-yellow-400;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">{{ _('Gerenciar Usuários') }}</h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Gere convites, monitore e gerencie os usuários do seu servidor.') }}</p>
+    </div>
+    <div class="flex-shrink-0 flex flex-wrap gap-2">
+        <button id="createInviteButton" class="btn bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-500/20">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5"><path d="M11 5.5a1 1 0 011-1h1a1 1 0 110 2h-1a1 1 0 01-1-1zM11 9.5a1 1 0 011-1h4a1 1 0 110 2h-4a1 1 0 01-1-1zM5 7a1 1 0 000 2h2a1 1 0 100-2H5zM5 11a1 1 0 000 2h2a1 1 0 100-2H5zM3 3a1 1 0 00-1 1v12a1 1 0 001 1h14a1 1 0 001-1V4a1 1 0 00-1-1H3zm13 14H4V5h12v12z" /></svg>
+             <span class="ml-2 hidden sm:inline">{{ _('Criar Convite') }}</span>
+        </button>
+        <button id="bulkActionsButton" class="btn bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-500/20">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z" />
+            </svg>
+            <span class="ml-2 hidden sm:inline">{{ _('Ações em Massa') }}</span>
+        </button>
+        <button id="refreshButton" class="btn bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20">
+            <svg id="refreshIcon" class="h-5 w-5" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+              <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+            </svg>
+            <span class="ml-2 hidden sm:inline">{{ _('Atualizar') }}</span>
+        </button>
+    </div>
+</header>
+
+<!-- Lista de Convites -->
+<div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-8">
+    <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Convites Pendentes') }}</h3>
+    <div id="inviteList" class="space-y-2">
+        <p class="text-gray-500 dark:text-gray-400">{{ _('Carregando convites...') }}</p>
+    </div>
+</div>
+
+<!-- Grelha de Utilizadores -->
+<div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+    <!-- Barra de Ferramentas de Utilizadores -->
+    <div class="mb-4">
+        <div class="flex flex-col sm:flex-row gap-4 justify-between">
+            <div class="relative flex-grow">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" /></svg>
+                </div>
+                <input type="search" id="searchInput" placeholder="{{ _('Pesquisar por nome ou email...') }}" class="w-full p-2 pl-10 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+            </div>
+            <div class="flex-shrink-0">
+                <select id="sortSelect" class="w-full sm:w-auto p-2 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <option value="name_asc">{{ _('Nome (A-Z)') }}</option>
+                    <option value="name_desc">{{ _('Nome (Z-A)') }}</option>
+                    <option value="exp_asc">{{ _('Vencimento (Mais Próximo)') }}</option>
+                    <option value="exp_desc">{{ _('Vencimento (Mais Distante)') }}</option>
+                </select>
+            </div>
+        </div>
+        <div class="border-b border-gray-200 dark:border-gray-700 mt-4">
+            <nav id="userTabs" class="-mb-px flex space-x-6" aria-label="Tabs">
+                <button data-filter="all" class="user-tab active py-3 px-1 border-b-2 font-medium text-sm">{{ _('Todos') }} <span id="count-all" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-300">0</span></button>
+                <button data-filter="active" class="user-tab py-3 px-1 border-b-2 font-medium text-sm">{{ _('Ativos') }} <span id="count-active" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">0</span></button>
+                <button data-filter="blocked" class="user-tab py-3 px-1 border-b-2 font-medium text-sm">{{ _('Bloqueados') }} <span id="count-blocked" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">0</span></button>
+            </nav>
+        </div>
+    </div>
+     <div id="userGrid" class="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4 min-h-[200px]">
+        <!-- User cards will be injected here -->
+     </div>
+</div>
+
+<!-- Modals -->
+<div id="confirmationModal" class="modal-backdrop hidden"></div>
+<div id="screenLimitModal" class="modal-backdrop hidden"></div>
+<div id="libraryManagementModal" class="modal-backdrop hidden"></div>
+<div id="createInviteModal" class="modal-backdrop hidden"></div>
+<div id="showInviteLinkModal" class="modal-backdrop hidden"></div>
+<div id="bulkActionsModal" class="modal-backdrop hidden"></div>
+<div id="bulkScreenLimitModal" class="modal-backdrop hidden"></div>
+<div id="userProfileModal" class="modal-backdrop hidden"></div>
+{% endblock %}
+
+{% block scripts %}
+<script id="users-script" 
+        type="module"
+        src="{{ url_for('static', filename='js/users.js') }}"
+        data-url-login="{{ url_for('auth.login') }}"
+        data-url-api-status="{{ url_for('users_api.get_status') }}"
+        data-url-api-invites-create="{{ url_for('invites_api.create_invite_route') }}"
+        data-url-api-invites-list="{{ url_for('invites_api.list_invites_route') }}"
+        data-url-api-invites-delete="{{ url_for('invites_api.delete_invite_route') }}"
+        data-url-api-users-update-limit="{{ url_for('users_api.update_limit_route') }}"
+        data-url-api-users-renew-base="{{ url_for('users_api.renew_user_subscription_route', username='__USERNAME__') }}"
+        data-url-api-users-profile-base="{{ url_for('users_api.user_profile_route', username='__USERNAME__') }}"
+        data-url-api-users-profile-set-base="{{ url_for('users_api.user_profile_route', username='__USERNAME__') }}"
+        data-url-api-users-notify-base="{{ url_for('users_api.notify_user_route', username='__USERNAME__') }}"
+        data-url-api-users-libraries-base="{{ url_for('users_api.get_user_libraries_route', email='__EMAIL__') }}"
+        data-url-api-users-update-libraries="{{ url_for('users_api.update_libraries_route') }}"
+        data-url-api-users-remove="{{ url_for('users_api.remove_user_route') }}"
+        data-url-api-users-block="{{ url_for('users_api.block_user_route') }}"
+        data-url-api-users-unblock="{{ url_for('users_api.unblock_user_route') }}"
+        data-url-api-users-toggle-overseerr="{{ url_for('users_api.toggle_overseerr_access_route') }}"
+        data-url-api-users-update-all-limits="{{ url_for('users_api.update_all_limits_route') }}"
+        data-url-base-invite-page="/invite/"
+        data-i18n-error="{{ _('Erro') }}"
+        data-i18n-loading-invites="{{ _('Carregando convites...') }}"
+        data-i18n-no-pending-invites='{{ _('Nenhum convite pendente. Clique em "Criar Convite" para gerar um novo.') }}'
+        data-i18n-invite-used-updating="{{ _('Convite utilizado! Atualizando a lista de usuários...') }}"
+        data-i18n-expired="{{ _('Expirado') }}"
+        data-i18n-active="{{ _('Ativo') }}"
+        data-i18n-trial="{{ _('Teste') }}"
+        data-i18n-copy-link="{{ _('Copiar Link') }}"
+        data-i18n-delete-invite="{{ _('Apagar Convite') }}"
+        data-i18n-confirm-delete-invite="{{ _('Tem a certeza de que deseja apagar o convite') }}"
+        data-i18n-action-cannot-be-undone="{{ _('Esta ação não pode ser desfeita.') }}"
+        data-i18n-confirm-delete-button="{{ _('Sim, Apagar') }}"
+        data-i18n-cancel="{{ _('Cancelar') }}"
+        data-i18n-link-copied="{{ _('Link copiado para a área de transferência!') }}"
+        data-i18n-copy-failed="{{ _('Falha ao copiar. Por favor, copie manually.') }}"
+        data-i18n-loading-users-failed="{{ _('Falha ao carregar dados.') }}"
+        data-i18n-users-active="{{ _('Usuários Ativos') }}"
+        data-i18n-users-blocked="{{ _('Bloqueados') }}"
+        data-i18n-users="{{ _('Usuários') }}"
+        data-i18n-no-users-found="{{ _('Nenhum usuário encontrado.') }}"
+        data-i18n-create-invite="{{ _('Criar Novo Convite') }}"
+        data-i18n-screen-limit="{{ _('Limite de Telas') }}"
+        data-i18n-no-limit="{{ _('Nenhum') }}"
+        data-i18n-screen-singular="{{ _('Tela') }}"
+        data-i18n-screen-plural="{{ _('Telas') }}"
+        data-i18n-invite-expires-in="{{ _('Tempo para Expirar o Convite') }}"
+        data-i18n-never="{{ _('Nunca') }}"
+        data-i18n-minutes="{{ _('Minutos') }}"
+        data-i18n-hour="{{ _('Hora') }}"
+        data-i18n-day="{{ _('Dia') }}"
+        data-i18n-days="{{ _('Dias') }}"
+        data-i18n-trial-duration="{{ _('Duração do Teste (Opcional)') }}"
+        data-i18n-no-trial="{{ _('Sem teste') }}"
+        data-i18n-libraries="{{ _('Bibliotecas') }}"
+        data-i18n-select-all="{{ _('Selecionar Todas') }}"
+        data-i18n-unselect-all="{{ _('Desmarcar Todas') }}"
+        data-i18n-overseerr-access="{{ _('Autorizar acesso ao Overseerr/Jellyseerr') }}"
+        data-i18n-allow-downloads="{{ _('Permitir Downloads (Sync)') }}"
+        data-i18n-generate-invite-link="{{ _('Gerar Link de Convite') }}"
+        data-i18n-generating="{{ _('Gerando...') }}"
+        data-i18n-select-one-library="{{ _('Pelo menos uma biblioteca deve ser selecionada.') }}"
+        data-i18n-invite-link-generated="{{ _('Link de Convite Gerado') }}"
+        data-i18n-share-this-link="{{ _('Partilhe este link com o novo utilizador. O link é válido para uma única utilização.') }}"
+        data-i18n-copy="{{ _('Copiar') }}"
+        data-i18n-close="{{ _('Fechar') }}"
+        data-i18n-confirm-remove-user="{{ _('Tem certeza que deseja remover') }}"
+        data-i18n-confirm-block-user="{{ _('Tem certeza que deseja bloquear') }}"
+        data-i18n-confirm-unblock-user="{{ _('Tem certeza que deseja desbloquear') }}"
+        data-i18n-remove-user-title="{{ _('Remover Usuário') }}"
+        data-i18n-block-user-title="{{ _('Bloquear Usuário') }}"
+        data-i18n-unblock-user-title="{{ _('Desbloquear Usuário') }}"
+        data-i18n-confirm-remove-button="{{ _('Sim, Remover') }}"
+        data-i18n-confirm-block-button="{{ _('Sim, Bloquear') }}"
+        data-i18n-confirm-unblock-button="{{ _('Sim, Desbloquear') }}"
+        data-i18n-manage-screen-limit-title="{{ _('Gerenciar Limite de Telas') }}"
+        data-i18n-select-new-limit-for="{{ _('Selecione o novo limite de telas para') }}"
+        data-i18n-remove-limit="{{ _('Remover Limite') }}"
+        data-i18n-manage-profile-title="{{ _('Gerir Perfil de') }}"
+        data-i18n-full-name="{{ _('Nome Completo') }}"
+        data-i18n-telegram-user="{{ _('Usúario do Telegram (Chat_id)') }}"
+        data-i18n-phone-number="{{ _('Nº de Telefone (ex: +5521999998888)') }}"
+        data-i18n-expiration-date="{{ _('Data de Vencimento') }}"
+        data-i18n-renew-subscription="{{ _('Renovar Assinatura') }}"
+        data-i18n-add-months="{{ _('Adicionar') }}"
+        data-i18n-set-block-time-midnight="{{ _('Definir hora de bloqueio para 00:00') }}"
+        data-i18n-block-time="{{ _('Hora do Bloqueio') }}"
+        data-i18n-renew-same-day="{{ _('Renovar +1 Mês (Mesma Data)') }}"
+        data-i18n-manual-actions="{{ _('Ações Manuais') }}"
+        data-i18n-send-expiration-notification="{{ _('Enviar Notificação de Vencimento') }}"
+        data-i18n-save="{{ _('Salvar') }}"
+        data-i18n-bulk-actions-title="{{ _('Ações em Massa') }}"
+        data-i18n-bulk-actions-description="{{ _('Execute ações para todos os usuários com acesso ao servidor.') }}"
+        data-i18n-update-all-libs-button="{{ _('Atualizar Bibliotecas (Todos)') }}"
+        data-i18n-update-all-limits-button="{{ _('Atualizar Limites (Todos)') }}"
+        data-i18n-bulk-screen-limit-title="{{ _('Gerenciar Limite de Telas em Massa') }}"
+        data-i18n-select-new-limit-for-all="{{ _('Selecione o novo limite de telas para') }} {{ _('TODOS') }} {{ _('os usuários') }}"
+        data-i18n-remove-all-limits="{{ _('Remover Todos os Limites') }}"
+        data-i18n-update-libs-for-all="{{ _('Atualizar Bibliotecas para Todos') }}"
+        data-i18n-manage-libs-for="{{ _('Gerenciar Bibliotecas de') }}"
+        data-i18n-loading-libs="{{ _('Carregando bibliotecas...') }}"
+        data-i18n-error-loading-libs="{{ _('Erro ao carregar bibliotecas.') }}"
+        data-i18n-blocked-title="{{ _('Bloqueado') }}"
+        data-i18n-active-title="{{ _('Ativo') }}"
+        data-i18n-in-test-with-time="{{ _('Em Teste') }} ({remainingTime})"
+        data-i18n-test-finished="{{ _('Teste Finalizado') }}"
+        data-i18n-expires-on="{{ _('Vence em:') }}"
+        data-i18n-manage-profile-and-expiration="{{ _('Gerir Perfil e Vencimento') }}"
+        data-i18n-manage-libraries="{{ _('Gerenciar Bibliotecas') }}"
+        data-i18n-manage-screen-limit="{{ _('Gerenciar Limite de Telas') }}"
+        data-i18n-unblock="{{ _('Desbloquear') }}"
+        data-i18n-block="{{ _('Bloquear') }}"
+        data-i18n-remove-user-button="{{ _('Remover Usuário') }}"
+        data-i18n-expires-in-days="{{ _('expira em {days} dias') }}"
+        data-i18n-expires-in-hours="{{ _('expira em {hours} horas') }}"
+        data-i18n-expires-in-minutes="{{ _('expira em {minutes} minutos') }}"
+        data-i18n-add-one-month="{{ _('+1 Mês') }}"
+        data-i18n-confirm-add-one-month="{{ _('Tem a certeza que deseja adicionar 1 mês à subscrição de') }}"
+        data-i18n-confirm="{{ _('Confirmar') }}"
+>
+</script>
+{% endblock %}

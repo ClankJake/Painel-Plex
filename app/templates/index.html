@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('Dashboard') }} - {{ app_title }}{% endblock %}
+
+{% block extra_head %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+{% endblock %}
+
+{% block content %}
+<header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">{{ _('Dashboard do Administrador') }}</h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Uma visão geral do seu servidor.') }}</p>
+    </div>
+    <button id="refreshButton" class="btn bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20">
+        <svg id="refreshIcon" class="h-5 w-5" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+          <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+        </svg>
+        <span class="ml-2 hidden sm:inline">{{ _('Atualizar') }}</span>
+    </button>
+</header>
+
+<div id="loadingIndicator" class="text-center py-20">
+    <svg class="animate-spin h-10 w-10 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+    <p class="text-lg text-gray-500 dark:text-gray-400 mt-4">{{ _('A carregar dados do dashboard...') }}</p>
+</div>
+
+<div id="errorContainer" class="hidden text-center py-10 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg">
+    <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar os dados.') }}</p>
+    <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
+</div>
+
+<div id="dashboardContainer" class="hidden space-y-8">
+    <!-- Cards de Resumo -->
+    <div id="summaryCards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Cards serão inseridos aqui pelo JS -->
+    </div>
+
+    <!-- Gráficos -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+        <div class="lg:col-span-3 bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Receita Mensal') }}</h3>
+            <div class="h-80"><canvas id="monthlyRevenueChart"></canvas></div>
+        </div>
+        <div class="lg:col-span-2 bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Utilizadores Ativos vs. Bloqueados') }}</h3>
+            <div class="h-80 flex items-center justify-center"><canvas id="userStatusChart"></canvas></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script id="dashboard-script"
+        type="module"
+        src="{{ url_for('static', filename='js/dashboard.js') }}"
+        data-summary-url="{{ url_for('system_api.get_dashboard_summary') }}"
+        data-i18n-active-streams="{{ _('Streams Ativos') }}"
+        data-i18n-total-users="{{ _('Utilizadores Totais') }}"
+        data-i18n-monthly-revenue="{{ _('Receita do Mês') }}"
+        data-i18n-upcoming-renewals="{{ _('Próximas Renovações (7d)') }}"
+        data-i18n-revenue-label="{{ _('Receita') }}"
+        data-i18n-active-users-label="{{ _('Ativos') }}"
+        data-i18n-blocked-users-label="{{ _('Bloqueados') }}"
+></script>
+{% endblock %}

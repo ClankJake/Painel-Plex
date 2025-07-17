@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('Dashboard Financeiro') }} - {{ app_title }}{% endblock %}
+
+{% block extra_head %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <style>
+        .chart-view-btn.active {
+            @apply bg-white dark:bg-gray-800 shadow-md text-yellow-600 dark:text-yellow-400 font-semibold;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">{{ _('Dashboard Financeiro') }}</h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Acompanhe a saúde financeira do seu serviço.') }}</p>
+    </div>
+    <div class="flex items-center gap-2 bg-white dark:bg-gray-800/50 p-2 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
+        <button id="prevMonthBtn" title="{{_('Mês Anterior')}}" class="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+            <svg class="h-5 w-5 text-gray-500 dark:text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+        </button>
+        <span class="font-semibold text-gray-600 dark:text-gray-300 text-center w-32" id="currentMonthLabel"></span>
+        <button id="nextMonthBtn" title="{{_('Mês Seguinte')}}" class="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+            <svg class="h-5 w-5 text-gray-500 dark:text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+        </button>
+    </div>
+</header>
+
+<div id="loadingIndicator" class="text-center py-20">
+    <svg class="animate-spin h-10 w-10 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+    <p class="text-lg text-gray-500 dark:text-gray-400 mt-4">{{ _('A carregar dados financeiros...') }}</p>
+</div>
+
+<div id="errorContainer" class="hidden text-center py-10 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg">
+    <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar os dados.') }}</p>
+    <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
+</div>
+
+<div id="financialDashboard" class="hidden space-y-8">
+    <!-- Cards de Resumo -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="bg-green-500/10 dark:bg-green-500/20 text-green-800 dark:text-green-200 p-4 sm:p-6 rounded-xl">
+            <div class="flex items-center gap-4">
+                <div class="p-3 bg-green-500/20 rounded-lg"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01" /></svg></div>
+                <div>
+                    <p class="text-sm font-medium opacity-80">{{ _('Receita do Mês') }}</p>
+                    <p class="text-3xl font-bold" id="totalRevenue">R$ 0,00</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-blue-500/10 dark:bg-blue-500/20 text-blue-800 dark:text-blue-200 p-4 sm:p-6 rounded-xl">
+            <div class="flex items-center gap-4">
+                <div class="p-3 bg-blue-500/20 rounded-lg"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+                <div>
+                    <p class="text-sm font-medium opacity-80">{{ _('Assinaturas Pagas no Mês') }}</p>
+                    <p class="text-3xl font-bold" id="salesCount">0</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-yellow-500/10 dark:bg-yellow-500/20 text-yellow-800 dark:text-yellow-200 p-4 sm:p-6 rounded-xl">
+            <div class="flex items-center gap-4">
+                <div class="p-3 bg-yellow-500/20 rounded-lg"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
+                <div>
+                    <p id="upcomingRenewalsLabel" class="text-sm font-medium opacity-80">{{ _('Renovações Próximas (7d)') }}</p>
+                    <p class="text-3xl font-bold" id="upcomingRenewals">0</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráfico de Receita -->
+    <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Visão Geral da Receita') }}</h3>
+            <div class="flex items-center bg-gray-200 dark:bg-gray-700 rounded-lg p-1 text-sm self-end sm:self-center">
+                <button data-chart-view="daily" class="chart-view-btn active px-3 py-1 rounded-md">{{ _('Diário') }}</button>
+                <button data-chart-view="weekly" class="chart-view-btn px-3 py-1 rounded-md">{{ _('Semanal') }}</button>
+            </div>
+        </div>
+        <div class="h-64 sm:h-96"><canvas id="revenueChart"></canvas></div>
+    </div>
+
+    <!-- Listas de Dados -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+            <h3 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">{{ _('Transações Recentes') }}</h3>
+            <div id="transactionsList" class="space-y-3 overflow-y-auto h-96 pr-2">
+                <!-- Conteúdo inserido por JS -->
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+                <h3 id="renewalsCardTitle" class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Próximas Renovações') }}</h3>
+                <select id="renewalsFilter" class="bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm p-1 focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="7" selected>{{ _('Próximos 7 dias') }}</option>
+                    <option value="15">{{ _('Próximos 15 dias') }}</option>
+                    <option value="30">{{ _('Próximos 30 dias') }}</option>
+                </select>
+            </div>
+             <div id="renewalsList" class="space-y-3 overflow-y-auto h-96 pr-2">
+                <!-- Conteúdo inserido por JS -->
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script id="financial-script"
+        type="module"
+        src="{{ url_for('static', filename='js/financial.js') }}"
+        data-financial-summary-url="{{ url_for('payments_api.get_financial_summary_route') }}"
+        data-i18n-revenue-label="{{ _('Receita') }}"
+        data-i18n-days-left-singular="{{ _('dia restante') }}"
+        data-i18n-days-left-plural="{{ _('dias restantes') }}"
+        data-i18n-expired="{{ _('Expirado') }}"
+        data-i18n-no-transactions="{{ _('Nenhuma transação este mês.') }}"
+        data-i18n-no-renewals-in-days="{{ _('Nenhuma renovação nos próximos {days} dias.') }}"
+></script>
+{% endblock %}

@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('Minha Conta') }} - {{ app_title }}{% endblock %}
+
+{% block content %}
+<header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">{{ _('Minha Conta') }}</h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Veja os detalhes e estatísticas da sua conta.') }}</p>
+    </div>
+</header>
+
+<div id="loadingIndicator" class="text-center py-20">
+    <p class="text-lg text-gray-500 dark:text-gray-400">{{ _('Carregando detalhes da conta...') }}</p>
+</div>
+
+<div id="status-banner" class="hidden mb-8"></div>
+
+<div id="accountDetailsContainer" class="hidden space-y-8">
+    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Detalhes da Conta') }}</h3>
+        <div class="flex items-center space-x-4">
+            <img id="user-thumb" src="" alt="Avatar" class="w-24 h-24 rounded-full">
+            <div>
+                <p class="text-2xl font-bold text-gray-900 dark:text-white" id="user-username"></p>
+                <p class="text-sm text-gray-500 dark:text-gray-400" id="user-email"></p>
+                <div id="user-dates">
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">{{ _('Membro desde:') }} <span id="user-join-date" class="font-semibold"></span></p>
+                    <p id="user-expiration-container" class="hidden text-sm text-gray-500 dark:text-gray-400 mt-2"></p>
+                </div>
+                <p class="text-sm text-gray-500 dark:text-gray-400">{{ _('Limite de Telas:') }} <span id="user-screen-limit" class="font-semibold"></span></p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- NOVA SECÇÃO DE PRIVACIDADE -->
+    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Privacidade') }}</h3>
+        <div class="flex items-center justify-between">
+            <div>
+                <label for="hide-leaderboard-toggle" class="font-medium text-gray-800 dark:text-gray-200">{{ _('Ocultar meu nome e foto nos rankings') }}</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">{{ _('Seu nome será ofuscado (ex: U******r) e sua foto será genérica.') }}</p>
+            </div>
+            <label for="hide-leaderboard-toggle" class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" value="" id="hide-leaderboard-toggle" class="sr-only peer">
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+            </label>
+        </div>
+    </div>
+
+    <!-- Seção de Renovação Atualizada -->
+    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Renovação via PIX') }}</h3>
+        
+        <!-- Esta seção será preenchida pelo JavaScript com os planos e preços -->
+        <div id="payment-section" class="space-y-4">
+            <p class="text-gray-500 dark:text-gray-400">{{ _('A carregar planos de renovação...') }}</p>
+        </div>
+        
+        <!-- Esta seção aparecerá após gerar o PIX -->
+        <div id="pix-display" class="hidden text-center space-y-4 mt-6">
+            <p>{{ _('Pagamento PIX gerado! Utilize o QR Code ou o código abaixo para pagar.') }}</p>
+            <img id="pix-qr-code" src="" class="mx-auto border-4 border-white dark:border-gray-600 rounded-lg w-56 h-56">
+            <div class="flex items-center space-x-2">
+                <input type="text" id="pix-copy-paste" readonly class="w-full p-2 text-sm text-gray-900 bg-gray-200 rounded-lg border-none dark:bg-gray-700 dark:text-white">
+                <button id="copy-pix-code" class="p-2 rounded-md bg-blue-500 text-white hover:bg-blue-600">{{ _('Copiar') }}</button>
+            </div>
+            <p id="polling-status" class="text-sm text-gray-500 dark:text-gray-400">{{ _('A aguardar confirmação de pagamento...') }}</p>
+        </div>
+    </div>
+    
+    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Acesso às Bibliotecas') }}</h3>
+        <div id="library-list" class="flex flex-wrap gap-2">
+            </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Seu Top 3') }}</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+                <h4 class="font-semibold text-gray-600 dark:text-gray-300 mb-2">{{ _('Filmes Mais Vistos') }}</h4>
+                <ul id="top-movies" class="space-y-2"></ul>
+            </div>
+            <div>
+                <h4 class="font-semibold text-gray-600 dark:text-gray-300 mb-2">{{ _('Séries Mais Vistas') }}</h4>
+                <ul id="top-shows" class="space-y-2"></ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="errorContainer" class="hidden text-center py-10 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg">
+    <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar os detalhes da sua conta.') }}</p>
+    <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
+</div>
+<div id="providerChoiceModal" class="modal-backdrop hidden"></div>
+{% endblock %}
+
+{% block scripts %}
+<script id="account-script"
+        type="module" 
+        src="{{ url_for('static', filename='js/account.js') }}"
+        data-get-account-details-url="{{ url_for('users_api.get_account_details') }}"
+        data-update-privacy-url="{{ url_for('users_api.update_privacy_settings') }}"
+        data-get-payment-options-url="{{ url_for('payments_api.get_payment_options') }}"
+        data-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
+        data-login-url="{{ url_for('auth.login') }}"
+        data-i18n-error="{{ _('Erro') }}"
+        data-i18n-no-provider="{{ _('Nenhum provedor de pagamento ou plano está habilitado pelo administrador.') }}"
+        data-i18n-renew-prompt="{{ _('Para renovar a sua subscrição, por favor, clique no botão "Gerar PIX".') }}"
+        data-i18n-generate-pix="{{ _('Gerar PIX') }}"
+        data-i18n-generate-pix-for-price="{{ _('Gerar PIX por R$ {price}') }}"
+        data-i18n-choose-provider="{{ _('Escolha um Provedor') }}"
+        data-i18n-pay-with-efi="{{ _('Pagar com Efí') }}"
+        data-i18n-pay-with-mp="{{ _('Pagar com Mercado Pago') }}"
+        data-i18n-cancel="{{ _('Cancelar') }}"
+        data-i18n-wait="{{ _('Aguarde...') }}"
+        data-i18n-payment-confirmed="{{ _('Pagamento confirmado! A sua subscrição foi renovada.') }}"
+        data-i18n-polling-confirmed="{{ _('Pagamento Confirmado! A página será atualizada em 3 segundos...') }}"
+        data-i18n-polling-error="{{ _('Erro ao verificar o estado do pagamento (a tentar novamente):') }}"
+        data-i18n-code-copied="{{ _('Código PIX copiado!') }}"
+        data-i18n-fetch-details-fail="{{ _('Falha ao buscar detalhes da conta.') }}"
+        data-i18n-test-ended="{{ _('Período de Teste Terminou') }}"
+        data-i18n-test-ended-message="{{ _('O seu período de teste terminou. Caso deseje continuar a ter acesso ao servidor, por favor, faça o pagamento para renovar a sua assinatura.') }}"
+        data-i18n-access-blocked="{{ _('Acesso Bloqueado') }}"
+        data-i18n-access-blocked-message="{{ _('O seu acesso ao servidor foi bloqueado manualmente pelo administrador.') }}"
+        data-i18n-access-blocked-contact="{{ _('Por favor, entre em contacto com o administrador do servidor para mais detalhes.') }}"
+        data-i18n-expired-signature="{{ _('Assinatura Expirada') }}"
+        data-i18n-expired-signature-message="{{ _('Caso deseje continuar tendo acesso ao servidor, renove sua assinatura.') }}"
+        data-i18n-expiring-access="{{ _('Atenção:') }}"
+        data-i18n-expiring-access-message="{{ _('O seu acesso expira em {days} dias, a {date}.') }}"
+        data-i18n-expires-today-message="{{ _('O seu acesso expira hoje, {date}.') }}"
+        data-i18n-no-shared-library="{{ _('Nenhuma biblioteca partilhada.') }}"
+        data-i18n-no-movies-watched="{{ _('Nenhum filme assistido no período.') }}"
+        data-i18n-no-shows-watched="{{ _('Nenhuma série assistida no período.') }}"
+        data-i18n-expires-on="{{ _('Vence em:') }}"
+        data-i18n-screen-singular="{{ _('Tela') }}"
+        data-i18n-screen-plural="{{ _('Telas') }}"
+        >
+</script>
+{% endblock %}

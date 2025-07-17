@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="{{ current_locale.language }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ _('Login') }} - {{ app_title }}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='gold'><path d='M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z'/></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <style> 
+        body { 
+            font-family: 'Inter', sans-serif;
+        }
+        .background-gradient {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background-size: 400% 400%;
+            animation: gradient-animation 15s ease infinite;
+        }
+        .dark .background-gradient {
+            background: linear-gradient(45deg, #1f2937, #374151, #4b5563, #1e40af);
+        }
+        @keyframes gradient-animation {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .login-card {
+            background-color: rgb(249 250 251);
+            border: 1px solid rgb(229 231 235);
+        }
+        .dark .login-card {
+            background: rgba(17, 24, 39, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .dark .text-shadow {
+            text-shadow: 0 2px 4px rgba(0,0,0,0.25);
+        }
+        .adaptive-title { color: #111827; }
+        .dark .adaptive-title { color: #ffffff; }
+
+        .adaptive-subtitle { color: #374151; }
+        .dark .adaptive-subtitle { color: rgba(255, 255, 255, 0.8); }
+        
+        .adaptive-footer { color: #4b5563; }
+        .dark .adaptive-footer { color: rgba(255, 255, 255, 0.6); }
+    </style>
+</head>
+<body class="bg-white dark:bg-transparent transition-colors duration-300">
+    <div class="background-gradient hidden dark:block"></div>
+    <main class="flex items-center justify-center min-h-screen p-4">
+        <div class="w-full max-w-md">
+            <div class="login-card rounded-2xl shadow-2xl p-8 space-y-6">
+                <div class="text-center">
+                    <svg class="w-20 h-20 text-yellow-400 mx-auto dark:drop-shadow-lg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
+                    <h1 class="text-3xl font-extrabold adaptive-title dark:text-shadow mt-4">{{ app_title }}</h1>
+                    <p class="mt-2 text-lg adaptive-subtitle">{{ _('Acesse com sua conta Plex') }}</p>
+                </div>
+
+                <div id="flash-container" class="min-h-[4rem]">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="p-3 my-2 text-sm rounded-lg text-center font-medium
+                                {% if category == 'error' %} bg-red-100 text-red-800 dark:bg-red-500/80 dark:text-white 
+                                {% elif category == 'info' %} bg-blue-100 text-blue-800 dark:bg-blue-500/80 dark:text-white
+                                {% else %} bg-green-100 text-green-800 dark:bg-green-500/80 dark:text-white
+                                {% endif %}" role="alert">
+                               {{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                </div>
+
+                <div class="mt-6">
+                    <button id="login-button" type="button" class="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-base font-semibold rounded-xl text-gray-900 bg-yellow-400 hover:bg-yellow-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 focus:ring-offset-gray-100 dark:focus:ring-offset-gray-800 transition-all duration-300 transform hover:scale-105 shadow-lg">
+                        <svg class="w-6 h-6 mr-3 text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
+                        <span id="login-button-text">{{ _('Entrar com a conta Plex') }}</span>
+                    </button>
+                </div>
+            </div>
+            <p class="mt-6 text-center text-xs adaptive-footer">
+                &copy; <span id="current-year"></span> {{ app_title }}. {{ _('Todos os direitos reservados.') }}
+            </p>
+        </div>
+    </main>
+
+<script id="login-script" 
+    type="module" 
+    src="{{ url_for('static', filename='js/login.js') }}"
+    data-urls-check-plex-pin="{{ url_for('auth.check_plex_pin', client_id='__CLIENT_ID__', pin_id=999999) }}"
+    data-urls-redirect-to-auth="{{ url_for('auth.redirect_to_auth') }}"
+    data-i18n-error="{{ _('Erro') }}"
+    data-i18n-auth-check-error="{{ _('Ocorreu um erro ao verificar a autenticação.') }}"
+    data-i18n-auth-denied="{{ _('A autenticação com o Plex foi negada.') }}"
+    data-i18n-login-with-plex="{{ _('Entrar com a conta Plex') }}"
+    data-i18n-waiting-auth="{{ _('Aguardando autenticação...') }}"
+></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const yearSpan = document.getElementById('current-year');
+        if (yearSpan) {
+            yearSpan.textContent = new Date().getFullYear();
+        }
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+            if (event.matches) {
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            }
+        });
+    });
+</script>
+
+</body>
+</html>
+

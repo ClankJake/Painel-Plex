@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="{{ current_locale.language }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ _('Resgatar Convite') }} - {{ app_title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <style> 
+        body { 
+            font-family: 'Inter', sans-serif;
+        } 
+        .step-list li::marker {
+            @apply text-yellow-500 font-semibold;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-300 p-4">
+    <div id="main-container" class="w-full max-w-2xl p-6 sm:p-8 space-y-6 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700/50 text-center transition-all duration-500">
+        <!-- O conteúdo será preenchido pelo JavaScript -->
+        <div id="loading-spinner">
+             <svg class="animate-spin h-10 w-10 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+             </svg>
+            <p class="text-lg text-gray-500 dark:text-gray-400 mt-4">{{ _('Validando seu convite...') }}</p>
+        </div>
+    </div>
+
+<script id="invite-script"
+    type="module"
+    src="{{ url_for('static', filename='js/invite.js') }}"
+    data-invite-code="{{ invite_code }}"
+    data-url-redirect-to-auth="{{ url_for('auth.redirect_to_auth') }}"
+    data-url-check-pin-for-token="{{ url_for('auth.check_plex_pin_for_token', client_id='__CLIENT_ID__', pin_id=999999) }}"
+    data-url-validate-invite="{{ url_for('invites_api.get_invite_details_route', code=invite_code) }}"
+    data-url-claim-invite="{{ url_for('invites_api.claim_invite_route') }}"
+    data-i18n-processing="{{ _('Processando...') }}"
+    data-i18n-wait-claim="{{ _('Aguarde um momento enquanto validamos e aceitamos o seu convite.') }}"
+    data-i18n-success="{{ _('Sucesso!') }}"
+    data-i18n-error="{{ _('Erro!') }}"
+    data-i18n-network-error="{{ _('Erro de Rede!') }}"
+    data-i18n-claim-fail="{{ _('Não foi possível comunicar com o servidor para resgatar o convite.') }}"
+    data-i18n-auth-denied="{{ _('A autenticação com o Plex foi negada.') }}"
+    data-i18n-auth-check-error="{{ _('Ocorreu um erro ao verificar a autenticação com o Plex.') }}"
+    data-i18n-invalid-invite="{{ _('Convite Inválido') }}"
+    data-i18n-validate-fail="{{ _('Não foi possível validar o convite.') }}"
+    data-i18n-you-are-invited="{{ _('Você foi convidado!') }}"
+    data-i18n-what-is-plex="{{ _('O que é o Plex?') }}"
+    data-i18n-plex-desc="{{ _('O Plex é como um centro de comando para todo o seu conteúdo digital. Ele organiza os filmes e séries partilhados consigo e permite que os acesse de qualquer lugar, em praticamente qualquer dispositivo.') }}"
+    data-i18n-how-to-start="{{ _('Como começar:') }}"
+    data-i18n-step1-text="{{ _('Se você ainda não tem,') }}"
+    data-i18n-step1-link="{{ _('crie a sua conta Plex gratuita aqui') }}"
+    data-i18n-step1-end="{{ _('. É rápido e fácil.') }}"
+    data-i18n-step2="{{ _('Volte para esta página e clique no botão abaixo para entrar com sua conta e aceitar o convite.') }}"
+    data-i18n-step3="{{ _('Após aceitar, você verá links para baixar os aplicativos Plex nos seus dispositivos (celular, TV, computador, etc).') }}"
+    data-i18n-login-to-redeem="{{ _('Entrar com Plex para Resgatar') }}"
+    data-i18n-waiting-auth="{{ _('Aguardando autenticação...') }}"
+    data-i18n-attention="{{ _('Atenção:') }}"
+    data-i18n-invite-expires="{{ _('Este convite expira') }}"
+    data-i18n-in-less-than-a-minute="{{ _('em menos de um minuto') }}"
+    data-i18n-in-minutes="{{ _('em {minutes} minutos') }}"
+    data-i18n-at-time="{{ _('às {time} de {date}') }}"
+    data-i18n-enjoy-anywhere="{{ _('Aproveite em qualquer lugar') }}"
+    data-i18n-download-plex="{{ _('O seu acesso foi concedido. Baixe o aplicativo Plex no seu dispositivo favorito para começar a assistir.') }}"
+    data-i18n-web-browser="{{ _('Navegador Web') }}"
+    data-i18n-all-devices="{{ _('Ver todos os dispositivos compatíveis') }}"
+></script>
+
+</body>
+</html>

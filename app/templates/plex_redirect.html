@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="{{ current_locale.language }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirecionando para o Plex...</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
+    <div id="loading-container" class="text-center">
+        <svg class="animate-spin h-12 w-12 text-yellow-400 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <h1 class="text-2xl font-bold mt-6">Preparando sua autenticação...</h1>
+        <p class="text-gray-400 mt-2">Obtendo um código de acesso seguro do Plex.</p>
+    </div>
+    <div id="error-container" class="hidden text-center">
+        <h1 class="text-2xl font-bold text-red-500">Erro de Autenticação</h1>
+        <p id="error-message" class="text-gray-400 mt-2"></p>
+        <button onclick="window.close()" class="mt-6 px-4 py-2 bg-yellow-500 text-gray-900 font-semibold rounded-lg">Fechar Janela</button>
+    </div>
+
+    <script>
+        async function initiatePlexAuth() {
+            try {
+                const contextResponse = await fetch("{{ get_plex_auth_context_url }}");
+                if (!contextResponse.ok) throw new Error("Falha ao comunicar com o servidor para obter o contexto de autenticação.");
+                const contextData = await contextResponse.json();
+                if (!contextData.success) throw new Error(contextData.message);
+                
+                const { product_name, client_id } = contextData;
+
+                const plexHeaders = {
+                    'X-Plex-Product': product_name,
+                    'X-Plex-Client-Identifier': client_id,
+                    'Accept': 'application/json'
+                };
+                const plexResponse = await fetch("https://plex.tv/api/v2/pins?strong=true", {
+                    method: 'POST',
+                    headers: plexHeaders
+                });
+                if (!plexResponse.ok) throw new Error("Falha ao criar o PIN de autenticação com o Plex.");
+                const pinData = await plexResponse.json();
+                const { id: pin_id, code: pin_code } = pinData;
+
+                if (window.opener) {
+                    window.opener.postMessage({
+                        type: 'plexAuthPin',
+                        pin_id: pin_id,
+                        client_id: client_id
+                    }, window.location.origin);
+                } else {
+                    throw new Error("Não foi possível comunicar com a janela principal.");
+                }
+
+                const authUrlParams = new URLSearchParams({
+                    'clientID': client_id,
+                    'code': pin_code,
+                    'context[device][product]': product_name,
+                    'context[device][deviceName]': product_name,
+                    'context[device][platform]': 'Web',
+                });
+                const plexAuthUrl = `https://app.plex.tv/auth#?${authUrlParams.toString()}`;
+                window.location.replace(plexAuthUrl);
+
+            } catch (error) {
+                console.error("Erro no fluxo de autenticação do Plex:", error);
+                document.getElementById('loading-container').classList.add('hidden');
+                document.getElementById('error-message').textContent = error.message;
+                document.getElementById('error-container').classList.remove('hidden');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', initiatePlexAuth);
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,486 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('Configurações') }} - {{ app_title }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .tab-button {
+        /* Adicionado 'whitespace-nowrap' para impedir que o texto do botão quebre a linha */
+        @apply px-4 py-2 font-semibold text-gray-500 dark:text-gray-400 border-b-2 border-transparent -mb-px whitespace-nowrap;
+        @apply hover:border-yellow-500 hover:text-gray-700 dark:hover:text-gray-200 transition-colors duration-200;
+    }
+    .tab-button.active {
+        @apply border-yellow-500 text-yellow-600 dark:text-yellow-400;
+    }
+    .tab-content, .sub-tab-content {
+        display: none;
+    }
+    .tab-content.active, .sub-tab-content.active {
+        display: block;
+    }
+    /* Estilo para desativar inputs */
+    .input-group:has(input[type=checkbox]:not(:checked)) .disablable-input {
+        @apply bg-gray-200 dark:bg-gray-800 cursor-not-allowed opacity-50;
+    }
+    #log-display {
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 0.8rem;
+    }
+    /* Estilo do Fundo do Modal com Cor Sólida */
+    .modal-backdrop {
+        @apply fixed inset-0 z-50 flex items-center justify-center bg-gray-100 dark:bg-gray-900;
+    }
+    /* Adicionado para corrigir a visibilidade dos campos do provedor */
+    .provider-fields {
+        display: none;
+    }
+    .provider-fields.active {
+        display: block;
+    }
+    /* Novo: Para esconder a barra de scroll mas manter a funcionalidade de rolagem */
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+    .no-scrollbar {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;  /* Firefox */
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">{{ _('Configurações') }}</h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Ajuste as configurações gerais, de notificação e de conexão da aplicação.') }}</p>
+    </div>
+</header>
+
+<form id="settingsForm" class="max-w-4xl mx-auto space-y-8">
+    
+    <!-- Navegação das Abas Principais (MODIFICADO) -->
+    <div class="border-b border-gray-200 dark:border-gray-700">
+        <nav id="main-tabs" class="flex space-x-6 overflow-x-auto no-scrollbar">
+            <button type="button" data-tab="geral" class="tab-button active">{{ _('Geral') }}</button>
+            <button type="button" data-tab="tarefas" class="tab-button">{{ _('Tarefas Agendadas') }}</button>
+            <button type="button" data-tab="pagamentos" class="tab-button">{{ _('Pagamentos') }}</button>
+            <button type="button" data-tab="notificacoes" class="tab-button">{{ _('Notificações') }}</button>
+            <button type="button" data-tab="conexoes" class="tab-button">{{ _('Conexões') }}</button>
+            <button type="button" data-tab="logs" class="tab-button">{{ _('Logs') }}</button>
+        </nav>
+    </div>
+
+    <!-- Conteúdo das Abas -->
+    <div id="main-tab-content">
+        <!-- Aba Geral -->
+        <div id="tab-geral" class="tab-content active">
+            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-6">
+                <div>
+                    <label for="APP_TITLE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Título da Aplicação') }}</label>
+                    <input type="text" id="APP_TITLE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                </div>
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="APP_HOST" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Anfitrião (Host) da Aplicação') }}</label>
+                        <input type="text" id="APP_HOST" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="0.0.0.0">
+                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Use 0.0.0.0 para tornar a aplicação acessível na sua rede.')}}</p>
+                    </div>
+                    <div>
+                        <label for="APP_PORT" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Porta da Aplicação') }}</label>
+                        <input type="number" id="APP_PORT" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="5000">
+                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A porta em que o servidor web será executado.')}}</p>
+                    </div>
+                </div>
+                 <div>
+                    <label for="APP_BASE_URL" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL Base da Aplicação') }}</label>
+                    <input type="url" id="APP_BASE_URL" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="https://seuservidor.com">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('O endereço público que aponta para a sua aplicação. Necessário para webhooks de pagamento.')}}</p>
+                </div>
+                <div>
+                    <label for="languageSelector" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Idioma da Interface') }}</label>
+                    <select id="languageSelector" class="mt-1 max-w-sm block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        {% for lang, name in config.LANGUAGES.items() %}
+                            <option value="{{ lang }}" {% if lang == current_locale.language %}selected{% endif %}>{{ name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Aba Tarefas Agendadas -->
+        <div id="tab-tarefas" class="tab-content">
+             <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-6">
+                <div>
+                    <label for="EXPIRATION_NOTIFICATION_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Enviar Notificações de Vencimento') }}</label>
+                    <input type="time" id="EXPIRATION_NOTIFICATION_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A verificação de vencimentos será executada diariamente a esta hora.')}}</p>
+                </div>
+                <div>
+                    <label for="BLOCK_REMOVAL_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Remover Usuários Bloqueados') }}</label>
+                    <input type="time" id="BLOCK_REMOVAL_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A verificação de contas bloqueadas para remoção será executada diariamente a esta hora.')}}</p>
+                </div>
+                 <div>
+                    <label for="DAYS_TO_REMOVE_BLOCKED_USER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Usuários Bloqueado Após (dias)') }}</label>
+                    <input type="number" id="DAYS_TO_REMOVE_BLOCKED_USER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="0">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Defina 0 para desativar.')}}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Aba Pagamentos -->
+        <div id="tab-pagamentos" class="tab-content">
+            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                
+                <!-- Seção de Preços por Tela -->
+                <div class="space-y-6">
+                    <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Preços por Quantidade de Telas') }}</h4>
+                    
+                    <!-- NOVO: Campo para Preço Padrão -->
+                    <div>
+                        <label for="RENEWAL_PRICE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço Padrão (Fallback)') }}</label>
+                        <input type="text" id="RENEWAL_PRICE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="10.00">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Use este preço se não quiser definir valores por tela. Deixe os campos abaixo em branco para usar este valor.')}}</p>
+                    </div>
+                    <!-- Preços por Tela -->
+                    <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <h4 class="font-semibold text-lg mb-4">{{ _('Preços por Quantidade de Telas (Opcional)') }}</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">{{_('Se preenchidos, estes valores terão prioridade sobre o preço padrão.')}}</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="PRICE_SCREEN_1" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 1 Tela') }}</label>
+                                <input type="text" id="PRICE_SCREEN_1" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="10.00">
+                            </div>
+                            <div>
+                                <label for="PRICE_SCREEN_2" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 2 Telas') }}</label>
+                            <input type="text" id="PRICE_SCREEN_2" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="18.00">
+                            </div>
+                            <div>
+                                <label for="PRICE_SCREEN_3" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 3 Telas') }}</label>
+                                <input type="text" id="PRICE_SCREEN_3" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="25.00">
+                            </div>
+                            <div>
+                                <label for="PRICE_SCREEN_4" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 4 Telas') }}</label>
+                                <input type="text" id="PRICE_SCREEN_4" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="30.00">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Seção Provedores de Pagamento -->
+                <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
+                    <div class="border-b border-gray-200 dark:border-gray-700 mb-6">
+                        <nav id="payment-provider-tabs" class="flex space-x-6 overflow-x-auto no-scrollbar">
+                            <button type="button" data-subtab="EFI" class="tab-button active">Efí</button>
+                            <button type="button" data-subtab="MERCADOPAGO" class="tab-button">Mercado Pago</button>
+                        </nav>
+                    </div>
+                    <div id="payment-provider-tab-content" class="space-y-6">
+                        <div id="subtab-EFI" class="sub-tab-content active space-y-4 input-group">
+                             <div class="flex items-center">
+                                <input id="EFI_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                                <label for="EFI_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar Efí') }}</label>
+                            </div>
+                            <div class="disablable-input space-y-4">
+                                <div class="flex items-center">
+                                    <input id="EFI_SANDBOX" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                                    <label for="EFI_SANDBOX" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Modo de Teste (Sandbox)') }}</label>
+                                </div>
+                                <div>
+                                    <label for="EFI_CLIENT_ID" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Client ID') }}</label>
+                                    <input type="text" id="EFI_CLIENT_ID" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                </div>
+                                <div>
+                                    <label for="EFI_CLIENT_SECRET" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Client Secret') }}</label>
+                                    <input type="password" id="EFI_CLIENT_SECRET" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                </div>
+                                <div>
+                                    <label for="EFI_CERTIFICATE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Caminho do Certificado (.pem)') }}</label>
+                                    <input type="text" id="EFI_CERTIFICATE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="./certs/seu_certificado.pem">
+                                </div>
+                                <div>
+                                    <label for="EFI_PIX_KEY" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Sua Chave PIX') }}</label>
+                                    <input type="text" id="EFI_PIX_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                </div>
+                            </div>
+                        </div>
+                        <div id="subtab-MERCADOPAGO" class="sub-tab-content space-y-4 input-group">
+                            <div class="flex items-center">
+                                <input id="MERCADOPAGO_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                                <label for="MERCADOPAGO_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar Mercado Pago') }}</label>
+                            </div>
+                            <div class="disablable-input space-y-4">
+                                <div>
+                                    <label for="MERCADOPAGO_ACCESS_TOKEN" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Access Token do Mercado Pago') }}</label>
+                                    <input type="password" id="MERCADOPAGO_ACCESS_TOKEN" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Aba Notificações -->
+        <div id="tab-notificacoes" class="tab-content">
+            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <div class="border-b border-gray-200 dark:border-gray-700 mb-6">
+                     <nav id="notification-tabs" class="flex space-x-6 overflow-x-auto no-scrollbar">
+                        <button type="button" data-subtab="telegram" class="tab-button active">{{ _('Telegram') }}</button>
+                        <button type="button" data-subtab="webhook" class="tab-button">{{ _('Webhook') }}</button>
+                    </nav>
+                </div>
+                <div id="notification-tab-content" class="space-y-6">
+                    <!-- Sub-aba Telegram -->
+                    <div id="subtab-telegram" class="sub-tab-content active space-y-4 input-group">
+                        <div class="flex items-center">
+                            <input id="TELEGRAM_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                            <label for="TELEGRAM_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar Agente Telegram') }}</label>
+                        </div>
+                        <div>
+                            <label for="TELEGRAM_BOT_TOKEN" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Token do Bot do Telegram') }}</label>
+                            <input type="password" id="TELEGRAM_BOT_TOKEN" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha para alterar') }}">
+                        </div>
+                        <div>
+                            <label for="TELEGRAM_CHAT_ID" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID do Chat/Canal de Admin') }}</label>
+                            <input type="text" id="TELEGRAM_CHAT_ID" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Opcional. ID para onde as notificações GERAIS serão enviadas. As notificações pessoais são enviadas para o ID no perfil do usuário.')}}</p>
+                        </div>
+                         <div>
+                            <label for="TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                {{ _('Modelo de Mensagem de Vencimento') }}
+                                <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                            </label>
+                            <textarea id="TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE" rows="3" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
+                        </div>
+                        <div>
+                            <label for="TELEGRAM_RENEWAL_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                {{ _('Modelo de Mensagem de Renovação') }}
+                                <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                            </label>
+                            <textarea id="TELEGRAM_RENEWAL_MESSAGE_TEMPLATE" rows="3" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
+                        </div>
+                        <div>
+                            <label for="TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                {{ _('Modelo de Mensagem de Fim de Teste') }}
+                                <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                            </label>
+                            <textarea id="TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE" rows="3" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
+                        </div>
+                    </div>
+                    <!-- Sub-aba Webhook -->
+                    <div id="subtab-webhook" class="sub-tab-content space-y-4 input-group">
+                         <div class="flex items-center">
+                            <input id="WEBHOOK_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                            <label for="WEBHOOK_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar Agente Webhook') }}</label>
+                        </div>
+                        <div>
+                            <label for="WEBHOOK_URL" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL do Webhook (Discord, etc.)') }}</label>
+                            <input type="url" id="WEBHOOK_URL" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                         <div>
+                            <label for="WEBHOOK_AUTHORIZATION_HEADER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Cabeçalho de Autorização (Opcional)') }}</label>
+                            <input type="text" id="WEBHOOK_AUTHORIZATION_HEADER" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Authorization: Bearer my-secret-token">
+                        </div>
+                         <div>
+                            <label for="WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                {{ _('Modelo de Mensagem de Vencimento (JSON)') }}
+                                <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                            </label>
+                            <textarea id="WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE" rows="4" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"></textarea>
+                        </div>
+                         <div>
+                            <label for="WEBHOOK_RENEWAL_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                {{ _('Modelo de Mensagem de Renovação (JSON)') }}
+                                <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                            </label>
+                            <textarea id="WEBHOOK_RENEWAL_MESSAGE_TEMPLATE" rows="4" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"></textarea>
+                        </div>
+                         <div>
+                            <label for="WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                {{ _('Modelo de Mensagem de Fim de Teste (JSON)') }}
+                                <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                            </label>
+                            <textarea id="WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE" rows="4" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"></textarea>
+                        </div>
+                    </div>
+                    <!-- Configurações comuns de notificação -->
+                     <div class="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                        <div>
+                            <label for="DAYS_TO_NOTIFY_EXPIRATION" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Avisar Vencimento com (dias de antecedência)') }}</label>
+                            <input type="number" id="DAYS_TO_NOTIFY_EXPIRATION" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Aba Conexões -->
+        <div id="tab-conexoes" class="tab-content">
+            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <!-- Seção Plex -->
+                <div class="space-y-4">
+                    <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ _('Plex') }}</h4>
+                    <div>
+                        <label for="plex_url_display" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL do Servidor Plex') }}</label>
+                        <input type="text" id="plex_url_display" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Não definido') }}" readonly>
+                    </div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">{{ _('Para alterar o servidor Plex ou atualizar seu token, refaça a autenticação.') }}</p>
+                    <button type="button" id="reauth-plex-button" class="btn bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-semibold">
+                         <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
+                         {{ _('Autenticar para Buscar Servidores') }}
+                    </button>
+                    <div id="server-selection-container" class="hidden space-y-2 mt-4"></div>
+                </div>
+
+                <!-- Seção Tautulli -->
+                <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600 space-y-4">
+                     <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ _('Tautulli') }}</h4>
+                     <p class="text-sm text-gray-500 dark:text-gray-400">{{_('Necessário para o ranking de estatísticas e controle de sessões.')}}</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="TAUTULLI_URL" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL do Tautulli') }}</label>
+                            <input type="text" id="TAUTULLI_URL" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="http://127.0.0.1:8181">
+                        </div>
+                        <div>
+                            <label for="TAUTULLI_API_KEY" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Chave da API do Tautulli') }}</label>
+                            <input type="password" id="TAUTULLI_API_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha para alterar') }}">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
+                        <div>
+                            <label for="BLOCKING_NOTIFIER_ID" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID Notificador (Bloqueio)') }}</label>
+                            <input type="number" id="BLOCKING_NOTIFIER_ID" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                        <button type="button" class="btn-auto-config btn bg-indigo-600 hover:bg-indigo-500 text-white text-sm" data-notifier-type="blocking" data-target-id="BLOCKING_NOTIFIER_ID">{{ _('Auto-Configurar') }}</button>
+                        
+                        <div>
+                            <label for="SCREEN_LIMIT_NOTIFIER_ID" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID Notificador (Limite Tela)') }}</label>
+                            <input type="number" id="SCREEN_LIMIT_NOTIFIER_ID" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                        <button type="button" class="btn-auto-config btn bg-indigo-600 hover:bg-indigo-500 text-white text-sm" data-notifier-type="screen_limit" data-target-id="SCREEN_LIMIT_NOTIFIER_ID">{{ _('Auto-Configurar') }}</button>
+                        
+                        <div>
+                            <label for="TRIAL_BLOCK_NOTIFIER_ID" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID Notificador (Teste)') }}</label>
+                            <input type="number" id="TRIAL_BLOCK_NOTIFIER_ID" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                        <button type="button" class="btn-auto-config btn bg-indigo-600 hover:bg-indigo-500 text-white text-sm" data-notifier-type="trial" data-target-id="TRIAL_BLOCK_NOTIFIER_ID">{{ _('Auto-Configurar') }}</button>
+                    </div>
+                    <button type="button" id="testTautulliButton" class="btn bg-blue-600 hover:bg-blue-500 text-white mt-4">{{ _('Testar Conexão') }}</button>
+                </div>
+
+                <!-- Seção Overseerr /	Jellyseerr -->
+                <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600 space-y-4">
+                     <h4 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Overseerr / Jellyseerr') }}</h4>
+                     <p class="text-sm text-gray-500 dark:text-gray-400">{{_('Necessário para suporte servidor de pedidos.')}}</p>
+                    <div class="space-y-4">
+                       <div class="flex items-center">
+                           <input id="OVERSEERR_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                           <label for="OVERSEERR_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar integração') }}</label>
+                       </div>
+                        <div>
+                            <label for="OVERSEERR_URL" class="block text-sm font-medium text-gray-500 dark:text-gray-400">URL</label>
+                            <input type="url" id="OVERSEERR_URL" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="http://127.0.0.1:5055">
+                        </div>
+                        <div>
+                            <label for="OVERSEERR_API_KEY" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Chave da API') }}</label>
+                            <input type="password" id="OVERSEERR_API_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                    </div>
+                    <button type="button" id="testOverseerrButton" class="btn bg-blue-600 hover:bg-blue-500 text-white">{{ _('Testar Conexão') }}</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Aba Logs -->
+        <div id="tab-logs" class="tab-content">
+            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <div class="flex flex-wrap gap-4 justify-between items-center mb-4">
+                    <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Logs do Sistema') }}</h3>
+                    <div class="flex items-center gap-4">
+                        <div>
+                            <label for="log_level_selector" class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Nível de Log:') }}</label>
+                            <select id="log_level_selector" class="p-1 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                <option value="INFO">INFO</option>
+                                <option value="DEBUG">DEBUG</option>
+                            </select>
+                        </div>
+                        <button type="button" id="toggle-logs" class="btn text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1.5">{{ _('Parar Atualização') }}</button>
+                        <button type="button" id="clear-logs" class="btn text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-1.5">{{ _('Limpar') }}</button>
+                    </div>
+                </div>
+                <div class="bg-gray-900 text-white p-4 rounded-lg h-96 overflow-y-auto">
+                    <pre id="log-display">{{ _('A carregar logs...') }}</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="pt-2 flex justify-end">
+        <button type="submit" id="saveButton" class="btn bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-500/20">{{ _('Salvar Alterações') }}</button>
+    </div>
+</form>
+
+<!-- Modal de Ajuda para Placeholders -->
+<div id="placeholderHelpModal" class="modal-backdrop hidden">
+    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-lg w-full">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white">{{ _('Placeholders Disponíveis') }}</h3>
+            <button id="closeHelpModal" class="text-gray-400 hover:text-gray-600 dark:hover:text-white text-3xl">&times;</button>
+        </div>
+        <div class="modal-body space-y-2 text-sm text-gray-600 dark:text-gray-300 grid grid-cols-[max-content,1fr] gap-x-4 gap-y-2">
+            <strong class="font-mono text-blue-600 dark:text-blue-400">{greeting}</strong> <span>- {{ _('Saudação baseada na hora (Bom dia, Boa tarde, Boa noite).') }}</span>
+            <strong class="font-mono text-blue-600 dark:text-blue-400">{username}</strong> <span>- {{ _('O nome de utilizador do Plex.') }}</span>
+            <strong class="font-mono text-blue-600 dark:text-blue-400">{name}</strong> <span>- {{ _('O nome completo do utilizador (definido no perfil).') }}</span>
+            <strong class="font-mono text-blue-600 dark:text-blue-400">{email}</strong> <span>- {{ _('O endereço de email do utilizador.') }}</span>
+            <strong class="font-mono text-blue-600 dark:text-blue-400">{date}</strong> <span>- {{ _('A data de vencimento formatada (dd/mm/aaaa).') }}</span>
+            <strong class="font-mono text-blue-600 dark:text-blue-400">{telegram_user}</strong> <span>- {{ _('O ID ou @username do Telegram do utilizador.') }}</span>
+            <strong class="font-mono text-blue-600 dark:text-blue-400">{phone_number}</strong> <span>- {{ _('O número de telefone do utilizador.') }}</span>
+            <strong class="font-mono text-blue-600 dark:text-blue-400">{days}</strong> <span>- {{ _('Os dias restantes para o vencimento (apenas para mensagens de vencimento).') }}</span>
+            <strong class="font-mono text-blue-600 dark:text-blue-400">{new_date}</strong> <span>- {{ _('A nova data de vencimento (apenas para mensagens de renovação).') }}</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script id="settings-script"
+    type="module"
+    src="{{ url_for('static', filename='js/settings.js') }}"
+    data-urls-get-plex-auth-context="{{ url_for('auth.get_plex_auth_context') }}"
+    data-urls-check-plex-pin="{{ url_for('auth.check_plex_pin', client_id='__CLIENT_ID__', pin_id=999999) }}"
+    data-urls-get-plex-servers="{{ url_for('system_api.get_plex_servers') }}"
+    data-urls-api-settings="{{ url_for('system_api.api_settings') }}"
+    data-urls-clear-logs="{{ url_for('system_api.clear_logs') }}"
+    data-urls-get-logs="{{ url_for('system_api.get_logs') }}"
+    data-urls-test-tautulli="{{ url_for('system_api.test_tautulli_connection') }}"
+    data-urls-test-overseerr="{{ url_for('system_api.test_overseerr_connection') }}"
+    data-urls-auto-configure-tautulli="{{ url_for('system_api.auto_configure_tautulli_notifier') }}"
+    data-urls-set-language="/language/"
+    data-i18n-authenticated="{{ _('Autenticado com sucesso! Buscando servidores...') }}"
+    data-i18n-verification-error="{{ _('Erro de verificação:') }}"
+    data-i18n-verifying="{{ _('Verificando...') }}"
+    data-i18n-fetching-servers="{{ _('A buscar servidores...') }}"
+    data-i18n-select-new-server="{{ _('Selecione o novo servidor:') }}"
+    data-i18n-no-servers-found="{{ _('Nenhum servidor encontrado.') }}"
+    data-i18n-error-generic="{{ _('Erro:') }}"
+    data-i18n-saving="{{ _('Salvando...') }}"
+    data-i18n-unknown-error="{{ _('Ocorreu um erro desconhecido.') }}"
+    data-i18n-save-changes="{{ _('Salvar Alterações') }}"
+    data-i18n-testing="{{ _('Testando...') }}"
+    data-i18n-test-connection="{{ _('Testar Conexão') }}"
+    data-i18n-stop-updates="{{ _('Parar Atualização') }}"
+    data-i18n-start-updates="{{ _('Iniciar Atualização') }}"
+    data-i18n-loading-logs="{{ _('A carregar logs...') }}"
+    data-i18n-error-loading-logs="{{ _('Erro ao carregar logs') }}"
+    data-i18n-connection-error="{{ _('Erro de conexão') }}"
+    data-i18n-auto-configure="{{ _('Auto-Configurar') }}"
+    data-i18n-confirm-server="{{ _('Confirmar Servidor') }}"
+    data-i18n-server-updated="{{ _('Servidor atualizado com sucesso!') }}"
+>
+</script>
+{% endblock %}
+

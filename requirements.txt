@@ -1,0 +1,15 @@
+Flask
+Flask-Login
+Flask-SQLAlchemy
+Flask-Migrate
+alembic
+Werkzeug
+plexapi
+requests
+python-dotenv
+waitress
+Flask-Babel
+APScheduler
+efipay
+mercadopago
+tzlocal
