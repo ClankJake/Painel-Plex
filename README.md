@@ -33,7 +33,7 @@ Siga estes passos para colocar a aplicação em funcionamento:
 
 1.  **Clone o repositório:**
     ```bash
-    git clone [https://github.com/seu-usuario/painel-plex.git](https://github.com/seu-usuario/painel-plex.git)
+    git clone https://github.com/seu-usuario/painel-plex.git
     cd painel-plex
     ```
 
