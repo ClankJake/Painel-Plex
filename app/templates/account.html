@@ -49,7 +49,7 @@
     </div>
 
     <!-- Seção de Renovação Atualizada -->
-    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+    <div id="payment-card" class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
         <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Renovação via PIX') }}</h3>
         
         <!-- Esta seção será preenchida pelo JavaScript com os planos e preços -->
@@ -76,16 +76,9 @@
     </div>
 
     <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Seu Top 3') }}</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div>
-                <h4 class="font-semibold text-gray-600 dark:text-gray-300 mb-2">{{ _('Filmes Mais Vistos') }}</h4>
-                <ul id="top-movies" class="space-y-2"></ul>
-            </div>
-            <div>
-                <h4 class="font-semibold text-gray-600 dark:text-gray-300 mb-2">{{ _('Séries Mais Vistas') }}</h4>
-                <ul id="top-shows" class="space-y-2"></ul>
-            </div>
+        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Histórico de Pagamentos') }}</h3>
+        <div id="payment-history-container" class="space-y-3 max-h-96 overflow-y-auto pr-2">
+            <p class="text-gray-500 dark:text-gray-400">{{ _('A carregar histórico...') }}</p>
         </div>
     </div>
 </div>
@@ -105,6 +98,7 @@
         data-update-privacy-url="{{ url_for('users_api.update_privacy_settings') }}"
         data-get-payment-options-url="{{ url_for('payments_api.get_payment_options') }}"
         data-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
+        data-get-payment-history-url="{{ url_for('users_api.get_user_payments_history', username='__USERNAME__') }}"
         data-login-url="{{ url_for('auth.login') }}"
         data-i18n-error="{{ _('Erro') }}"
         data-i18n-no-provider="{{ _('Nenhum provedor de pagamento ou plano está habilitado pelo administrador.') }}"
@@ -137,6 +131,11 @@
         data-i18n-expires-on="{{ _('Vence em:') }}"
         data-i18n-screen-singular="{{ _('Tela') }}"
         data-i18n-screen-plural="{{ _('Telas') }}"
+        data-i18n-no-payments-found="{{ _('Nenhum pagamento encontrado.') }}"
+        data-i18n-date="{{ _('Data') }}"
+        data-i18n-description="{{ _('Descrição') }}"
+        data-i18n-value="{{ _('Valor') }}"
+        data-i18n-status="{{ _('Status') }}"
         >
 </script>
 {% endblock %}
