@@ -20,8 +20,8 @@ O Painel de Gestão Plex é uma aplicação web completa projetada para simplifi
 -   **Interface Moderna**: Frontend reativo construído com JavaScript moderno e Tailwind CSS, oferecendo uma experiência de usuário rápida e agradável, incluindo tema claro e escuro.                                                                                                   |
 ## Imagens
 <p align="center">
-  <img width="400" alt="Imagem 1" src="https://github.com/user-attachments/assets/ca2e94ad-a3b0-48c9-b053-48b3d86a2744" />
   <img width="400" alt="Imagem 2" src="https://github.com/user-attachments/assets/6a0eb80c-ca2e-4fc0-a183-1c08d4c084a2" />
+  <img width="400" alt="Imagem 1" src="https://github.com/user-attachments/assets/ca2e94ad-a3b0-48c9-b053-48b3d86a2744" />
 </p>
 
 ## Pré-requisitos
