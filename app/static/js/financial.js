@@ -145,15 +145,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (summary.recent_transactions && summary.recent_transactions.length > 0) {
             transactionsList.innerHTML = summary.recent_transactions.map(tx => {
                 let planDescription = tx.description || '';
-                if (!planDescription) {
+                // Se a descrição for genérica, usa o número de telas para uma descrição mais específica
+                if (!planDescription || planDescription.toLowerCase().includes('renovação')) {
                     planDescription = tx.screens > 0 ? `${tx.screens} Tela(s)` : 'Plano Padrão';
                 }
                 
                 return `
                 <div class="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                     <div>
-                        <p class="font-semibold text-gray-800 dark:text-gray-200">${tx.username}</p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">${new Date(tx.created_at).toLocaleString('pt-BR')} - <span class="font-medium text-gray-600 dark:text-gray-300">${planDescription}</span></p>
+                        <div class="flex items-center gap-2">
+                            <p class="font-semibold text-gray-800 dark:text-gray-200">${tx.username}</p>
+                            <span class="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">${planDescription}</span>
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${new Date(tx.created_at).toLocaleString('pt-BR')}</p>
                     </div>
                     <div class="font-mono text-green-600 dark:text-green-400 font-semibold">${formatCurrency(tx.value)}</div>
                 </div>
@@ -162,14 +166,11 @@ document.addEventListener('DOMContentLoaded', () => {
             transactionsList.innerHTML = `<p class="py-4 text-center text-gray-500">${i18n.noTransactions}</p>`;
         }
 
-        // --- INÍCIO DA ALTERAÇÃO ---
         // Lista de Próximas Renovações
         if (summary.upcoming_expirations && summary.upcoming_expirations.length > 0) {
             renewalsList.innerHTML = summary.upcoming_expirations.map(user => {
-                // Usa o texto pré-formatado do backend
                 const daysText = user.days_left_text; 
                 
-                // A lógica da cor continua baseada no valor numérico
                 let textColor = 'text-yellow-600 dark:text-yellow-400';
                 if (user.days_left < 0) {
                     textColor = 'text-red-600 dark:text-red-400';
@@ -196,7 +197,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const days = renewalsFilter.value;
             renewalsList.innerHTML = `<p class="py-4 text-center text-gray-500">${i18n.noRenewalsInDays.replace('{days}', days)}</p>`;
         }
-        // --- FIM DA ALTERAÇÃO ---
     }
 
     async function loadFinancialData() {
