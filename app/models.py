@@ -45,10 +45,13 @@ class Invitation(db.Model):
     allow_downloads = db.Column(db.Boolean, nullable=False)
     created_at = db.Column(db.String, nullable=False)
     expires_at = db.Column(db.String)
-    claimed_by = db.Column(db.String)
+    claimed_by_users = db.Column(db.Text) # Armazena uma lista JSON de nomes de utilizador
     claimed_at = db.Column(db.String)
     trial_duration_minutes = db.Column(db.Integer, nullable=False, default=0)
     overseerr_access = db.Column(db.Boolean, default=False)
+    max_uses = db.Column(db.Integer, nullable=False, default=1)
+    use_count = db.Column(db.Integer, nullable=False, default=0)
+
 
 class BlockedUser(db.Model):
     __tablename__ = 'blocked_users'
@@ -92,4 +95,4 @@ class Notification(db.Model):
     category = db.Column(db.String(20), nullable=False, default='info')
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     is_read = db.Column(db.Boolean, default=False, nullable=False)
-    link = db.Column(db.String, nullable=True) 
+    link = db.Column(db.String, nullable=True)
