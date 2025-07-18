@@ -79,6 +79,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showCreateInviteModal() {
         const body = `<div class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="inviteCustomCode" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.customCode}</label>
+                                <input type="text" id="inviteCustomCode" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="${i18n.optional}">
+                            </div>
+                            <div>
+                                <label for="inviteMaxUses" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.numberOfUses}</label>
+                                <input type="number" id="inviteMaxUses" value="1" min="1" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            </div>
+                        </div>
                         <div>
                             <label for="inviteScreenLimit" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.screenLimit}</label>
                             <select id="inviteScreenLimit" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
@@ -140,7 +150,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     allow_downloads: modal.querySelector('#inviteAllowDownloads').checked,
                     expires_in_minutes: parseInt(modal.querySelector('#inviteExpiration').value),
                     trial_duration_minutes: parseInt(modal.querySelector('#inviteTrialDuration').value),
-                    overseerr_access: modal.querySelector('#inviteOverseerrAccess').checked
+                    overseerr_access: modal.querySelector('#inviteOverseerrAccess').checked,
+                    custom_code: modal.querySelector('#inviteCustomCode').value.trim() || null,
+                    max_uses: parseInt(modal.querySelector('#inviteMaxUses').value) || 1,
                 });
 
                 if (result && result.success) {
@@ -148,6 +160,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     showToast(result.message, 'success');
                     showInviteLinkModal(result.invite_url);
                     loadInvites();
+                } else {
+                    showToast(result.message, 'error');
                 }
             } catch (error) {
                 showToast(error.message, 'error');
@@ -179,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadInvites(isPeriodicCheck = false) {
         try {
             const invites = await fetchAPI(urls.api_invites_list);
-            const pendingInvites = Object.entries(invites).filter(([, details]) => !details.claimed_by);
+            const pendingInvites = Object.values(invites);
             
             if (isPeriodicCheck && activeInviteCount > 0 && pendingInvites.length < activeInviteCount) {
                 showToast(i18n.inviteUsedUpdating, 'info');
@@ -189,9 +203,18 @@ document.addEventListener('DOMContentLoaded', () => {
             
             activeInviteCount = pendingInvites.length;
             inviteListDiv.innerHTML = pendingInvites.length > 0
-                ? pendingInvites.sort(([,a], [,b]) => new Date(b.created_at) - new Date(a.created_at)).map(([code, details]) => {
-                    const isExpired = details.expires_at && new Date(details.expires_at) < new Date();
+                ? pendingInvites.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map(details => {
+                    const { code, expires_at, use_count, max_uses, trial_duration_minutes } = details;
+                    const isExpired = expires_at && new Date(expires_at) < new Date();
+                    const isFull = use_count >= max_uses;
+                    const isActive = !isExpired && !isFull;
+
+                    let statusHtml = `<span class="px-2 py-1 text-xs font-medium rounded-full ${isActive ? 'text-green-800 bg-green-100 dark:bg-green-900/30 dark:text-green-300' : 'text-red-800 bg-red-100 dark:bg-red-900/30 dark:text-red-300'}">${isActive ? i18n.active : i18n.expired}</span>`;
                     
+                    let usageHtml = `<span class="text-xs text-gray-500 dark:text-gray-400">${use_count}/${max_uses} ${i18n.uses}</span>`;
+
+                    let trialHtml = trial_duration_minutes > 0 ? `<span class="px-2 py-1 text-xs font-medium text-purple-800 bg-purple-100 rounded-full dark:bg-purple-900/30 dark:text-purple-300">${i18n.trial}</span>` : '';
+
                     let expirationHtml = '';
                     if (details.expires_at && !isExpired) {
                         const expirationDate = new Date(details.expires_at);
@@ -223,12 +246,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700/50">
                         <div class="flex items-center gap-3 flex-wrap">
                             <span class="font-mono text-sm">${code}</span>
-                            <span class="px-2 py-1 text-xs font-medium rounded-full ${isExpired ? 'text-red-800 bg-red-100 dark:bg-red-900/30 dark:text-red-300' : 'text-green-800 bg-green-100 dark:bg-green-900/30 dark:text-green-300'}">${isExpired ? i18n.expired : i18n.active}</span>
-                            ${details.trial_duration_minutes > 0 ? `<span class="px-2 py-1 text-xs font-medium text-purple-800 bg-purple-100 rounded-full dark:bg-purple-900/30 dark:text-purple-300">${i18n.trial}</span>` : ''}
+                            ${statusHtml}
+                            ${trialHtml}
+                            ${usageHtml}
                             ${expirationHtml}
                         </div>
                         <div class="flex items-center gap-2">
-                             <button data-action="copy-invite" data-code="${code}" title="${i18n.copyLink}" class="p-2 rounded-full text-gray-500 hover:bg-blue-100 dark:hover:bg-blue-500/20" ${isExpired ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" /><path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" /></svg></button>
+                             <button data-action="copy-invite" data-code="${code}" title="${i18n.copyLink}" class="p-2 rounded-full text-gray-500 hover:bg-blue-100 dark:hover:bg-blue-500/20" ${!isActive ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" /><path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" /></svg></button>
                             <button data-action="delete-invite" data-code="${code}" title="${i18n.deleteInvite}" class="p-2 rounded-full text-gray-500 hover:bg-red-100 dark:hover:bg-red-500/20"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg></button>
                         </div>
                     </div>`;
