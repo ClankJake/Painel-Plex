@@ -3,7 +3,7 @@ import os
 import json
 import logging
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from ..extensions import db
 from ..models import Invitation, BlockedUser, UserProfile, PixPayment, Notification
 from sqlalchemy import func, extract, not_
@@ -268,7 +268,10 @@ class DataManager:
             created_at=details.get('created_at'),
             expires_at=details.get('expires_at'),
             trial_duration_minutes=details.get('trial_duration_minutes', 0),
-            overseerr_access=details.get('overseerr_access', False)
+            overseerr_access=details.get('overseerr_access', False),
+            max_uses=details.get('max_uses', 1),
+            use_count=details.get('use_count', 0),
+            claimed_by_users=json.dumps(details.get('claimed_by_users', []))
         )
         db.session.add(invitation)
         db.session.commit()
@@ -278,23 +281,31 @@ class DataManager:
         if invitation:
             inv_dict = self._row_to_dict(invitation)
             inv_dict['libraries'] = json.loads(inv_dict['libraries'])
+            inv_dict['claimed_by_users'] = json.loads(inv_dict['claimed_by_users'] or '[]')
             return inv_dict
         return None
 
     def get_all_pending_invitations(self):
-        invitations = Invitation.query.filter_by(claimed_by=None).all()
+        invitations = Invitation.query.filter(Invitation.use_count < Invitation.max_uses).all()
         invites = {}
         for invite in invitations:
             inv_dict = self._row_to_dict(invite)
             inv_dict['libraries'] = json.loads(inv_dict['libraries'])
+            inv_dict['claimed_by_users'] = json.loads(inv_dict['claimed_by_users'] or '[]')
             invites[invite.code] = inv_dict
         return invites
 
-    def update_invitation_claim(self, code, username, claim_time):
+    def increment_invitation_use(self, code, username):
         invitation = Invitation.query.get(code)
         if invitation:
-            invitation.claimed_by = username
-            invitation.claimed_at = claim_time
+            invitation.use_count += 1
+            invitation.claimed_at = datetime.now(timezone.utc).isoformat()
+            
+            claimed_users = json.loads(invitation.claimed_by_users or '[]')
+            if username not in claimed_users:
+                claimed_users.append(username)
+            invitation.claimed_by_users = json.dumps(claimed_users)
+            
             db.session.commit()
     
     def delete_invitation(self, code):
@@ -304,7 +315,8 @@ class DataManager:
             db.session.commit()
 
     def get_user_claim_date(self, username):
-        invitation = Invitation.query.filter_by(claimed_by=username).order_by(Invitation.claimed_at.desc()).first()
+        # Esta lógica pode precisar de ajuste se um utilizador puder resgatar múltiplos convites
+        invitation = Invitation.query.filter(Invitation.claimed_by_users.contains(username)).order_by(Invitation.claimed_at.desc()).first()
         return invitation.claimed_at if invitation else None
 
     # --- Métodos de Utilizadores Bloqueados ---
