@@ -30,7 +30,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- LÓGICA DE PAGAMENTO ---
 
     function renderPaymentOptions(prices, providers, canDowngrade) {
-        if (!paymentSection) return;
+        const paymentCard = document.getElementById('payment-card');
+        if (!paymentSection || !paymentCard) return;
+
+        const anyProviderEnabled = providers && Object.values(providers).some(enabled => enabled);
+
+        if (!anyProviderEnabled) {
+            paymentCard.style.display = 'none';
+            return;
+        }
+
         if (!prices || Object.keys(prices).length === 0) {
             paymentSection.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${i18n.noProvider}</p>`;
             return;
@@ -197,6 +206,40 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    function renderPaymentHistory(payments) {
+        const container = document.getElementById('payment-history-container');
+        if (!container) return;
+
+        if (payments && payments.length > 0) {
+            container.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-50 dark:bg-gray-700/50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.date}</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.description}</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.value}</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.status}</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            ${payments.map(p => `
+                                <tr>
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm">${new Date(p.created_at).toLocaleString('pt-BR')}</td>
+                                    <td class="px-4 py-2 text-sm">${p.description || `${p.provider} - ${p.screens > 0 ? `${p.screens} Telas` : 'Padrão'}`}</td>
+                                    <td class="px-4 py-2 text-sm font-mono">${p.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                                    <td class="px-4 py-2 text-sm"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${p.status === 'CONCLUIDA' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'}">${p.status}</span></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } else {
+            container.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-4">${i18n.noPaymentsFound}</p>`;
+        }
+    }
+
     async function main() {
         try {
             const data = await fetchAPI(urls.getAccountDetailsUrl);
@@ -261,24 +304,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (libraryList) libraryList.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${i18n.noSharedLibrary}</p>`;
             }
 
-            const topMoviesList = document.getElementById('top-movies');
-            const topShowsList = document.getElementById('top-shows');
-            const stats = data.watch_stats;
-
-            if (topMoviesList && stats.top_movies) {
-                if (stats.top_movies.length > 0) {
-                    topMoviesList.innerHTML = stats.top_movies.map((item, index) => `<li class="flex items-center justify-between text-sm"><span class="font-semibold">${index + 1}. ${item.title}</span><span class="text-gray-400">${item.plays}x</span></li>`).join('');
-                } else {
-                    topMoviesList.innerHTML = `<li><p class="text-gray-500 dark:text-gray-400 text-sm">${i18n.noMoviesWatched}</p></li>`;
-                }
-            }
-
-            if(topShowsList && stats.top_shows) {
-                if (stats.top_shows.length > 0) {
-                    topShowsList.innerHTML = stats.top_shows.map((item, index) => `<li class="flex items-center justify-between text-sm"><span class="font-semibold">${index + 1}. ${item.title}</span><span class="text-gray-400">${item.plays}x</span></li>`).join('');
-                } else {
-                    topShowsList.innerHTML = `<li><p class="text-gray-500 dark:text-gray-400 text-sm">${i18n.noShowsWatched}</p></li>`;
-                }
+            const paymentHistory = await fetchAPI(urls.getPaymentHistoryUrl.replace('__USERNAME__', data.username));
+            if (paymentHistory.success) {
+                renderPaymentHistory(paymentHistory.payments);
             }
 
             if (loadingIndicator) loadingIndicator.style.display = 'none';
