@@ -6,13 +6,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 # --- Constantes ---
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config.json')
+CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config')
+CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
 
 def load_or_create_config():
     """
     Carrega a configuração do config.json ou cria um ficheiro padrão se não existir.
     A SECRET_KEY é tratada com prioridade para segurança.
     """
+    # Garante que o diretório de configuração existe
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+
     # Prioridade 1: Tenta carregar a chave a partir de uma variável de ambiente.
     # Isto é ideal para ambientes de produção (ex: Docker, Heroku).
     secret_key_from_env = os.environ.get('SECRET_KEY')
@@ -53,14 +57,14 @@ def load_or_create_config():
             "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "Seu período de teste para {username} terminou. Para continuar com o acesso, renove sua assinatura.",
             "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": "{\"content\": \"O período de teste para {username} terminou.\"}",
             "DAYS_TO_NOTIFY_EXPIRATION": 2,
-            "LOG_FILE": "app.log",
+            "LOG_FILE": os.path.join(CONFIG_DIR, "app.log"),
             "LOG_MAX_BYTES": 1024 * 1024, # 1 MB
             "LOG_BACKUP_COUNT": 5,
             "LAST_NOTIFICATION_CHECK": "1970-01-01T00:00:00",
             "EFI_ENABLED": False,
             "EFI_CLIENT_ID": "",
             "EFI_CLIENT_SECRET": "",
-            "EFI_CERTIFICATE": "./certs/efisandbox.pem", # Caminho para o seu certificado .pem
+            "EFI_CERTIFICATE": os.path.join(CONFIG_DIR, "certs", "efisandbox.pem"),
             "EFI_SANDBOX": True,
             "EFI_PIX_KEY": "", # A sua chave PIX
             "MERCADOPAGO_ENABLED": False,
@@ -97,7 +101,7 @@ def load_or_create_config():
                 config.setdefault("APP_PORT", 5000)
                 config.setdefault("APP_BASE_URL", "")
                 config.setdefault("LOG_LEVEL", "INFO")
-                config.setdefault("LOG_FILE", "app.log")
+                config.setdefault("LOG_FILE", os.path.join(CONFIG_DIR, "app.log"))
                 config.setdefault("LOG_MAX_BYTES", 1024 * 1024)
                 config.setdefault("LOG_BACKUP_COUNT", 5)
                 config.setdefault("TRIAL_BLOCK_NOTIFIER_ID", 0)
@@ -114,7 +118,7 @@ def load_or_create_config():
                 config.setdefault("EFI_ENABLED", False)
                 config.setdefault("EFI_CLIENT_ID", "")
                 config.setdefault("EFI_CLIENT_SECRET", "")
-                config.setdefault("EFI_CERTIFICATE", "./certs/efisandbox.pem")
+                config.setdefault("EFI_CERTIFICATE", os.path.join(CONFIG_DIR, "certs", "efisandbox.pem"))
                 config.setdefault("EFI_SANDBOX", True)
                 config.setdefault("EFI_PIX_KEY", "")
                 config.setdefault("RENEWAL_PRICE", "10.00")
