@@ -114,8 +114,13 @@ def api_settings():
         save_app_config(config_to_update)
         app = current_app._get_current_object()
         app.config.update(config_to_update)
+
+        # Recarrega as credenciais de todos os serviços
         efi_manager.reload_credentials()
         mercado_pago_manager.reload_credentials()
+        tautulli_manager.reload_credentials()
+        overseerr_manager.reload_config()
+
         log_level_map = {'DEBUG': logging.DEBUG, 'INFO': logging.INFO, 'WARNING': logging.WARNING, 'ERROR': logging.ERROR}
         new_log_level = config_to_update.get('LOG_LEVEL', 'INFO')
         if new_log_level != old_config.get('LOG_LEVEL'):
@@ -176,6 +181,13 @@ def save_setup():
     config.update(normalized_data)
     config['IS_CONFIGURED'] = True
     save_app_config(config)
+
+    # Recarrega as credenciais de todos os serviços após o setup
+    tautulli_manager.reload_credentials()
+    overseerr_manager.reload_config()
+#    efi_manager.reload_credentials()
+#    mercado_pago_manager.reload_credentials()
+
     success, message = plex_manager.reload_connections()
     if success:
         user_details = {'id': config.get('ADMIN_USER'), 'username': config.get('ADMIN_USER'), 'role': 'admin'}
