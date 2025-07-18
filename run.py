@@ -1,6 +1,7 @@
 import logging
 import subprocess
 import sys
+import os
 from waitress import serve
 from app import create_app
 from app.config import load_or_create_config
@@ -15,12 +16,19 @@ def run_db_upgrade():
     try:
         # Usamos 'sys.executable -m flask' para garantir que estamos a usar o mesmo ambiente python
         # e evitar problemas de PATH.
+        
+        # Cria uma cópia do ambiente atual e define a codificação de I/O do Python para UTF-8
+        # para o subprocesso. Isto resolve erros de 'UnicodeDecodeError' no Windows.
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8'
+
         result = subprocess.run(
             [sys.executable, "-m", "flask", "db", "upgrade"],
             capture_output=True,
             text=True,
             check=True,
-            encoding='utf-8' # Garante a codificação correta da saída
+            encoding='utf-8', # Espera que a saída seja UTF-8
+            env=env # Passa o ambiente modificado para o subprocesso
         )
         logging.info("Migrações da base de dados aplicadas com sucesso.")
         # Se houver alguma saída do comando (ex: "Already up to date."), ela será logada.
@@ -57,4 +65,3 @@ if __name__ == '__main__':
         logging.critical("A aplicação não será iniciada devido a uma falha na migração da base de dados.")
         # Opcional: Adicionar um input para manter a janela do console aberta e ver o erro.
         # input("Pressione Enter para sair...")
-
