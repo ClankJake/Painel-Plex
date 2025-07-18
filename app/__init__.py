@@ -39,7 +39,18 @@ def setup_logging(app, log_level='INFO'):
     }
     level = log_level_map.get(log_level, logging.INFO)
     
-    log_file = app.config.get('LOG_FILE', 'app.log')
+    log_file = app.config.get('LOG_FILE')
+    
+    # Validação crítica: Se o caminho do log não estiver definido ou estiver vazio, a aplicação não pode continuar.
+    if not log_file:
+        logging.critical("CRÍTICO: O caminho do ficheiro de log (LOG_FILE) não está definido ou está vazio no config.json. A aplicação não pode iniciar.")
+        raise ValueError("LOG_FILE não está configurado.")
+
+    # Garante que o diretório para o ficheiro de log existe
+    log_dir = os.path.dirname(log_file)
+    if log_dir: # Apenas tenta criar o diretório se o caminho não for vazio
+        os.makedirs(log_dir, exist_ok=True)
+    
     max_bytes = app.config.get('LOG_MAX_BYTES', 1024 * 1024)
     backup_count = app.config.get('LOG_BACKUP_COUNT', 5)
     
@@ -91,7 +102,8 @@ def create_app(log_level='INFO', _from_job=False):
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_SECURE'] = True
 
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'app_data.db')
+    # O caminho da base de dados agora aponta para a pasta 'config'
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'app_data.db')
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
