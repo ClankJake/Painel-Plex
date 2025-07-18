@@ -295,3 +295,18 @@ def get_user_list():
     except Exception as e:
         logger.error(f"Erro ao obter a lista de utilizadores: {e}")
         return jsonify({"success": False, "message": "Falha ao obter lista de utilizadores."}), 500
+
+@users_api_bp.route('/payments/<username>')
+@login_required
+def get_user_payments_history(username):
+    """Endpoint para obter o histórico de pagamentos de um utilizador."""
+    # Apenas o admin ou o próprio utilizador podem ver o histórico
+    if not current_user.is_admin() and current_user.username != username:
+        return jsonify({"success": False, "message": _("Acesso não autorizado.")}), 403
+    
+    try:
+        payments = data_manager.get_payments_by_user(username)
+        return jsonify({"success": True, "payments": payments})
+    except Exception as e:
+        logger.error(f"Erro ao obter o histórico de pagamentos para {username}: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "Falha ao obter histórico de pagamentos."}), 500
