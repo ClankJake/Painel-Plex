@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
         api_users_unblock: scriptTag.dataset.urlApiUsersUnblock,
         api_users_toggle_overseerr: scriptTag.dataset.urlApiUsersToggleOverseerr,
         api_users_update_all_limits: scriptTag.dataset.urlApiUsersUpdateAllLimits,
+        api_users_payments_base: scriptTag.dataset.urlApiUsersPaymentsBase,
         base_invite_page: scriptTag.dataset.urlBaseInvitePage,
         api_users_update_all_libraries: '/api/users/update-all-libraries' 
     };
@@ -378,6 +379,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="flex items-center justify-end gap-1 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <button data-action="renew-month" title="${i18n.addOneMonth}" class="btn text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 mr-auto">${i18n.addOneMonth}</button>
                 <button data-action="manage-profile" title="${i18n.manageProfileAndExpiration}" class="p-2 rounded-full text-gray-500 hover:bg-green-100 dark:hover:bg-green-500/20 dark:text-green-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2V7a5 5 0 00-5-5zm0 10a3 3 0 100-6 3 3 0 000 6z" /></svg></button>
+                <button data-action="payment-history" title="${i18n.paymentHistory}" class="p-2 rounded-full text-gray-500 hover:bg-yellow-100 dark:hover:bg-yellow-500/20 dark:text-yellow-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg></button>
                 <button data-action="manage-libraries" title="${i18n.manageLibraries}" class="p-2 rounded-full text-gray-500 hover:bg-purple-100 dark:hover:bg-purple-500/20 dark:text-purple-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2-2H4a2 2 0 01-2-2v-4z" /></svg></button>
                 <button data-action="manage-limit" title="${i18n.manageScreenLimit}" class="p-2 rounded-full text-gray-500 hover:bg-blue-100 dark:hover:bg-blue-500/20 dark:text-blue-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm4 0h6v10H7V5z" clip-rule="evenodd" /></svg></button>
                 ${user.is_blocked ? `<button data-action="unblock" title="${i18n.unblock}" class="p-2 rounded-full text-gray-500 hover:bg-yellow-100 dark:hover:bg-yellow-500/20 dark:text-yellow-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg></button>`: `<button data-action="block" title="${i18n.block}" class="p-2 rounded-full text-gray-500 hover:bg-red-100 dark:hover:bg-red-500/20 dark:text-red-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></button>`}
@@ -414,6 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (action === 'manage-limit') return showScreenLimitModal(user);
         if (action === 'manage-libraries') return showLibraryManagementModal(user);
         if (action === 'renew-month') return handleQuickRenewal(user);
+        if (action === 'payment-history') return showPaymentHistoryModal(user);
         
         const actionConfig = {
             'remove': { title: i18n.removeUserTitle, message: `${i18n.confirmRemoveUser} <strong>${user.username}</strong>?`, confirmText: i18n.confirmRemoveButton, confirmClass: 'bg-red-600 text-white', endpoint: urls.api_users_remove },
@@ -436,6 +439,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- MODAIS (implementações completas) ---
     
+    async function showPaymentHistoryModal(user) {
+        const body = `<div id="paymentHistoryContainer" class="space-y-2 max-h-96 overflow-y-auto pr-2"><p>${i18n.loading}</p></div>`;
+        const footer = `<button id="modalClose" class="btn bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200 w-full">${i18n.close}</button>`;
+        const modal = createModal('paymentHistoryModal', `${i18n.paymentHistory} - ${user.username}`, body, footer);
+        modal.querySelector('#modalClose').onclick = () => modal.classList.add('hidden');
+
+        const container = modal.querySelector('#paymentHistoryContainer');
+        try {
+            const endpoint = urls.api_users_payments_base.replace('__USERNAME__', user.username);
+            const result = await fetchAPI(endpoint);
+            if (result.success && result.payments.length > 0) {
+                container.innerHTML = `
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-50 dark:bg-gray-700/50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.date}</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.description}</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.value}</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.status}</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            ${result.payments.map(p => `
+                                <tr>
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm">${new Date(p.created_at).toLocaleString('pt-BR')}</td>
+                                    <td class="px-4 py-2 text-sm">${p.description || `${p.provider} - ${p.screens > 0 ? `${p.screens} Telas` : 'Padrão'}`}</td>
+                                    <td class="px-4 py-2 text-sm font-mono">${p.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                                    <td class="px-4 py-2 text-sm"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${p.status === 'CONCLUIDA' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'}">${p.status}</span></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } else {
+                container.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-4">${i18n.noPaymentsFound}</p>`;
+            }
+        } catch (error) {
+            container.innerHTML = `<p class="text-red-500">${error.message}</p>`;
+        }
+    }
+
     function showBulkActionsModal() {
         const body = `<p class="mb-4">${i18n.bulkActionsDescription}</p>
                       <div class="space-y-3">
