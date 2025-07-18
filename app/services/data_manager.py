@@ -15,8 +15,10 @@ logger = logging.getLogger(__name__)
 class DataManager:
     """Responsável por carregar e salvar dados da aplicação usando SQLAlchemy ORM."""
     
-    def __init__(self, db_path=None):
-        self.db_path = db_path or os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'app_data.db')
+    def __init__(self):
+        # O caminho da base de dados é agora gerido centralmente no __init__.py da app
+        # e a instância do db é injetada através das extensões.
+        pass
 
     # --- MÉTODOS DE NOTIFICAÇÃO ---
     def create_notification(self, message, category='info', link=None):
