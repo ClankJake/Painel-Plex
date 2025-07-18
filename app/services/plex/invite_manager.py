@@ -30,7 +30,16 @@ class PlexInviteManager:
         if not kwargs.get('library_titles'):
             return {"success": False, "message": _("Pelo menos uma biblioteca deve ser selecionada para o convite.")}
 
-        code = secrets.token_urlsafe(16)
+        custom_code = kwargs.get('custom_code')
+        max_uses = kwargs.get('max_uses', 1)
+
+        if custom_code:
+            if self.data_manager.get_invitation(custom_code):
+                return {"success": False, "message": _("Este código personalizado já está em uso.")}
+            code = custom_code
+        else:
+            code = secrets.token_urlsafe(16)
+        
         expires_in_minutes = kwargs.get('expires_in_minutes')
         
         invitation_details = {
@@ -40,7 +49,10 @@ class PlexInviteManager:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=int(expires_in_minutes))).isoformat() if expires_in_minutes else None,
             "trial_duration_minutes": kwargs.get('trial_duration_minutes', 0),
-            "overseerr_access": kwargs.get('overseerr_access', False)
+            "overseerr_access": kwargs.get('overseerr_access', False),
+            "max_uses": max_uses,
+            "use_count": 0,
+            "claimed_by_users": [] # Inicia como uma lista vazia
         }
 
         self.data_manager.add_invitation(code, invitation_details)
@@ -49,8 +61,14 @@ class PlexInviteManager:
     def get_invitation_by_code(self, code):
         invitation = self.data_manager.get_invitation(code)
         if not invitation: return None, _("Convite não encontrado.")
-        if invitation.get('claimed_by'): return None, _("Este convite já foi resgatado por %(username)s.", username=invitation.get('claimed_by'))
-        if invitation.get('expires_at') and datetime.fromisoformat(invitation['expires_at']) < datetime.now(timezone.utc): return None, _("Este convite expirou.")
+        
+        # Verifica se o convite já foi totalmente utilizado
+        if invitation.get('use_count', 0) >= invitation.get('max_uses', 1):
+            return None, _("Este convite já atingiu o seu limite máximo de utilizações.")
+
+        if invitation.get('expires_at') and datetime.fromisoformat(invitation['expires_at']) < datetime.now(timezone.utc): 
+            return None, _("Este convite expirou.")
+            
         return invitation, _("Convite válido.")
 
     def claim_invitation(self, code, plex_user_account):
@@ -61,6 +79,11 @@ class PlexInviteManager:
         if not invitation:
             return {"success": False, "message": message}
         
+        # Verifica se este utilizador específico já resgatou este convite
+        claimed_users = invitation.get('claimed_by_users', [])
+        if plex_user_account.username in claimed_users:
+            return {"success": False, "message": _("Você já resgatou este convite anteriormente.")}
+
         invite_result = self._invite_user_to_plex(plex_user_account.email, invitation['libraries'])
         if not invite_result.get("success"):
             return invite_result
@@ -81,7 +104,8 @@ class PlexInviteManager:
         if invitation['screen_limit'] > 0:
             self.tautulli_manager.update_screen_limit(plex_user_account.email, plex_user_account.username, invitation['screen_limit'])
 
-        self.data_manager.update_invitation_claim(code, plex_user_account.username, datetime.now(timezone.utc).isoformat())
+        # Atualiza os dados do convite
+        self.data_manager.increment_invitation_use(code, plex_user_account.username)
         self.user_manager.invalidate_user_cache()
         self.data_manager.create_notification(message=f"'{plex_user_account.username}' resgatou um convite.", category='success', link=url_for('main.users_page'))
 
