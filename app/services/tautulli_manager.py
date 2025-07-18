@@ -19,6 +19,11 @@ class TautulliManager:
         self.notifiers = NotifierHandler(self.api_client, data_manager)
         self.stats = StatsHandler(self.api_client)
 
+    def reload_credentials(self):
+        """Recarrega as credenciais e configurações para o Tautulli."""
+        logger.info("A recarregar as credenciais do Tautulli Manager...")
+        self.api_client.reload_config()
+
     def test_connection(self, url, api_key):
         return self.api_client.test_connection(url, api_key)
 
@@ -111,7 +116,7 @@ class TautulliManager:
             return {
                 "friendly_name": _("Bloqueio de Usuario (Painel)"),
                 "actions": {"on_play": 1},
-                "notify_text": {"on_play_subject": "--jbop stream --username {user_email} --sessionId {session_id} --killMessage 'Seu acesso foi suspenso. Entre em contato com o administrador.'", "on_play_body": ""},
+                "notify_text": {"on_play_subject": "--jbop stream --username {user_email} --sessionId {session_id} --killMessage 'Seu acesso expirou. Caso deseje continuar só regularizar'", "on_play_body": ""},
                 "custom_conditions": [{"parameter": "user_email", "operator": "is", "value": ["~"]}]
             }
         elif notifier_type == 'trial':
