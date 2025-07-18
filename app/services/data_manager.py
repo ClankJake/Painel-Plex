@@ -247,6 +247,15 @@ class DataManager:
         logger.info(f"Pagamento manual de {value} para '{username}' registado com sucesso (TXID: {txid}).")
         return self._row_to_dict(payment)
 
+    def get_payments_by_user(self, username):
+        """Busca todos os pagamentos (manuais e PIX) para um utilizador específico."""
+        try:
+            payments = PixPayment.query.filter_by(username=username).order_by(PixPayment.created_at.desc()).all()
+            return [self._row_to_dict(p) for p in payments]
+        except Exception as e:
+            logger.error(f"Erro ao buscar pagamentos para o utilizador '{username}': {e}")
+            return []
+
     # --- Métodos de Convites ---
     def add_invitation(self, code, details):
         invitation = Invitation(
