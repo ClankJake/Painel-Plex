@@ -12,10 +12,21 @@ class TautulliApiClient:
     """Cliente para realizar chamadas diretas à API do Tautulli."""
 
     def __init__(self):
+        self.base_url = None
+        self.api_key = None
+        self.is_configured = False
+        self.reload_config()
+
+    def reload_config(self):
+        """Recarrega a configuração do Tautulli a partir do ficheiro."""
         config = load_or_create_config()
         self.base_url = config.get("TAUTULLI_URL", "").rstrip('/')
         self.api_key = config.get("TAUTULLI_API_KEY")
         self.is_configured = bool(self.base_url and self.api_key)
+        if self.is_configured:
+            logger.info("Configuração do TautulliApiClient (re)carregada com sucesso.")
+        else:
+            logger.warning("Configuração do TautulliApiClient (re)carregada, mas os dados estão incompletos.")
 
     def _make_request(self, params, method='GET', data=None, timeout=10):
         """
