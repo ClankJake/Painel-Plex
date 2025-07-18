@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div>
                             <label for="inviteTrialDuration" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.trialDuration}</label>
                             <select id="inviteTrialDuration" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                                <option value="0">${i18n.noTrial}</option><option value="1">1 ${i18n.minutes}</option><option value="30">30 ${i18n.minutes}</option><option value="60">1 ${i18n.hour}</option><option value="120">2 ${i18n.hour}s</option><option value="1440">24 ${i18n.hour}s</option><option value="2880">48 ${i18n.hour}s</option>
+                                <option value="0">${i18n.noTrial}</option><option value="15">15 ${i18n.minutes}</option><option value="30">30 ${i18n.minutes}</option><option value="60">1 ${i18n.hour}</option><option value="120">2 ${i18n.hour}s</option><option value="1440">24 ${i18n.hour}s</option><option value="2880">48 ${i18n.hour}s</option>
                             </select>
                         </div>
                         <div>
