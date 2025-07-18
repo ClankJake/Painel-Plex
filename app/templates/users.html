@@ -87,6 +87,7 @@
 <div id="bulkActionsModal" class="modal-backdrop hidden"></div>
 <div id="bulkScreenLimitModal" class="modal-backdrop hidden"></div>
 <div id="userProfileModal" class="modal-backdrop hidden"></div>
+<div id="paymentHistoryModal" class="modal-backdrop hidden"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -110,6 +111,7 @@
         data-url-api-users-unblock="{{ url_for('users_api.unblock_user_route') }}"
         data-url-api-users-toggle-overseerr="{{ url_for('users_api.toggle_overseerr_access_route') }}"
         data-url-api-users-update-all-limits="{{ url_for('users_api.update_all_limits_route') }}"
+        data-url-api-users-payments-base="{{ url_for('users_api.get_user_payments_history', username='__USERNAME__') }}"
         data-url-base-invite-page="/invite/"
         data-i18n-error="{{ _('Erro') }}"
         data-i18n-loading-invites="{{ _('Carregando convites...') }}"
@@ -209,6 +211,13 @@
         data-i18n-add-one-month="{{ _('+1 Mês') }}"
         data-i18n-confirm-add-one-month="{{ _('Tem a certeza que deseja adicionar 1 mês à subscrição de') }}"
         data-i18n-confirm="{{ _('Confirmar') }}"
+        data-i18n-payment-history="{{ _('Histórico de Pagamentos') }}"
+        data-i18n-no-payments-found="{{ _('Nenhum pagamento encontrado.') }}"
+        data-i18n-date="{{ _('Data') }}"
+        data-i18n-description="{{ _('Descrição') }}"
+        data-i18n-value="{{ _('Valor') }}"
+        data-i18n-provider="{{ _('Provedor') }}"
+        data-i18n-status="{{ _('Status') }}"
 >
 </script>
 {% endblock %}
