@@ -104,7 +104,18 @@ def create_app(log_level='INFO', _from_job=False):
 
     # O caminho da base de dados agora aponta para a pasta 'config'
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'app_data.db')
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+    
+    # --- INÍCIO DA CORREÇÃO PARA 'DATABASE IS LOCKED' ---
+    # Adiciona um timeout à string de conexão do SQLite e configura o SQLAlchemy para
+    # funcionar corretamente num ambiente multi-threaded (como o Waitress).
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=20'
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        "connect_args": {
+            "check_same_thread": False,
+        }
+    }
+    # --- FIM DA CORREÇÃO ---
+    
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     base_url = app.config.get('APP_BASE_URL')
