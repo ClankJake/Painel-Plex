@@ -53,6 +53,18 @@ class PlexManager:
                 self.app.config.update(load_or_create_config())
         return success, message
 
+    def check_status(self):
+        """Verifica o estado da conexão com o Plex."""
+        if self.conn and self.conn.plex and self.conn.account:
+            try:
+                # Tenta uma operação leve para confirmar que a conexão está ativa
+                self.conn.plex.library.sections()
+                return {"status": "ONLINE", "message": _("Conectado com sucesso.")}
+            except Exception as e:
+                logger.warning(f"Falha na verificação de estado do Plex: {e}")
+                return {"status": "OFFLINE", "message": _("Falha na comunicação com o servidor Plex.")}
+        return {"status": "OFFLINE", "message": _("Não configurado ou falha na conexão inicial.")}
+
     # --- Métodos de Fachada ---
     # Estes métodos delegam as chamadas para o sub-gestor apropriado.
     

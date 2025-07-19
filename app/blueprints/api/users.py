@@ -310,3 +310,15 @@ def get_user_payments_history(username):
     except Exception as e:
         logger.error(f"Erro ao obter o histórico de pagamentos para {username}: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Falha ao obter histórico de pagamentos."}), 500
+
+@users_api_bp.route('/account/devices')
+@login_required
+def get_account_devices():
+    """Endpoint para obter os dispositivos conectados do utilizador."""
+    try:
+        devices_data = tautulli_manager.get_user_devices(current_user.username)
+        return jsonify(devices_data)
+    except Exception as e:
+        logger.error(f"Erro ao obter dispositivos para {current_user.username}: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "Falha ao obter lista de dispositivos."}), 500
+

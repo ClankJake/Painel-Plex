@@ -2,6 +2,59 @@
 
 {% block title %}{{ _('Minha Conta') }} - {{ app_title }}{% endblock %}
 
+{% block extra_head %}
+<style>
+    .tab-button.active {
+        @apply border-yellow-500 text-yellow-600 dark:text-yellow-400;
+    }
+    .tab-content {
+        display: none;
+    }
+    .tab-content.active {
+        display: block;
+    }
+    .platform-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 0.5rem;
+        background-size: 60%;
+        background-repeat: no-repeat;
+        background-position: center;
+    }
+    /* Estilos de Plataforma Injetados */
+    .platform-alexa { background-color: #00caff; background-image: url(/static/images/platforms/alexa.svg); }
+    .platform-android { background-color: #3ddc84; background-image: url(/static/images/platforms/android.svg); }
+    .platform-atv { background-color: #a2aaad; background-image: url(/static/images/platforms/atv.svg); }
+    .platform-chrome { background-color: #db4437; background-image: url(/static/images/platforms/chrome.svg); }
+    .platform-chromecast { background-color: #4285f4; background-image: url(/static/images/platforms/chromecast.svg); }
+    .platform-default { background-color: #e5a00d; background-image: url(/static/images/platforms/default.svg); }
+    .platform-dlna { background-color: #4ba32f; background-image: url(/static/images/platforms/dlna.svg); }
+    .platform-firefox { background-color: #ff7139; background-image: url(/static/images/platforms/firefox.svg); }
+    .platform-gtv { background-color: #008bcf; background-image: url(/static/images/platforms/gtv.svg); }
+    .platform-ie { background-color: #18bcef; background-image: url(/static/images/platforms/ie.svg); }
+    .platform-ios { background-color: #a2aaad; background-image: url(/static/images/platforms/ios.svg); }
+    .platform-kodi { background-color: #30aada; background-image: url(/static/images/platforms/kodi.svg); }
+    .platform-lg { background-color: #990033; background-image: url(/static/images/platforms/lg.svg); }
+    .platform-linux { background-color: #0099cc; background-image: url(/static/images/platforms/linux.svg); }
+    .platform-macos { background-color: #a2aaad; background-image: url(/static/images/platforms/macos.svg); }
+    .platform-msedge { background-color: #0078d7; background-image: url(/static/images/platforms/msedge.svg); }
+    .platform-opera { background-color: #fa1e4e; background-image: url(/static/images/platforms/opera.svg); }
+    .platform-playstation { background-color: #003087; background-image: url(/static/images/platforms/playstation.svg); }
+    .platform-plex { background-color: #e5a00d; background-image: url(/static/images/platforms/plex.svg); }
+    .platform-plexamp { background-color: #e5a00d; background-image: url(/static/images/platforms/plexamp.svg); }
+    .platform-roku { background-color: #673293; background-image: url(/static/images/platforms/roku.svg); }
+    .platform-safari { background-color: #00d3f9; background-image: url(/static/images/platforms/safari.svg); }
+    .platform-samsung { background-color: #034ea2; background-image: url(/static/images/platforms/samsung.svg); }
+    .platform-synclounge { background-color: #151924; background-image: url(/static/images/platforms/synclounge.svg); }
+    .platform-tivo { background-color: #00a7e1; background-image: url(/static/images/platforms/tivo.svg); }
+    .platform-wiiu { background-color: #03a9f4; background-image: url(/static/images/platforms/wiiu.svg); }
+    .platform-windows { background-color: #0078d7; background-image: url(/static/images/platforms/windows.svg); }
+    .platform-wp { background-color: #68217a; background-image: url(/static/images/platforms/windows.svg); }
+    .platform-xbmc { background-color: #3b4872; background-image: url(/static/images/platforms/kodi.svg); }
+    .platform-xbox { background-color: #107c10; background-image: url(/static/images/platforms/xbox.svg); }
+</style>
+{% endblock %}
+
 {% block content %}
 <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
     <div>
@@ -14,11 +67,14 @@
     <p class="text-lg text-gray-500 dark:text-gray-400">{{ _('Carregando detalhes da conta...') }}</p>
 </div>
 
-<div id="status-banner" class="hidden mb-8"></div>
+<div id="errorContainer" class="hidden text-center py-10 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg">
+    <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar os detalhes da sua conta.') }}</p>
+    <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
+</div>
 
-<div id="accountDetailsContainer" class="hidden space-y-8">
-    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Detalhes da Conta') }}</h3>
+<div id="accountDetailsContainer" class="hidden">
+    <!-- Cartão de Detalhes do Utilizador (Sempre Visível) -->
+    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-8">
         <div class="flex items-center space-x-4">
             <img id="user-thumb" src="" alt="Avatar" class="w-24 h-24 rounded-full">
             <div>
@@ -31,62 +87,78 @@
                 <p class="text-sm text-gray-500 dark:text-gray-400">{{ _('Limite de Telas:') }} <span id="user-screen-limit" class="font-semibold"></span></p>
             </div>
         </div>
-    </div>
-    
-    <!-- NOVA SECÇÃO DE PRIVACIDADE -->
-    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Privacidade') }}</h3>
-        <div class="flex items-center justify-between">
-            <div>
-                <label for="hide-leaderboard-toggle" class="font-medium text-gray-800 dark:text-gray-200">{{ _('Ocultar meu nome e foto nos rankings') }}</label>
-                <p class="text-sm text-gray-500 dark:text-gray-400">{{ _('Seu nome será ofuscado (ex: U******r) e sua foto será genérica.') }}</p>
+        <div class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
+            <h4 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">{{ _('Privacidade') }}</h4>
+            <div class="flex items-center justify-between">
+                <div>
+                    <label for="hide-leaderboard-toggle" class="font-medium text-gray-700 dark:text-gray-300">{{ _('Ocultar meu nome e foto nos rankings') }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">{{ _('Seu nome será ofuscado (ex: U******r) e sua foto será genérica.') }}</p>
+                </div>
+                <label for="hide-leaderboard-toggle" class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" value="" id="hide-leaderboard-toggle" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                </label>
             </div>
-            <label for="hide-leaderboard-toggle" class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" value="" id="hide-leaderboard-toggle" class="sr-only peer">
-                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-            </label>
         </div>
     </div>
 
-    <!-- Seção de Renovação Atualizada -->
-    <div id="payment-card" class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Renovação via PIX') }}</h3>
-        
-        <!-- Esta seção será preenchida pelo JavaScript com os planos e preços -->
-        <div id="payment-section" class="space-y-4">
-            <p class="text-gray-500 dark:text-gray-400">{{ _('A carregar planos de renovação...') }}</p>
-        </div>
-        
-        <!-- Esta seção aparecerá após gerar o PIX -->
-        <div id="pix-display" class="hidden text-center space-y-4 mt-6">
-            <p>{{ _('Pagamento PIX gerado! Utilize o QR Code ou o código abaixo para pagar.') }}</p>
-            <img id="pix-qr-code" src="" class="mx-auto border-4 border-white dark:border-gray-600 rounded-lg w-56 h-56">
-            <div class="flex items-center space-x-2">
-                <input type="text" id="pix-copy-paste" readonly class="w-full p-2 text-sm text-gray-900 bg-gray-200 rounded-lg border-none dark:bg-gray-700 dark:text-white">
-                <button id="copy-pix-code" class="p-2 rounded-md bg-blue-500 text-white hover:bg-blue-600">{{ _('Copiar') }}</button>
-            </div>
-            <p id="polling-status" class="text-sm text-gray-500 dark:text-gray-400">{{ _('A aguardar confirmação de pagamento...') }}</p>
-        </div>
-    </div>
-    
-    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Acesso às Bibliotecas') }}</h3>
-        <div id="library-list" class="flex flex-wrap gap-2">
-            </div>
+    <div id="status-banner" class="hidden mb-8"></div>
+
+    <!-- Navegação por Separadores -->
+    <div class="border-b border-gray-200 dark:border-gray-700 mb-8">
+        <nav id="account-tabs" class="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
+            <button type="button" data-tab="overview" class="tab-button active py-3 px-1 border-b-2 font-medium text-sm">{{ _('Visão Geral') }}</button>
+            <button type="button" data-tab="payment" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Pagamentos e Assinatura') }}</button>
+            <button type="button" data-tab="security" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Dispositivos Conectados') }}</button>
+        </nav>
     </div>
 
-    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Histórico de Pagamentos') }}</h3>
-        <div id="payment-history-container" class="space-y-3 max-h-96 overflow-y-auto pr-2">
-            <p class="text-gray-500 dark:text-gray-400">{{ _('A carregar histórico...') }}</p>
+    <!-- Conteúdo dos Separadores -->
+    <div id="account-tab-content">
+        <!-- Separador Visão Geral -->
+        <div id="tab-overview" class="tab-content active space-y-8">
+            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Acesso às Bibliotecas') }}</h3>
+                <div id="library-list" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+
+        <!-- Separador Pagamentos -->
+        <div id="tab-payment" class="tab-content space-y-8">
+            <div id="payment-card" class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Renovação via PIX') }}</h3>
+                <div id="payment-section" class="space-y-4">
+                    <p class="text-gray-500 dark:text-gray-400">{{ _('A carregar planos de renovação...') }}</p>
+                </div>
+                <div id="pix-display" class="hidden text-center space-y-4 mt-6">
+                    <p>{{ _('Pagamento PIX gerado! Utilize o QR Code ou o código abaixo para pagar.') }}</p>
+                    <img id="pix-qr-code" src="" class="mx-auto border-4 border-white dark:border-gray-600 rounded-lg w-56 h-56">
+                    <div class="flex items-center space-x-2">
+                        <input type="text" id="pix-copy-paste" readonly class="w-full p-2 text-sm text-gray-900 bg-gray-200 rounded-lg border-none dark:bg-gray-700 dark:text-white">
+                        <button id="copy-pix-code" class="p-2 rounded-md bg-blue-500 text-white hover:bg-blue-600">{{ _('Copiar') }}</button>
+                    </div>
+                    <p id="polling-status" class="text-sm text-gray-500 dark:text-gray-400">{{ _('A aguardar confirmação de pagamento...') }}</p>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Histórico de Pagamentos') }}</h3>
+                <div id="payment-history-container" class="space-y-3 max-h-96 overflow-y-auto pr-2">
+                    <p class="text-gray-500 dark:text-gray-400">{{ _('A carregar histórico...') }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Separador Segurança -->
+        <div id="tab-security" class="tab-content space-y-8">
+            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Dispositivos Conectados') }}</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('Lista de dispositivos que acederam à sua conta recentemente.') }}</p>
+                <div id="device-list-container" class="space-y-3 max-h-96 overflow-y-auto pr-2"></div>
+            </div>
         </div>
     </div>
 </div>
 
-<div id="errorContainer" class="hidden text-center py-10 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg">
-    <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar os detalhes da sua conta.') }}</p>
-    <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
-</div>
 <div id="providerChoiceModal" class="modal-backdrop hidden"></div>
 {% endblock %}
 
@@ -95,6 +167,7 @@
         type="module" 
         src="{{ url_for('static', filename='js/account.js') }}"
         data-get-account-details-url="{{ url_for('users_api.get_account_details') }}"
+        data-get-account-devices-url="{{ url_for('users_api.get_account_devices') }}"
         data-update-privacy-url="{{ url_for('users_api.update_privacy_settings') }}"
         data-get-payment-options-url="{{ url_for('payments_api.get_payment_options') }}"
         data-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
@@ -102,7 +175,7 @@
         data-login-url="{{ url_for('auth.login') }}"
         data-i18n-error="{{ _('Erro') }}"
         data-i18n-no-provider="{{ _('Nenhum provedor de pagamento ou plano está habilitado pelo administrador.') }}"
-        data-i18n-renew-prompt="{{ _('Para renovar a sua subscrição, por favor, clique no botão "Gerar PIX".') }}"
+        data-i18n-renew-prompt="{{ _('Para renovar a sua assinatura, por favor, clique no botão "Gerar PIX".') }}"
         data-i18n-generate-pix="{{ _('Gerar PIX') }}"
         data-i18n-generate-pix-for-price="{{ _('Gerar PIX por R$ {price}') }}"
         data-i18n-choose-provider="{{ _('Escolha um Provedor') }}"
@@ -110,7 +183,7 @@
         data-i18n-pay-with-mp="{{ _('Pagar com Mercado Pago') }}"
         data-i18n-cancel="{{ _('Cancelar') }}"
         data-i18n-wait="{{ _('Aguarde...') }}"
-        data-i18n-payment-confirmed="{{ _('Pagamento confirmado! A sua subscrição foi renovada.') }}"
+        data-i18n-payment-confirmed="{{ _('Pagamento confirmado! A sua assinatura foi renovada.') }}"
         data-i18n-polling-confirmed="{{ _('Pagamento Confirmado! A página será atualizada em 3 segundos...') }}"
         data-i18n-polling-error="{{ _('Erro ao verificar o estado do pagamento (a tentar novamente):') }}"
         data-i18n-code-copied="{{ _('Código PIX copiado!') }}"
@@ -126,8 +199,6 @@
         data-i18n-expiring-access-message="{{ _('O seu acesso expira em {days} dias, a {date}.') }}"
         data-i18n-expires-today-message="{{ _('O seu acesso expira hoje, {date}.') }}"
         data-i18n-no-shared-library="{{ _('Nenhuma biblioteca partilhada.') }}"
-        data-i18n-no-movies-watched="{{ _('Nenhum filme assistido no período.') }}"
-        data-i18n-no-shows-watched="{{ _('Nenhuma série assistida no período.') }}"
         data-i18n-expires-on="{{ _('Vence em:') }}"
         data-i18n-screen-singular="{{ _('Tela') }}"
         data-i18n-screen-plural="{{ _('Telas') }}"
@@ -136,6 +207,14 @@
         data-i18n-description="{{ _('Descrição') }}"
         data-i18n-value="{{ _('Valor') }}"
         data-i18n-status="{{ _('Status') }}"
+        data-i18n-last-seen="{{ _('Último Acesso') }}"
+        data-i18n-years-ago="{{ _('anos atrás') }}"
+        data-i18n-months-ago="{{ _('meses atrás') }}"
+        data-i18n-days-ago="{{ _('dias atrás') }}"
+        data-i18n-hours-ago="{{ _('horas atrás') }}"
+        data-i18n-minutes-ago="{{ _('minutos atrás') }}"
+        data-i18n-just-now="{{ _('Agora mesmo') }}"
+        data-i18n-no-devices-found="{{ _('Nenhum dispositivo encontrado no seu histórico recente.') }}"
         >
 </script>
 {% endblock %}

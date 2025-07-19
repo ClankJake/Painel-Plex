@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- ELEMENTOS DO DOM ---
     const form = document.getElementById('settingsForm');
     const saveButton = document.getElementById('saveButton');
+    const saveTemplatesButton = document.getElementById('saveTemplatesButton');
     const logLevelSelector = document.getElementById('log_level_selector');
     const testTautulliButton = document.getElementById('testTautulliButton');
     const testOverseerrButton = document.getElementById('testOverseerrButton');
@@ -35,9 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     async function loginWithPlex() {
         const reauthButton = document.getElementById('reauth-plex-button');
-        const originalButtonHTML = reauthButton.innerHTML; // Armazena o conteúdo original do botão
+        const originalButtonHTML = reauthButton.innerHTML; 
 
-        // Função para restaurar o botão ao seu estado original
         const restoreButton = () => {
             if (reauthButton) {
                 reauthButton.disabled = false;
@@ -86,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
             pinCheckInterval = setInterval(async () => {
                 if (!authWindow || authWindow.closed) {
                     clearInterval(pinCheckInterval);
-                    restoreButton(); // Restaura o botão se a janela for fechada
+                    restoreButton();
                     return;
                 }
                 
@@ -104,18 +104,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         clearInterval(pinCheckInterval);
                         if(authWindow && !authWindow.closed) authWindow.close();
                         showToast(checkData.error, 'error');
-                        restoreButton(); // Restaura o botão em caso de negação
+                        restoreButton();
                     }
                 } catch (e) {
                     clearInterval(pinCheckInterval);
                     showToast(`${i18n.verificationError} ${e.message}`, 'error');
-                    restoreButton(); // Restaura o botão em caso de erro na verificação
+                    restoreButton();
                 }
             }, 3000);
 
         } catch (error) {
             showToast(error.message, 'error');
-            restoreButton(); // Restaura o botão em caso de erro inicial
+            restoreButton();
         }
     }
 
@@ -173,14 +173,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                     serverSelectionContainer.innerHTML = `<p class="text-sm text-green-500">${i18n.serverUpdated}</p>`;
                                     setTimeout(() => {
                                         serverSelectionContainer.classList.add('hidden');
-                                        // ### INÍCIO DA CORREÇÃO ###
-                                        // Restaura o botão original após o sucesso
                                         const reauthButton = document.getElementById('reauth-plex-button');
                                         if (reauthButton) {
                                             reauthButton.disabled = false;
                                             reauthButton.innerHTML = `<svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg> ${i18n.reauthText || 'Autenticar para Buscar Servidores'}`;
                                         }
-                                        // ### FIM DA CORREÇÃO ###
                                     }, 3000);
                                 }
                             } catch (error) {
@@ -321,7 +318,6 @@ document.addEventListener('DOMContentLoaded', () => {
         'OVERSEERR_ENABLED': { type: 'checkbox', default: false },
         'OVERSEERR_URL': { type: 'text', default: '' },
         'OVERSEERR_API_KEY': { type: 'password', default: '' },
-        'VAPID_ADMIN_EMAIL': { type: 'text', default: '' },
     };
 
     function loadSettings() {
@@ -444,6 +440,32 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
+        if (saveTemplatesButton) {
+            saveTemplatesButton.addEventListener('click', async () => {
+                saveTemplatesButton.disabled = true;
+                saveTemplatesButton.textContent = i18n.savingTemplates;
+
+                const templateData = {
+                    'TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE': document.getElementById('TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE').value,
+                    'TELEGRAM_RENEWAL_MESSAGE_TEMPLATE': document.getElementById('TELEGRAM_RENEWAL_MESSAGE_TEMPLATE').value,
+                    'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE': document.getElementById('TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE').value,
+                    'WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE': document.getElementById('WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE').value,
+                    'WEBHOOK_RENEWAL_MESSAGE_TEMPLATE': document.getElementById('WEBHOOK_RENEWAL_MESSAGE_TEMPLATE').value,
+                    'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE': document.getElementById('WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE').value,
+                };
+
+                try {
+                    const result = await fetchAPI(urls.apiSettings, 'POST', templateData);
+                    showToast(result.message, result.success ? 'success' : 'error');
+                } catch (error) {
+                    showToast(error.message || i18n.unknownError, 'error');
+                } finally {
+                    saveTemplatesButton.disabled = false;
+                    saveTemplatesButton.textContent = i18n.saveTemplates;
+                }
+            });
+        }
+        
         async function testConnection(button, endpoint, payloadBuilder) {
             if(!button) return;
             button.disabled = true;
@@ -514,4 +536,3 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeEventListeners();
     });
 });
-

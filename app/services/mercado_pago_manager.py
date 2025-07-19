@@ -4,6 +4,8 @@ import logging
 import mercadopago
 import uuid
 from flask import url_for
+from datetime import datetime, timedelta, timezone
+from flask_babel import gettext as _
 
 from ..config import load_or_create_config
 
@@ -27,6 +29,16 @@ class MercadoPagoManager:
             self.sdk = None
             logger.warning("Access Token do Mercado Pago não configurado. O serviço de pagamento está desativado.")
 
+    def check_status(self):
+        """Verifica se o serviço do Mercado Pago está configurado e ativo."""
+        config = load_or_create_config()
+        if not config.get("MERCADOPAGO_ENABLED"):
+            return {"status": "DISABLED", "message": _("Desativado na configuração.")}
+        if self.sdk:
+            return {"status": "ONLINE", "message": _("Ativo e configurado.")}
+        else:
+            return {"status": "OFFLINE", "message": _("Ativado, mas falha na configuração (verifique o Access Token).")}
+
     def create_pix_payment(self, user_info, price, screens):
         """
         Cria uma cobrança PIX no Mercado Pago com detalhes adicionais para maior
@@ -35,24 +47,24 @@ class MercadoPagoManager:
         if not self.sdk:
             return {"success": False, "message": "Credenciais do Mercado Pago não configuradas."}
 
-        # Gera uma referência única para esta transação, que será usada no nosso sistema e no MP.
         external_reference = str(uuid.uuid4())
         
-        # Define os detalhes do item para melhorar a aprovação do pagamento.
         item_title = f"Renovação Plex - {screens} Tela(s)" if screens > 0 else "Renovação Plex - Plano Padrão"
         item_description = f"Assinatura de acesso ao servidor Plex para o utilizador {user_info.get('username')}."
         
-        # CORREÇÃO: Formata a descrição principal numa única linha com um separador '|' para máxima compatibilidade.
         payment_description = f"Serviço: {item_title} | Utilizador: {user_info.get('username')}"
 
-        # Define um descritor para a fatura do cartão, limitado a 22 caracteres.
         app_title = self.config.get("APP_TITLE", "PainelPlex")
         statement_descriptor = ''.join(filter(str.isalnum, app_title))[:22]
+
+        expiration_time = datetime.now(timezone.utc) + timedelta(minutes=20)
+        date_of_expiration_iso = expiration_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
         payment_data = {
             "transaction_amount": float(price),
             "payment_method_id": "pix",
             "description": payment_description,
+            "date_of_expiration": date_of_expiration_iso,
             "payer": {
                 "email": user_info.get('email'),
                 "first_name": user_info.get('name', user_info.get('username')),
@@ -72,10 +84,9 @@ class MercadoPagoManager:
             },
             "external_reference": external_reference,
             "statement_descriptor": statement_descriptor,
-            "notification_url": f"{self.config.get('APP_BASE_URL', '').rstrip('/')}{url_for('api.mercadopago_webhook')}"
+            "notification_url": f"{self.config.get('APP_BASE_URL', '').rstrip('/')}{url_for('payments_api.mercadopago_webhook')}"
         }
 
-        # A chave de idempotência garante que a requisição não seja processada duas vezes em caso de falha de rede.
         idempotency_key = str(uuid.uuid4())
         request_options = mercadopago.config.RequestOptions()
         request_options.custom_headers = {
@@ -89,7 +100,6 @@ class MercadoPagoManager:
             
             if payment_response.get("status") == 201 and payment:
                 txid = str(payment['id'])
-                # Salva o pagamento no nosso banco de dados com a referência externa
                 self.data_manager.create_pix_payment(txid, user_info['username'], price, 'MERCADOPAGO', screens, external_reference)
                 
                 return {

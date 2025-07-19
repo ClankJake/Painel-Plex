@@ -78,6 +78,23 @@ def get_dashboard_summary():
         logger.error(f"Erro ao obter o resumo do dashboard: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Falha ao obter dados do dashboard."}), 500
 
+@system_api_bp.route('/system-health')
+@login_required
+@admin_required
+def get_system_health():
+    """Verifica e retorna o estado de todos os serviços integrados."""
+    health_status = {
+        "plex": plex_manager.check_status(),
+        "tautulli": tautulli_manager.check_status(),
+        "efi": efi_manager.check_status(),
+        "mercado_pago": mercado_pago_manager.check_status(),
+        "scheduler": {
+            "status": "RUNNING" if scheduler.running else "STOPPED",
+            "message": _("Agendador em execução.") if scheduler.running else _("Agendador parado.")
+        }
+    }
+    return jsonify({"success": True, "health": health_status})
+
 @system_api_bp.route('/settings', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -115,7 +132,6 @@ def api_settings():
         app = current_app._get_current_object()
         app.config.update(config_to_update)
 
-        # Recarrega as credenciais de todos os serviços
         efi_manager.reload_credentials()
         mercado_pago_manager.reload_credentials()
         tautulli_manager.reload_credentials()
@@ -182,11 +198,8 @@ def save_setup():
     config['IS_CONFIGURED'] = True
     save_app_config(config)
 
-    # Recarrega as credenciais de todos os serviços após o setup
     tautulli_manager.reload_credentials()
     overseerr_manager.reload_config()
-#    efi_manager.reload_credentials()
-#    mercado_pago_manager.reload_credentials()
 
     success, message = plex_manager.reload_connections()
     if success:

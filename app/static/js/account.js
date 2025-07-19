@@ -27,6 +27,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     let pollingIntervalId = null;
 
+    // --- LÓGICA DE NAVEGAÇÃO POR SEPARADORES ---
+    function initializeTabs() {
+        const tabContainer = document.getElementById('account-tabs');
+        const contentContainer = document.getElementById('account-tab-content');
+
+        if (!tabContainer || !contentContainer) return;
+
+        tabContainer.addEventListener('click', (e) => {
+            const button = e.target.closest('button');
+            if (!button || !button.dataset.tab) return;
+
+            const tabId = button.dataset.tab;
+
+            // Atualiza o estado dos botões
+            tabContainer.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            button.classList.add('active');
+
+            // Atualiza a visibilidade do conteúdo
+            contentContainer.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+        });
+    }
+
     // --- LÓGICA DE PAGAMENTO ---
 
     function renderPaymentOptions(prices, providers, canDowngrade) {
@@ -206,6 +233,68 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    function formatTimeAgo(date) {
+        const now = new Date();
+        const seconds = Math.floor((now - date) / 1000);
+
+        let interval = seconds / 31536000;
+        if (interval > 1) return `${Math.floor(interval)} ${i18n.yearsAgo}`;
+        interval = seconds / 2592000;
+        if (interval > 1) return `${Math.floor(interval)} ${i18n.monthsAgo}`;
+        interval = seconds / 86400;
+        if (interval > 1) return `${Math.floor(interval)} ${i18n.daysAgo}`;
+        interval = seconds / 3600;
+        if (interval > 1) return `${Math.floor(interval)} ${i18n.hoursAgo}`;
+        interval = seconds / 60;
+        if (interval > 1) return `${Math.floor(interval)} ${i18n.minutesAgo}`;
+        return i18n.justNow;
+    }
+
+    function renderDeviceList(devices) {
+        const container = document.getElementById('device-list-container');
+        if (!container) return;
+
+        function getPlatformClass(platformString) {
+            const platform = (platformString || '').toLowerCase().split(' ')[0];
+            const platformMap = [
+                'alexa', 'android', 'atv', 'chrome', 'chromecast', 'dlna', 'firefox',
+                'gtv', 'ie', 'ios', 'kodi', 'lg', 'linux', 'macos', 'msedge', 'opera',
+                'playstation', 'plex', 'plexamp', 'roku', 'safari', 'samsung',
+                'synclounge', 'tivo', 'wiiu', 'windows', 'wp', 'xbmc', 'xbox'
+            ];
+            if (platformMap.includes(platform)) {
+                return `platform-${platform}`;
+            }
+            return 'platform-default';
+        }
+    
+        if (devices && devices.length > 0) {
+            container.innerHTML = devices.map(device => {
+                const lastSeen = new Date(device.last_seen * 1000);
+                const timeAgo = formatTimeAgo(lastSeen);
+                const platformClass = getPlatformClass(device.platform);
+    
+                return `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                        <div class="flex items-center gap-4">
+                            <div class="platform-icon ${platformClass}"></div>
+                            <div>
+                                <p class="font-semibold text-gray-800 dark:text-gray-200">${device.player}</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">${device.platform}</p>
+                            </div>
+                        </div>
+                        <div class="text-right flex-shrink-0">
+                            <p class="text-xs text-gray-500 dark:text-gray-400">${i18n.lastSeen}</p>
+                            <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">${timeAgo}</p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } else {
+            container.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-4">${i18n.noDevicesFound}</p>`;
+        }
+    }
+
     function renderPaymentHistory(payments) {
         const container = document.getElementById('payment-history-container');
         if (!container) return;
@@ -265,7 +354,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         break;
                 }
             } else if (expiration.status === 'expired') {
-                // Fallback para caso o agendador ainda não tenha bloqueado o utilizador
                 statusBanner.innerHTML = `<div class="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiredSignature}</h3><p>${i18n.expiredSignatureMessage}</p></div>`;
             } else if (expiration.status === 'expiring') {
                 let expiringMessage;
@@ -308,9 +396,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (paymentHistory.success) {
                 renderPaymentHistory(paymentHistory.payments);
             }
+            
+            const devicesResponse = await fetchAPI(urls.getAccountDevicesUrl);
+            if (devicesResponse.success) {
+                renderDeviceList(devicesResponse.devices);
+            }
 
             if (loadingIndicator) loadingIndicator.style.display = 'none';
             if (container) container.classList.remove('hidden');
+
+            initializeTabs();
 
         } catch (error) {
             if (loadingIndicator) loadingIndicator.style.display = 'none';

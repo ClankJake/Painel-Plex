@@ -38,6 +38,14 @@
         <!-- Cards serão inseridos aqui pelo JS -->
     </div>
 
+    <!-- Saúde do Sistema -->
+    <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Saúde do Sistema') }}</h3>
+        <div id="systemHealthContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            <!-- Indicadores de saúde serão injetados aqui pelo JS -->
+        </div>
+    </div>
+
     <!-- Gráficos -->
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
         <div class="lg:col-span-3 bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
@@ -57,6 +65,7 @@
         type="module"
         src="{{ url_for('static', filename='js/dashboard.js') }}"
         data-summary-url="{{ url_for('system_api.get_dashboard_summary') }}"
+        data-health-url="{{ url_for('system_api.get_system_health') }}"
         data-i18n-active-streams="{{ _('Streams Ativos') }}"
         data-i18n-total-users="{{ _('Utilizadores Totais') }}"
         data-i18n-monthly-revenue="{{ _('Receita do Mês') }}"
@@ -64,5 +73,15 @@
         data-i18n-revenue-label="{{ _('Receita') }}"
         data-i18n-active-users-label="{{ _('Ativos') }}"
         data-i18n-blocked-users-label="{{ _('Bloqueados') }}"
+        data-i18n-online="{{ _('Online') }}"
+        data-i18n-offline="{{ _('Offline') }}"
+        data-i18n-disabled="{{ _('Desativado') }}"
+        data-i18n-running="{{ _('Em Execução') }}"
+        data-i18n-stopped="{{ _('Parado') }}"
+        data-i18n-plex-server="{{ _('Servidor Plex') }}"
+        data-i18n-tautulli="{{ _('Tautulli') }}"
+        data-i18n-payment-efi="{{ _('Pagamentos (Efí)') }}"
+        data-i18n-payment-mp="{{ _('Pagamentos (Mercado Pago)') }}"
+        data-i18n-scheduler="{{ _('Agendador de Tarefas') }}"
 ></script>
 {% endblock %}

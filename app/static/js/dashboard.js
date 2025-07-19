@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const scriptTag = document.getElementById('dashboard-script');
     const summaryUrl = scriptTag.dataset.summaryUrl;
+    const healthUrl = scriptTag.dataset.healthUrl;
     const i18n = {};
     for (const key in scriptTag.dataset) {
         if (key.startsWith('i18n')) {
@@ -121,6 +122,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function renderSystemHealth(health) {
+        const container = document.getElementById('systemHealthContainer');
+        if (!container) return;
+
+        const serviceMap = {
+            plex: { label: i18n.plexServer },
+            tautulli: { label: i18n.tautulli },
+            efi: { label: i18n.paymentEfi },
+            mercado_pago: { label: i18n.paymentMp },
+            scheduler: { label: i18n.scheduler }
+        };
+
+        const statusMap = {
+            ONLINE: { text: i18n.online, color: 'bg-green-500', icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>' },
+            RUNNING: { text: i18n.running, color: 'bg-green-500', icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>' },
+            OFFLINE: { text: i18n.offline, color: 'bg-red-500', icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>' },
+            STOPPED: { text: i18n.stopped, color: 'bg-red-500', icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>' },
+            DISABLED: { text: i18n.disabled, color: 'bg-gray-500', icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>' }
+        };
+
+        container.innerHTML = Object.entries(health).map(([key, value]) => {
+            const service = serviceMap[key] || { label: key };
+            const status = statusMap[value.status] || statusMap['OFFLINE'];
+            return `
+                <div class="flex items-center p-3 bg-gray-100 dark:bg-gray-900/50 rounded-lg" title="${value.message}">
+                    <div class="flex-shrink-0 w-8 h-8 rounded-full ${status.color} flex items-center justify-center text-white">
+                        ${status.icon}
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">${service.label}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">${status.text}</p>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
     async function loadDashboardData(force = false) {
         loadingIndicator.style.display = 'block';
         dashboardContainer.classList.add('hidden');
@@ -132,14 +170,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const data = await fetchAPI(`${summaryUrl}?force=${force}`);
-            if (data.success) {
-                renderSummaryCards(data.summary);
-                renderCharts(data.summary);
-                dashboardContainer.classList.remove('hidden');
+            const summaryPromise = fetchAPI(`${summaryUrl}?force=${force}`);
+            const healthPromise = fetchAPI(healthUrl);
+
+            const [summaryData, healthData] = await Promise.all([summaryPromise, healthPromise]);
+
+            if (summaryData.success) {
+                renderSummaryCards(summaryData.summary);
+                renderCharts(summaryData.summary);
             } else {
-                throw new Error(data.message);
+                throw new Error(summaryData.message);
             }
+
+            if (healthData.success) {
+                renderSystemHealth(healthData.health);
+            }
+
+            dashboardContainer.classList.remove('hidden');
         } catch (error) {
             errorMessage.textContent = error.message;
             errorContainer.classList.remove('hidden');
@@ -159,8 +206,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('themeChanged', () => {
         if(dashboardContainer.classList.contains('hidden')) return;
         
-        const summary = { /* Precisamos de uma forma de obter os dados novamente ou do cache */ };
-        // Para simplificar, vamos apenas recarregar os dados
         loadDashboardData();
     });
 

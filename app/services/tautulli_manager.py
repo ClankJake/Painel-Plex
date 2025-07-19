@@ -24,6 +24,17 @@ class TautulliManager:
         logger.info("A recarregar as credenciais do Tautulli Manager...")
         self.api_client.reload_config()
 
+    def check_status(self):
+        """Verifica o estado da conexão com o Tautulli."""
+        if not self.api_client.is_configured:
+            return {"status": "OFFLINE", "message": _("Não configurado.")}
+        
+        test_result = self.api_client.test_connection(self.api_client.base_url, self.api_client.api_key)
+        if test_result['success']:
+            return {"status": "ONLINE", "message": _("Conectado com sucesso.")}
+        else:
+            return {"status": "OFFLINE", "message": test_result['message']}
+
     def test_connection(self, url, api_key):
         return self.api_client.test_connection(url, api_key)
 
@@ -42,6 +53,9 @@ class TautulliManager:
     def get_user_watch_details(self, username, days=7):
         return self.stats.get_user_watch_details(username, days)
 
+    def get_user_devices(self, username):
+        return self.stats.get_user_devices(username)
+
     def set_notifier_conditions(self, url, api_key, notifier_id, notifier_type):
         """
         Este método é um caso especial, pois é usado durante a configuração,
@@ -53,10 +67,6 @@ class TautulliManager:
         if not base_payload:
             return {"success": False, "message": _("Tipo de notificador inválido.")}
         
-        # A lógica de `set_notifier_conditions` do ficheiro original foi mantida aqui
-        # por ser um fluxo de configuração único.
-        # Para uma refatoração ainda mais profunda, este método poderia ser movido
-        # e adaptado para usar um cliente de API temporário.
         try:
             import requests, json
             api_url = f"{url.rstrip('/')}/api/v2"
@@ -97,8 +107,6 @@ class TautulliManager:
 
     def _get_base_payload_for_notifier(self, notifier_type):
         """Retorna o payload base (nome, condições, ações, etc.) para um tipo de notificador."""
-        # Este método é duplicado aqui para ser usado por set_notifier_conditions.
-        # Idealmente, a lógica de configuração seria refatorada para não precisar disto.
         if notifier_type == 'screen_limit':
             return {
                 "friendly_name": _("Limite de Tela (Painel)"),

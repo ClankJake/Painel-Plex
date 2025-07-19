@@ -315,6 +315,9 @@
                         </div>
                     </div>
                 </div>
+                <div class="pt-6 flex justify-end">
+                    <button type="button" id="saveTemplatesButton" class="btn bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20">{{ _('Salvar Templates') }}</button>
+                </div>
             </div>
         </div>
 
@@ -413,7 +416,7 @@
                     </div>
                 </div>
                 <div class="bg-gray-900 text-white p-4 rounded-lg h-96 overflow-y-auto">
-                    <pre id="log-display">{{ _('A carregar logs...') }}</pre>
+                    <pre id="log-display">{{ _('Carregando logs...') }}</pre>
                 </div>
             </div>
         </div>
@@ -474,13 +477,14 @@
     data-i18n-test-connection="{{ _('Testar Conexão') }}"
     data-i18n-stop-updates="{{ _('Parar Atualização') }}"
     data-i18n-start-updates="{{ _('Iniciar Atualização') }}"
-    data-i18n-loading-logs="{{ _('A carregar logs...') }}"
+    data-i18n-loading-logs="{{ _('Carregando logs...') }}"
     data-i18n-error-loading-logs="{{ _('Erro ao carregar logs') }}"
     data-i18n-connection-error="{{ _('Erro de conexão') }}"
     data-i18n-auto-configure="{{ _('Auto-Configurar') }}"
     data-i18n-confirm-server="{{ _('Confirmar Servidor') }}"
     data-i18n-server-updated="{{ _('Servidor atualizado com sucesso!') }}"
+    data-i18n-save-templates="{{ _('Salvar Templates') }}"
+    data-i18n-saving-templates="{{ _('Salvando templates...') }}"
 >
 </script>
 {% endblock %}
-

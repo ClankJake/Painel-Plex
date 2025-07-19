@@ -2,6 +2,7 @@
 
 import logging
 from efipay import EfiPay
+from flask_babel import gettext as _
 
 from ..config import load_or_create_config
 
@@ -43,19 +44,28 @@ class EfiManager:
             if not certificate: logger.warning("- Caminho do Certificado não encontrado.")
             self.efi = None
 
+    def check_status(self):
+        """Verifica se o serviço da Efí está configurado e ativo."""
+        config = load_or_create_config()
+        if not config.get("EFI_ENABLED"):
+            return {"status": "DISABLED", "message": _("Desativado na configuração.")}
+        if self.efi:
+            return {"status": "ONLINE", "message": _("Ativo e configurado.")}
+        else:
+            return {"status": "OFFLINE", "message": _("Ativado, mas falha na configuração (verifique as credenciais).")}
+
 
     def create_pix_charge(self, user_info, price, screens):
         """Cria uma cobrança PIX imediata para um utilizador."""
         if not self.efi:
             return {"success": False, "message": "O serviço de pagamento não está configurado corretamente."}
         
-        # MELHORIA: Padroniza as descrições e adiciona o nome da aplicação.
         app_title = self.config.get("APP_TITLE", "Painel Plex")
         service_description = f"Renovação Plex - {screens} Tela(s)" if screens > 0 else "Renovação Plex - Plano Padrão"
 
         body = {
             "calendario": {
-                "expiracao": 3600
+                "expiracao": 1200
             },
             "valor": {
                 "original": f"{price:.2f}"
@@ -91,7 +101,6 @@ class EfiManager:
                 logger.error(f"Falha ao criar cobrança PIX: {full_error_message}. Resposta completa: {response}")
                 return {"success": False, "message": full_error_message}
                 
-            # Para a Efí, podemos passar None para a referência externa, pois o txid já é o nosso identificador principal.
             self.data_manager.create_pix_payment(txid, user_info['username'], price, 'EFI', screens, external_reference=None)
             
             params = {'id': response['loc']['id']}

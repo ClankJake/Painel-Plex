@@ -1,7 +1,7 @@
 # app/services/tautulli/stats_handler.py
 import logging
 from datetime import datetime, timedelta
-from collections import Counter
+from collections import Counter, defaultdict
 from flask_babel import gettext as _
 from requests.exceptions import RequestException
 
@@ -82,3 +82,35 @@ class StatsHandler:
         except Exception as e:
             logger.error(_("Erro inesperado ao processar detalhes do utilizador: %(error)s", error=e), exc_info=True)
             return {"success": False, "message": _("Erro inesperado: %(error)s", error=e)}
+
+    def get_user_devices(self, username):
+        """Obtém os dispositivos utilizados por um utilizador a partir do seu histórico."""
+        try:
+            history_response = self.api.get_history(user=username, length=500)
+            history = history_response.get('data', [])
+
+            if not history:
+                return {"success": True, "devices": []}
+
+            devices = defaultdict(lambda: {'platform': '', 'last_seen': 0})
+            for item in history:
+                device_key = f"{item.get('player', 'Desconhecido')}|{item.get('platform', 'Desconhecida')}"
+                
+                if item.get('date') > devices[device_key]['last_seen']:
+                    devices[device_key]['player'] = item.get('player', 'Desconhecido')
+                    devices[device_key]['platform'] = item.get('platform', 'Desconhecida')
+                    devices[device_key]['last_seen'] = item.get('date')
+
+            formatted_devices = sorted(
+                list(devices.values()),
+                key=lambda x: x['last_seen'],
+                reverse=True
+            )
+
+            return {"success": True, "devices": formatted_devices}
+        except RequestException as e:
+            return {"success": False, "message": _("Erro de conexão com o Tautulli: %(error)s", error=e)}
+        except Exception as e:
+            logger.error(_("Erro inesperado ao processar dispositivos do utilizador: %(error)s", error=e), exc_info=True)
+            return {"success": False, "message": _("Erro inesperado: %(error)s", error=e)}
+
