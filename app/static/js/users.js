@@ -294,6 +294,8 @@ document.addEventListener('DOMContentLoaded', () => {
             usersToRender = usersToRender.filter(u => !u.is_blocked);
         } else if (viewState.filter === 'blocked') {
             usersToRender = usersToRender.filter(u => u.is_blocked);
+        } else if (viewState.filter === 'trial') {
+            usersToRender = usersToRender.filter(u => u.is_on_trial);
         }
 
         if (viewState.searchTerm) {
@@ -327,12 +329,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateTabCounts() {
         const total = allUsersCache.length;
-        const active = allUsersCache.filter(u => !u.is_blocked).length;
-        const blocked = total - active;
+        const active = allUsersCache.filter(u => !u.is_blocked && !u.is_on_trial).length;
+        const blocked = allUsersCache.filter(u => u.is_blocked).length;
+        const trial = allUsersCache.filter(u => u.is_on_trial).length;
 
         document.getElementById('count-all').textContent = total;
         document.getElementById('count-active').textContent = active;
         document.getElementById('count-blocked').textContent = blocked;
+        document.getElementById('count-trial').textContent = trial;
     }
 
     async function loadStatus(force = false) {
