@@ -69,6 +69,7 @@
             <nav id="userTabs" class="-mb-px flex space-x-6" aria-label="Tabs">
                 <button data-filter="all" class="user-tab active py-3 px-1 border-b-2 font-medium text-sm">{{ _('Todos') }} <span id="count-all" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-300">0</span></button>
                 <button data-filter="active" class="user-tab py-3 px-1 border-b-2 font-medium text-sm">{{ _('Ativos') }} <span id="count-active" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">0</span></button>
+                <button data-filter="trial" class="user-tab py-3 px-1 border-b-2 font-medium text-sm">{{ _('Em Teste') }} <span id="count-trial" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">0</span></button>
                 <button data-filter="blocked" class="user-tab py-3 px-1 border-b-2 font-medium text-sm">{{ _('Bloqueados') }} <span id="count-blocked" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">0</span></button>
             </nav>
         </div>
@@ -129,7 +130,7 @@
         data-i18n-link-copied="{{ _('Link copiado para a área de transferência!') }}"
         data-i18n-copy-failed="{{ _('Falha ao copiar. Por favor, copie manually.') }}"
         data-i18n-loading-users-failed="{{ _('Falha ao carregar dados.') }}"
-        data-i18n-users-active="{{ _('Usuários Ativos') }}"
+        data-i18n-users-active="{{ _('Ativos') }}"
         data-i18n-users-blocked="{{ _('Bloqueados') }}"
         data-i18n-users="{{ _('Usuários') }}"
         data-i18n-no-users-found="{{ _('Nenhum usuário encontrado.') }}"
@@ -212,7 +213,7 @@
         data-i18n-confirm-add-one-month="{{ _('Tem a certeza que deseja adicionar 1 mês à subscrição de') }}"
         data-i18n-confirm="{{ _('Confirmar') }}"
         data-i18n-payment-history="{{ _('Histórico de Pagamentos') }}"
-        data-i18n-loading-history="{{ _('Carregando histórico...') }}"
+        data-i18n-loading-history="{{ _('A carregar histórico...') }}"
         data-i18n-no-payments-found="{{ _('Nenhum pagamento encontrado.') }}"
         data-i18n-date="{{ _('Data') }}"
         data-i18n-description="{{ _('Descrição') }}"
