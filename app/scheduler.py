@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime
 from apscheduler.triggers.cron import CronTrigger
-from tzlocal import get_localzone # Importa a função
+from tzlocal import get_localzone 
 
 from .config import load_or_create_config
 
@@ -23,7 +23,7 @@ def expiration_notification_job():
                     return
 
                 users_to_notify = extensions.plex_manager.get_users_to_notify()
-                local_tz = get_localzone() # CORREÇÃO: Obtém o fuso horário local
+                local_tz = get_localzone()
 
                 for username in users_to_notify:
                     logger.info(f"A processar notificação de vencimento para: {username}")
@@ -33,7 +33,6 @@ def expiration_notification_job():
                         expiration_date_str = profile.get('expiration_date')
                         if expiration_date_str:
                             expiration_date = datetime.fromisoformat(expiration_date_str).date()
-                            # CORREÇÃO: Usa a data atual com fuso horário para o cálculo
                             days_left = (expiration_date - datetime.now(local_tz).date()).days
                             extensions.plex_manager.notifier_manager.send_expiration_notification(user_info, days_left, profile)
             except Exception as e:
@@ -116,16 +115,30 @@ def removal_job():
                 logger.error(f"Erro durante a execução da tarefa de remoção: {e}", exc_info=True)
             logger.info("Tarefa de remoção concluída.")
 
+def cleanup_job():
+    """Tarefa agendada para limpar dados antigos da aplicação."""
+    from . import create_app, extensions
+    app = create_app(_from_job=True)
+    with app.app_context():
+        with app.test_request_context():
+            logger.info("A executar a tarefa de limpeza de dados antigos...")
+            try:
+                config = load_or_create_config()
+                if config.get("CLEANUP_PENDING_PAYMENTS_ENABLED", False):
+                    days = config.get("CLEANUP_PENDING_PAYMENTS_DAYS", 3)
+                    extensions.data_manager.delete_old_pending_payments(days)
+            except Exception as e:
+                logger.error(f"Erro durante a execução da tarefa de limpeza: {e}", exc_info=True)
+            logger.info("Tarefa de limpeza concluída.")
+
 def setup_scheduler(app):
     """Configura e inicia o agendador com as tarefas recorrentes da aplicação."""
     from . import extensions
     with app.app_context():
         config = load_or_create_config()
         
-        # Obtém o fuso horário que foi configurado no __init__.py
         tz = extensions.scheduler.timezone
 
-        # Tarefa de Notificação de Vencimento
         exp_time_parts = config.get("EXPIRATION_NOTIFICATION_TIME", "09:00").split(':')
         extensions.scheduler.add_job(
             id='expiration_notification_job', 
@@ -134,12 +147,19 @@ def setup_scheduler(app):
             replace_existing=True
         )
 
-        # Tarefa de Remoção de Utilizadores Bloqueados
         block_time_parts = config.get("BLOCK_REMOVAL_TIME", "02:00").split(':')
         extensions.scheduler.add_job(
             id='removal_job', 
             func=removal_job,
             trigger=CronTrigger(hour=int(block_time_parts[0]), minute=int(block_time_parts[1]), timezone=tz),
+            replace_existing=True
+        )
+
+        cleanup_time_parts = config.get("CLEANUP_TIME", "03:00").split(':')
+        extensions.scheduler.add_job(
+            id='cleanup_job', 
+            func=cleanup_job,
+            trigger=CronTrigger(hour=int(cleanup_time_parts[0]), minute=int(cleanup_time_parts[1]), timezone=tz),
             replace_existing=True
         )
 

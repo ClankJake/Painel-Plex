@@ -10,6 +10,27 @@
         .horizontal-scroll::-webkit-scrollbar-track { @apply bg-gray-200 dark:bg-gray-700; border-radius: 4px; }
         .horizontal-scroll::-webkit-scrollbar-thumb { @apply bg-gray-400 dark:bg-gray-500; border-radius: 4px; }
         .horizontal-scroll::-webkit-scrollbar-thumb:hover { @apply bg-gray-500 dark:bg-gray-600; }
+        
+        /* Estilos para as Conquistas */
+        .achievement-badge {
+            @apply flex flex-col items-center justify-center p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 text-center transition-all duration-300;
+            position: relative;
+        }
+        .achievement-badge .icon {
+            @apply text-4xl;
+        }
+        .achievement-badge .title {
+            @apply font-bold text-sm mt-2 text-gray-800 dark:text-gray-200;
+        }
+        .achievement-badge .tooltip {
+            @apply invisible opacity-0 absolute bottom-full mb-2 w-48 p-2 text-xs bg-gray-800 text-white rounded-md shadow-lg transition-opacity duration-300 z-10;
+        }
+        .achievement-badge:hover .tooltip {
+            @apply visible opacity-100;
+        }
+        .achievement-badge.unlocked {
+            @apply border-yellow-400 dark:border-yellow-500 bg-yellow-50 dark:bg-yellow-500/10;
+        }
     </style>
 {% endblock %}
 
@@ -98,6 +119,14 @@
             <!-- Conteúdo será preenchido por JS -->
         </div>
 
+        <!-- NOVA SEÇÃO DE CONQUISTAS -->
+        <div id="achievements-section" class="hidden bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Suas Conquistas') }}</h3>
+            <div id="achievements-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                <!-- Selos serão injetados aqui pelo JS -->
+            </div>
+        </div>
+
         <!-- Ranking Geral -->
         <div id="leaderboard-section" class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
             <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Sua Posição no Ranking') }}</h3>
@@ -159,6 +188,7 @@
         data-i18n-total-plays="{{ _('Total de Reproduções') }}"
         data-i18n-active-users="{{ _('Utilizadores Ativos') }}"
         data-i18n-period-champion="{{ _('Campeão do Período') }}"
+        data-i18n-achievements="{{ _('Conquistas') }}"
         >
 </script>
 {% endblock %}

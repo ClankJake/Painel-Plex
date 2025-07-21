@@ -220,6 +220,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await fetchAPI(`${url}?days=${days}`);
             const details = data.details;
             
+            // Lógica para renderizar conquistas na página do próprio usuário
+            const achievementsSection = document.getElementById('achievements-section');
+            const achievementsContainer = document.getElementById('achievements-container');
+            if (achievementsSection && achievementsContainer && details.achievements) {
+                if (details.achievements.length > 0) {
+                    achievementsContainer.innerHTML = details.achievements.map(ach => `
+                        <div class="achievement-badge unlocked">
+                            <span class="icon">${ach.icon}</span>
+                            <span class="title">${ach.title}</span>
+                            <div class="tooltip">${ach.description}</div>
+                        </div>
+                    `).join('');
+                    achievementsSection.classList.remove('hidden');
+                } else {
+                    achievementsSection.classList.add('hidden');
+                }
+            }
+
             let recentHtml = `<p class="text-gray-500 dark:text-gray-400 text-center w-full">${i18n.noRecentActivity}</p>`;
             if (details.recent && details.recent.length > 0) {
                 recentHtml = details.recent.map(item => `
@@ -230,6 +248,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 `).join('');
             }
             
+            // Lógica para renderizar conquistas no modal (para admin ou outros usuários)
+            let achievementsModalHtml = '';
+            if (details.achievements && details.achievements.length > 0) {
+                achievementsModalHtml = `
+                    <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
+                        <h4 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">${i18n.achievements}</h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            ${details.achievements.map(ach => `
+                                <div class="achievement-badge unlocked">
+                                    <span class="icon">${ach.icon}</span>
+                                    <span class="title">${ach.title}</span>
+                                    <div class="tooltip">${ach.description}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
             const totalDuration = (details.total_movie_duration || 0) + (details.total_episode_duration || 0);
             const activityData = JSON.stringify(details.weekly_activity.map(s => (s / 3600).toFixed(2)));
             const contentTypeData = JSON.stringify([details.movie_count || 0, details.episode_count || 0]);
@@ -258,6 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h4 class="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100">${i18n.mostRecentItems}</h4>
                         <div class="flex space-x-4 overflow-x-auto py-2 horizontal-scroll">${recentHtml}</div>
                     </div>
+                    ${achievementsModalHtml}
                 </div>
             `;
             renderUserActivityChart(containerElement);
@@ -398,9 +436,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     leaderboardList.innerHTML = allUsersData.map((user, index) => {
                         const isCurrentUser = user.username === currentUser.username;
-                        const highlightClass = isCurrentUser ? 'bg-yellow-100 dark:bg-yellow-500/20 ring-2 ring-yellow-500' : '';
+                        const isPrivate = user.is_private && !isCurrentUser && !currentUser.is_admin;
+                        
+                        const clickableAttrs = isPrivate ? '' : `data-username="${user.username}"`;
+                        const cursorClass = isPrivate ? 'cursor-default' : 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50';
+                        const highlightClass = isCurrentUser ? 'bg-yellow-100 dark:bg-yellow-500/20 ring-2 ring-yellow-500' : cursorClass;
+                        
                         return `
-                        <div class="flex items-center justify-between p-3 rounded-lg ${highlightClass}">
+                        <div class="flex items-center justify-between p-3 rounded-lg ${highlightClass}" ${clickableAttrs}>
                             <div class="flex items-center gap-3">
                                 <span class="font-bold w-8 text-gray-500 dark:text-gray-400 text-lg">${index + 1}</span>
                                 <img src="${user.thumb || 'https://placehold.co/40x40/1F2937/E5E7EB?text=?'}" class="w-10 h-10 rounded-full" alt="Avatar">
@@ -424,17 +467,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- EVENT LISTENERS ---
     daysFilter.addEventListener('change', () => mainFetch(daysFilter.value));
 
+    document.body.addEventListener('click', (e) => { 
+        const clickable = e.target.closest('[data-username]'); 
+        if (clickable) {
+            // A verificação de privacidade agora é feita no backend, então o frontend sempre tenta abrir.
+            // O backend retornará um erro 403 que será tratado pela função de renderização.
+            showUserDetailsModal(clickable.dataset.username, daysFilter.value); 
+        } 
+    });
+    
+    const userDetailsModal = document.getElementById('userDetailsModal');
+    userDetailsModal?.addEventListener('click', e => { if (e.target === userDetailsModal) closeModal(); });
+
     if (currentUser.role === 'admin') {
         const itemsPerPageSelect = document.getElementById('itemsPerPage');
         itemsPerPageSelect?.addEventListener('change', () => { currentPage = 1; renderUsersTable(); });
-        
-        document.body.addEventListener('click', (e) => { 
-            const clickable = e.target.closest('[data-username]'); 
-            if (clickable) { showUserDetailsModal(clickable.dataset.username, daysFilter.value); } 
-        });
-        
-        const userDetailsModal = document.getElementById('userDetailsModal');
-        userDetailsModal?.addEventListener('click', e => { if (e.target === userDetailsModal) closeModal(); });
     }
     
     window.addEventListener('themeChanged', () => {

@@ -16,8 +16,6 @@ class DataManager:
     """Responsável por carregar e salvar dados da aplicação usando SQLAlchemy ORM."""
     
     def __init__(self):
-        # O caminho da base de dados é agora gerido centralmente no __init__.py da app
-        # e a instância do db é injetada através das extensões.
         pass
 
     # --- MÉTODOS DE NOTIFICAÇÃO ---
@@ -137,24 +135,20 @@ class DataManager:
                 exp_date = datetime.fromisoformat(user_profile.expiration_date).date()
                 days_left = (exp_date - today).days
 
-                # --- INÍCIO DA ALTERAÇÃO ---
-                # Adiciona um campo de texto formatado para a exibição
                 if days_left < 0:
                     days_left_text = _("Expirado")
                 elif days_left == 0:
                     days_left_text = _("Hoje")
                 else:
-                    # Usando ngettext para pluralização correta (dia/dias)
                     days_left_text = ngettext('%(num)d dia restante', '%(num)d dias restantes', days_left) % {'num': days_left}
                 
                 upcoming_expirations.append({
                     'username': user_profile.username,
                     'expiration_date': exp_date.strftime('%d/%m/%Y'),
                     'days_left': days_left,
-                    'days_left_text': days_left_text, # Adiciona o novo campo
+                    'days_left_text': days_left_text,
                     'screen_limit': user_profile.screen_limit
                 })
-                # --- FIM DA ALTERAÇÃO ---
             except (ValueError, TypeError):
                 continue
         
@@ -250,13 +244,45 @@ class DataManager:
         return self._row_to_dict(payment)
 
     def get_payments_by_user(self, username):
-        """Busca todos os pagamentos (manuais e PIX) para um utilizador específico."""
+        """Busca apenas os pagamentos CONCLUÍDOS para um utilizador específico."""
         try:
-            payments = PixPayment.query.filter_by(username=username).order_by(PixPayment.created_at.desc()).all()
+            payments = PixPayment.query.filter_by(
+                username=username, 
+                status='CONCLUIDA'
+            ).order_by(PixPayment.created_at.desc()).all()
             return [self._row_to_dict(p) for p in payments]
         except Exception as e:
             logger.error(f"Erro ao buscar pagamentos para o utilizador '{username}': {e}")
             return []
+
+    # --- Métodos de Limpeza de Dados ---
+    def delete_old_pending_payments(self, days_old):
+        """Apaga registros de pagamento PIX pendentes mais antigos que um determinado número de dias."""
+        if not isinstance(days_old, int) or days_old <= 0:
+            logger.warning("A limpeza de pagamentos pendentes foi ignorada devido a um número de dias inválido.")
+            return 0
+        
+        try:
+            # Usa timezone.utc para garantir consistência, já que created_at é salvo em UTC
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
+            cutoff_date_str = cutoff_date.isoformat()
+
+            payments_to_delete = PixPayment.query.filter(
+                PixPayment.status != 'CONCLUIDA',
+                PixPayment.created_at < cutoff_date_str
+            )
+            
+            num_deleted = payments_to_delete.delete(synchronize_session=False)
+            db.session.commit()
+            
+            if num_deleted > 0:
+                logger.info(f"{num_deleted} cobranças PIX pendentes com mais de {days_old} dias foram apagadas.")
+            
+            return num_deleted
+        except Exception as e:
+            logger.error(f"Erro ao apagar cobranças PIX pendentes antigas: {e}", exc_info=True)
+            db.session.rollback()
+            return 0
 
     # --- Métodos de Convites ---
     def add_invitation(self, code, details):
@@ -315,17 +341,11 @@ class DataManager:
             db.session.commit()
 
     def get_user_claim_date(self, username):
-        # Esta lógica pode precisar de ajuste se um utilizador puder resgatar múltiplos convites
         invitation = Invitation.query.filter(Invitation.claimed_by_users.contains(username)).order_by(Invitation.claimed_at.desc()).first()
         return invitation.claimed_at if invitation else None
 
     # --- Métodos de Utilizadores Bloqueados ---
     def get_blocked_users(self, username=None):
-        """
-        Busca utilizadores bloqueados.
-        Se um username for fornecido, busca apenas esse utilizador.
-        Caso contrário, retorna todos.
-        """
         if username:
             user = BlockedUser.query.get(username)
             return self._row_to_dict(user) if user else None
@@ -349,7 +369,6 @@ class DataManager:
             db.session.commit()
             
     def _row_to_dict(self, row):
-        """Converte uma linha do SQLAlchemy para um dicionário."""
         if not row:
             return None
         return {c.name: getattr(row, c.name) for c in row.__table__.columns}

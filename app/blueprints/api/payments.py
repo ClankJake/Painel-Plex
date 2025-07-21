@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, date
-from flask import Blueprint, jsonify, request, url_for
+from flask import Blueprint, jsonify, request, url_for, current_app
 from flask_login import current_user
 from flask_babel import gettext as _
 from flask_login import login_required
@@ -15,25 +15,57 @@ logger = logging.getLogger(__name__)
 payments_api_bp = Blueprint('payments_api', __name__)
 
 def _process_successful_payment(txid):
-    logger.info(f"Processando pagamento confirmado para o TXID: {txid}")
-    payment = data_manager.get_pix_payment(txid)
-    if not payment or payment.get('status') == 'CONCLUIDA':
-        logger.warning(f"Pagamento {txid} já processado ou não encontrado. Ignorando.")
-        return
-    data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
-    username = payment['username']
-    user = next((u for u in plex_manager.get_all_plex_users() if u['username'] == username), None)
-    if user:
-        screens_to_set = payment.get('screens')
-        new_expiration_date = plex_manager.renew_subscription(username, 1, 'expiry_date')
-        if screens_to_set and screens_to_set > 0:
-            tautulli_manager.update_screen_limit(user['email'], username, screens_to_set)
-        profile = data_manager.get_user_profile(username)
-        plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
-        data_manager.create_notification(message=f"Pagamento de {username} (R$ {payment['value']:.2f}) confirmado.", category='success', link=url_for('main.users_page'))
-        logger.info(f"Subscrição para '{username}' renovada com sucesso.")
-    else:
-        logger.warning(f"Utilizador '{username}' do pagamento {txid} não encontrado no Plex para renovação.")
+    """
+    Processa um pagamento bem-sucedido, renovando a assinatura do usuário e
+    realizando todas as ações necessárias. Esta função é à prova de falhas
+    e pode ser chamada tanto pelo polling da web quanto por webhooks.
+    """
+    try:
+        logger.info(f"Processando pagamento confirmado para o TXID: {txid}")
+        payment = data_manager.get_pix_payment(txid)
+        
+        if not payment:
+            logger.warning(f"Pagamento com TXID {txid} não encontrado na base de dados. Ignorando.")
+            return
+        
+        if payment.get('status') == 'CONCLUIDA':
+            logger.warning(f"Pagamento {txid} já está com o estado 'CONCLUIDA'. Ignorando processamento duplicado.")
+            return
+
+        data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
+        
+        username = payment['username']
+        # Força a atualização da lista de usuários do Plex para garantir que usuários recém-adicionados sejam encontrados.
+        user = next((u for u in plex_manager.get_all_plex_users(force_refresh=True) if u['username'] == username), None)
+        
+        if user:
+            screens_to_set = payment.get('screens')
+            new_expiration_date = plex_manager.renew_subscription(username, 1, 'expiry_date')
+            
+            if screens_to_set is not None and screens_to_set > 0:
+                logger.info(f"Atualizando limite de telas para '{username}' para {screens_to_set}.")
+                tautulli_manager.update_screen_limit(user['email'], username, screens_to_set)
+            
+            profile = data_manager.get_user_profile(username)
+            plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
+            
+            # Garante que o contexto da aplicação está disponível para gerar o link da notificação.
+            with current_app.app_context():
+                user_page_link = url_for('main.users_page', _external=False)
+                data_manager.create_notification(
+                    message=f"Pagamento de {username} (R$ {payment['value']:.2f}) confirmado.", 
+                    category='success', 
+                    link=user_page_link
+                )
+            
+            logger.info(f"Subscrição para '{username}' renovada com sucesso. Novo vencimento: {new_expiration_date.strftime('%d/%m/%Y')}")
+        else:
+            logger.warning(f"Utilizador '{username}' do pagamento {txid} não encontrado no Plex para renovação. O pagamento foi marcado como concluído, mas a renovação falhou.")
+    except Exception as e:
+        logger.error(f"Ocorreu um erro crítico ao processar o pagamento para o TXID {txid}: {e}", exc_info=True)
+        # Opcional: Adicionar lógica para reverter o estado do pagamento em caso de erro.
+        # data_manager.update_pix_payment_status(txid, 'ERRO_PROCESSAMENTO')
+
 
 @payments_api_bp.route('/options')
 @login_required
@@ -62,12 +94,11 @@ def get_payment_options():
             if can_downgrade or int(screens) >= current_screens:
                 available_prices[screens] = price
     
-    # Adiciona o preço padrão se nenhum preço por tela estiver disponível
     if not available_prices and renewal_price and float(renewal_price) > 0:
         available_prices["0"] = renewal_price
 
     enabled_providers = {"efi": config.get("EFI_ENABLED"), "mercadopago": config.get("MERCADOPAGO_ENABLED")}
-    return jsonify({"success": True, "prices": available_prices, "providers": enabled_providers})
+    return jsonify({"success": True, "prices": available_prices, "providers": enabled_providers, "can_downgrade": can_downgrade if valid_screen_prices else True})
 
 @payments_api_bp.route('/create-charge', methods=['POST'])
 @login_required
@@ -82,10 +113,6 @@ def create_charge_route():
     config = load_or_create_config()
     profile = data_manager.get_user_profile(current_user.username)
     
-    # --- INÍCIO DA CORREÇÃO DE VALIDAÇÃO ---
-    # Revalida no backend se o plano solicitado é permitido para o utilizador.
-    
-    # 1. Obter as opções de pagamento válidas para este utilizador
     valid_options_response = get_payment_options()
     valid_options_data = valid_options_response.get_json()
     
@@ -94,16 +121,12 @@ def create_charge_route():
 
     available_prices = valid_options_data.get("prices", {})
 
-    # 2. Verificar se o plano solicitado ('screens_str') está na lista de opções válidas
     if screens_str not in available_prices:
         logger.warning(f"Utilizador '{current_user.username}' tentou gerar cobrança para um plano inválido/não permitido: {screens_str} telas. Opções permitidas: {list(available_prices.keys())}")
         return jsonify({"success": False, "message": _("O plano de pagamento solicitado não é válido ou não está disponível para si neste momento.")}), 400
         
-    # 3. Obter o preço a partir da lista validada para garantir consistência
     price_str = available_prices.get(screens_str)
     
-    # --- FIM DA CORREÇÃO DE VALIDAÇÃO ---
-
     if not price_str or float(price_str) <= 0:
         return jsonify({"success": False, "message": _("Opção de plano inválida ou sem preço definido.")}), 400
         
@@ -144,24 +167,48 @@ def get_payment_status(txid):
 def efi_webhook():
     notification_data = request.json
     logger.info(f"Webhook da Efí recebido: {notification_data}")
-    if 'pix' in notification_data:
-        for pix_notification in notification_data['pix']:
-            txid = pix_notification.get('txid')
-            if not txid: continue
-            efi_status_result = efi_manager.detail_pix_charge(txid)
-            if efi_status_result.get("success") and efi_status_result.get("data", {}).get("status") == 'CONCLUIDA':
-                 _process_successful_payment(txid)
+    try:
+        if 'pix' in notification_data:
+            for pix_notification in notification_data['pix']:
+                txid = pix_notification.get('txid')
+                if not txid:
+                    logger.warning("Webhook da Efí recebido sem TXID na notificação pix.")
+                    continue
+                
+                # É uma boa prática verificar o estado da cobrança para confirmar.
+                efi_status_result = efi_manager.detail_pix_charge(txid)
+                if efi_status_result.get("success") and efi_status_result.get("data", {}).get("status") == 'CONCLUIDA':
+                    _process_successful_payment(txid)
+                else:
+                    logger.warning(f"Webhook da Efí para TXID {txid} recebido, mas o estado não é 'CONCLUIDA' ou a verificação falhou. Estado: {efi_status_result.get('data', {}).get('status')}")
+    except Exception as e:
+        logger.error(f"Erro ao processar o webhook da Efí: {e}", exc_info=True)
+        # Retornar um erro 500 para que o provedor possa tentar novamente, se configurado para isso.
+        return jsonify(status="error", message="Internal Server Error"), 500
+        
     return jsonify(status="received"), 200
 
 @payments_api_bp.route('/webhook/mercadopago', methods=['POST'])
 def mercadopago_webhook():
     data = request.json
     logger.info(f"Webhook do Mercado Pago recebido: {data}")
-    if data.get("type") == "payment":
-        payment_id = str(data["data"]["id"])
-        mp_status_result = mercado_pago_manager.get_payment_details(payment_id)
-        if mp_status_result.get("success") and mp_status_result.get("data", {}).get("status") == "approved":
-            _process_successful_payment(payment_id)
+    try:
+        if data.get("type") == "payment":
+            payment_id = str(data.get("data", {}).get("id"))
+            if not payment_id:
+                logger.warning("Webhook do Mercado Pago recebido sem ID de pagamento.")
+                return jsonify(status="received"), 200
+
+            # O webhook do MP apenas notifica a ação. É crucial verificar o estado do pagamento.
+            mp_status_result = mercado_pago_manager.get_payment_details(payment_id)
+            if mp_status_result.get("success") and mp_status_result.get("data", {}).get("status") == "approved":
+                _process_successful_payment(payment_id)
+            else:
+                logger.warning(f"Webhook do Mercado Pago para ID {payment_id} recebido, mas o estado não é 'approved' ou a verificação falhou. Estado: {mp_status_result.get('data', {}).get('status')}")
+    except Exception as e:
+        logger.error(f"Erro ao processar o webhook do Mercado Pago: {e}", exc_info=True)
+        return jsonify(status="error", message="Internal Server Error"), 500
+
     return jsonify(status="received"), 200
 
 @payments_api_bp.route('/financial/summary')

@@ -5,7 +5,6 @@
 {% block extra_head %}
 <style>
     .tab-button {
-        /* Adicionado 'whitespace-nowrap' para impedir que o texto do botão quebre a linha */
         @apply px-4 py-2 font-semibold text-gray-500 dark:text-gray-400 border-b-2 border-transparent -mb-px whitespace-nowrap;
         @apply hover:border-yellow-500 hover:text-gray-700 dark:hover:text-gray-200 transition-colors duration-200;
     }
@@ -18,7 +17,6 @@
     .tab-content.active, .sub-tab-content.active {
         display: block;
     }
-    /* Estilo para desativar inputs */
     .input-group:has(input[type=checkbox]:not(:checked)) .disablable-input {
         @apply bg-gray-200 dark:bg-gray-800 cursor-not-allowed opacity-50;
     }
@@ -28,24 +26,21 @@
         font-family: 'Courier New', Courier, monospace;
         font-size: 0.8rem;
     }
-    /* Estilo do Fundo do Modal com Cor Sólida */
     .modal-backdrop {
         @apply fixed inset-0 z-50 flex items-center justify-center bg-gray-100 dark:bg-gray-900;
     }
-    /* Adicionado para corrigir a visibilidade dos campos do provedor */
     .provider-fields {
         display: none;
     }
     .provider-fields.active {
         display: block;
     }
-    /* Novo: Para esconder a barra de scroll mas manter a funcionalidade de rolagem */
     .no-scrollbar::-webkit-scrollbar {
         display: none;
     }
     .no-scrollbar {
-        -ms-overflow-style: none;  /* IE and Edge */
-        scrollbar-width: none;  /* Firefox */
+        -ms-overflow-style: none;
+        scrollbar-width: none;
     }
 </style>
 {% endblock %}
@@ -60,7 +55,6 @@
 
 <form id="settingsForm" class="max-w-4xl mx-auto space-y-8">
     
-    <!-- Navegação das Abas Principais (MODIFICADO) -->
     <div class="border-b border-gray-200 dark:border-gray-700">
         <nav id="main-tabs" class="flex space-x-6 overflow-x-auto no-scrollbar">
             <button type="button" data-tab="geral" class="tab-button active">{{ _('Geral') }}</button>
@@ -72,7 +66,6 @@
         </nav>
     </div>
 
-    <!-- Conteúdo das Abas -->
     <div id="main-tab-content">
         <!-- Aba Geral -->
         <div id="tab-geral" class="tab-content active">
@@ -127,24 +120,36 @@
                     <input type="number" id="DAYS_TO_REMOVE_BLOCKED_USER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="0">
                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Defina 0 para desativar.')}}</p>
                 </div>
+                <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
+                    <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Limpeza Automática de Dados') }}</h4>
+                     <div class="flex items-center">
+                        <input id="CLEANUP_PENDING_PAYMENTS_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                        <label for="CLEANUP_PENDING_PAYMENTS_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar limpeza de pagamentos pendentes') }}</label>
+                    </div>
+                    <div>
+                        <label for="CLEANUP_PENDING_PAYMENTS_DAYS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Pagamentos Pendentes (não concluídos) Após (dias)') }}</label>
+                        <input type="number" id="CLEANUP_PENDING_PAYMENTS_DAYS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Isso remove cobranças PIX que não foram pagas para manter o banco de dados limpo.')}}</p>
+                    </div>
+                    <div>
+                        <label for="CLEANUP_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Executar a Limpeza') }}</label>
+                        <input type="time" id="CLEANUP_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A tarefa de limpeza será executada diariamente a esta hora.')}}</p>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Aba Pagamentos -->
         <div id="tab-pagamentos" class="tab-content">
             <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                
-                <!-- Seção de Preços por Tela -->
                 <div class="space-y-6">
                     <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Preços por Quantidade de Telas') }}</h4>
-                    
-                    <!-- NOVO: Campo para Preço Padrão -->
                     <div>
                         <label for="RENEWAL_PRICE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço Padrão (Fallback)') }}</label>
                         <input type="text" id="RENEWAL_PRICE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="10.00">
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Use este preço se não quiser definir valores por tela. Deixe os campos abaixo em branco para usar este valor.')}}</p>
                     </div>
-                    <!-- Preços por Tela -->
                     <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
                         <h4 class="font-semibold text-lg mb-4">{{ _('Preços por Quantidade de Telas (Opcional)') }}</h4>
                         <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">{{_('Se preenchidos, estes valores terão prioridade sobre o preço padrão.')}}</p>
@@ -169,7 +174,6 @@
                     </div>
                 </div>
 
-                <!-- Seção Provedores de Pagamento -->
                 <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
                     <div class="border-b border-gray-200 dark:border-gray-700 mb-6">
                         <nav id="payment-provider-tabs" class="flex space-x-6 overflow-x-auto no-scrollbar">
@@ -234,7 +238,6 @@
                     </nav>
                 </div>
                 <div id="notification-tab-content" class="space-y-6">
-                    <!-- Sub-aba Telegram -->
                     <div id="subtab-telegram" class="sub-tab-content active space-y-4 input-group">
                         <div class="flex items-center">
                             <input id="TELEGRAM_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
@@ -271,7 +274,6 @@
                             <textarea id="TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE" rows="3" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
                         </div>
                     </div>
-                    <!-- Sub-aba Webhook -->
                     <div id="subtab-webhook" class="sub-tab-content space-y-4 input-group">
                          <div class="flex items-center">
                             <input id="WEBHOOK_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
@@ -307,7 +309,6 @@
                             <textarea id="WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE" rows="4" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"></textarea>
                         </div>
                     </div>
-                    <!-- Configurações comuns de notificação -->
                      <div class="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
                         <div>
                             <label for="DAYS_TO_NOTIFY_EXPIRATION" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Avisar Vencimento com (dias de antecedência)') }}</label>
@@ -324,7 +325,6 @@
         <!-- Aba Conexões -->
         <div id="tab-conexoes" class="tab-content">
             <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <!-- Seção Plex -->
                 <div class="space-y-4">
                     <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ _('Plex') }}</h4>
                     <div>
@@ -339,7 +339,6 @@
                     <div id="server-selection-container" class="hidden space-y-2 mt-4"></div>
                 </div>
 
-                <!-- Seção Tautulli -->
                 <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600 space-y-4">
                      <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ _('Tautulli') }}</h4>
                      <p class="text-sm text-gray-500 dark:text-gray-400">{{_('Necessário para o ranking de estatísticas e controle de sessões.')}}</p>
@@ -375,7 +374,6 @@
                     <button type="button" id="testTautulliButton" class="btn bg-blue-600 hover:bg-blue-500 text-white mt-4">{{ _('Testar Conexão') }}</button>
                 </div>
 
-                <!-- Seção Overseerr /	Jellyseerr -->
                 <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600 space-y-4">
                      <h4 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Overseerr / Jellyseerr') }}</h4>
                      <p class="text-sm text-gray-500 dark:text-gray-400">{{_('Necessário para suporte servidor de pedidos.')}}</p>
@@ -427,7 +425,6 @@
     </div>
 </form>
 
-<!-- Modal de Ajuda para Placeholders -->
 <div id="placeholderHelpModal" class="modal-backdrop hidden">
     <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-lg w-full">
         <div class="flex justify-between items-center mb-4">

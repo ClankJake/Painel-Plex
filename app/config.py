@@ -78,7 +78,10 @@ def load_or_create_config():
             },
             "OVERSEERR_ENABLED": False,
             "OVERSEERR_URL": "",
-            "OVERSEERR_API_KEY": ""
+            "OVERSEERR_API_KEY": "",
+            "CLEANUP_PENDING_PAYMENTS_ENABLED": True,
+            "CLEANUP_PENDING_PAYMENTS_DAYS": 3,
+            "CLEANUP_TIME": "03:00"
         }
         save_app_config(default_config)
         return default_config
@@ -128,6 +131,15 @@ def load_or_create_config():
                 config.setdefault("OVERSEERR_ENABLED", False)
                 config.setdefault("OVERSEERR_URL", "")
                 config.setdefault("OVERSEERR_API_KEY", "")
+                config.setdefault("CLEANUP_PENDING_PAYMENTS_ENABLED", True)
+                config.setdefault("CLEANUP_PENDING_PAYMENTS_DAYS", 3)
+                config.setdefault("CLEANUP_TIME", "03:00")
+
+            log_file_path = config.get("LOG_FILE")
+            if log_file_path and not os.path.isabs(log_file_path):
+                config["LOG_FILE"] = os.path.join(CONFIG_DIR, os.path.basename(log_file_path))
+                logger.debug(f"Caminho do ficheiro de log relativo detetado. Convertido para: {config['LOG_FILE']}")
+
             return config
         except (json.JSONDecodeError, IOError) as e:
             logger.error(f"Erro ao carregar o ficheiro de configuração: {e}")

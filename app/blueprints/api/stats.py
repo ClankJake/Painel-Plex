@@ -27,9 +27,15 @@ def get_statistics_data():
         for user_stat in tautulli_data["stats"]:
             username = user_stat["username"]
             profile = all_profiles.get(username, {})
-            if not current_user.is_admin() and profile.get('hide_from_leaderboard', False):
+            
+            # Adiciona a flag de privacidade e ofusca os dados se necessário
+            is_private = profile.get('hide_from_leaderboard', False)
+            user_stat["is_private"] = is_private
+            
+            if not current_user.is_admin() and is_private:
                 user_stat["username"] = _obfuscate_username(username)
                 user_stat["thumb"] = f"https://placehold.co/80x80/1F2937/E5E7EB?text=?"
+
             processed_stats.append(user_stat)
         tautulli_data["stats"] = processed_stats
     return jsonify(tautulli_data)
@@ -37,6 +43,17 @@ def get_statistics_data():
 @stats_api_bp.route('/user/<username>')
 @login_required
 def get_user_statistics(username):
-    if not current_user.is_admin() and current_user.username != username:
-        return jsonify({"success": False, "message": _("Acesso não autorizado.")}), 403
-    return jsonify(tautulli_manager.get_user_watch_details(username, days=request.args.get('days', 7, type=int)))
+    """
+    Obtém as estatísticas detalhadas de um usuário, respeitando as configurações de privacidade.
+    """
+    profile = data_manager.get_user_profile(username)
+    is_private = profile.get('hide_from_leaderboard', False)
+
+    # Permite o acesso se o visualizador for admin, o próprio usuário, ou se o perfil não for privado.
+    if not is_private or current_user.is_admin() or current_user.username == username:
+        return jsonify(tautulli_manager.get_user_watch_details(username, days=request.args.get('days', 7, type=int)))
+    else:
+        # Bloqueia o acesso para outros usuários se o perfil for privado.
+        logger.warning(f"Acesso negado para '{current_user.username}' ao tentar ver as estatísticas privadas de '{username}'.")
+        return jsonify({"success": False, "message": _("Este usuário prefere manter suas estatísticas privadas.")}), 403
+

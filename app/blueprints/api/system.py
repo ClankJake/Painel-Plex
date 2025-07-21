@@ -113,9 +113,13 @@ def api_settings():
             'EFI_CLIENT_ID', 'EFI_CLIENT_SECRET', 'EFI_CERTIFICATE', 'EFI_SANDBOX', 'EFI_PIX_KEY', 
             'MERCADOPAGO_ACCESS_TOKEN', 'RENEWAL_PRICE', 'EFI_ENABLED', 'MERCADOPAGO_ENABLED',
             'TRIAL_BLOCK_NOTIFIER_ID', 'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE', 'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE',
-            'OVERSEERR_ENABLED', 'OVERSEERR_URL', 'OVERSEERR_API_KEY'
+            'OVERSEERR_ENABLED', 'OVERSEERR_URL', 'OVERSEERR_API_KEY',
+            'CLEANUP_PENDING_PAYMENTS_ENABLED', 'CLEANUP_PENDING_PAYMENTS_DAYS', 'CLEANUP_TIME'
         ]
-        numeric_fields = ['DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION', 'APP_PORT', 'BLOCKING_NOTIFIER_ID', 'SCREEN_LIMIT_NOTIFIER_ID']
+        numeric_fields = [
+            'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION', 'APP_PORT', 
+            'BLOCKING_NOTIFIER_ID', 'SCREEN_LIMIT_NOTIFIER_ID', 'CLEANUP_PENDING_PAYMENTS_DAYS'
+        ]
         
         if 'SCREEN_PRICES' in new_data:
             config_to_update['SCREEN_PRICES'] = new_data['SCREEN_PRICES']
@@ -143,26 +147,29 @@ def api_settings():
             logging.getLogger().setLevel(log_level_map.get(new_log_level, logging.INFO))
             app.logger.setLevel(log_level_map.get(new_log_level, logging.INFO))
             logger.info(f"Nível de log atualizado para {new_log_level}")
-        new_exp_time = config_to_update.get("EXPIRATION_NOTIFICATION_TIME")
-        if new_exp_time and new_exp_time != old_config.get("EXPIRATION_NOTIFICATION_TIME"):
-            try:
-                hour, minute = map(int, new_exp_time.split(':')[:2])
-                scheduler.reschedule_job('expiration_notification_job', trigger=CronTrigger(hour=hour, minute=minute))
-                logger.info(f"Tarefa de notificação de vencimentos reagendada para as {hour:02d}:{minute:02d}.")
-            except Exception as e: logger.error(f"Falha ao reagendar a tarefa de notificação: {e}")
-        new_block_time = config_to_update.get("BLOCK_REMOVAL_TIME")
-        if new_block_time and new_block_time != old_config.get("BLOCK_REMOVAL_TIME"):
-            try:
-                hour, minute = map(int, new_block_time.split(':')[:2])
-                scheduler.reschedule_job('removal_job', trigger=CronTrigger(hour=hour, minute=minute))
-                logger.info(f"Tarefa de remoção de utilizadores reagendada para as {hour:02d}:{minute:02d}.")
-            except Exception as e: logger.error(f"Falha ao reagendar a tarefa de remoção: {e}")
+        
+        # Reagendamento de tarefas
+        def reschedule_job(job_id, time_key, old_config, new_config):
+            new_time = new_config.get(time_key)
+            if new_time and new_time != old_config.get(time_key):
+                try:
+                    hour, minute = map(int, new_time.split(':')[:2])
+                    scheduler.reschedule_job(job_id, trigger=CronTrigger(hour=hour, minute=minute))
+                    logger.info(f"Tarefa '{job_id}' reagendada para as {hour:02d}:{minute:02d}.")
+                except Exception as e:
+                    logger.error(f"Falha ao reagendar a tarefa '{job_id}': {e}")
+
+        reschedule_job('expiration_notification_job', 'EXPIRATION_NOTIFICATION_TIME', old_config, config_to_update)
+        reschedule_job('removal_job', 'BLOCK_REMOVAL_TIME', old_config, config_to_update)
+        reschedule_job('cleanup_job', 'CLEANUP_TIME', old_config, config_to_update)
+
         success, message = plex_manager.reload_connections()
         if config_to_update.get('APP_PORT') != old_config.get('APP_PORT') or config_to_update.get('APP_HOST') != old_config.get('APP_HOST'):
             message += " " + _("As alterações de Host/Porta requerem um reinício da aplicação para terem efeito.")
         return jsonify({"success": success, "message": message})
+    
     config_to_send = load_or_create_config()
-    for key in ['SECRET_KEY', 'PLEX_TOKEN']: config_to_send.pop(key, None)
+    for key in ['SECRET_KEY', 'PLEX_TOKEN', 'INTERNAL_TRIGGER_KEY']: config_to_send.pop(key, None)
     return jsonify(config_to_send)
 
 @system_api_bp.route('/setup/servers')
