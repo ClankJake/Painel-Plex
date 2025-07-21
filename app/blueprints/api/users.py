@@ -2,7 +2,7 @@
 
 import logging
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request, url_for
 from flask_login import current_user
 from flask_babel import gettext as _, format_date
@@ -30,15 +30,28 @@ def get_status():
     for u in all_users:
         if u.get('servers'):
             profile = all_user_profiles.get(u['username'], {})
+            
+            is_on_trial = False
+            trial_end_date_str = profile.get('trial_end_date')
+            if trial_end_date_str:
+                try:
+                    trial_end_date = datetime.fromisoformat(trial_end_date_str)
+                    if trial_end_date > datetime.now(timezone.utc):
+                        is_on_trial = True
+                except (ValueError, TypeError):
+                    pass
+
             user_data = {
                 'username': u['username'], 'email': u['email'], 'thumb': u['thumb'],
                 'is_blocked': u['username'] in blocked_users,
                 'screen_limit': profile.get('screen_limit', 0),
                 'expiration_date': profile.get('expiration_date'),
-                'trial_end_date': profile.get('trial_end_date')
+                'trial_end_date': trial_end_date_str,
+                'is_on_trial': is_on_trial
             }
             users_with_access.append(user_data)
     return jsonify({'users': sorted(users_with_access, key=lambda u: u['username'].lower()), 'libraries': plex_manager.get_libraries()})
+
 
 @users_api_bp.route('/account/details')
 @login_required
