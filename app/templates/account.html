@@ -121,6 +121,35 @@
                 <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Acesso às Bibliotecas') }}</h3>
                 <div id="library-list" class="flex flex-wrap gap-2"></div>
             </div>
+            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Detalhes de Contato para Notificações') }}</h3>
+                <div id="contact-details-form" class="space-y-4">
+                    <div>
+                        <label for="profileName" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Nome Completo') }}</label>
+                        <input type="text" id="profileName" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    </div>
+                    <div id="telegram-field-container" class="hidden">
+                        <label for="profileTelegram" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID de Utilizador do Telegram') }}</label>
+                        <input type="text" id="profileTelegram" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Apenas números') }}">
+                    </div>
+                    <div id="discord-field-container" class="hidden">
+                        <label for="profileDiscord" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID de Utilizador do Discord') }}</label>
+                        <input type="text" id="profileDiscord" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: 123456789012345678') }}">
+                    </div>
+                    <div id="phone-field-container" class="hidden">
+                        <label for="profilePhone" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Número de Telefone') }}</label>
+                        <div class="flex">
+                            <select id="countryCode" class="p-2.5 text-sm rounded-l-lg border border-r-0 bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                <!-- Opções serão preenchidas por JS -->
+                            </select>
+                            <input type="tel" id="profilePhone" class="w-full p-2.5 text-sm rounded-r-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="21999998888">
+                        </div>
+                    </div>
+                    <div class="flex justify-end">
+                        <button id="saveContactDetails" class="btn bg-green-600 hover:bg-green-500 text-white">{{ _('Salvar Detalhes') }}</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Separador Pagamentos -->
@@ -172,6 +201,7 @@
         type="module" 
         src="{{ url_for('static', filename='js/account.js') }}"
         data-get-account-details-url="{{ url_for('users_api.get_account_details') }}"
+        data-update-account-profile-url="{{ url_for('users_api.update_account_profile') }}"
         data-get-account-devices-url="{{ url_for('users_api.get_account_devices') }}"
         data-update-privacy-url="{{ url_for('users_api.update_privacy_settings') }}"
         data-get-payment-options-url="{{ url_for('payments_api.get_payment_options') }}"
@@ -220,6 +250,8 @@
         data-i18n-minutes-ago="{{ _('minutos atrás') }}"
         data-i18n-just-now="{{ _('Agora mesmo') }}"
         data-i18n-no-devices-found="{{ _('Nenhum dispositivo encontrado no seu histórico recente.') }}"
+        data-i18n-saving="{{ _('Salvando...') }}"
+        data-i18n-save-details="{{ _('Salvar Detalhes') }}"
         >
 </script>
 {% endblock %}

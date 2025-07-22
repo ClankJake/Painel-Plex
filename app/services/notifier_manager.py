@@ -83,6 +83,26 @@ class NotifierManager:
         except requests.exceptions.RequestException as e:
             logger.error(f"[ID: {request_id}] Falha de conexão ao enviar notificação via Webhook para {webhook_url}: {e}")
 
+    def _send_discord_notification(self, payload, request_id):
+        """Envia uma notificação formatada (embed) para um Webhook do Discord."""
+        config = load_or_create_config()
+        webhook_url = config.get("DISCORD_WEBHOOK_URL")
+
+        headers = {'Content-Type': 'application/json'}
+        
+        try:
+            logger.info(f"[ID: {request_id}] A enviar para Discord (URL: {webhook_url})")
+            logger.debug(f"[ID: {request_id}] Corpo do Discord: {json.dumps(payload)}")
+            response = requests.post(webhook_url, data=json.dumps(payload), headers=headers, timeout=30)
+            response.raise_for_status()
+            logger.info(f"[ID: {request_id}] Notificação enviada com sucesso via Discord.")
+        except requests.exceptions.HTTPError as e:
+             logger.error(f"[ID: {request_id}] Falha ao enviar notificação via Discord para {webhook_url}: {e}")
+             logger.error(f"[ID: {request_id}] Resposta do servidor: {e.response.text}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"[ID: {request_id}] Falha de conexão ao enviar notificação via Discord para {webhook_url}: {e}")
+
+
     def _prepare_and_send(self, event_type, user, user_profile, context):
         """Prepara e envia notificações para todos os agentes ativos."""
         config = load_or_create_config()
@@ -130,6 +150,31 @@ class NotifierManager:
                     logger.error(f"[ID: {request_id}] Placeholder inválido no modelo do Webhook: {e}")
             elif webhook_template_str and not phone_number:
                 logger.warning(f"[ID: {request_id}] A notificação via Webhook para '{placeholders['username']}' foi ignorada porque o número de telefone não está definido no seu perfil.")
+
+        # --- Envio para Discord ---
+        if config.get("DISCORD_ENABLED"):
+            discord_template_str = config.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE")
+            discord_user_id = user_profile.get('discord_user_id') # Usa um novo campo do perfil
+
+            if discord_template_str and discord_user_id:
+                try:
+                    # Adiciona o ID do utilizador ao placeholder para poder mencioná-lo
+                    placeholders['discord_user_id'] = discord_user_id
+                    
+                    message_with_placeholders = discord_template_str
+                    for key, value in placeholders.items():
+                        # Substitui as variáveis no JSON
+                        message_with_placeholders = message_with_placeholders.replace(f"{{{key}}}", str(value))
+                    
+                    discord_payload = json.loads(message_with_placeholders)
+                    self._send_discord_notification(discord_payload, request_id)
+                except json.JSONDecodeError:
+                    logger.error(f"[ID: {request_id}] O modelo de mensagem do Discord para '{event_type.upper()}' não é um JSON válido.")
+                except KeyError as e:
+                    logger.error(f"[ID: {request_id}] Placeholder inválido no modelo do Discord: {e}")
+            elif discord_template_str and not discord_user_id:
+                logger.warning(f"[ID: {request_id}] A notificação via Discord para '{placeholders['username']}' foi ignorada porque o ID de utilizador do Discord não está definido no seu perfil.")
+
 
     def send_expiration_notification(self, user, days_left, user_profile):
         """Envia uma notificação de vencimento."""

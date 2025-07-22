@@ -94,6 +94,11 @@ def get_account_details():
     libraries_data = plex_manager.get_user_libraries(email)
     watch_data = tautulli_manager.get_user_watch_details(username)
     screen_limit = profile.get('screen_limit', 0)
+    notification_settings = {
+        "telegram_enabled": config.get("TELEGRAM_ENABLED", False),
+        "discord_enabled": config.get("DISCORD_ENABLED", False),
+        "webhook_enabled": config.get("WEBHOOK_ENABLED", False)
+    }
     details = {
         "success": True, "username": username, "email": email, "thumb": current_user.thumb,
         "join_date": join_date or _("Não disponível"),
@@ -102,9 +107,34 @@ def get_account_details():
         "watch_stats": watch_data.get('details', {}),
         "expiration_info": expiration_info, "is_blocked": is_blocked, "block_reason": block_reason,
         "trial_end_date": profile.get('trial_end_date'),
-        "hide_from_leaderboard": profile.get('hide_from_leaderboard', False)
+        "hide_from_leaderboard": profile.get('hide_from_leaderboard', False),
+        "notification_settings": notification_settings,
+        "profile_details": {
+            "name": profile.get("name"),
+            "telegram_user": profile.get("telegram_user"),
+            "discord_user_id": profile.get("discord_user_id"),
+            "phone_number": profile.get("phone_number")
+        }
     }
     return jsonify(details)
+
+@users_api_bp.route('/account/profile', methods=['POST'])
+@login_required
+def update_account_profile():
+    data = request.get_json()
+    username = current_user.username
+    profile = data_manager.get_user_profile(username)
+    
+    # Campos que o utilizador pode atualizar
+    allowed_fields = ['name', 'telegram_user', 'discord_user_id', 'phone_number']
+    for field in allowed_fields:
+        if field in data:
+            profile[field] = data[field]
+            
+    data_manager.set_user_profile(username, profile)
+    logger.info(f"Utilizador '{username}' atualizou o seu perfil.")
+    return jsonify({"success": True, "message": _("Perfil atualizado com sucesso.")})
+
 
 @users_api_bp.route('/account/privacy', methods=['POST'])
 @login_required
@@ -161,7 +191,13 @@ def renew_user_subscription_route(user):
 def user_profile_route(username):
     if request.method == 'GET':
         profile = data_manager.get_user_profile(username)
-        return jsonify({"success": True, "profile": profile})
+        config = load_or_create_config()
+        notification_settings = {
+            "telegram_enabled": config.get("TELEGRAM_ENABLED", False),
+            "discord_enabled": config.get("DISCORD_ENABLED", False),
+            "webhook_enabled": config.get("WEBHOOK_ENABLED", False)
+        }
+        return jsonify({"success": True, "profile": profile, "notification_settings": notification_settings})
     
     # POST
     from ...extensions import scheduler
@@ -334,4 +370,3 @@ def get_account_devices():
     except Exception as e:
         logger.error(f"Erro ao obter dispositivos para {current_user.username}: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Falha ao obter lista de dispositivos."}), 500
-

@@ -329,6 +329,49 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    async function handleSaveContactDetails() {
+        const button = document.getElementById('saveContactDetails');
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = i18n.saving;
+
+        try {
+            const countryCode = document.getElementById('countryCode').value;
+            const phone = document.getElementById('profilePhone').value.replace(/\D/g, '');
+            const fullPhoneNumber = phone ? `${countryCode}${phone}` : '';
+
+            const payload = {
+                name: document.getElementById('profileName').value,
+                telegram_user: document.getElementById('profileTelegram').value,
+                discord_user_id: document.getElementById('profileDiscord').value,
+                phone_number: fullPhoneNumber,
+            };
+            const result = await fetchAPI(urls.updateAccountProfileUrl, 'POST', payload);
+            showToast(result.message, result.success ? 'success' : 'error');
+        } catch (error) {
+            showToast(error.message, 'error');
+        } finally {
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    }
+
+    function populateCountryCodes() {
+        const select = document.getElementById('countryCode');
+        if (!select) return;
+
+        const countries = [
+            { name: 'Brasil', code: '+55' },
+            { name: 'Portugal', code: '+351' },
+            { name: 'Angola', code: '+244' },
+            { name: 'Moçambique', code: '+258' },
+            { name: 'EUA', code: '+1' },
+            { name: 'Reino Unido', code: '+44' },
+        ];
+
+        select.innerHTML = countries.map(c => `<option value="${c.code}">${c.name} (${c.code})</option>`).join('');
+    }
+
     async function main() {
         try {
             const data = await fetchAPI(urls.getAccountDetailsUrl);
@@ -391,6 +434,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 if (libraryList) libraryList.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${i18n.noSharedLibrary}</p>`;
             }
+            
+            // Preenche e mostra os campos de contato
+            populateCountryCodes();
+            if (data.profile_details) {
+                document.getElementById('profileName').value = data.profile_details.name || '';
+                document.getElementById('profileTelegram').value = data.profile_details.telegram_user || '';
+                document.getElementById('profileDiscord').value = data.profile_details.discord_user_id || '';
+
+                const fullPhone = data.profile_details.phone_number || '';
+                const match = fullPhone.match(/^(\+\d+)(\d+)$/);
+                if (match) {
+                    document.getElementById('countryCode').value = match[1];
+                    document.getElementById('profilePhone').value = match[2];
+                } else {
+                    document.getElementById('profilePhone').value = fullPhone.replace(/\D/g, '');
+                }
+            }
+            if (data.notification_settings) {
+                if (data.notification_settings.telegram_enabled) document.getElementById('telegram-field-container').classList.remove('hidden');
+                if (data.notification_settings.discord_enabled) document.getElementById('discord-field-container').classList.remove('hidden');
+                // Assumindo que o telefone é para webhooks
+                if (data.notification_settings.webhook_enabled) document.getElementById('phone-field-container').classList.remove('hidden');
+            }
+
 
             const paymentHistory = await fetchAPI(urls.getPaymentHistoryUrl.replace('__USERNAME__', data.username));
             if (paymentHistory.success) {
@@ -406,6 +473,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (container) container.classList.remove('hidden');
 
             initializeTabs();
+            document.getElementById('saveContactDetails').addEventListener('click', handleSaveContactDetails);
 
         } catch (error) {
             if (loadingIndicator) loadingIndicator.style.display = 'none';

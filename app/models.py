@@ -64,6 +64,7 @@ class UserProfile(db.Model):
     username = db.Column(db.String, primary_key=True)
     name = db.Column(db.String)
     telegram_user = db.Column(db.String)
+    discord_user_id = db.Column(db.String) # NOVO CAMPO ADICIONADO
     phone_number = db.Column(db.String)
     expiration_date = db.Column(db.String)
     last_notification_sent = db.Column(db.String)

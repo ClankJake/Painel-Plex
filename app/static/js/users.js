@@ -640,7 +640,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const body = `
             <div class="space-y-4">
                 <div><label for="profileName" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.fullName}</label><input type="text" id="profileName" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></div>
-                <div><label for="profileTelegram" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.telegramUser}</label><input type="text" id="profileTelegram" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></div>
+                <div id="telegram-field-container"><label for="profileTelegram" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.telegramUser}</label><input type="text" id="profileTelegram" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></div>
+                <div id="discord-field-container"><label for="profileDiscord" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.discordUserId}</label><input type="text" id="profileDiscord" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></div>
                 <div><label for="profilePhone" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.phoneNumber}</label><input type="tel" id="profilePhone" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -671,23 +672,36 @@ document.addEventListener('DOMContentLoaded', () => {
         const sendNotificationButton = modal.querySelector('#sendNotificationButton');
 
         fetchAPI(urls.api_users_profile_base.replace('__USERNAME__', user.username)).then(data => {
-            if(data.success && data.profile) {
-                modal.querySelector('#profileName').value = data.profile.name || '';
-                modal.querySelector('#profileTelegram').value = data.profile.telegram_user || '';
-                modal.querySelector('#profilePhone').value = data.profile.phone_number || '';
-                modal.querySelector('#profileOverseerrAccess').checked = data.profile.overseerr_access || false;
-                if (data.profile.expiration_date) {
-                    const expDate = new Date(data.profile.expiration_date);
-                    
-                    const year = expDate.getFullYear();
-                    const month = (expDate.getMonth() + 1).toString().padStart(2, '0');
-                    const day = expDate.getDate().toString().padStart(2, '0');
-                    const hours = expDate.getHours().toString().padStart(2, '0');
-                    const minutes = expDate.getMinutes().toString().padStart(2, '0');
+            if(data.success) {
+                if (data.profile) {
+                    modal.querySelector('#profileName').value = data.profile.name || '';
+                    modal.querySelector('#profileTelegram').value = data.profile.telegram_user || '';
+                    modal.querySelector('#profileDiscord').value = data.profile.discord_user_id || '';
+                    modal.querySelector('#profilePhone').value = data.profile.phone_number || '';
+                    modal.querySelector('#profileOverseerrAccess').checked = data.profile.overseerr_access || false;
+                    if (data.profile.expiration_date) {
+                        const expDate = new Date(data.profile.expiration_date);
+                        
+                        const year = expDate.getFullYear();
+                        const month = (expDate.getMonth() + 1).toString().padStart(2, '0');
+                        const day = expDate.getDate().toString().padStart(2, '0');
+                        const hours = expDate.getHours().toString().padStart(2, '0');
+                        const minutes = expDate.getMinutes().toString().padStart(2, '0');
 
-                    modal.querySelector('#profileExpiration').value = `${year}-${month}-${day}`;
-                    modal.querySelector('#profileExpirationTime').value = `${hours}:${minutes}`;
-                    sendNotificationButton.disabled = false;
+                        modal.querySelector('#profileExpiration').value = `${year}-${month}-${day}`;
+                        modal.querySelector('#profileExpirationTime').value = `${hours}:${minutes}`;
+                        sendNotificationButton.disabled = false;
+                    }
+                }
+                if (data.notification_settings) {
+                    const telegramField = modal.querySelector('#telegram-field-container');
+                    const discordField = modal.querySelector('#discord-field-container');
+                    if (telegramField && !data.notification_settings.telegram_enabled) {
+                        telegramField.classList.add('hidden');
+                    }
+                    if (discordField && !data.notification_settings.discord_enabled) {
+                        discordField.classList.add('hidden');
+                    }
                 }
             }
         }).catch(error => showToast(error.message, 'error'));
@@ -701,6 +715,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const profileData = {
                 name: modal.querySelector('#profileName').value,
                 telegram_user: modal.querySelector('#profileTelegram').value,
+                discord_user_id: modal.querySelector('#profileDiscord').value,
                 phone_number: modal.querySelector('#profilePhone').value,
                 expiration_datetime_local: localDateTimeString 
             };
