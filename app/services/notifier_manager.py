@@ -6,8 +6,10 @@ import uuid
 from datetime import datetime
 import requests
 from flask_babel import gettext as _
+from flask import url_for
 
 from ..config import load_or_create_config
+from ..models import UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +27,9 @@ class NotifierManager:
     """
     Gestor responsável por enviar notificações para diferentes serviços.
     """
-    def __init__(self):
+    def __init__(self, link_shortener_service=None):
         """Inicializa o gestor de notificações."""
-        pass
+        self.link_shortener = link_shortener_service
 
     def _send_telegram_notification(self, message, chat_id, request_id):
         """Envia uma notificação para um chat específico do Telegram."""
@@ -108,6 +110,32 @@ class NotifierManager:
         config = load_or_create_config()
         request_id = uuid.uuid4()
         
+        app_base_url = config.get("APP_BASE_URL")
+        if not app_base_url or "127.0.0.1" in app_base_url or "localhost" in app_base_url:
+            logger.warning(f"A APP_BASE_URL ('{app_base_url}') não está configurada ou está definida para um endereço local. Os links de pagamento gerados podem não ser acessíveis externamente.")
+
+        payment_link = "#"
+        if user_profile.get('payment_token'):
+            long_url = url_for('main.payment_page', token=user_profile['payment_token'], _external=True)
+            logger.info(f"URL de pagamento longa gerada para '{user.get('username')}': {long_url}")
+            
+            if config.get("ENABLE_LINK_SHORTENER"):
+                logger.info("Encurtador de links está HABILITADO. A tentar encurtar o link.")
+                if self.link_shortener:
+                    try:
+                        payment_link = self.link_shortener.create_short_link(long_url)
+                        logger.info(f"Link encurtado com sucesso para '{user.get('username')}': {payment_link}")
+                    except Exception as e:
+                        logger.error(f"Falha ao encurtar o link de pagamento para {user.get('username')}: {e}", exc_info=True)
+                        payment_link = long_url
+                        logger.warning(f"A utilizar a URL longa como fallback para '{user.get('username')}'.")
+                else:
+                    logger.error("Serviço LinkShortener não foi injetado no NotifierManager. A utilizar a URL longa.")
+                    payment_link = long_url
+            else:
+                logger.info("Encurtador de links está DESABILITADO. A utilizar a URL longa.")
+                payment_link = long_url
+
         placeholders = {
             'username': user.get('username'),
             'name': user_profile.get('name') or user.get('username'),
@@ -115,6 +143,7 @@ class NotifierManager:
             'greeting': get_greeting(),
             'telegram_user': user_profile.get('telegram_user', ''),
             'phone_number': user_profile.get('phone_number', ''),
+            'payment_link': payment_link
         }
         placeholders.update(context)
         

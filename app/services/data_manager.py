@@ -175,6 +175,10 @@ class DataManager:
         if not profile:
             profile = UserProfile(username=username)
         
+        # Garante que um token de pagamento exista
+        if not profile.payment_token:
+            profile.payment_token = secrets.token_urlsafe(16)
+
         for key, value in profile_data.items():
             if hasattr(profile, key):
                 setattr(profile, key, value)

@@ -29,5 +29,14 @@ login_manager.login_message_category = "info"
 babel = Babel()
 scheduler = BackgroundScheduler(daemon=True)
 
-# Os 'managers' dos serviços foram removidos daqui para quebrar a importação circular.
-# Eles serão inicializados dentro da 'application factory' no ficheiro __init__.py.
+# Os 'managers' dos serviços e outras instâncias são inicializados como None
+# para evitar importações circulares. Eles serão devidamente instanciados
+# dentro da 'application factory' no ficheiro __init__.py.
+data_manager = None
+plex_manager = None
+tautulli_manager = None
+notifier_manager = None
+efi_manager = None
+mercado_pago_manager = None
+overseerr_manager = None
+link_shortener = None

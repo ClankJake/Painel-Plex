@@ -13,9 +13,41 @@ from ...extensions import plex_manager, tautulli_manager, data_manager
 from ...config import load_or_create_config
 from ..auth import admin_required, login_required
 from .decorators import user_lookup
+from ...models import UserProfile
 
 logger = logging.getLogger(__name__)
 users_api_bp = Blueprint('users_api', __name__)
+
+@users_api_bp.route('/public-profile-by-token/<string:token>')
+def get_public_user_profile_by_token(token):
+    """
+    Endpoint público para obter informações básicas de um usuário para a página de pagamento, usando um token seguro.
+    """
+    profile = UserProfile.query.filter_by(payment_token=token).first()
+    if not profile:
+        return jsonify({"success": False, "message": _("Link de pagamento inválido ou usuário não encontrado.")}), 404
+
+    user = next((u for u in plex_manager.get_all_plex_users() if u['username'] == profile.username), None)
+    if not user:
+        return jsonify({"success": False, "message": _("Usuário não encontrado.")}), 404
+    
+    expiration_date_str = profile.expiration_date
+    expiration_date_formatted = None
+    if expiration_date_str:
+        try:
+            exp_date = datetime.fromisoformat(expiration_date_str)
+            expiration_date_formatted = exp_date.strftime('%d/%m/%Y')
+        except (ValueError, TypeError):
+            pass
+
+    public_data = {
+        "username": user['username'],
+        "thumb": user['thumb'],
+        "expiration_date_formatted": expiration_date_formatted,
+        "expiration_date_iso": expiration_date_str
+    }
+    return jsonify({"success": True, "profile": public_data})
+
 
 @users_api_bp.route('/status')
 @login_required
@@ -47,7 +79,8 @@ def get_status():
                 'screen_limit': profile.get('screen_limit', 0),
                 'expiration_date': profile.get('expiration_date'),
                 'trial_end_date': trial_end_date_str,
-                'is_on_trial': is_on_trial
+                'is_on_trial': is_on_trial,
+                'payment_token': profile.get('payment_token')
             }
             users_with_access.append(user_data)
     return jsonify({'users': sorted(users_with_access, key=lambda u: u['username'].lower()), 'libraries': plex_manager.get_libraries()})

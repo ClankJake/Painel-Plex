@@ -6,6 +6,7 @@ from flask_login import login_user, current_user
 from plexapi.myplex import MyPlexAccount
 from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
+from tzlocal import get_localzone_name
 
 from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, overseerr_manager, scheduler
 from ...config import load_or_create_config, save_app_config, is_configured
@@ -114,11 +115,13 @@ def api_settings():
             'MERCADOPAGO_ACCESS_TOKEN', 'RENEWAL_PRICE', 'EFI_ENABLED', 'MERCADOPAGO_ENABLED',
             'TRIAL_BLOCK_NOTIFIER_ID', 'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE', 'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE',
             'OVERSEERR_ENABLED', 'OVERSEERR_URL', 'OVERSEERR_API_KEY',
-            'CLEANUP_PENDING_PAYMENTS_ENABLED', 'CLEANUP_PENDING_PAYMENTS_DAYS', 'CLEANUP_TIME'
+            'CLEANUP_PENDING_PAYMENTS_ENABLED', 'CLEANUP_PENDING_PAYMENTS_DAYS', 'CLEANUP_TIME',
+            'ENABLE_LINK_SHORTENER', 'PAYMENT_LINK_GRACE_PERIOD_DAYS'
         ]
         numeric_fields = [
             'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION', 'APP_PORT', 
-            'BLOCKING_NOTIFIER_ID', 'SCREEN_LIMIT_NOTIFIER_ID', 'CLEANUP_PENDING_PAYMENTS_DAYS'
+            'BLOCKING_NOTIFIER_ID', 'SCREEN_LIMIT_NOTIFIER_ID', 'CLEANUP_PENDING_PAYMENTS_DAYS',
+            'PAYMENT_LINK_GRACE_PERIOD_DAYS'
         ]
         
         if 'SCREEN_PRICES' in new_data:
@@ -154,10 +157,14 @@ def api_settings():
             if new_time and new_time != old_config.get(time_key):
                 try:
                     hour, minute = map(int, new_time.split(':')[:2])
-                    scheduler.reschedule_job(job_id, trigger=CronTrigger(hour=hour, minute=minute))
+                    try:
+                        tz_str = get_localzone_name()
+                    except Exception:
+                        tz_str = 'UTC'
+                    scheduler.reschedule_job(job_id, trigger=CronTrigger(hour=hour, minute=minute, timezone=tz_str))
                     logger.info(f"Tarefa '{job_id}' reagendada para as {hour:02d}:{minute:02d}.")
                 except Exception as e:
-                    logger.error(f"Falha ao reagendar a tarefa '{job_id}': {e}")
+                    logger.error(f"Falha ao reagendar a tarefa '{job_id}': {e}", exc_info=True)
 
         reschedule_job('expiration_notification_job', 'EXPIRATION_NOTIFICATION_TIME', old_config, config_to_update)
         reschedule_job('removal_job', 'BLOCK_REMOVAL_TIME', old_config, config_to_update)

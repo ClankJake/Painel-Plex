@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="{{ current_locale.language }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ _('Renovação de Assinatura') }} - {{ app_title }}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='gold'><path d='M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z'/></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        // Define o tema com base no armazenamento local ou na preferência do sistema
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; padding: 1rem 1.5rem; border-radius: 0.5rem; color: white; opacity: 0; transform: translateY(20px); transition: opacity 0.3s ease, transform 0.3s ease; z-index: 9999; }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { background-color: #10B981; }
+        .toast.error { background-color: #EF4444; }
+        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.75); display: flex; justify-content: center; align-items: center; z-index: 50; backdrop-filter: blur(4px); }
+        .modal-content { @apply bg-white dark:bg-gray-800; padding: 1.5rem; border-radius: 0.75rem; max-width: 90%; width: 500px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border-radius: 0.5rem; font-weight: 600; transition: all 0.2s ease-in-out; border: 1px solid transparent; }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-300 transition-colors duration-300 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-lg">
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{{ app_title }}</h1>
+            <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Página de Renovação') }}</p>
+        </div>
+
+        <div id="main-container" class="bg-white dark:bg-gray-800/80 backdrop-blur-sm p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700/50">
+            <div id="loadingIndicator" class="text-center py-10">
+                <svg class="animate-spin h-8 w-8 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                <p class="text-lg text-gray-500 dark:text-gray-400 mt-4">{{ _('A carregar informações...') }}</p>
+            </div>
+
+            <div id="errorContainer" class="hidden text-center py-10">
+                <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro') }}</p>
+                <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
+            </div>
+            
+            <div id="paymentContainer" class="hidden">
+                <div class="flex flex-col items-center text-center">
+                    <img id="user-thumb" src="" alt="Avatar" class="w-24 h-24 rounded-full mb-4">
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-white" id="user-username"></h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400" id="user-expiration"></p>
+                </div>
+
+                <div id="payment-section" class="mt-8 space-y-4">
+                    <!-- Opções de pagamento serão inseridas aqui -->
+                </div>
+
+                <div id="pix-display" class="hidden text-center space-y-4 mt-6">
+                    <p>{{ _('Pagamento PIX gerado! Utilize o QR Code ou o código abaixo para pagar.') }}</p>
+                    <img id="pix-qr-code" src="" class="mx-auto border-4 border-white dark:border-gray-600 rounded-lg w-56 h-56">
+                    <div class="flex items-center space-x-2">
+                        <input type="text" id="pix-copy-paste" readonly class="w-full p-2 text-sm text-gray-900 bg-gray-200 rounded-lg border-none dark:bg-gray-700 dark:text-white">
+                        <button id="copy-pix-code" class="p-2 rounded-md bg-blue-500 text-white hover:bg-blue-600">{{ _('Copiar') }}</button>
+                    </div>
+                    <p id="polling-status" class="text-sm text-gray-500 dark:text-gray-400">{{ _('A aguardar confirmação de pagamento...') }}</p>
+                    <div class="mt-4 p-3 bg-yellow-100 dark:bg-yellow-500/20 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-200 text-left rounded-md">
+                        <p class="font-bold">{{ _('Importante!') }}</p>
+                        <p class="text-sm">{{ _('Para garantir que sua assinatura seja ativada instantaneamente, por favor, mantenha esta página aberta até que o pagamento seja confirmado.') }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="providerChoiceModal" class="modal-backdrop hidden"></div>
+    <div id="toast" class="toast"></div>
+
+    <script id="payment-public-script"
+        type="module"
+        src="{{ url_for('static', filename='js/payment_public.js') }}"
+        data-token="{{ token }}"
+        data-username="{{ username }}"
+        data-get-public-profile-url="{{ url_for('users_api.get_public_user_profile_by_token', token=token) }}"
+        data-get-payment-options-url="{{ url_for('payments_api.get_payment_options') }}"
+        data-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
+        data-get-payment-status-base-url="{{ url_for('payments_api.get_payment_status', txid='__TXID__') }}"
+        data-i18n-error="{{ _('Erro') }}"
+        data-i18n-no-provider="{{ _('Nenhum provedor de pagamento ou plano está habilitado pelo administrador.') }}"
+        data-i18n-generate-pix="{{ _('Gerar PIX') }}"
+        data-i18n-generate-pix-for-price="{{ _('Renovar por R$ {price}') }}"
+        data-i18n-choose-provider="{{ _('Escolha um Provedor') }}"
+        data-i18n-pay-with-efi="{{ _('Pagar com Efí') }}"
+        data-i18n-pay-with-mp="{{ _('Pagar com Mercado Pago') }}"
+        data-i18n-cancel="{{ _('Cancelar') }}"
+        data-i18n-wait="{{ _('Aguarde...') }}"
+        data-i18n-payment-confirmed="{{ _('Pagamento confirmado! A sua assinatura foi renovada.') }}"
+        data-i18n-polling-confirmed="{{ _('Pagamento Confirmado! A página será atualizada em 3 segundos...') }}"
+        data-i18n-polling-error="{{ _('Erro ao verificar o estado do pagamento (a tentar novamente):') }}"
+        data-i18n-code-copied="{{ _('Código PIX copiado!') }}"
+        data-i18n-screen-singular="{{ _('Tela') }}"
+        data-i18n-screen-plural="{{ _('Telas') }}"
+        data-i18n-expires-on="{{ _('Vence em:') }}"
+        data-i18n-expired-on="{{ _('Vencido em:') }}"
+        data-i18n-current-plan="{{ _('Seu Plano Atual') }}"
+        data-i18n-no-plan-price="{{ _('O seu plano atual não possui um preço de renovação definido. Por favor, contacte o administrador.') }}"
+    ></script>
+</body>
+</html>

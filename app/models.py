@@ -64,7 +64,7 @@ class UserProfile(db.Model):
     username = db.Column(db.String, primary_key=True)
     name = db.Column(db.String)
     telegram_user = db.Column(db.String)
-    discord_user_id = db.Column(db.String) # NOVO CAMPO ADICIONADO
+    discord_user_id = db.Column(db.String) 
     phone_number = db.Column(db.String)
     expiration_date = db.Column(db.String)
     last_notification_sent = db.Column(db.String)
@@ -75,6 +75,7 @@ class UserProfile(db.Model):
     screen_limit = db.Column(db.Integer, default=0, nullable=False)
     hide_from_leaderboard = db.Column(db.Boolean, default=False, nullable=False)
     libraries = db.Column(db.Text, nullable=True)
+    payment_token = db.Column(db.String, unique=True, nullable=True)
 
 class PixPayment(db.Model):
     __tablename__ = 'pix_payments'
@@ -97,3 +98,10 @@ class Notification(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     is_read = db.Column(db.Boolean, default=False, nullable=False)
     link = db.Column(db.String, nullable=True)
+
+class ShortLink(db.Model):
+    __tablename__ = 'short_links'
+    id = db.Column(db.Integer, primary_key=True)
+    short_code = db.Column(db.String(10), unique=True, nullable=False, index=True)
+    original_url = db.Column(db.String(512), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

@@ -41,14 +41,12 @@ def setup_logging(app, log_level='INFO'):
     
     log_file = app.config.get('LOG_FILE')
     
-    # Validação crítica: Se o caminho do log não estiver definido ou estiver vazio, a aplicação não pode continuar.
     if not log_file:
         logging.critical("CRÍTICO: O caminho do ficheiro de log (LOG_FILE) não está definido ou está vazio no config.json. A aplicação não pode iniciar.")
         raise ValueError("LOG_FILE não está configurado.")
 
-    # Garante que o diretório para o ficheiro de log existe
     log_dir = os.path.dirname(log_file)
-    if log_dir: # Apenas tenta criar o diretório se o caminho não for vazio
+    if log_dir: 
         os.makedirs(log_dir, exist_ok=True)
     
     max_bytes = app.config.get('LOG_MAX_BYTES', 1024 * 1024)
@@ -93,16 +91,11 @@ def create_app(log_level='INFO', _from_job=False):
     app_config = load_or_create_config()
     app.config.update(app_config)
     
-    # A SECRET_KEY é agora carregada de forma segura pelo load_or_create_config
     app.config['SECRET_KEY'] = app_config.get('SECRET_KEY')
-
-    # Define a duração da sessão permanente para 30 dias
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
-    
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_SECURE'] = True
 
-    # O caminho da base de dados agora aponta para a pasta 'config'
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'app_data.db')
     
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=20'
@@ -123,7 +116,6 @@ def create_app(log_level='INFO', _from_job=False):
 
     setup_logging(app, log_level)
 
-    # Inicializa as extensões com a app
     extensions.db.init_app(app)
     extensions.migrate.init_app(app, extensions.db)
     extensions.login_manager.init_app(app)
@@ -134,27 +126,23 @@ def create_app(log_level='INFO', _from_job=False):
             'default': SQLAlchemyJobStore(url=app.config['SQLALCHEMY_DATABASE_URI'])
         }
         try:
-            # Tenta obter o nome do fuso horário local de forma segura
             local_tz_name = get_localzone_name()
         except Exception:
-            # Se falhar, usa UTC como um fallback seguro
             local_tz_name = 'UTC'
         
         logger.info(f"Configurando o fuso horário do agendador para: {local_tz_name}")
-
-        # Adiciona o fuso horário à configuração do agendador
         extensions.scheduler.configure(jobstores=jobstores, timezone=local_tz_name)
 
-    # Com as extensões prontas, agora podemos instanciar os nossos serviços
     from .services import (
         DataManager, TautulliManager, PlexManager, 
         NotifierManager, EfiManager, MercadoPagoManager,
-        OverseerrManager
+        OverseerrManager, LinkShortener
     )
 
     extensions.data_manager = DataManager()
     extensions.tautulli_manager = TautulliManager(data_manager=extensions.data_manager)
-    extensions.notifier_manager = NotifierManager()
+    extensions.link_shortener = LinkShortener()
+    extensions.notifier_manager = NotifierManager(link_shortener_service=extensions.link_shortener)
     extensions.efi_manager = EfiManager(data_manager=extensions.data_manager)
     extensions.mercado_pago_manager = MercadoPagoManager(data_manager=extensions.data_manager)
     extensions.overseerr_manager = OverseerrManager()
@@ -210,7 +198,10 @@ def create_app(log_level='INFO', _from_job=False):
             'system_api.get_logs', 'system_api.clear_logs',
             'invites_api.get_invite_details_route', 'invites_api.claim_invite_route',
             'payments_api.efi_webhook', 'payments_api.mercadopago_webhook',
-            'set_language', 'main.claim_invite_page', 'serve_manifest', 'serve_sw'
+            'set_language', 'main.claim_invite_page', 'serve_manifest', 'serve_sw',
+            'main.payment_page', 'users_api.get_public_user_profile_by_token', 'payments_api.get_payment_options',
+            'payments_api.create_charge_route', 'payments_api.get_payment_status',
+            'redirect.redirect_to_url'
         }
         if request.endpoint in exempt_endpoints:
             return
@@ -251,6 +242,7 @@ def create_app(log_level='INFO', _from_job=False):
     # --- REGISTO DOS BLUEPRINTS ---
     from .blueprints.main import main_bp
     from .blueprints.auth import auth_bp
+    from .blueprints.redirect import redirect_bp
     # Importar os novos blueprints da API
     from .blueprints.api.system import system_api_bp
     from .blueprints.api.users import users_api_bp
@@ -261,6 +253,7 @@ def create_app(log_level='INFO', _from_job=False):
     
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp, url_prefix='/auth')
+    app.register_blueprint(redirect_bp)
     # Registar os novos blueprints, todos sob o prefixo /api
     app.register_blueprint(system_api_bp, url_prefix='/api')
     app.register_blueprint(users_api_bp, url_prefix='/api/users')

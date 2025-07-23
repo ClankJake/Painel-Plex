@@ -10,6 +10,7 @@ from flask_login import login_required
 from ...extensions import plex_manager, tautulli_manager, data_manager, efi_manager, mercado_pago_manager
 from ...config import load_or_create_config
 from ..auth import admin_required
+from ...models import UserProfile
 
 logger = logging.getLogger(__name__)
 payments_api_bp = Blueprint('payments_api', __name__)
@@ -63,76 +64,95 @@ def _process_successful_payment(txid):
             logger.warning(f"Utilizador '{username}' do pagamento {txid} não encontrado no Plex para renovação. O pagamento foi marcado como concluído, mas a renovação falhou.")
     except Exception as e:
         logger.error(f"Ocorreu um erro crítico ao processar o pagamento para o TXID {txid}: {e}", exc_info=True)
-        # Opcional: Adicionar lógica para reverter o estado do pagamento em caso de erro.
-        # data_manager.update_pix_payment_status(txid, 'ERRO_PROCESSAMENTO')
-
 
 @payments_api_bp.route('/options')
-@login_required
 def get_payment_options():
+    token = request.args.get('token')
+    username = None
+    is_public_request = bool(token)
+
+    if token:
+        profile = UserProfile.query.filter_by(payment_token=token).first()
+        if profile:
+            username = profile.username
+    elif current_user.is_authenticated:
+        username = current_user.username
+    
+    if not username:
+        return jsonify({"success": False, "message": _("Usuário não especificado ou token inválido.")}), 400
+
     config = load_or_create_config()
+    profile = data_manager.get_user_profile(username)
+    current_screens = profile.get('screen_limit', 0)
+    
     screen_prices = config.get("SCREEN_PRICES", {})
     renewal_price = config.get("RENEWAL_PRICE")
-    available_prices = {}
-    valid_screen_prices = {k: v for k, v in screen_prices.items() if v and float(v) > 0}
-
-    if valid_screen_prices:
-        profile = data_manager.get_user_profile(current_user.username)
-        current_screens = profile.get('screen_limit', 0)
-        expiration_date_str = profile.get('expiration_date')
-        days_left = 999 
-        if expiration_date_str:
-            try:
-                expiration_date = datetime.fromisoformat(expiration_date_str).date()
-                days_left = (expiration_date - date.today()).days
-            except ValueError: pass
-        
-        renewal_window_days = int(config.get("DAYS_TO_NOTIFY_EXPIRATION", 7))
-        can_downgrade = days_left <= renewal_window_days
-        
-        for screens, price in valid_screen_prices.items():
-            if can_downgrade or int(screens) >= current_screens:
-                available_prices[screens] = price
     
-    if not available_prices and renewal_price and float(renewal_price) > 0:
-        available_prices["0"] = renewal_price
+    available_prices = {}
+    can_downgrade = True
 
+    if is_public_request:
+        price_for_current_plan = screen_prices.get(str(current_screens), renewal_price)
+        if price_for_current_plan and float(price_for_current_plan) > 0:
+            available_prices = {str(current_screens): price_for_current_plan}
+        else:
+            return jsonify({"success": False, "message": _("O seu plano atual não tem um preço de renovação definido.")}), 404
+    else:
+        valid_screen_prices = {k: v for k, v in screen_prices.items() if v and float(v) > 0}
+        if valid_screen_prices:
+            expiration_date_str = profile.get('expiration_date')
+            days_left = 999
+            if expiration_date_str:
+                try:
+                    expiration_date = datetime.fromisoformat(expiration_date_str).date()
+                    days_left = (expiration_date - date.today()).days
+                except ValueError: pass
+            
+            renewal_window_days = int(config.get("DAYS_TO_NOTIFY_EXPIRATION", 7))
+            can_downgrade = days_left <= renewal_window_days
+            
+            for screens, price in valid_screen_prices.items():
+                if can_downgrade or int(screens) >= current_screens:
+                    available_prices[screens] = price
+        
+        if not available_prices and renewal_price and float(renewal_price) > 0:
+            available_prices["0"] = renewal_price
+    
     enabled_providers = {"efi": config.get("EFI_ENABLED"), "mercadopago": config.get("MERCADOPAGO_ENABLED")}
-    return jsonify({"success": True, "prices": available_prices, "providers": enabled_providers, "can_downgrade": can_downgrade if valid_screen_prices else True})
+    return jsonify({"success": True, "prices": available_prices, "providers": enabled_providers, "can_downgrade": can_downgrade})
 
 @payments_api_bp.route('/create-charge', methods=['POST'])
-@login_required
 def create_charge_route():
     data = request.json
     provider = data.get('provider')
     screens_str = data.get('screens')
+    
+    username = data.get('username') or (current_user.username if current_user.is_authenticated else None)
+    if not username:
+        return jsonify({"success": False, "message": _("Usuário não especificado para a cobrança.")}), 400
 
     if not provider or screens_str is None:
         return jsonify({"success": False, "message": _("Dados insuficientes para gerar cobrança.")}), 400
 
     config = load_or_create_config()
-    profile = data_manager.get_user_profile(current_user.username)
+    profile = data_manager.get_user_profile(username)
     
-    valid_options_response = get_payment_options()
-    valid_options_data = valid_options_response.get_json()
+    plex_user = next((u for u in plex_manager.get_all_plex_users() if u['username'] == username), None)
+    if not plex_user:
+        return jsonify({"success": False, "message": _("Usuário não encontrado no Plex.")}), 404
     
-    if not valid_options_data.get("success"):
-        return jsonify({"success": False, "message": _("Não foi possível determinar os planos de pagamento válidos.")}), 500
+    price_str = None
+    if str(screens_str) in config.get("SCREEN_PRICES", {}):
+        price_str = config.get("SCREEN_PRICES")[str(screens_str)]
+    elif str(screens_str) == "0":
+        price_str = config.get("RENEWAL_PRICE")
 
-    available_prices = valid_options_data.get("prices", {})
-
-    if screens_str not in available_prices:
-        logger.warning(f"Utilizador '{current_user.username}' tentou gerar cobrança para um plano inválido/não permitido: {screens_str} telas. Opções permitidas: {list(available_prices.keys())}")
-        return jsonify({"success": False, "message": _("O plano de pagamento solicitado não é válido ou não está disponível para si neste momento.")}), 400
-        
-    price_str = available_prices.get(screens_str)
-    
     if not price_str or float(price_str) <= 0:
         return jsonify({"success": False, "message": _("Opção de plano inválida ou sem preço definido.")}), 400
         
     price = float(price_str)
     screens = int(screens_str)
-    user_info = {"username": current_user.username, "name": profile.get('name', current_user.username), "email": current_user.email}
+    user_info = {"username": username, "name": profile.get('name', username), "email": plex_user.get('email')}
     
     result = {"success": False, "message": _("O provedor %(provider)s não está habilitado.", provider=provider)}
     if provider == 'EFI' and config.get('EFI_ENABLED'):
@@ -143,7 +163,6 @@ def create_charge_route():
     return jsonify(result)
 
 @payments_api_bp.route('/status/<string:txid>')
-@login_required
 def get_payment_status(txid):
     payment = data_manager.get_pix_payment(txid)
     if not payment: return jsonify({"success": False, "status": "NOT_FOUND"}), 404
@@ -175,7 +194,6 @@ def efi_webhook():
                     logger.warning("Webhook da Efí recebido sem TXID na notificação pix.")
                     continue
                 
-                # É uma boa prática verificar o estado da cobrança para confirmar.
                 efi_status_result = efi_manager.detail_pix_charge(txid)
                 if efi_status_result.get("success") and efi_status_result.get("data", {}).get("status") == 'CONCLUIDA':
                     _process_successful_payment(txid)
@@ -183,7 +201,6 @@ def efi_webhook():
                     logger.warning(f"Webhook da Efí para TXID {txid} recebido, mas o estado não é 'CONCLUIDA' ou a verificação falhou. Estado: {efi_status_result.get('data', {}).get('status')}")
     except Exception as e:
         logger.error(f"Erro ao processar o webhook da Efí: {e}", exc_info=True)
-        # Retornar um erro 500 para que o provedor possa tentar novamente, se configurado para isso.
         return jsonify(status="error", message="Internal Server Error"), 500
         
     return jsonify(status="received"), 200
@@ -199,7 +216,6 @@ def mercadopago_webhook():
                 logger.warning("Webhook do Mercado Pago recebido sem ID de pagamento.")
                 return jsonify(status="received"), 200
 
-            # O webhook do MP apenas notifica a ação. É crucial verificar o estado do pagamento.
             mp_status_result = mercado_pago_manager.get_payment_details(payment_id)
             if mp_status_result.get("success") and mp_status_result.get("data", {}).get("status") == "approved":
                 _process_successful_payment(payment_id)

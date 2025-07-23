@@ -89,15 +89,28 @@
                  <div>
                     <label for="APP_BASE_URL" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL Base da Aplicação') }}</label>
                     <input type="url" id="APP_BASE_URL" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="https://seuservidor.com">
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('O endereço público que aponta para a sua aplicação. Necessário para webhooks de pagamento.')}}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('O endereço público que aponta para a sua aplicação. Necessário para webhooks de pagamento e links curtos.')}}</p>
                 </div>
-                <div>
-                    <label for="languageSelector" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Idioma da Interface') }}</label>
-                    <select id="languageSelector" class="mt-1 max-w-sm block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                        {% for lang, name in config.LANGUAGES.items() %}
-                            <option value="{{ lang }}" {% if lang == current_locale.language %}selected{% endif %}>{{ name }}</option>
-                        {% endfor %}
-                    </select>
+                <div class="pt-6 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                    <div>
+                        <label for="languageSelector" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Idioma da Interface') }}</label>
+                        <select id="languageSelector" class="mt-1 max-w-sm block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            {% for lang, name in config.LANGUAGES.items() %}
+                                <option value="{{ lang }}" {% if lang == current_locale.language %}selected{% endif %}>{{ name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="flex flex-col items-start">
+                        <div class="flex items-center">
+                            <input id="ENABLE_LINK_SHORTENER" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                            <label for="ENABLE_LINK_SHORTENER" class="ml-2 text-sm font-medium text-gray-900 dark:text-gray-300">
+                                {{ _('Habilitar Encurtador de Links') }}
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 ml-6">
+                            {{ _('Marque essa caixa caso deseje link curto nas notificações.') }}
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -144,31 +157,38 @@
         <div id="tab-pagamentos" class="tab-content">
             <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                 <div class="space-y-6">
-                    <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Preços por Quantidade de Telas') }}</h4>
                     <div>
-                        <label for="RENEWAL_PRICE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço Padrão (Fallback)') }}</label>
-                        <input type="text" id="RENEWAL_PRICE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="10.00">
-                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Use este preço se não quiser definir valores por tela. Deixe os campos abaixo em branco para usar este valor.')}}</p>
+                        <label for="PAYMENT_LINK_GRACE_PERIOD_DAYS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Período de Carência para Link de Pagamento (dias)') }}</label>
+                        <input type="number" id="PAYMENT_LINK_GRACE_PERIOD_DAYS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="0">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Número de dias após o vencimento que o link de pagamento continuará ativo.')}}</p>
                     </div>
-                    <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
-                        <h4 class="font-semibold text-lg mb-4">{{ _('Preços por Quantidade de Telas (Opcional)') }}</h4>
-                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">{{_('Se preenchidos, estes valores terão prioridade sobre o preço padrão.')}}</p>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label for="PRICE_SCREEN_1" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 1 Tela') }}</label>
-                                <input type="text" id="PRICE_SCREEN_1" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="10.00">
-                            </div>
-                            <div>
-                                <label for="PRICE_SCREEN_2" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 2 Telas') }}</label>
-                            <input type="text" id="PRICE_SCREEN_2" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="18.00">
-                            </div>
-                            <div>
-                                <label for="PRICE_SCREEN_3" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 3 Telas') }}</label>
-                                <input type="text" id="PRICE_SCREEN_3" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="25.00">
-                            </div>
-                            <div>
-                                <label for="PRICE_SCREEN_4" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 4 Telas') }}</label>
-                                <input type="text" id="PRICE_SCREEN_4" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="30.00">
+                    <div class="pt-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
+                        <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Preços por Quantidade de Telas') }}</h4>
+                        <div>
+                            <label for="RENEWAL_PRICE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço Padrão (Fallback)') }}</label>
+                            <input type="text" id="RENEWAL_PRICE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="10.00">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Use este preço se não quiser definir valores por tela. Deixe os campos abaixo em branco para usar este valor.')}}</p>
+                        </div>
+                        <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+                            <h4 class="font-semibold text-lg mb-4">{{ _('Preços por Quantidade de Telas (Opcional)') }}</h4>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">{{_('Se preenchidos, estes valores terão prioridade sobre o preço padrão.')}}</p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="PRICE_SCREEN_1" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 1 Tela') }}</label>
+                                    <input type="text" id="PRICE_SCREEN_1" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="10.00">
+                                </div>
+                                <div>
+                                    <label for="PRICE_SCREEN_2" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 2 Telas') }}</label>
+                                <input type="text" id="PRICE_SCREEN_2" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="18.00">
+                                </div>
+                                <div>
+                                    <label for="PRICE_SCREEN_3" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 3 Telas') }}</label>
+                                    <input type="text" id="PRICE_SCREEN_3" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="25.00">
+                                </div>
+                                <div>
+                                    <label for="PRICE_SCREEN_4" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 4 Telas') }}</label>
+                                    <input type="text" id="PRICE_SCREEN_4" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="30.00">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -475,6 +495,7 @@
             <strong class="font-mono text-blue-600 dark:text-blue-400">{phone_number}</strong> <span>- {{ _('O número de telefone do utilizador.') }}</span>
             <strong class="font-mono text-blue-600 dark:text-blue-400">{days}</strong> <span>- {{ _('Os dias restantes para o vencimento (apenas para mensagens de vencimento).') }}</span>
             <strong class="font-mono text-blue-600 dark:text-blue-400">{new_date}</strong> <span>- {{ _('A nova data de vencimento (apenas para mensagens de renovação).') }}</span>
+            <strong class="font-mono text-blue-600 dark:text-blue-400">{payment_link}</strong> <span>- {{ _('O link direto para a página de pagamento do utilizador.') }}</span>
         </div>
     </div>
 </div>
@@ -505,13 +526,16 @@
     data-i18n-unknown-error="{{ _('Ocorreu um erro desconhecido.') }}"
     data-i18n-save-changes="{{ _('Salvar Alterações') }}"
     data-i18n-testing="{{ _('Testando...') }}"
+    data-i18n-auto-configuring="{{ _('Configurando...') }}"
+    data-i18n-auto-configure="{{ _('Auto-Configurar') }}"
     data-i18n-test-connection="{{ _('Testar Conexão') }}"
     data-i18n-stop-updates="{{ _('Parar Atualização') }}"
     data-i18n-start-updates="{{ _('Iniciar Atualização') }}"
     data-i18n-loading-logs="{{ _('Carregando logs...') }}"
     data-i18n-error-loading-logs="{{ _('Erro ao carregar logs') }}"
     data-i18n-connection-error="{{ _('Erro de conexão') }}"
-    data-i18n-auto-configure="{{ _('Auto-Configurar') }}"
+    data-i18n-provide-notifier-id="{{ _('Por favor, insira um ID de notificador válido.') }}"
+    data-i18n-provide-tautulli-credentials="{{ _('Por favor, preencha a URL e a Chave de API do Tautulli primeiro.') }}"
     data-i18n-confirm-server="{{ _('Confirmar Servidor') }}"
     data-i18n-server-updated="{{ _('Servidor atualizado com sucesso!') }}"
     data-i18n-save-templates="{{ _('Salvar Templates') }}"
