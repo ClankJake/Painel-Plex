@@ -1,7 +1,11 @@
 # Dockerfile para a aplicação Painel Plex
 
 # 1. Imagem Base: Começamos com uma imagem Python leve e oficial.
-FROM python:3.12-slim-buster
+FROM python:3.12-slim-bullseye
+
+# Set default environment variables for user/group IDs
+ENV PUID=1000
+ENV PGID=1000
 
 # 2. Diretório de Trabalho: Define o diretório onde a aplicação irá correr dentro do contentor.
 WORKDIR /app
