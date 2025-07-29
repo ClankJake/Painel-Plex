@@ -59,7 +59,9 @@ jobs:
         with:
           context: .
           push: true
-          # CORREÇÃO: Adicionada a flag 'platforms' para construir para AMD64 e ARM64.
           platforms: linux/amd64,linux/arm64
+          # CORREÇÃO: Desativar a proveniência do build. Esta é uma solução conhecida
+          # para resolver erros de formato de executável em builds multi-plataforma.
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
