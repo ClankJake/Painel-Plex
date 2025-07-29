@@ -1,7 +1,7 @@
 # Dockerfile para a aplicação Painel Plex
 
 # 1. Imagem Base: Começamos com uma imagem Python leve e oficial.
-FROM python:3.12.11-slim-buster
+FROM python:3.12-slim-buster
 
 # 2. Diretório de Trabalho: Define o diretório onde a aplicação irá correr dentro do contentor.
 WORKDIR /app
