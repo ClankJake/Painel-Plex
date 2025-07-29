@@ -15,6 +15,7 @@ from . import extensions
 from .config import load_or_create_config, is_configured
 from .scheduler import setup_scheduler
 from . import models
+from . import sockets # Importa o novo módulo de sockets
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,11 @@ def create_app(log_level='INFO', _from_job=False):
     extensions.login_manager.init_app(app)
     extensions.babel.init_app(app, locale_selector=get_user_locale)
     
+    # Inicializa o SocketIO com a app
+    extensions.socketio.init_app(app, async_mode='eventlet')
+    # Passa a instância da app para o módulo de sockets para que o contexto possa ser usado na tarefa de fundo
+    sockets.app_instance = app
+
     if not extensions.scheduler.running:
         jobstores = {
             'default': SQLAlchemyJobStore(url=app.config['SQLALCHEMY_DATABASE_URI'])
@@ -203,7 +209,7 @@ def create_app(log_level='INFO', _from_job=False):
             'payments_api.create_charge_route', 'payments_api.get_payment_status',
             'redirect.redirect_to_url'
         }
-        if request.endpoint in exempt_endpoints:
+        if request.endpoint in exempt_endpoints or request.path.startswith('/socket.io'):
             return
 
         if not is_configured():

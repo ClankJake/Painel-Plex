@@ -1,3 +1,5 @@
+import { fetchAPI, showToast, createModal } from './utils.js';
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- GLOBAIS E CONFIGURAÇÃO ---
     const scriptTag = document.getElementById('statistics-script');
@@ -27,8 +29,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- ESTADO DA APLICAÇÃO ---
     let mainBarChart = null;
-    let userDetailChart = null;
-    let userContentTypeChart = null;
     let allUsersData = [];
     let currentPage = 1;
 
@@ -72,6 +72,98 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- LÓGICA DE RENDERIZAÇÃO ---
+    
+    function formatTimeAgo(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const seconds = Math.floor((now - date) / 1000);
+
+        const intervals = [
+            { label: i18n.yearsAgo, seconds: 31536000 },
+            { label: i18n.monthsAgo, seconds: 2592000 },
+            { label: i18n.daysAgo, seconds: 86400 },
+            { label: i18n.hoursAgo, seconds: 3600 },
+            { label: i18n.minutesAgo, seconds: 60 }
+        ];
+
+        for (const interval of intervals) {
+            const count = Math.floor(seconds / interval.seconds);
+            if (count >= 1) {
+                return interval.label.replace('{count}', count);
+            }
+        }
+        return i18n.justNow;
+    }
+
+
+    function renderNewlyAdded(media) {
+        const section = document.getElementById('newly-added-section');
+        const container = document.getElementById('newly-added-container');
+        const scrollLeftBtn = document.getElementById('scroll-left-btn');
+        const scrollRightBtn = document.getElementById('scroll-right-btn');
+
+        if (!section || !container) return;
+
+        if (media && media.length > 0) {
+            container.innerHTML = media.map(item => {
+                const addedAgo = formatTimeAgo(item.added_at);
+                let title = item.title;
+                let subtitle = item.year || '';
+
+                if (item.media_type === 'episode') {
+                    title = item.grandparent_title || item.title; // Use series name as main title
+                    // Check if season and episode numbers are valid (not 0)
+                    if (item.parent_media_index > 0 && item.media_index > 0) {
+                        const seasonNum = String(item.parent_media_index).padStart(2, '0');
+                        const episodeNum = String(item.media_index).padStart(2, '0');
+                        subtitle = `S${seasonNum} · E${episodeNum}`;
+                    } else {
+                        // Fallback to the episode's own title if numbers are missing
+                        subtitle = item.title;
+                    }
+                } else if (item.media_type === 'season') {
+                    title = item.parent_title || item.title; // Use series name as main title
+                    subtitle = item.title; // Subtitle is "Season X"
+                }
+
+                return `
+                    <div class="flex-shrink-0 w-36 group">
+                        <div class="relative">
+                            <img src="${item.poster_url}" alt="Poster" class="w-36 h-52 object-cover rounded-lg shadow-lg transition-transform duration-300 group-hover:scale-105" onerror="this.onerror=null;this.src='https://placehold.co/144x208/1F2937/E5E7EB?text=${i18n.noArt}'">
+                            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 rounded-b-lg">
+                                <p class="text-white text-xs font-semibold truncate">${i18n.added} ${addedAgo}</p>
+                            </div>
+                        </div>
+                        <p class="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-2 truncate" title="${title}">${title}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 truncate">${subtitle}</p>
+                    </div>
+                `;
+            }).join('');
+            section.classList.remove('hidden');
+
+            const updateScrollButtons = () => {
+                if (!container || !scrollLeftBtn || !scrollRightBtn) return;
+                scrollLeftBtn.disabled = container.scrollLeft === 0;
+                scrollRightBtn.disabled = container.scrollLeft + container.clientWidth >= container.scrollWidth - 1;
+            };
+
+            scrollLeftBtn.addEventListener('click', () => {
+                container.scrollBy({ left: -container.clientWidth * 0.8, behavior: 'smooth' });
+            });
+
+            scrollRightBtn.addEventListener('click', () => {
+                container.scrollBy({ left: container.clientWidth * 0.8, behavior: 'smooth' });
+            });
+
+            container.addEventListener('scroll', updateScrollButtons);
+            new ResizeObserver(updateScrollButtons).observe(container);
+            updateScrollButtons();
+            
+        } else {
+            section.classList.add('hidden');
+        }
+    }
+
 
     function renderAdminSummary(stats) {
         const summaryContainer = document.getElementById('admin-summary-cards');
@@ -108,14 +200,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
         podiumContainer.innerHTML = podiumData.map(item => `
             <div class="flex flex-col items-center transition-transform duration-300 ease-in-out hover:scale-105 w-1/3 max-w-[220px] cursor-pointer ${item.order}" data-username="${item.user.username}">
-                
-                <img src="${item.user.thumb || 'https://placehold.co/80x80/1F2937/E5E7EB?text=?'}" 
-                     class="w-20 h-20 rounded-full border-4 border-white dark:border-gray-800 -mb-10 z-10" 
-                     alt="Avatar">
-    
-                <div class="w-full rounded-t-lg flex flex-col justify-end items-center p-2 pb-4 text-white shadow-lg" 
-                     style="height: ${item.height}; background: ${item.gradient};">
-                    
+                <img src="${item.user.thumb || 'https://placehold.co/80x80/1F2937/E5E7EB?text=?'}" class="w-20 h-20 rounded-full border-4 border-white dark:border-gray-800 -mb-10 z-10" alt="Avatar">
+                <div class="w-full rounded-t-lg flex flex-col justify-end items-center p-2 pb-4 text-white shadow-lg" style="height: ${item.height}; background: ${item.gradient};">
                     <div class="pt-10 text-center">
                         <p class="font-bold text-lg truncate">${item.medal} ${item.user.username}</p>
                         <p class="text-sm font-semibold">${formatDuration(item.user.total_duration)}</p>
@@ -220,21 +306,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await fetchAPI(`${url}?days=${days}`);
             const details = data.details;
             
-            // Lógica para renderizar conquistas na página do próprio usuário
-            const achievementsSection = document.getElementById('achievements-section');
-            const achievementsContainer = document.getElementById('achievements-container');
-            if (achievementsSection && achievementsContainer && details.achievements) {
-                if (details.achievements.length > 0) {
-                    achievementsContainer.innerHTML = details.achievements.map(ach => `
-                        <div class="achievement-badge unlocked">
-                            <span class="icon">${ach.icon}</span>
-                            <span class="title">${ach.title}</span>
-                            <div class="tooltip">${ach.description}</div>
-                        </div>
-                    `).join('');
-                    achievementsSection.classList.remove('hidden');
-                } else {
-                    achievementsSection.classList.add('hidden');
+            // Apenas renderiza conquistas na página principal se for o utilizador atual.
+            if (username === currentUser.username) {
+                const achievementsSection = document.getElementById('achievements-section');
+                const achievementsContainer = document.getElementById('achievements-container');
+                if (achievementsSection && achievementsContainer && details.achievements) {
+                    if (details.achievements.length > 0) {
+                        achievementsContainer.innerHTML = details.achievements.map(ach => `
+                            <div class="achievement-badge unlocked-${ach.level}">
+                                <span class="icon">${ach.icon}</span>
+                                <span class="title">${ach.title}</span>
+                                <div class="tooltip">${ach.description}</div>
+                            </div>
+                        `).join('');
+                        achievementsSection.classList.remove('hidden');
+                    } else {
+                        achievementsSection.classList.add('hidden');
+                    }
                 }
             }
 
@@ -248,15 +336,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 `).join('');
             }
             
-            // Lógica para renderizar conquistas no modal (para admin ou outros usuários)
-            let achievementsModalHtml = '';
+            let achievementsHtmlForContainer = '';
             if (details.achievements && details.achievements.length > 0) {
-                achievementsModalHtml = `
+                achievementsHtmlForContainer = `
                     <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
                         <h4 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">${i18n.achievements}</h4>
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                             ${details.achievements.map(ach => `
-                                <div class="achievement-badge unlocked">
+                                <div class="achievement-badge unlocked-${ach.level}">
                                     <span class="icon">${ach.icon}</span>
                                     <span class="title">${ach.title}</span>
                                     <div class="tooltip">${ach.description}</div>
@@ -295,9 +382,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h4 class="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100">${i18n.mostRecentItems}</h4>
                         <div class="flex space-x-4 overflow-x-auto py-2 horizontal-scroll">${recentHtml}</div>
                     </div>
-                    ${achievementsModalHtml}
+                    ${achievementsHtmlForContainer}
                 </div>
             `;
+            // Renderiza os gráficos dentro do container que foi passado.
             renderUserActivityChart(containerElement);
             renderUserContentTypeChart(containerElement);
 
@@ -307,12 +395,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function renderUserActivityChart(containerElement) {
-        if(userDetailChart) userDetailChart.destroy();
-        const activityCanvas = containerElement.querySelector('#activityBarChart');
-        if(!activityCanvas) return;
-        const weeklyData = JSON.parse(activityCanvas.dataset.weeklyActivity);
+        const canvas = containerElement.querySelector('#activityBarChart');
+        if (!canvas) return;
+        // Destroi qualquer instância de gráfico anterior neste canvas específico.
+        if (canvas.chart) {
+            canvas.chart.destroy();
+        }
+        const weeklyData = JSON.parse(canvas.dataset.weeklyActivity);
         const colors = getChartColors();
-        userDetailChart = new Chart(activityCanvas.getContext('2d'), {
+        const chartInstance = new Chart(canvas.getContext('2d'), {
             type: 'bar',
             data: { 
                 labels: [i18n.sun, i18n.mon, i18n.tue, i18n.wed, i18n.thu, i18n.fri, i18n.sat], 
@@ -326,55 +417,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 }] 
             },
             options: { 
-                responsive: true, 
-                maintainAspectRatio: false, 
-                plugins: { 
-                    legend: { display: false }, 
-                    tooltip: { 
-                        backgroundColor: colors.tooltipBg, titleColor: colors.textColor, bodyColor: colors.textColor,
-                        callbacks: { label: (c) => `${i18n.duration}: ${c.parsed.y} ${i18n.hours}` } 
-                    } 
-                }, 
-                scales: { 
-                    y: { beginAtZero: true, title: { display: true, text: i18n.hoursWatched, color: colors.textColor }, ticks: { color: colors.textColor }, grid: { color: colors.gridColor } }, 
-                    x: { ticks: { color: colors.textColor }, grid: { display: false } } 
-                } 
+                responsive: true, maintainAspectRatio: false, 
+                plugins: { legend: { display: false }, tooltip: { backgroundColor: colors.tooltipBg, titleColor: colors.textColor, bodyColor: colors.textColor, callbacks: { label: (c) => `${i18n.duration}: ${c.parsed.y} ${i18n.hours}` } } }, 
+                scales: { y: { beginAtZero: true, title: { display: true, text: i18n.hoursWatched, color: colors.textColor }, ticks: { color: colors.textColor }, grid: { color: colors.gridColor } }, x: { ticks: { color: colors.textColor }, grid: { display: false } } } 
             }
         });
+        // Armazena a nova instância no próprio elemento canvas para referência futura.
+        canvas.chart = chartInstance;
     }
 
     function renderUserContentTypeChart(containerElement) {
-        if(userContentTypeChart) userContentTypeChart.destroy();
-        const contentTypeCanvas = containerElement.querySelector('#contentTypeChart');
-        if(!contentTypeCanvas) return;
-        const contentTypeData = JSON.parse(contentTypeCanvas.dataset.contentType);
+        const canvas = containerElement.querySelector('#contentTypeChart');
+        if (!canvas) return;
+        if (canvas.chart) {
+            canvas.chart.destroy();
+        }
+        const contentTypeData = JSON.parse(canvas.dataset.contentType);
         const colors = getChartColors();
-        userContentTypeChart = new Chart(contentTypeCanvas.getContext('2d'), {
+        const chartInstance = new Chart(canvas.getContext('2d'), {
             type: 'doughnut',
             data: {
                 labels: [i18n.movies, i18n.episodes],
-                datasets: [{
-                    data: contentTypeData,
-                    backgroundColor: colors.doughnutColors,
-                    borderColor: colors.tooltipBg,
-                    borderWidth: 4,
-                }]
+                datasets: [{ data: contentTypeData, backgroundColor: colors.doughnutColors, borderColor: colors.tooltipBg, borderWidth: 4 }]
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false,
                 plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: { color: colors.textColor, font: { size: 14 } }
-                    },
-                    tooltip: {
-                        backgroundColor: colors.tooltipBg, titleColor: colors.textColor, bodyColor: colors.textColor,
-                        callbacks: { label: (c) => `${c.label}: ${c.parsed}` }
-                    }
+                    legend: { position: 'bottom', labels: { color: colors.textColor, font: { size: 14 } } },
+                    tooltip: { backgroundColor: colors.tooltipBg, titleColor: colors.textColor, bodyColor: colors.textColor, callbacks: { label: (c) => `${c.label}: ${c.parsed}` } }
                 }
             }
         });
+        canvas.chart = chartInstance;
     }
 
     // --- LÓGICA DE BUSCA E CONTROLO ---
@@ -386,8 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.classList.remove('hidden');
         
         const modalBody = modal.querySelector('#modalBody');
-        
-        const closeButtonHtml = `<button id="modalClose" class="absolute top-4 right-4 text-gray-400 hover:text-white text-4xl leading-none">&times;</button>`;
+        const closeButtonHtml = `<button id="modalClose" class="absolute top-4 right-4 text-gray-400 hover:text-white text-4xl leading-none z-10">&times;</button>`;
         const titleHtml = `<h3 class="text-2xl font-bold text-yellow-400 mb-4">${i18n.analysisOf} ${username}</h3>`;
         
         const analysisContainer = document.createElement('div');
@@ -401,9 +474,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function closeModal() {
         const modal = document.getElementById('userDetailsModal');
-        if (modal) modal.classList.add('hidden');
-        if (userDetailChart) { userDetailChart.destroy(); userDetailChart = null; }
-        if (userContentTypeChart) { userContentTypeChart.destroy(); userContentTypeChart = null; }
+        if (modal) {
+            // Apenas destrói os gráficos que estão DENTRO do modal.
+            modal.querySelectorAll('canvas').forEach(canvas => {
+                if (canvas.chart) {
+                    canvas.chart.destroy();
+                }
+            });
+            modal.classList.add('hidden');
+            modal.innerHTML = ''; // Limpa o conteúdo para a próxima abertura.
+        }
     }
 
     async function mainFetch(days) {
@@ -412,8 +492,17 @@ document.addEventListener('DOMContentLoaded', () => {
         errorContainer.classList.add('hidden');
         
         try {
-            const data = await fetchAPI(`${urls.stats}?days=${days}`);
-            allUsersData = data.stats;
+            const dataPromise = fetchAPI(`${urls.stats}?days=${days}`);
+
+            if (currentUser.role !== 'admin') {
+                const newlyAddedPromise = fetchAPI(`${urls.recentlyAdded}?days=${days}`);
+                const [data, newlyAddedData] = await Promise.all([dataPromise, newlyAddedPromise]);
+                allUsersData = data.stats;
+                if (newlyAddedData.success) renderNewlyAdded(newlyAddedData.media);
+            } else {
+                const data = await dataPromise;
+                allUsersData = data.stats;
+            }
 
             if (currentUser.role === 'admin') {
                 const otherUsersSection = document.getElementById('otherUsersSection');
@@ -470,40 +559,32 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.addEventListener('click', (e) => { 
         const clickable = e.target.closest('[data-username]'); 
         if (clickable) {
-            // A verificação de privacidade agora é feita no backend, então o frontend sempre tenta abrir.
-            // O backend retornará um erro 403 que será tratado pela função de renderização.
             showUserDetailsModal(clickable.dataset.username, daysFilter.value); 
         } 
     });
     
-    const userDetailsModal = document.getElementById('userDetailsModal');
-    userDetailsModal?.addEventListener('click', e => { if (e.target === userDetailsModal) closeModal(); });
+    document.getElementById('userDetailsModal')?.addEventListener('click', e => { if (e.target.id === 'userDetailsModal') closeModal(); });
 
     if (currentUser.role === 'admin') {
-        const itemsPerPageSelect = document.getElementById('itemsPerPage');
-        itemsPerPageSelect?.addEventListener('change', () => { currentPage = 1; renderUsersTable(); });
+        document.getElementById('itemsPerPage')?.addEventListener('change', () => { currentPage = 1; renderUsersTable(); });
     }
     
     window.addEventListener('themeChanged', () => {
-       if (mainBarChart) {
-           const colors = getChartColors();
-           mainBarChart.options.scales.x.ticks.color = colors.textColor;
-           mainBarChart.options.scales.y.ticks.color = colors.textColor;
-           mainBarChart.options.scales.y.grid.color = colors.gridColor;
-           mainBarChart.options.scales.y.title.color = colors.textColor;
-           mainBarChart.update();
-       }
-       // Recarrega os gráficos do modal/utilizador se estiverem visíveis
-       const modal = document.getElementById('userDetailsModal');
-       const personalAnalysis = document.getElementById('personal-analysis');
-       if(modal && !modal.classList.contains('hidden')) {
-           renderUserActivityChart(modal);
-           renderUserContentTypeChart(modal);
-       }
-       if(personalAnalysis) {
-           renderUserActivityChart(personalAnalysis);
-           renderUserContentTypeChart(personalAnalysis);
-       }
+       if(statsContainer.classList.contains('hidden')) return;
+        const colors = getChartColors();
+        if (mainBarChart) {
+            mainBarChart.options.scales.x.ticks.color = colors.textColor;
+            mainBarChart.options.scales.y.ticks.color = colors.textColor;
+            mainBarChart.options.scales.y.grid.color = colors.gridColor;
+            mainBarChart.options.scales.y.title.color = colors.textColor;
+            mainBarChart.update();
+        }
+        // Recarrega os gráficos
+        const personalAnalysisContainer = document.getElementById('personal-analysis');
+        if(personalAnalysisContainer && personalAnalysisContainer.innerHTML !== ''){
+            renderUserActivityChart(personalAnalysisContainer);
+            renderUserContentTypeChart(personalAnalysisContainer);
+        }
     });
 
     // --- INICIALIZAÇÃO ---

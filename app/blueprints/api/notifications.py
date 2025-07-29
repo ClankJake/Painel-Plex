@@ -3,22 +3,25 @@
 import logging
 from datetime import datetime
 from flask import Blueprint, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from flask_babel import gettext as _
 
 from ...extensions import data_manager
-from ..auth import admin_required
 
 logger = logging.getLogger(__name__)
 notifications_api_bp = Blueprint('notifications_api', __name__)
 
 @notifications_api_bp.route('/')
 @login_required
-@admin_required
 def get_notifications_route():
     try:
-        notifications_data = data_manager.get_notifications(limit=15, include_read=True)
-        unread_count = data_manager.get_unread_notification_count()
+        # Admin vê notificações do sistema (username=None)
+        # Utilizadores vêm as suas próprias (username=current_user.username)
+        target_username = None if current_user.is_admin() else current_user.username
+        
+        notifications_data = data_manager.get_notifications(username=target_username, limit=15, include_read=True)
+        unread_count = data_manager.get_unread_notification_count(username=target_username)
+
         for n in notifications_data:
             if isinstance(n.get('timestamp'), datetime):
                 n['timestamp'] = n['timestamp'].strftime('%Y-%m-%dT%H:%M:%S')
@@ -29,10 +32,10 @@ def get_notifications_route():
 
 @notifications_api_bp.route('/read-all', methods=['POST'])
 @login_required
-@admin_required
 def mark_all_notifications_as_read_route():
     try:
-        updated_count = data_manager.mark_all_as_read()
+        target_username = None if current_user.is_admin() else current_user.username
+        updated_count = data_manager.mark_all_as_read(username=target_username)
         return jsonify({"success": True, "message": f"{updated_count} notificações marcadas como lidas."})
     except Exception as e:
         logger.error(f"Erro ao marcar notificações como lidas: {e}", exc_info=True)
@@ -40,10 +43,10 @@ def mark_all_notifications_as_read_route():
 
 @notifications_api_bp.route('/clear-all', methods=['POST'])
 @login_required
-@admin_required
 def clear_all_notifications_route():
     try:
-        deleted_count = data_manager.delete_all_notifications()
+        target_username = None if current_user.is_admin() else current_user.username
+        deleted_count = data_manager.delete_all_notifications(username=target_username)
         return jsonify({"success": True, "message": f"{deleted_count} notificações foram limpas com sucesso."})
     except Exception as e:
         logger.error(f"Erro ao limpar todas as notificações: {e}", exc_info=True)

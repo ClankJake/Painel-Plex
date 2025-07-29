@@ -88,7 +88,19 @@ def load_or_create_config():
             "CLEANUP_PENDING_PAYMENTS_DAYS": 3,
             "CLEANUP_TIME": "03:00",
             "ENABLE_LINK_SHORTENER": True,
-            "PAYMENT_LINK_GRACE_PERIOD_DAYS": 7
+            "PAYMENT_LINK_GRACE_PERIOD_DAYS": 7,
+            "ACHIEVEMENT_MOVIE_MARATHON_BRONZE": 5,
+            "ACHIEVEMENT_MOVIE_MARATHON_SILVER": 10,
+            "ACHIEVEMENT_MOVIE_MARATHON_GOLD": 20,
+            "ACHIEVEMENT_SERIES_BINGER_BRONZE": 20,
+            "ACHIEVEMENT_SERIES_BINGER_SILVER": 50,
+            "ACHIEVEMENT_SERIES_BINGER_GOLD": 100,
+            "ACHIEVEMENT_TIME_TRAVELER_BRONZE": 3,
+            "ACHIEVEMENT_TIME_TRAVELER_SILVER": 5,
+            "ACHIEVEMENT_TIME_TRAVELER_GOLD": 7,
+            "ACHIEVEMENT_DIRECTOR_FAN_BRONZE": 3,
+            "ACHIEVEMENT_DIRECTOR_FAN_SILVER": 5,
+            "ACHIEVEMENT_DIRECTOR_FAN_GOLD": 7
         }
         save_app_config(default_config)
         return default_config
@@ -148,6 +160,18 @@ def load_or_create_config():
                 config.setdefault("CLEANUP_TIME", "03:00")
                 config.setdefault("ENABLE_LINK_SHORTENER", True)
                 config.setdefault("PAYMENT_LINK_GRACE_PERIOD_DAYS", 7)
+                config.setdefault("ACHIEVEMENT_MOVIE_MARATHON_BRONZE", 5)
+                config.setdefault("ACHIEVEMENT_MOVIE_MARATHON_SILVER", 10)
+                config.setdefault("ACHIEVEMENT_MOVIE_MARATHON_GOLD", 20)
+                config.setdefault("ACHIEVEMENT_SERIES_BINGER_BRONZE", 20)
+                config.setdefault("ACHIEVEMENT_SERIES_BINGER_SILVER", 50)
+                config.setdefault("ACHIEVEMENT_SERIES_BINGER_GOLD", 100)
+                config.setdefault("ACHIEVEMENT_TIME_TRAVELER_BRONZE", 3)
+                config.setdefault("ACHIEVEMENT_TIME_TRAVELER_SILVER", 5)
+                config.setdefault("ACHIEVEMENT_TIME_TRAVELER_GOLD", 7)
+                config.setdefault("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3)
+                config.setdefault("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5)
+                config.setdefault("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7)
 
             log_file_path = config.get("LOG_FILE")
             if log_file_path and not os.path.isabs(log_file_path):

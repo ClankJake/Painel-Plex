@@ -1,11 +1,12 @@
 import { fetchAPI } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
+    // --- ELEMENTOS E DADOS GLOBAIS ---
     const loadingIndicator = document.getElementById('loadingIndicator');
     const dashboardContainer = document.getElementById('dashboardContainer');
     const errorContainer = document.getElementById('errorContainer');
     const errorMessage = document.getElementById('errorMessage');
-    const refreshButton = document.getElementById('refreshButton');
+    const realtimeStatus = document.getElementById('realtime-status');
 
     const scriptTag = document.getElementById('dashboard-script');
     const summaryUrl = scriptTag.dataset.summaryUrl;
@@ -21,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let monthlyRevenueChart = null;
     let userStatusChart = null;
 
+    // --- FUNÇÕES AUXILIARES ---
     function getChartColors() {
         const isDark = document.documentElement.classList.contains('dark');
         return {
@@ -36,7 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatCurrency(value) {
         return (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     }
-
+    
+    // --- LÓGICA DE RENDERIZAÇÃO ---
     function createSummaryCard(icon, label, value, colorClass) {
         return `
             <div class="p-4 rounded-xl flex items-center gap-4 transition-all duration-300 ${colorClass}">
@@ -66,59 +69,71 @@ document.addEventListener('DOMContentLoaded', () => {
         const revenueCanvas = document.getElementById('monthlyRevenueChart');
         const userStatusCanvas = document.getElementById('userStatusChart');
 
-        if (monthlyRevenueChart) monthlyRevenueChart.destroy();
+        // Atualiza ou cria o gráfico de receita
         if (revenueCanvas) {
             const dailyData = summary.daily_revenue || {};
             const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
             const labels = Array.from({ length: daysInMonth }, (_, i) => i + 1);
             const data = labels.map(day => dailyData[day] || 0);
 
-            monthlyRevenueChart = new Chart(revenueCanvas.getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: i18n.revenueLabel,
-                        data: data,
-                        backgroundColor: colors.barColor,
-                        borderColor: colors.barBorderColor,
-                        borderWidth: 1,
-                        borderRadius: 4,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { beginAtZero: true, ticks: { color: colors.textColor, callback: (value) => formatCurrency(value) }, grid: { color: colors.gridColor } },
-                        x: { ticks: { color: colors.textColor }, grid: { display: false } }
+            if (monthlyRevenueChart) {
+                monthlyRevenueChart.data.labels = labels;
+                monthlyRevenueChart.data.datasets[0].data = data;
+                monthlyRevenueChart.update('none'); // 'none' para evitar animações tremidas
+            } else {
+                 monthlyRevenueChart = new Chart(revenueCanvas.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: i18n.revenueLabel,
+                            data: data,
+                            backgroundColor: colors.barColor,
+                            borderColor: colors.barBorderColor,
+                            borderWidth: 1,
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { color: colors.textColor, callback: (value) => formatCurrency(value) }, grid: { color: colors.gridColor } },
+                            x: { ticks: { color: colors.textColor }, grid: { display: false } }
+                        }
                     }
-                }
-            });
+                });
+            }
         }
-
-        if (userStatusChart) userStatusChart.destroy();
+        
+        // Atualiza ou cria o gráfico de status de utilizador
         if (userStatusCanvas) {
-            userStatusChart = new Chart(userStatusCanvas.getContext('2d'), {
-                type: 'doughnut',
-                data: {
-                    labels: [i18n.activeUsersLabel, i18n.blockedUsersLabel],
-                    datasets: [{
-                        data: [summary.active_users, summary.blocked_users],
-                        backgroundColor: colors.doughnutColors,
-                        borderColor: colors.tooltipBg,
-                        borderWidth: 4,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'bottom', labels: { color: colors.textColor, font: { size: 14 } } }
+            const data = [summary.active_users, summary.blocked_users];
+            if (userStatusChart) {
+                userStatusChart.data.datasets[0].data = data;
+                userStatusChart.update('none'); // 'none' para evitar animações tremidas
+            } else {
+                 userStatusChart = new Chart(userStatusCanvas.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: [i18n.activeUsersLabel, i18n.blockedUsersLabel],
+                        datasets: [{
+                            data: data,
+                            backgroundColor: colors.doughnutColors,
+                            borderColor: colors.tooltipBg,
+                            borderWidth: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { color: colors.textColor, font: { size: 14 } } }
+                        }
                     }
-                }
-            });
+                });
+            }
         }
     }
 
@@ -159,18 +174,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     }
 
-    async function loadDashboardData(force = false) {
+    async function loadDashboardData() {
         loadingIndicator.style.display = 'block';
         dashboardContainer.classList.add('hidden');
         errorContainer.classList.add('hidden');
 
-        if (refreshButton) {
-            refreshButton.disabled = true;
-            refreshButton.querySelector('svg')?.classList.add('animate-spin');
-        }
-
         try {
-            const summaryPromise = fetchAPI(`${summaryUrl}?force=${force}`);
+            const summaryPromise = fetchAPI(`${summaryUrl}?force=true`); // Força a atualização na carga inicial
             const healthPromise = fetchAPI(healthUrl);
 
             const [summaryData, healthData] = await Promise.all([summaryPromise, healthPromise]);
@@ -192,22 +202,86 @@ document.addEventListener('DOMContentLoaded', () => {
             errorContainer.classList.remove('hidden');
         } finally {
             loadingIndicator.style.display = 'none';
-            if (refreshButton) {
-                refreshButton.disabled = false;
-                refreshButton.querySelector('svg')?.classList.remove('animate-spin');
-            }
         }
     }
 
-    if (refreshButton) {
-        refreshButton.addEventListener('click', () => loadDashboardData(true));
-    }
-    
-    window.addEventListener('themeChanged', () => {
-        if(dashboardContainer.classList.contains('hidden')) return;
+    // --- LÓGICA WEBSOCKET ---
+    function setupWebSocket() {
+        const socket = io('/dashboard', { reconnectionAttempts: 5, transports: ['websocket'] });
+
+        const setStatus = (status, text) => {
+            if (!realtimeStatus) return;
+            const dot = realtimeStatus.querySelector('div');
+            const span = realtimeStatus.querySelector('span');
+            
+            dot.className = 'w-2 h-2 rounded-full';
+            realtimeStatus.classList.remove('bg-green-200', 'text-green-800', 'dark:bg-green-900', 'dark:text-green-200', 'bg-yellow-200', 'text-yellow-800', 'dark:bg-yellow-900', 'dark:text-yellow-200', 'bg-red-200', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
+
+            switch (status) {
+                case 'connected':
+                    dot.classList.add('bg-green-500');
+                    realtimeStatus.classList.add('bg-green-200', 'text-green-800', 'dark:bg-green-900', 'dark:text-green-200');
+                    break;
+                case 'reconnecting':
+                    dot.classList.add('bg-yellow-500', 'animate-pulse');
+                     realtimeStatus.classList.add('bg-yellow-200', 'text-yellow-800', 'dark:bg-yellow-900', 'dark:text-yellow-200');
+                    break;
+                case 'disconnected':
+                    dot.classList.add('bg-red-500');
+                    realtimeStatus.classList.add('bg-red-200', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
+                    break;
+            }
+            span.textContent = text;
+        };
+
+        setStatus('reconnecting', i18n.connecting);
+
+        socket.on('connect', () => {
+            console.log('Conectado ao dashboard em tempo real!');
+            setStatus('connected', i18n.connected);
+        });
+
+        socket.on('dashboard_update', (data) => {
+            console.log('Atualização recebida:', data);
+            if (data.summary) {
+                renderSummaryCards(data.summary);
+                renderCharts(data.summary);
+            }
+        });
+
+        socket.on('disconnect', () => {
+            console.warn('Desconectado do dashboard em tempo real.');
+            setStatus('disconnected', i18n.disconnected);
+        });
         
-        loadDashboardData();
+        socket.on('reconnect_attempt', () => {
+            console.log('Tentando reconectar...');
+            setStatus('reconnecting', i18n.reconnecting);
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Erro de conexão com o WebSocket:', error);
+            setStatus('disconnected', i18n.disconnected);
+        });
+    }
+
+    // --- INICIALIZAÇÃO ---
+    window.addEventListener('themeChanged', () => {
+       if(dashboardContainer.classList.contains('hidden')) return;
+        const colors = getChartColors();
+        if (monthlyRevenueChart) {
+            monthlyRevenueChart.options.scales.y.ticks.color = colors.textColor;
+            monthlyRevenueChart.options.scales.y.grid.color = colors.gridColor;
+            monthlyRevenueChart.options.scales.x.ticks.color = colors.textColor;
+            monthlyRevenueChart.update();
+        }
+        if (userStatusChart) {
+            userStatusChart.data.datasets[0].borderColor = colors.tooltipBg;
+            userStatusChart.options.plugins.legend.labels.color = colors.textColor;
+            userStatusChart.update();
+        }
     });
 
     loadDashboardData();
+    setupWebSocket(); // Inicia a conexão WebSocket
 });

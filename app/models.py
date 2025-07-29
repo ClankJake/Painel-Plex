@@ -93,6 +93,8 @@ class PixPayment(db.Model):
 class Notification(db.Model):
     __tablename__ = 'notifications'
     id = db.Column(db.Integer, primary_key=True)
+    # Adiciona uma coluna de username para notificações específicas do utilizador
+    username = db.Column(db.String, db.ForeignKey('user_profiles.username'), nullable=True, index=True)
     message = db.Column(db.String, nullable=False)
     category = db.Column(db.String(20), nullable=False, default='info')
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
@@ -105,3 +107,12 @@ class ShortLink(db.Model):
     short_code = db.Column(db.String(10), unique=True, nullable=False, index=True)
     original_url = db.Column(db.String(512), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class UnlockedAchievement(db.Model):
+    __tablename__ = 'unlocked_achievements'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String, db.ForeignKey('user_profiles.username'), nullable=False, index=True)
+    achievement_id = db.Column(db.String, nullable=False)
+    unlocked_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('username', 'achievement_id', name='_username_achievement_uc'),)

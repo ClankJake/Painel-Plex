@@ -5,6 +5,8 @@
 {% block extra_head %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <!-- Adiciona a biblioteca cliente do Socket.IO -->
+    <script src="https://cdn.socket.io/4.5.2/socket.io.min.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -13,13 +15,13 @@
         <h2 class="text-3xl font-bold text-gray-900 dark:text-white">{{ _('Dashboard') }}</h2>
         <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Uma visão geral do seu servidor.') }}</p>
     </div>
-    <button id="refreshButton" class="btn bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20">
-        <svg id="refreshIcon" class="h-5 w-5" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-          <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
-          <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
-        </svg>
-        <span class="ml-2 hidden sm:inline">{{ _('Atualizar') }}</span>
-    </button>
+    <div class="flex items-center gap-4">
+        <!-- Indicador de Estado em Tempo Real -->
+        <div id="realtime-status" class="flex items-center gap-2 text-sm font-semibold px-3 py-1 rounded-full transition-colors duration-300">
+            <div class="w-2 h-2 rounded-full"></div>
+            <span></span>
+        </div>
+    </div>
 </header>
 
 <div id="loadingIndicator" class="text-center py-20">
@@ -83,5 +85,9 @@
         data-i18n-payment-efi="{{ _('Pagamentos (Efí)') }}"
         data-i18n-payment-mp="{{ _('Pagamentos (Mercado Pago)') }}"
         data-i18n-scheduler="{{ _('Agendador de Tarefas') }}"
+        data-i18n-connecting="{{ _('A conectar...') }}"
+        data-i18n-connected="{{ _('Conectado') }}"
+        data-i18n-reconnecting="{{ _('A reconectar...') }}"
+        data-i18n-disconnected="{{ _('Desconectado') }}"
 ></script>
 {% endblock %}

@@ -17,7 +17,7 @@ class TautulliManager:
     def __init__(self, data_manager):
         self.api_client = TautulliApiClient()
         self.notifiers = NotifierHandler(self.api_client, data_manager)
-        self.stats = StatsHandler(self.api_client)
+        self.stats = StatsHandler(self.api_client, data_manager)
 
     def reload_credentials(self):
         """Recarrega as credenciais e configurações para o Tautulli."""
@@ -50,8 +50,11 @@ class TautulliManager:
     def get_watch_stats(self, days=7, plex_users_info=None):
         return self.stats.get_watch_stats(days, plex_users_info)
 
-    def get_user_watch_details(self, username, days=7):
-        return self.stats.get_user_watch_details(username, days)
+    def get_user_watch_details(self, username, days=7, current_user=None):
+        return self.stats.get_user_watch_details(username, days, current_user)
+
+    def get_recently_added(self, days=7):
+        return self.stats.get_recently_added(days)
 
     def get_user_devices(self, username):
         return self.stats.get_user_devices(username)

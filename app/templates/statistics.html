@@ -6,21 +6,18 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* Apenas estilos que não podem ser feitos com classes do Tailwind permanecem, como a barra de scroll. */
-        .horizontal-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
-        .horizontal-scroll::-webkit-scrollbar-track { @apply bg-gray-200 dark:bg-gray-700; border-radius: 4px; }
-        .horizontal-scroll::-webkit-scrollbar-thumb { @apply bg-gray-400 dark:bg-gray-500; border-radius: 4px; }
-        .horizontal-scroll::-webkit-scrollbar-thumb:hover { @apply bg-gray-500 dark:bg-gray-600; }
+        .horizontal-scroll::-webkit-scrollbar { display: none; /* Chrome, Safari, Opera */ }
+        .horizontal-scroll { -ms-overflow-style: none;  /* IE and Edge */ scrollbar-width: none;  /* Firefox */ }
         
         /* Estilos para as Conquistas */
         .achievement-badge {
-            @apply flex flex-col items-center justify-center p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 text-center transition-all duration-300;
-            position: relative;
+            @apply flex flex-col items-center justify-center p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg border-2 border-transparent text-center transition-all duration-300 relative;
         }
         .achievement-badge .icon {
-            @apply text-4xl;
+            @apply text-4xl mb-1;
         }
         .achievement-badge .title {
-            @apply font-bold text-sm mt-2 text-gray-800 dark:text-gray-200;
+            @apply font-bold text-sm text-gray-800 dark:text-gray-200 leading-tight;
         }
         .achievement-badge .tooltip {
             @apply invisible opacity-0 absolute bottom-full mb-2 w-48 p-2 text-xs bg-gray-800 text-white rounded-md shadow-lg transition-opacity duration-300 z-10;
@@ -28,8 +25,26 @@
         .achievement-badge:hover .tooltip {
             @apply visible opacity-100;
         }
-        .achievement-badge.unlocked {
-            @apply border-yellow-400 dark:border-yellow-500 bg-yellow-50 dark:bg-yellow-500/10;
+        /* Níveis de Conquista */
+        .achievement-badge.unlocked-1 { /* Bronze */
+            @apply border-yellow-600/50 dark:border-yellow-700/80 bg-yellow-50 dark:bg-yellow-900/20 shadow-inner;
+        }
+        .achievement-badge.unlocked-2 { /* Prata */
+            @apply border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-gray-700/50 shadow-md;
+        }
+        .achievement-badge.unlocked-3 { /* Ouro */
+            @apply border-yellow-400 dark:border-yellow-500 bg-yellow-100 dark:bg-yellow-500/20 shadow-lg shadow-yellow-500/20;
+        }
+        .achievement-badge.unlocked-3 .icon {
+            filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.7));
+        }
+
+        /* Estilos para os botões de scroll */
+        .scroll-button {
+            @apply bg-gray-800/50 text-white rounded-md w-8 h-8 flex items-center justify-center transition-opacity opacity-0 group-hover/container:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed z-20 backdrop-blur-sm;
+        }
+        .scroll-button:hover:not(:disabled) {
+            @apply bg-gray-800;
         }
     </style>
 {% endblock %}
@@ -114,6 +129,25 @@
     {% else %}
     <!-- ########## Visão do Utilizador Comum ########## -->
     <div id="user-view" class="space-y-8">
+        <div id="newly-added-section" class="hidden bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+             <div class="flex justify-between items-center mb-4 group/container">
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('O que há de novo?') }}</h3>
+                <div class="flex items-center space-x-2">
+                    <button id="scroll-left-btn" class="scroll-button">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    <button id="scroll-right-btn" class="scroll-button">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="relative">
+                <div id="newly-added-container" class="flex space-x-4 overflow-x-auto py-2 horizontal-scroll scroll-smooth">
+                    <!-- Conteúdo será injetado aqui -->
+                </div>
+            </div>
+        </div>
+        
         <!-- Análise Pessoal do Utilizador -->
         <div id="personal-analysis">
             <!-- Conteúdo será preenchido por JS -->
@@ -153,6 +187,7 @@
         data-current-user='{{ current_user.to_json() | safe }}'
         data-stats-url="{{ url_for('stats_api.get_statistics_data') }}"
         data-user-stats-url="{{ url_for('stats_api.get_user_statistics', username='__USERNAME__') }}"
+        data-recently-added-url="{{ url_for('stats_api.get_recently_added_route') }}"
         data-i18n-loading-failed="{{ _('Falha ao comunicar com o servidor.') }}"
         data-i18n-no-data="{{ _('Nenhum dado de visualização encontrado.') }}"
         data-i18n-user-analysis-error="{{ _('Não foi possível carregar sua análise pessoal:') }}"
@@ -178,7 +213,7 @@
         data-i18n-fri="{{ _('Sex') }}"
         data-i18n-sat="{{ _('Sáb') }}"
         data-i18n-analysis-of="{{ _('Análise de') }}"
-        data-i18n-analyzing-history="{{ _('A analisar o histórico...') }}"
+        data-i18n-analyzing-history="{{ _('Analisando o histórico...') }}"
         data-i18n-previous="{{ _('Anterior') }}"
         data-i18n-next="{{ _('Próxima') }}"
         data-i18n-page-of="{{ _('Página {currentPage} de {totalPages}') }}"
@@ -189,6 +224,15 @@
         data-i18n-active-users="{{ _('Utilizadores Ativos') }}"
         data-i18n-period-champion="{{ _('Campeão do Período') }}"
         data-i18n-achievements="{{ _('Conquistas') }}"
+        data-i18n-loading-newly-added="{{ _('Carregando novidades...') }}"
+        data-i18n-no-newly-added="{{ _('Nenhum item adicionado recentemente no período selecionado.') }}"
+        data-i18n-added="{{ _('Adicionado') }}"
+        data-i18n-years-ago="{{ _('há {count} anos') }}"
+        data-i18n-months-ago="{{ _('há {count} meses') }}"
+        data-i18n-days-ago="{{ _('há {count} dias') }}"
+        data-i18n-hours-ago="{{ _('há {count} horas') }}"
+        data-i18n-minutes-ago="{{ _('há {count} minutos') }}"
+        data-i18n-just-now="{{ _('agora mesmo') }}"
         >
 </script>
 {% endblock %}

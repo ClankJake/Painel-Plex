@@ -28,7 +28,6 @@ def get_statistics_data():
             username = user_stat["username"]
             profile = all_profiles.get(username, {})
             
-            # Adiciona a flag de privacidade e ofusca os dados se necessário
             is_private = profile.get('hide_from_leaderboard', False)
             user_stat["is_private"] = is_private
             
@@ -49,11 +48,15 @@ def get_user_statistics(username):
     profile = data_manager.get_user_profile(username)
     is_private = profile.get('hide_from_leaderboard', False)
 
-    # Permite o acesso se o visualizador for admin, o próprio usuário, ou se o perfil não for privado.
     if not is_private or current_user.is_admin() or current_user.username == username:
-        return jsonify(tautulli_manager.get_user_watch_details(username, days=request.args.get('days', 7, type=int)))
+        days = request.args.get('days', 7, type=int)
+        return jsonify(tautulli_manager.get_user_watch_details(username, days=days, current_user=current_user))
     else:
-        # Bloqueia o acesso para outros usuários se o perfil for privado.
         logger.warning(f"Acesso negado para '{current_user.username}' ao tentar ver as estatísticas privadas de '{username}'.")
         return jsonify({"success": False, "message": _("Este usuário prefere manter suas estatísticas privadas.")}), 403
 
+@stats_api_bp.route('/recently-added')
+@login_required
+def get_recently_added_route():
+    days = request.args.get('days', 7, type=int)
+    return jsonify(tautulli_manager.get_recently_added(days=days))

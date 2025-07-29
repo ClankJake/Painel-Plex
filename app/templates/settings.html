@@ -60,6 +60,7 @@
             <button type="button" data-tab="geral" class="tab-button active">{{ _('Geral') }}</button>
             <button type="button" data-tab="tarefas" class="tab-button">{{ _('Tarefas Agendadas') }}</button>
             <button type="button" data-tab="pagamentos" class="tab-button">{{ _('Pagamentos') }}</button>
+            <button type="button" data-tab="gamificacao" class="tab-button">{{ _('Gamificação') }}</button>
             <button type="button" data-tab="notificacoes" class="tab-button">{{ _('Notificações') }}</button>
             <button type="button" data-tab="conexoes" class="tab-button">{{ _('Conexões') }}</button>
             <button type="button" data-tab="logs" class="tab-button">{{ _('Logs') }}</button>
@@ -245,6 +246,96 @@
                     </div>
                 </div>
 
+            </div>
+        </div>
+
+        <!-- Aba Gamificação -->
+        <div id="tab-gamificacao" class="tab-content">
+            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-8">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Configurações de Gamificação') }}</h2>
+                    <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Ajuste os objetivos para cada nível das conquistas.') }}</p>
+                </div>
+
+                <!-- Maratonista de Cinema -->
+                <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
+                    <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Maratonista de Cinema') }}</h4>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Objetivo: Número de filmes assistidos no período selecionado.') }}</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+                        <div>
+                            <label for="ACHIEVEMENT_MOVIE_MARATHON_BRONZE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Bronze') }}</label>
+                            <input type="number" id="ACHIEVEMENT_MOVIE_MARATHON_BRONZE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                        <div>
+                            <label for="ACHIEVEMENT_MOVIE_MARATHON_SILVER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Prata') }}</label>
+                            <input type="number" id="ACHIEVEMENT_MOVIE_MARATHON_SILVER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                        <div>
+                            <label for="ACHIEVEMENT_MOVIE_MARATHON_GOLD" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Ouro') }}</label>
+                            <input type="number" id="ACHIEVEMENT_MOVIE_MARATHON_GOLD" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rei das Séries -->
+                <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
+                    <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Rei das Séries') }}</h4>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Objetivo: Número de episódios assistidos no período selecionado.') }}</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+                        <div>
+                            <label for="ACHIEVEMENT_SERIES_BINGER_BRONZE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Bronze') }}</label>
+                            <input type="number" id="ACHIEVEMENT_SERIES_BINGER_BRONZE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                        <div>
+                            <label for="ACHIEVEMENT_SERIES_BINGER_SILVER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Prata') }}</label>
+                            <input type="number" id="ACHIEVEMENT_SERIES_BINGER_SILVER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                        <div>
+                            <label for="ACHIEVEMENT_SERIES_BINGER_GOLD" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Ouro') }}</label>
+                            <input type="number" id="ACHIEVEMENT_SERIES_BINGER_GOLD" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Viajante do Tempo -->
+                <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
+                    <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Viajante do Tempo') }}</h4>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Objetivo: Número de décadas diferentes de filmes assistidos.') }}</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+                        <div>
+                            <label for="ACHIEVEMENT_TIME_TRAVELER_BRONZE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Bronze') }}</label>
+                            <input type="number" id="ACHIEVEMENT_TIME_TRAVELER_BRONZE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                        <div>
+                            <label for="ACHIEVEMENT_TIME_TRAVELER_SILVER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Prata') }}</label>
+                            <input type="number" id="ACHIEVEMENT_TIME_TRAVELER_SILVER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                        <div>
+                            <label for="ACHIEVEMENT_TIME_TRAVELER_GOLD" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Ouro') }}</label>
+                            <input type="number" id="ACHIEVEMENT_TIME_TRAVELER_GOLD" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                </div>
+
+                 <!-- Fã do Realizador -->
+                 <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
+                    <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Fã do Realizador') }}</h4>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Objetivo: Número de filmes assistidos do realizador mais visto.') }}</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+                        <div>
+                            <label for="ACHIEVEMENT_DIRECTOR_FAN_BRONZE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Bronze') }}</label>
+                            <input type="number" id="ACHIEVEMENT_DIRECTOR_FAN_BRONZE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                        <div>
+                            <label for="ACHIEVEMENT_DIRECTOR_FAN_SILVER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Prata') }}</label>
+                            <input type="number" id="ACHIEVEMENT_DIRECTOR_FAN_SILVER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                        <div>
+                            <label for="ACHIEVEMENT_DIRECTOR_FAN_GOLD" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Ouro') }}</label>
+                            <input type="number" id="ACHIEVEMENT_DIRECTOR_FAN_GOLD" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 

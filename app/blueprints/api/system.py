@@ -116,12 +116,22 @@ def api_settings():
             'TRIAL_BLOCK_NOTIFIER_ID', 'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE', 'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE',
             'OVERSEERR_ENABLED', 'OVERSEERR_URL', 'OVERSEERR_API_KEY',
             'CLEANUP_PENDING_PAYMENTS_ENABLED', 'CLEANUP_PENDING_PAYMENTS_DAYS', 'CLEANUP_TIME',
-            'ENABLE_LINK_SHORTENER', 'PAYMENT_LINK_GRACE_PERIOD_DAYS'
+            'ENABLE_LINK_SHORTENER', 'PAYMENT_LINK_GRACE_PERIOD_DAYS',
+            # Novas chaves de gamificação
+            'ACHIEVEMENT_MOVIE_MARATHON_BRONZE', 'ACHIEVEMENT_MOVIE_MARATHON_SILVER', 'ACHIEVEMENT_MOVIE_MARATHON_GOLD',
+            'ACHIEVEMENT_SERIES_BINGER_BRONZE', 'ACHIEVEMENT_SERIES_BINGER_SILVER', 'ACHIEVEMENT_SERIES_BINGER_GOLD',
+            'ACHIEVEMENT_TIME_TRAVELER_BRONZE', 'ACHIEVEMENT_TIME_TRAVELER_SILVER', 'ACHIEVEMENT_TIME_TRAVELER_GOLD',
+            'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD'
         ]
         numeric_fields = [
             'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION', 'APP_PORT', 
             'BLOCKING_NOTIFIER_ID', 'SCREEN_LIMIT_NOTIFIER_ID', 'CLEANUP_PENDING_PAYMENTS_DAYS',
-            'PAYMENT_LINK_GRACE_PERIOD_DAYS'
+            'PAYMENT_LINK_GRACE_PERIOD_DAYS',
+            # Novas chaves numéricas de gamificação
+            'ACHIEVEMENT_MOVIE_MARATHON_BRONZE', 'ACHIEVEMENT_MOVIE_MARATHON_SILVER', 'ACHIEVEMENT_MOVIE_MARATHON_GOLD',
+            'ACHIEVEMENT_SERIES_BINGER_BRONZE', 'ACHIEVEMENT_SERIES_BINGER_SILVER', 'ACHIEVEMENT_SERIES_BINGER_GOLD',
+            'ACHIEVEMENT_TIME_TRAVELER_BRONZE', 'ACHIEVEMENT_TIME_TRAVELER_SILVER', 'ACHIEVEMENT_TIME_TRAVELER_GOLD',
+            'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD'
         ]
         
         if 'SCREEN_PRICES' in new_data:
@@ -151,7 +161,6 @@ def api_settings():
             app.logger.setLevel(log_level_map.get(new_log_level, logging.INFO))
             logger.info(f"Nível de log atualizado para {new_log_level}")
         
-        # Reagendamento de tarefas
         def reschedule_job(job_id, time_key, old_config, new_config):
             new_time = new_config.get(time_key)
             if new_time and new_time != old_config.get(time_key):
@@ -179,6 +188,7 @@ def api_settings():
     for key in ['SECRET_KEY', 'PLEX_TOKEN', 'INTERNAL_TRIGGER_KEY']: config_to_send.pop(key, None)
     return jsonify(config_to_send)
 
+# ... (restante do código do ficheiro sem alterações)
 @system_api_bp.route('/setup/servers')
 def get_plex_servers():
     token = session.get('plex_token')
@@ -196,7 +206,6 @@ def get_plex_servers():
     except Exception as e:
         logger.error(f"Erro ao buscar servidores Plex: {e}")
         return jsonify({"success": False, "message": str(e)}), 500
-
 @system_api_bp.route('/setup/save', methods=['POST'])
 def save_setup():
     data = request.json
@@ -211,10 +220,8 @@ def save_setup():
     config.update(normalized_data)
     config['IS_CONFIGURED'] = True
     save_app_config(config)
-
     tautulli_manager.reload_credentials()
     overseerr_manager.reload_config()
-
     success, message = plex_manager.reload_connections()
     if success:
         user_details = {'id': config.get('ADMIN_USER'), 'username': config.get('ADMIN_USER'), 'role': 'admin'}
@@ -227,7 +234,6 @@ def save_setup():
     config['IS_CONFIGURED'] = False
     save_app_config(config)
     return jsonify({"success": False, "message": _("Configuração salva, mas falha ao conectar: %(message)s", message=message)})
-
 @system_api_bp.route('/test/tautulli-connection', methods=['POST'])
 def test_tautulli_connection():
     if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
@@ -237,7 +243,6 @@ def test_tautulli_connection():
     api_key = data.get('api_key')
     if not url or not api_key: return jsonify({'success': False, 'message': _('URL e Chave da API são obrigatórios.')}), 400
     return jsonify(tautulli_manager.test_connection(url, api_key))
-
 @system_api_bp.route('/test/overseerr-connection', methods=['POST'])
 def test_overseerr_connection():
     if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
@@ -246,7 +251,6 @@ def test_overseerr_connection():
     url = data.get('url')
     api_key = data.get('api_key')
     return jsonify(overseerr_manager.test_connection(url, api_key))
-
 @system_api_bp.route('/tautulli/auto-configure', methods=['POST'])
 def auto_configure_tautulli_notifier():
     if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):

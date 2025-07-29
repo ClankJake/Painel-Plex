@@ -76,6 +76,12 @@ class TautulliApiClient:
         params = {"cmd": "get_history", "length": 10000}
         params.update(kwargs)
         return self._make_request(params, timeout=20)
+        
+    def get_recently_added(self, **kwargs):
+        """Busca os itens adicionados recentemente."""
+        params = {"cmd": "get_recently_added"}
+        params.update(kwargs)
+        return self._make_request(params)
 
     @staticmethod
     def test_connection(url, api_key):

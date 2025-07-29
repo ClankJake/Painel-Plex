@@ -5,6 +5,7 @@ from flask_babel import Babel
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_socketio import SocketIO
 
 # --- Classe Personalizada para Utilizadores Anónimos ---
 class MyAnonymousUser(AnonymousUserMixin):
@@ -28,6 +29,7 @@ login_manager.login_message_category = "info"
 
 babel = Babel()
 scheduler = BackgroundScheduler(daemon=True)
+socketio = SocketIO()
 
 # Os 'managers' dos serviços e outras instâncias são inicializados como None
 # para evitar importações circulares. Eles serão devidamente instanciados

@@ -33,7 +33,85 @@ document.addEventListener('DOMContentLoaded', () => {
     const testOverseerrButton = document.getElementById('testOverseerrButton');
     
     // --- LÓGICA DE AUTENTICAÇÃO PLEX ---
+    // ... (código existente sem alterações) ...
     
+    // --- INICIALIZAÇÃO DA PÁGINA ---
+    
+    const fieldMap = {
+        'APP_TITLE': { type: 'text', default: 'Painel Plex' },
+        'APP_HOST': { type: 'text', default: '0.0.0.0' },
+        'APP_PORT': { type: 'number', default: 5000 },
+        'APP_BASE_URL': { type: 'text', default: 'http://127.0.0.1:5000' },
+        'ENABLE_LINK_SHORTENER': { type: 'checkbox', default: true },
+        'DAYS_TO_REMOVE_BLOCKED_USER': { type: 'number', default: 0 },
+        'EXPIRATION_NOTIFICATION_TIME': { type: 'text', default: '09:00' },
+        'BLOCK_REMOVAL_TIME': { type: 'text', default: '02:00' },
+        'CLEANUP_PENDING_PAYMENTS_ENABLED': { type: 'checkbox', default: true },
+        'CLEANUP_PENDING_PAYMENTS_DAYS': { type: 'number', default: 3 },
+        'CLEANUP_TIME': { type: 'text', default: '03:00' },
+        'TELEGRAM_ENABLED': { type: 'checkbox', default: false },
+        'WEBHOOK_ENABLED': { type: 'checkbox', default: false },
+        'WEBHOOK_URL': { type: 'text', default: '' },
+        'WEBHOOK_AUTHORIZATION_HEADER': { type: 'text', default: '' },
+        'WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
+        'WEBHOOK_RENEWAL_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
+        'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
+        'TELEGRAM_BOT_TOKEN': { type: 'password', default: '' },
+        'TELEGRAM_CHAT_ID': { type: 'text', default: '' },
+        'DAYS_TO_NOTIFY_EXPIRATION': { type: 'number', default: 2 },
+        'TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
+        'TELEGRAM_RENEWAL_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
+        'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
+        'plex_url_display': { type: 'text', readonly: true, key: 'PLEX_URL' },
+        'TAUTULLI_URL': { type: 'text', default: '' },
+        'TAUTULLI_API_KEY': { type: 'password', default: '' },
+        'BLOCKING_NOTIFIER_ID': { type: 'number', default: 0 },
+        'SCREEN_LIMIT_NOTIFIER_ID': { type: 'number', default: 0 },
+        'TRIAL_BLOCK_NOTIFIER_ID': { type: 'number', default: 0 },
+        'EFI_ENABLED': { type: 'checkbox', default: false },
+        'MERCADOPAGO_ENABLED': { type: 'checkbox', default: false },
+        'EFI_CLIENT_ID': { type: 'text', default: '' },
+        'EFI_CLIENT_SECRET': { type: 'password', default: '' },
+        'EFI_CERTIFICATE': { type: 'text', default: '' },
+        'EFI_SANDBOX': { type: 'checkbox', default: false },
+        'EFI_PIX_KEY': { type: 'text', default: '' },
+        'MERCADOPAGO_ACCESS_TOKEN': { type: 'password', default: '' },
+        'RENEWAL_PRICE': { type: 'text', default: '10.00' },
+        'PAYMENT_LINK_GRACE_PERIOD_DAYS': { type: 'number', default: 7 },
+        'PRICE_SCREEN_1': { type: 'price', key: '1' },
+        'PRICE_SCREEN_2': { type: 'price', key: '2' },
+        'PRICE_SCREEN_3': { type: 'price', key: '3' },
+        'PRICE_SCREEN_4': { type: 'price', key: '4' },
+        'OVERSEERR_ENABLED': { type: 'checkbox', default: false },
+        'OVERSEERR_URL': { type: 'text', default: '' },
+        'OVERSEERR_API_KEY': { type: 'password', default: '' },
+        // Novas chaves de gamificação
+        'ACHIEVEMENT_MOVIE_MARATHON_BRONZE': { type: 'number', default: 5 },
+        'ACHIEVEMENT_MOVIE_MARATHON_SILVER': { type: 'number', default: 10 },
+        'ACHIEVEMENT_MOVIE_MARATHON_GOLD': { type: 'number', default: 20 },
+        'ACHIEVEMENT_SERIES_BINGER_BRONZE': { type: 'number', default: 20 },
+        'ACHIEVEMENT_SERIES_BINGER_SILVER': { type: 'number', default: 50 },
+        'ACHIEVEMENT_SERIES_BINGER_GOLD': { type: 'number', default: 100 },
+        'ACHIEVEMENT_TIME_TRAVELER_BRONZE': { type: 'number', default: 3 },
+        'ACHIEVEMENT_TIME_TRAVELER_SILVER': { type: 'number', default: 5 },
+        'ACHIEVEMENT_TIME_TRAVELER_GOLD': { type: 'number', default: 7 },
+        'ACHIEVEMENT_DIRECTOR_FAN_BRONZE': { type: 'number', default: 3 },
+        'ACHIEVEMENT_DIRECTOR_FAN_SILVER': { type: 'number', default: 5 },
+        'ACHIEVEMENT_DIRECTOR_FAN_GOLD': { type: 'number', default: 7 },
+    };
+
+    function loadSettings() {
+        // ... (código existente sem alterações) ...
+    }
+
+    function initializeEventListeners() {
+        // ... (código existente sem alterações) ...
+    }
+    
+    // O resto do ficheiro `settings.js` permanece inalterado, pois a lógica de salvar
+    // já é genérica o suficiente para lidar com os novos campos, desde que
+    // eles sejam adicionados ao `fieldMap`.
+    // ... (restante do código) ...
     async function loginWithPlex() {
         const reauthButton = document.getElementById('reauth-plex-button');
         const originalButtonHTML = reauthButton.innerHTML; 
@@ -118,7 +196,6 @@ document.addEventListener('DOMContentLoaded', () => {
             restoreButton();
         }
     }
-
     function fetchPlexServersForSelection() {
         const serverSelectionContainer = document.getElementById('server-selection-container');
         if (!serverSelectionContainer) return;
@@ -199,8 +276,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
     }
-    
-    // --- LÓGICA DE LOGS ---
     function fetchLogs() {
         const logDisplay = document.getElementById('log-display');
         if(!logDisplay) return;
@@ -215,7 +290,6 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch(e => logDisplay.textContent = `${i18n.connectionError}: ${e.message}`);
     }
-
     function startLogUpdates() {
         const button = document.getElementById('toggle-logs');
         if (!logIntervalId) {
@@ -227,7 +301,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-    
     function stopLogUpdates() {
         const button = document.getElementById('toggle-logs');
         if (logIntervalId) {
@@ -239,8 +312,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-
-    // --- LÓGICA DE AUTO-CONFIGURAÇÃO DO TAUTULLI ---
     async function autoConfigureNotifier(button) {
         const notifierType = button.dataset.notifierType;
         const targetId = button.dataset.targetId;
@@ -272,59 +343,10 @@ document.addEventListener('DOMContentLoaded', () => {
             button.textContent = i18n.autoConfigure;
         }
     }
-
-    // --- INICIALIZAÇÃO DA PÁGINA ---
+    loadSettings().then(() => {
+        initializeEventListeners();
+    });
     
-    const fieldMap = {
-        'APP_TITLE': { type: 'text', default: 'Painel Plex' },
-        'APP_HOST': { type: 'text', default: '0.0.0.0' },
-        'APP_PORT': { type: 'number', default: 5000 },
-        'APP_BASE_URL': { type: 'text', default: 'http://127.0.0.1:5000' },
-        'ENABLE_LINK_SHORTENER': { type: 'checkbox', default: true },
-        'DAYS_TO_REMOVE_BLOCKED_USER': { type: 'number', default: 0 },
-        'EXPIRATION_NOTIFICATION_TIME': { type: 'text', default: '09:00' },
-        'BLOCK_REMOVAL_TIME': { type: 'text', default: '02:00' },
-        'CLEANUP_PENDING_PAYMENTS_ENABLED': { type: 'checkbox', default: true },
-        'CLEANUP_PENDING_PAYMENTS_DAYS': { type: 'number', default: 3 },
-        'CLEANUP_TIME': { type: 'text', default: '03:00' },
-        'TELEGRAM_ENABLED': { type: 'checkbox', default: false },
-        'WEBHOOK_ENABLED': { type: 'checkbox', default: false },
-        'WEBHOOK_URL': { type: 'text', default: '' },
-        'WEBHOOK_AUTHORIZATION_HEADER': { type: 'text', default: '' },
-        'WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
-        'WEBHOOK_RENEWAL_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
-        'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
-        'TELEGRAM_BOT_TOKEN': { type: 'password', default: '' },
-        'TELEGRAM_CHAT_ID': { type: 'text', default: '' },
-        'DAYS_TO_NOTIFY_EXPIRATION': { type: 'number', default: 2 },
-        'TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
-        'TELEGRAM_RENEWAL_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
-        'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
-        'plex_url_display': { type: 'text', readonly: true, key: 'PLEX_URL' },
-        'TAUTULLI_URL': { type: 'text', default: '' },
-        'TAUTULLI_API_KEY': { type: 'password', default: '' },
-        'BLOCKING_NOTIFIER_ID': { type: 'number', default: 0 },
-        'SCREEN_LIMIT_NOTIFIER_ID': { type: 'number', default: 0 },
-        'TRIAL_BLOCK_NOTIFIER_ID': { type: 'number', default: 0 },
-        'EFI_ENABLED': { type: 'checkbox', default: false },
-        'MERCADOPAGO_ENABLED': { type: 'checkbox', default: false },
-        'EFI_CLIENT_ID': { type: 'text', default: '' },
-        'EFI_CLIENT_SECRET': { type: 'password', default: '' },
-        'EFI_CERTIFICATE': { type: 'text', default: '' },
-        'EFI_SANDBOX': { type: 'checkbox', default: false },
-        'EFI_PIX_KEY': { type: 'text', default: '' },
-        'MERCADOPAGO_ACCESS_TOKEN': { type: 'password', default: '' },
-        'RENEWAL_PRICE': { type: 'text', default: '10.00' },
-        'PAYMENT_LINK_GRACE_PERIOD_DAYS': { type: 'number', default: 7 },
-        'PRICE_SCREEN_1': { type: 'price', key: '1' },
-        'PRICE_SCREEN_2': { type: 'price', key: '2' },
-        'PRICE_SCREEN_3': { type: 'price', key: '3' },
-        'PRICE_SCREEN_4': { type: 'price', key: '4' },
-        'OVERSEERR_ENABLED': { type: 'checkbox', default: false },
-        'OVERSEERR_URL': { type: 'text', default: '' },
-        'OVERSEERR_API_KEY': { type: 'password', default: '' },
-    };
-
     function loadSettings() {
         return fetchAPI(urls.apiSettings)
             .then(config => {
@@ -347,7 +369,6 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch(error => showToast(error.message, 'error'));
     }
-
     function initializeEventListeners() {
         
         const handleTabClick = (navElement, contentContainer, contentSelector) => {
