@@ -40,12 +40,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # 3. Extrair metadados da imagem (nome e tag)
-      # Define o nome da imagem e a tag (ex: ghcr.io/clankjake/painel-plex:latest)
+      # Define o nome da imagem e a tag
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          # CORREÇÃO: O nome da imagem foi convertido para minúsculas para ser compatível com o Docker.
+          images: ghcr.io/clankjake/painel-plex
 
       # 4. Construir e Enviar a Imagem Docker
       # Utiliza o Dockerfile no seu repositório para construir a imagem e enviá-la para o ghcr.io
