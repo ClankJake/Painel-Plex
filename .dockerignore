@@ -1,0 +1,30 @@
+# Ficheiros e pastas a serem ignorados ao construir a imagem Docker.
+# Isto mantém a imagem final mais pequena e segura.
+
+# Ficheiros de cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ambientes virtuais
+.env
+.venv
+venv/
+
+# Metadados de pacotes Python
+*.egg-info/
+
+# Ficheiros do Git
+.git/
+.gitignore
+
+# Ficheiros do Docker (não precisam de estar dentro da imagem)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Ficheiros de configuração e base de dados (serão montados via volume)
+config/
+certs/
+
