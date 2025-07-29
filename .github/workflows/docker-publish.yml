@@ -25,35 +25,41 @@ jobs:
 
     steps:
       # 1. Checkout do Código
-      # Baixa o código do seu repositório para a máquina virtual
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Login no GitHub Container Registry (ghcr.io)
-      # Utiliza um token especial (GITHUB_TOKEN) que o GitHub gera automaticamente para autenticar
+      # 2. Configurar QEMU para emulação de múltiplas arquiteturas
+      # Este passo é essencial para construir imagens para ARM em uma máquina AMD64.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # 3. Configurar o Docker Buildx
+      # Buildx é a ferramenta que permite a construção de imagens multi-plataforma.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 4. Login no GitHub Container Registry (ghcr.io)
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          # GITHUB_ACTOR é o seu nome de utilizador do GitHub
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3. Extrair metadados da imagem (nome e tag)
-      # Define o nome da imagem e a tag
+      # 5. Extrair metadados da imagem (nome e tag)
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # CORREÇÃO: O nome da imagem foi convertido para minúsculas para ser compatível com o Docker.
           images: ghcr.io/clankjake/painel-plex
 
-      # 4. Construir e Enviar a Imagem Docker
-      # Utiliza o Dockerfile no seu repositório para construir a imagem e enviá-la para o ghcr.io
+      # 6. Construir e Enviar a Imagem Docker Multi-Plataforma
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
+          # CORREÇÃO: Adicionada a flag 'platforms' para construir para AMD64 e ARM64.
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
