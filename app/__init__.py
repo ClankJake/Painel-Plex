@@ -95,7 +95,9 @@ def create_app(log_level='INFO', _from_job=False):
     app.config['SECRET_KEY'] = app_config.get('SECRET_KEY')
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-#    app.config['SESSION_COOKIE_SECURE'] = True
+
+    base_url_for_cookie = app_config.get('APP_BASE_URL', '')
+    app.config['SESSION_COOKIE_SECURE'] = base_url_for_cookie.startswith('https://')
 
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'app_data.db')
     
