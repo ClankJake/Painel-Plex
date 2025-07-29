@@ -1,9 +1,14 @@
+# Importa o socket nativo primeiro para contornar problemas de DNS com eventlet
+import socket
+import eventlet
+# É crucial aplicar o monkey-patch antes de importar qualquer outra coisa
+eventlet.monkey_patch()
+
 import logging
 import subprocess
 import sys
 import os
-from waitress import serve
-from app import create_app
+from app import create_app, extensions
 from app.config import load_or_create_config
 
 # Carrega a configuração antes de criar a aplicação
@@ -57,10 +62,10 @@ if __name__ == '__main__':
         host = config.get('APP_HOST', '0.0.0.0')
         port = config.get('APP_PORT', 5000)
 
-        logging.info(f"A iniciar o servidor de produção Waitress em http://{host}:{port}")
+        logging.info(f"A iniciar o servidor com Socket.IO em http://{host}:{port}")
         
-        # Executa a aplicação usando o Waitress
-        serve(app, host=host, port=port)
+        # Executa a aplicação usando o servidor do Socket.IO com eventlet
+        extensions.socketio.run(app, host=host, port=port)
     else:
         logging.critical("A aplicação não será iniciada devido a uma falha na migração da base de dados.")
         # Opcional: Adicionar um input para manter a janela do console aberta e ver o erro.
