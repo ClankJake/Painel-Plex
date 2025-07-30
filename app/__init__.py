@@ -90,21 +90,23 @@ def create_app(log_level='INFO', _from_job=False):
     app.config['BABEL_DEFAULT_LOCALE'] = 'pt_BR'
     
     app_config = load_or_create_config()
-    app.config.update(app_config)
-    
-    app.config['SECRET_KEY'] = app_config.get('SECRET_KEY')
-    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-
-    base_url_for_cookie = app_config.get('APP_BASE_URL', '')
-    app.config['SESSION_COOKIE_SECURE'] = base_url_for_cookie.startswith('https://')
 
     config_dir_path = os.path.join(app.root_path, '..', 'config')
     db_path = os.path.join(config_dir_path, 'app_data.db')
     log_file_path = os.path.join(config_dir_path, 'app.log')
 
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=20'
-    app.config['LOG_FILE'] = log_file_path
+    app_config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=20'
+    app_config['LOG_FILE'] = log_file_path
+    
+    app.config.update(app_config)
+    
+    app.config['SECRET_KEY'] = app_config.get('SECRET_KEY')
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    
+    base_url_for_cookie = app_config.get('APP_BASE_URL', '')
+    app.config['SESSION_COOKIE_SECURE'] = base_url_for_cookie.startswith('https://')
+    
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         "connect_args": {
             "check_same_thread": False,
