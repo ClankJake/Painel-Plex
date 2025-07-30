@@ -54,14 +54,18 @@ class PlexSubscriptionManager:
         start_date = now_aware
 
         if base_date_str:
-            try: start_date = local_tz.localize(datetime.strptime(base_date_str, '%Y-%m-%d'))
-            except (ValueError, TypeError): base_date_str = None
+            try: 
+                # CORREÇÃO: Usa .replace(tzinfo=...) em vez de .localize()
+                start_date = datetime.strptime(base_date_str, '%Y-%m-%d').replace(tzinfo=local_tz)
+            except (ValueError, TypeError): 
+                base_date_str = None
 
         if not base_date_str and profile.get('expiration_date'):
             try:
                 current_expiration = datetime.fromisoformat(profile['expiration_date'])
                 if current_expiration.tzinfo is None:
-                    current_expiration = local_tz.localize(current_expiration)
+                    # CORREÇÃO: Usa .replace(tzinfo=...) em vez de .localize()
+                    current_expiration = current_expiration.replace(tzinfo=local_tz)
                 if current_expiration > now_aware:
                     start_date = current_expiration
             except (ValueError, TypeError):
