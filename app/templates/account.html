@@ -107,14 +107,17 @@
     <!-- Navegação por Separadores -->
     <div class="border-b border-gray-200 dark:border-gray-700 mb-8">
         <nav id="account-tabs" class="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
+            {% if not current_user.is_admin() %}
             <button type="button" data-tab="overview" class="tab-button active py-3 px-1 border-b-2 font-medium text-sm">{{ _('Visão Geral') }}</button>
             <button type="button" data-tab="payment" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Pagamentos e Assinatura') }}</button>
-            <button type="button" data-tab="security" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Dispositivos Conectados') }}</button>
+            {% endif %}
+            <button type="button" data-tab="security" class="tab-button {% if current_user.is_admin() %}active{% endif %} py-3 px-1 border-b-2 font-medium text-sm">{{ _('Dispositivos Conectados') }}</button>
         </nav>
     </div>
 
     <!-- Conteúdo dos Separadores -->
     <div id="account-tab-content">
+        {% if not current_user.is_admin() %}
         <!-- Separador Visão Geral -->
         <div id="tab-overview" class="tab-content active space-y-8">
             <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
@@ -181,9 +184,10 @@
                 </div>
             </div>
         </div>
+        {% endif %}
 
         <!-- Separador Segurança -->
-        <div id="tab-security" class="tab-content space-y-8">
+        <div id="tab-security" class="tab-content {% if current_user.is_admin() %}active{% endif %} space-y-8">
             <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                 <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Dispositivos Conectados') }}</h3>
                 <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('Lista de dispositivos que acederam à sua conta recentemente.') }}</p>
