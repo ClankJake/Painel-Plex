@@ -331,6 +331,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function handleSaveContactDetails() {
         const button = document.getElementById('saveContactDetails');
+        if (!button) return;
+
         const originalText = button.textContent;
         button.disabled = true;
         button.textContent = i18n.saving;
@@ -376,8 +378,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const data = await fetchAPI(urls.getAccountDetailsUrl);
             
+            // CORREÇÃO: A lógica de pagamento só é executada se os elementos existirem (ou seja, para não-admins)
             const paymentOptions = await fetchAPI(urls.getPaymentOptionsUrl);
-            if(paymentOptions.success) {
+            if(paymentOptions.success && paymentSection) {
                 renderPaymentOptions(paymentOptions.prices, paymentOptions.providers, paymentOptions.can_downgrade);
             }
             
@@ -428,36 +431,40 @@ document.addEventListener('DOMContentLoaded', async () => {
                 expirationContainer.classList.remove('hidden');
             }
 
+            // CORREÇÃO: Adiciona verificações para elementos que só existem para não-admins
             const libraryList = document.getElementById('library-list');
-            if (data.libraries && data.libraries.length > 0) {
-                libraryList.innerHTML = data.libraries.map(lib => `<span class="bg-blue-100 text-blue-800 text-sm font-medium me-2 px-2.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">${lib}</span>`).join('');
-            } else {
-                if (libraryList) libraryList.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${i18n.noSharedLibrary}</p>`;
-            }
-            
-            // Preenche e mostra os campos de contato
-            populateCountryCodes();
-            if (data.profile_details) {
-                document.getElementById('profileName').value = data.profile_details.name || '';
-                document.getElementById('profileTelegram').value = data.profile_details.telegram_user || '';
-                document.getElementById('profileDiscord').value = data.profile_details.discord_user_id || '';
-
-                const fullPhone = data.profile_details.phone_number || '';
-                const match = fullPhone.match(/^(\+\d+)(\d+)$/);
-                if (match) {
-                    document.getElementById('countryCode').value = match[1];
-                    document.getElementById('profilePhone').value = match[2];
+            if (libraryList) {
+                if (data.libraries && data.libraries.length > 0) {
+                    libraryList.innerHTML = data.libraries.map(lib => `<span class="bg-blue-100 text-blue-800 text-sm font-medium me-2 px-2.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">${lib}</span>`).join('');
                 } else {
-                    document.getElementById('profilePhone').value = fullPhone.replace(/\D/g, '');
+                    libraryList.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${i18n.noSharedLibrary}</p>`;
                 }
             }
-            if (data.notification_settings) {
-                if (data.notification_settings.telegram_enabled) document.getElementById('telegram-field-container').classList.remove('hidden');
-                if (data.notification_settings.discord_enabled) document.getElementById('discord-field-container').classList.remove('hidden');
-                // Assumindo que o telefone é para webhooks
-                if (data.notification_settings.webhook_enabled) document.getElementById('phone-field-container').classList.remove('hidden');
-            }
+            
+            // CORREÇÃO: Adiciona verificações para o formulário de contato
+            if (document.getElementById('contact-details-form')) {
+                populateCountryCodes();
+                if (data.profile_details) {
+                    document.getElementById('profileName').value = data.profile_details.name || '';
+                    document.getElementById('profileTelegram').value = data.profile_details.telegram_user || '';
+                    document.getElementById('profileDiscord').value = data.profile_details.discord_user_id || '';
 
+                    const fullPhone = data.profile_details.phone_number || '';
+                    const match = fullPhone.match(/^(\+\d+)(\d+)$/);
+                    if (match) {
+                        document.getElementById('countryCode').value = match[1];
+                        document.getElementById('profilePhone').value = match[2];
+                    } else {
+                        document.getElementById('profilePhone').value = fullPhone.replace(/\D/g, '');
+                    }
+                }
+                if (data.notification_settings) {
+                    if (data.notification_settings.telegram_enabled) document.getElementById('telegram-field-container').classList.remove('hidden');
+                    if (data.notification_settings.discord_enabled) document.getElementById('discord-field-container').classList.remove('hidden');
+                    if (data.notification_settings.webhook_enabled) document.getElementById('phone-field-container').classList.remove('hidden');
+                }
+                document.getElementById('saveContactDetails').addEventListener('click', handleSaveContactDetails);
+            }
 
             const paymentHistory = await fetchAPI(urls.getPaymentHistoryUrl.replace('__USERNAME__', data.username));
             if (paymentHistory.success) {
@@ -473,7 +480,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (container) container.classList.remove('hidden');
 
             initializeTabs();
-            document.getElementById('saveContactDetails').addEventListener('click', handleSaveContactDetails);
 
         } catch (error) {
             if (loadingIndicator) loadingIndicator.style.display = 'none';
