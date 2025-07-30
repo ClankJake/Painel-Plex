@@ -99,9 +99,12 @@ def create_app(log_level='INFO', _from_job=False):
     base_url_for_cookie = app_config.get('APP_BASE_URL', '')
     app.config['SESSION_COOKIE_SECURE'] = base_url_for_cookie.startswith('https://')
 
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'app_data.db')
-    
+    config_dir_path = os.path.join(app.root_path, '..', 'config')
+    db_path = os.path.join(config_dir_path, 'app_data.db')
+    log_file_path = os.path.join(config_dir_path, 'app.log')
+
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=20'
+    app.config['LOG_FILE'] = log_file_path
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         "connect_args": {
             "check_same_thread": False,
