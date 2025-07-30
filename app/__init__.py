@@ -88,8 +88,13 @@ def create_app(log_level='INFO', _from_job=False):
 
     app.config['LANGUAGES'] = {'pt_BR': 'Português'}
     app.config['BABEL_DEFAULT_LOCALE'] = 'pt_BR'
-
+    
+    # Carrega a configuração do ficheiro config.json
     app_config = load_or_create_config()
+    
+    app_config.pop('LOG_FILE', None)
+    app_config.pop('SQLALCHEMY_DATABASE_URI', None)
+    
     app.config.update(app_config)
 
     config_dir_path = os.path.join(app.root_path, '..', 'config')
