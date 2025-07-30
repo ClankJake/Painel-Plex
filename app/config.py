@@ -22,7 +22,7 @@ def load_or_create_config():
     secret_key_from_env = os.environ.get('SECRET_KEY')
 
     if not os.path.exists(CONFIG_FILE):
-        logger.info(f"O ficheiro de configuração '{CONFIG_FILE}' não foi encontrado. A criar um novo.")
+        logger.info(f"O ficheiro de configuração '{CONFIG_FILE}' não foi encontrado. Criando um novo.")
         default_config = {
             "IS_CONFIGURED": False,
             # Se a variável de ambiente existir, usa-a; senão, gera uma nova chave segura.
@@ -69,7 +69,7 @@ def load_or_create_config():
             "EFI_ENABLED": False,
             "EFI_CLIENT_ID": "",
             "EFI_CLIENT_SECRET": "",
-            "EFI_CERTIFICATE": os.path.join(CONFIG_DIR, "certs", "efisandbox.pem"),
+            "EFI_CERTIFICATE": "/app/certs/efisandbox.pem",
             "EFI_SANDBOX": True,
             "EFI_PIX_KEY": "", # A sua chave PIX
             "MERCADOPAGO_ENABLED": False,
@@ -145,7 +145,7 @@ def load_or_create_config():
                 config.setdefault("EFI_ENABLED", False)
                 config.setdefault("EFI_CLIENT_ID", "")
                 config.setdefault("EFI_CLIENT_SECRET", "")
-                config.setdefault("EFI_CERTIFICATE", os.path.join(CONFIG_DIR, "certs", "efisandbox.pem"))
+                config.setdefault("/app/certs/efisandbox.pem")
                 config.setdefault("EFI_SANDBOX", True)
                 config.setdefault("EFI_PIX_KEY", "")
                 config.setdefault("RENEWAL_PRICE", "10.00")
