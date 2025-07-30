@@ -115,7 +115,8 @@ class NotifierManager:
             logger.warning(f"A APP_BASE_URL ('{app_base_url}') não está configurada ou está definida para um endereço local. Os links de pagamento gerados podem não ser acessíveis externamente.")
 
         payment_link = "#"
-        if user_profile.get('payment_token'):
+        # CORREÇÃO: Apenas gera um link de pagamento se o evento não for uma confirmação de renovação.
+        if event_type != 'renewal' and user_profile.get('payment_token'):
             long_url = url_for('main.payment_page', token=user_profile['payment_token'], _external=True)
             logger.info(f"URL de pagamento longa gerada para '{user.get('username')}': {long_url}")
             
