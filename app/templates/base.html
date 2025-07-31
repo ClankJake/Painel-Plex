@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#f59e0b"/>
-    <link rel="manifest" href="{{ url_for('main.serve_manifest') }}">
+    <link rel="manifest" href="{{ url_for('serve_manifest') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192x192.png') }}">
 
     <title>{% block title %}{{ app_title }}{% endblock %}</title>
