@@ -5,22 +5,15 @@ FROM node:20-slim as frontend-builder
 
 WORKDIR /frontend
 
-# Copia os ficheiros de definição de dependências
-# Usar package*.json é mais flexível. Ele copia package.json e package-lock.json se existir,
-# evitando erros se package-lock.json não estiver presente no contexto do build.
-COPY package*.json ./
+# Copia apenas o package.json para começar
+COPY package.json ./
 
-# Limpa o cache do npm para evitar erros de integridade (EINTEGRITY) em ambientes de build
-RUN npm cache clean --force
+# Instala as dependências. Sem um package-lock.json, o npm irá gerar um novo
+# e instalar as dependências, resolvendo conflitos de integridade.
+RUN npm install
 
-# Instala as dependências de frontend usando 'npm ci' para builds consistentes e fiáveis
-RUN npm ci
-
-# Copia o resto dos ficheiros de frontend
-COPY tailwind.config.js .
-COPY app/static/css/input.css ./app/static/css/input.css
-COPY app/templates/ ./app/templates/
-COPY app/static/js/ ./app/static/js/
+# Copia o resto dos ficheiros da aplicação, incluindo o package-lock.json agora gerado localmente (se existir)
+COPY . .
 
 # Executa o build do CSS
 RUN npm run build:css
