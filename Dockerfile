@@ -1,7 +1,8 @@
 # Dockerfile para a aplicação Painel Plex
 
 # --- Estágio 1: Build do Frontend ---
-FROM node:20-slim AS frontend-builder
+# Usar a imagem base 'bookworm' que é uma versão mais recente do Debian
+FROM node:20-bookworm-slim AS frontend-builder
 
 WORKDIR /frontend
 
