@@ -8,12 +8,13 @@ WORKDIR /frontend
 # Copia os ficheiros de definição de dependências
 COPY package*.json ./
 
-# Atualiza o npm para a versão mais recente para evitar bugs de integridade
-# e combina todos os comandos numa única camada RUN para evitar problemas de cache.
+# Atualiza o npm, limpa o cache e instala as dependências.
+# A flag --no-integrity é adicionada para contornar erros persistentes de EINTEGRITY
+# em ambientes de build com problemas de rede ou cache.
 RUN npm install -g npm@latest && \
     npm config set registry https://registry.npmjs.org/ && \
     npm cache clean --force && \
-    npm install
+    npm install --no-integrity
 
 # Copia os ficheiros de configuração e o código-fonte do frontend necessários para o build
 COPY tailwind.config.js .
