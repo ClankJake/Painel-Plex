@@ -3,8 +3,6 @@
 {% block title %}{{ _('Dashboard Financeiro') }} - {{ app_title }}{% endblock %}
 
 {% block extra_head %}
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <style>
         .chart-view-btn.active {
             @apply bg-white dark:bg-gray-800 shadow-md text-yellow-600 dark:text-yellow-400 font-semibold;
@@ -110,6 +108,8 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='dist/chart.umd.js') }}"></script>
+<script src="{{ url_for('static', filename='dist/chartjs-adapter-date-fns.bundle.min.js') }}"></script>
 <script id="financial-script"
         type="module"
         src="{{ url_for('static', filename='js/financial.js') }}"
