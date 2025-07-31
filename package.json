@@ -16,5 +16,8 @@
   },
   "devDependencies": {
     "tailwindcss": "^3.4.3"
+  },
+  "overrides": {
+    "yaml": "2.3.4"
   }
 }
