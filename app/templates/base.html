@@ -12,12 +12,8 @@
     <!-- Favicon atualizado para o ícone da "mula" -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='gold'><path d='M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z'/></svg>">
     
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-      }
-    </script>
+    <!-- CSS Gerado pelo Tailwind -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -70,7 +66,7 @@
 
     <div class="min-h-screen">
         {% block header %}
-        <header class="bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg sticky top-0 z-40 border-b border-gray-200 dark:border-gray-700/50">
+        <header class="bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg sticky top: 0; z-index: 40; border-b border-gray-200 dark:border-gray-700/50">
             <div class="container mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex items-center justify-between h-16">
                     <div class="flex items-center">
@@ -172,6 +168,11 @@
     <div id="notificationConfirmationModal" class="modal-backdrop hidden"></div>
     <div id="confirmationModal" class="modal-backdrop hidden"></div>
     <div id="toast" class="toast"></div>
+
+    <!-- Scripts Carregados Localmente -->
+    <script src="/static/dist/socket.io.min.js"></script>
+    <script src="/static/dist/chart.umd.js"></script>
+    <script src="/static/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
