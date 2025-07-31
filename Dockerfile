@@ -8,14 +8,11 @@ WORKDIR /frontend
 # Copia os ficheiros de definição de dependências
 COPY package*.json ./
 
-# Define o registo do npm para o público para evitar problemas de conectividade/cache
-RUN npm config set registry https://registry.npmjs.org/
-
-# Limpa o cache do npm para garantir uma instalação limpa
-RUN npm cache clean --force
-
-# Instala as dependências de frontend
-RUN npm install
+# Combina todos os comandos npm numa única camada RUN para evitar problemas de cache
+# e garantir uma instalação limpa e consistente.
+RUN npm config set registry https://registry.npmjs.org/ && \
+    npm cache clean --force && \
+    npm install
 
 # Copia os ficheiros de configuração e o código-fonte do frontend necessários para o build
 COPY tailwind.config.js .
