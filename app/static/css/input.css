@@ -43,27 +43,29 @@
         align-items: center;
         z-index: 50;
         backdrop-filter: blur(4px);
+        transition: opacity 0.3s ease-in-out;
     }
     .modal-content {
-        @apply bg-white dark:bg-gray-800;
-        padding: 1.5rem;
-        border-radius: 0.75rem;
-        max-width: 90%;
-        width: 500px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        @apply bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-xl shadow-2xl;
+        max-width: 95%;
+        width: 520px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transform: translateY(-2rem);
+    }
+    .modal-backdrop:not(.hidden) .modal-content {
+        transform: translateY(0);
     }
     .modal-body {
         max-height: 70vh;
         overflow-y: auto;
     }
+    /* Oculta a barra de rolagem em todos os navegadores */
     .modal-body::-webkit-scrollbar {
-        width: 6px;
+        display: none;
     }
-    .modal-body::-webkit-scrollbar-track {
-        background: transparent;
-    }
-    .modal-body::-webkit-scrollbar-thumb {
-        @apply bg-gray-400 dark:bg-gray-500 rounded-full;
+    .modal-body {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;  /* Firefox */
     }
     .btn {
         display: inline-flex;
