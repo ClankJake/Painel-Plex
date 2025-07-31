@@ -9,13 +9,13 @@ WORKDIR /frontend
 # Copia os ficheiros de definição de dependências
 COPY package*.json ./
 
-# Atualiza o npm, limpa o cache e instala as dependências.
-# A flag --no-integrity é adicionada para contornar erros persistentes de EINTEGRITY
-# em ambientes de build com problemas de rede ou cache.
+# Atualiza o npm, limpa o cache, remove lockfiles/node_modules e instala as dependências.
+# Esta é uma abordagem robusta para resolver erros de EINTEGRITY persistentes.
 RUN npm install -g npm@latest && \
     npm config set registry https://registry.npmjs.org/ && \
     npm cache clean --force && \
-    npm install --no-integrity
+    rm -rf node_modules package-lock.json && \
+    npm install
 
 # Copia os ficheiros de configuração e o código-fonte do frontend necessários para o build
 COPY tailwind.config.js .
