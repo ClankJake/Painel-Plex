@@ -3,6 +3,7 @@
 ![Status do Projeto](https://img.shields.io/badge/status-ativo-brightgreen)
 ![Linguagem](https://img.shields.io/badge/python-3.8%2B-blue)
 ![Framework](https://img.shields.io/badge/flask-2.x-orange)
+[![Build and Publish Docker Image to GHCR](https://github.com/ClankJake/Painel-Plex/actions/workflows/docker-publish.yml/badge.svg?branch=stable)](https://github.com/ClankJake/Painel-Plex/actions/workflows/docker-publish.yml)
 
 O Painel de Gestão Plex é uma aplicação web completa projetada para simplificar a administração de servidores Plex. Ele oferece uma interface centralizada para gerenciar usuários, convites, assinaturas, finanças e visualizar estatísticas detalhadas de uso, tudo com uma experiência de usuário moderna e interativa.
 
