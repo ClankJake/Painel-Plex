@@ -4,8 +4,8 @@
   "description": "Frontend dependencies for Painel de Gestão Plex",
   "main": "index.js",
   "scripts": {
-    "build:css": "tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css",
-    "watch:css": "tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css --watch"
+    "build:css": "mkdir -p ./app/static/dist && tailwindcss -i ./app/static/css/input.css -o ./app/static/dist/output.css",
+    "watch:css": "mkdir -p ./app/static/dist && tailwindcss -i ./app/static/css/input.css -o ./app/static/dist/output.css --watch"
   },
   "author": "",
   "license": "ISC",
