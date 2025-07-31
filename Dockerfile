@@ -1,17 +1,20 @@
 # Dockerfile para a aplicação Painel Plex
 
 # --- Estágio 1: Build do Frontend ---
-FROM node:20-slim as frontend-builder
+FROM node:20-slim AS frontend-builder
 
 WORKDIR /frontend
 
 # Copia os ficheiros de definição de dependências
 COPY package*.json ./
 
-# Limpa o cache do npm para evitar erros de integridade (EINTEGRITY) em ambientes de build
+# Define o registo do npm para o público para evitar problemas de conectividade/cache
+RUN npm config set registry https://registry.npmjs.org/
+
+# Limpa o cache do npm para garantir uma instalação limpa
 RUN npm cache clean --force
 
-# Instala as dependências de frontend. 'npm install' é mais resiliente em ambientes de build.
+# Instala as dependências de frontend
 RUN npm install
 
 # Copia os ficheiros de configuração e o código-fonte do frontend necessários para o build
