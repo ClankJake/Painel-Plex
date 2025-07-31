@@ -1,22 +1,19 @@
 # Dockerfile para a aplicação Painel Plex
 
-# --- Estágio 1: Build do Frontend ---
-# Usar a imagem base 'bookworm' que é uma versão mais recente do Debian
-FROM node:20-bookworm-slim AS frontend-builder
+# --- Estágio 1: Build do Frontend --
+FROM node:20-slim AS frontend-builder
 
 WORKDIR /frontend
 
-# Copia os ficheiros de definição de dependências
-COPY package*.json ./
+# Copia apenas o package.json para forçar uma resolução de dependências limpa
+COPY package.json ./
 
-# Atualiza o npm, limpa o cache, remove lockfiles/node_modules e instala as dependências.
-# Esta é uma abordagem robusta para resolver erros de EINTEGRITY persistentes.
-RUN npm install -g npm@latest && \
-    npm config set registry https://registry.npmjs.org/ && \
+# Combina todos os comandos npm numa única camada RUN para evitar problemas de cache
+# e garantir uma instalação limpa e consistente.
+RUN npm config set registry https://registry.npmjs.org/ && \
     npm cache clean --force && \
-    rm -rf node_modules package-lock.json && \
     npm install
-
+ 
 # Copia os ficheiros de configuração e o código-fonte do frontend necessários para o build
 COPY tailwind.config.js .
 COPY app/static/css/input.css ./app/static/css/input.css
