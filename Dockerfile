@@ -45,7 +45,6 @@ COPY app ./app
 COPY migrations ./migrations
 COPY run.py .
 COPY babel.cfg .
-COPY config ./config
 
 # Copia os assets construídos do estágio de frontend
 COPY --from=frontend-builder /frontend/app/static/css/output.css ./app/static/css/output.css
