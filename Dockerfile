@@ -13,8 +13,8 @@ COPY package*.json ./
 # Limpa o cache do npm para evitar erros de integridade (EINTEGRITY) em ambientes de build
 RUN npm cache clean --force
 
-# Instala as dependências de frontend
-RUN npm install
+# Instala as dependências de frontend usando 'npm ci' para builds consistentes e fiáveis
+RUN npm ci
 
 # Copia o resto dos ficheiros de frontend
 COPY tailwind.config.js .
