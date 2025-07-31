@@ -1,19 +1,21 @@
 # Dockerfile para a aplicação Painel Plex
 
 # --- Estágio 1: Build do Frontend ---
-FROM node:20-slim as frontend-builder
+FROM node:20-slim AS frontend-builder
 
 WORKDIR /frontend
 
-# Copia apenas o package.json para começar
-COPY package.json ./
+# Copia os ficheiros de definição de dependências
+COPY package*.json ./
 
-# Instala as dependências. Sem um package-lock.json, o npm irá gerar um novo
-# e instalar as dependências, resolvendo conflitos de integridade.
-RUN npm install
+# Instala as dependências de frontend usando 'npm ci' para builds consistentes e fiáveis
+RUN npm ci
 
-# Copia o resto dos ficheiros da aplicação, incluindo o package-lock.json agora gerado localmente (se existir)
-COPY . .
+# Copia os ficheiros de configuração e o código-fonte do frontend necessários para o build
+COPY tailwind.config.js .
+COPY app/static/css/input.css ./app/static/css/input.css
+COPY app/templates ./app/templates
+COPY app/static/js ./app/static/js
 
 # Executa o build do CSS
 RUN npm run build:css
@@ -31,15 +33,19 @@ ENV PGID=1000
 WORKDIR /app
 
 # Otimizações para Python em contentores.
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 # Instalação de Dependências Python:
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia a Aplicação Python (backend):
-COPY . .
+# Copia a Aplicação Python (backend) de forma explícita
+COPY app ./app
+COPY migrations ./migrations
+COPY run.py .
+COPY babel.cfg .
+COPY config ./config
 
 # Copia os assets construídos do estágio de frontend
 COPY --from=frontend-builder /frontend/app/static/css/output.css ./app/static/css/output.css
