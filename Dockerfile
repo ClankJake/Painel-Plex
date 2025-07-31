@@ -8,13 +8,12 @@ WORKDIR /frontend
 # Copia os ficheiros de definição de dependências
 COPY package*.json ./
 
-# Combina todos os comandos npm numa única camada RUN para evitar problemas de cache
-# e garantir uma instalação limpa e consistente. Adiciona um mecanismo de repetição (retry)
-# e remove o package-lock.json para forçar uma resolução de dependências limpa.
-RUN rm -f package-lock.json && \
+# Atualiza o npm para a versão mais recente para evitar bugs de integridade
+# e combina todos os comandos numa única camada RUN para evitar problemas de cache.
+RUN npm install -g npm@latest && \
     npm config set registry https://registry.npmjs.org/ && \
     npm cache clean --force && \
-    (npm install || npm install || npm install)
+    npm install
 
 # Copia os ficheiros de configuração e o código-fonte do frontend necessários para o build
 COPY tailwind.config.js .
