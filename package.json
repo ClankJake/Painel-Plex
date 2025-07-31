@@ -1,0 +1,20 @@
+{
+  "name": "painel-plex",
+  "version": "1.0.0",
+  "description": "Frontend dependencies for Painel de Gestão Plex",
+  "main": "index.js",
+  "scripts": {
+    "build:css": "tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css",
+    "watch:css": "tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css --watch"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chart.js": "^4.4.3",
+    "chartjs-adapter-date-fns": "^3.0.0",
+    "socket.io-client": "^4.7.5"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.3"
+  }
+}
