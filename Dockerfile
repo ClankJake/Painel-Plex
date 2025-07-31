@@ -1,15 +1,18 @@
 # Dockerfile para a aplicação Painel Plex
 
 # --- Estágio 1: Build do Frontend ---
-FROM node:20-slim AS frontend-builder
+FROM node:20-slim as frontend-builder
 
 WORKDIR /frontend
 
 # Copia os ficheiros de definição de dependências
 COPY package*.json ./
 
-# Instala as dependências de frontend usando 'npm ci' para builds consistentes e fiáveis
-RUN npm ci
+# Limpa o cache do npm para evitar erros de integridade (EINTEGRITY) em ambientes de build
+RUN npm cache clean --force
+
+# Instala as dependências de frontend. 'npm install' é mais resiliente em ambientes de build.
+RUN npm install
 
 # Copia os ficheiros de configuração e o código-fonte do frontend necessários para o build
 COPY tailwind.config.js .
