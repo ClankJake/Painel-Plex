@@ -28,3 +28,5 @@ docker-compose.yml
 config/
 certs/
 
+# Dependências de Frontend (não devem ser copiadas diretamente)
+node_modules/
