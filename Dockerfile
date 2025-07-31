@@ -6,7 +6,9 @@ FROM node:20-slim as frontend-builder
 WORKDIR /frontend
 
 # Copia os ficheiros de definição de dependências
-COPY package.json package-lock.json ./
+# Usar package*.json é mais flexível. Ele copia package.json e package-lock.json se existir,
+# evitando erros se package-lock.json não estiver presente no contexto do build.
+COPY package*.json ./
 
 # Instala as dependências de frontend
 RUN npm install
