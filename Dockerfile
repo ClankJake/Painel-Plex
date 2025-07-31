@@ -10,8 +10,9 @@ COPY package*.json ./
 
 # Combina todos os comandos npm numa única camada RUN para evitar problemas de cache
 # e garantir uma instalação limpa e consistente. Adiciona um mecanismo de repetição (retry)
-# para lidar com erros de rede intermitentes (EINTEGRITY).
-RUN npm config set registry https://registry.npmjs.org/ && \
+# e remove o package-lock.json para forçar uma resolução de dependências limpa.
+RUN rm -f package-lock.json && \
+    npm config set registry https://registry.npmjs.org/ && \
     npm cache clean --force && \
     (npm install || npm install || npm install)
 
