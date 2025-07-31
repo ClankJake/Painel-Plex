@@ -18,57 +18,68 @@ O Painel de Gestão Plex é uma aplicação web completa projetada para simplifi
 -   **Estatísticas Detalhadas**: Integração com o Tautulli para fornecer gráficos e rankings de conteúdo mais assistido, atividade por dia da semana e gêneros favoritos.
 -   **Notificações Automatizadas**: Envie notificações de vencimento, renovação e fim de teste para os usuários através do Telegram e/ou Webhooks (compatível com Discord).
 -   **Tarefas Agendadas**: Processos automatizados em segundo plano para verificar expirações, remover usuários bloqueados e enviar lembretes.
--   **Interface Moderna**: Frontend reativo construído com JavaScript moderno e Tailwind CSS, oferecendo uma experiência de usuário rápida e agradável, incluindo tema claro e escuro.                                                                                                   |
+-   **Interface Moderna**: Frontend reativo construído com JavaScript moderno e Tailwind CSS, oferecendo uma experiência de usuário rápida e agradável, incluindo tema claro e escuro.
+
 ## Imagens
 <p align="center">
   <img width="400" alt="Imagem 2" src="https://github.com/user-attachments/assets/6a0eb80c-ca2e-4fc0-a183-1c08d4c084a2" />
   <img width="400" alt="Imagem 1" src="https://github.com/user-attachments/assets/ca2e94ad-a3b0-48c9-b053-48b3d86a2744" />
 </p>
 
-## Pré-requisitos
+## Instalação com Docker Compose (Recomendado)
 
-Antes de começar, certifique-se de que você tem os seguintes softwares instalados e configurados:
+Esta é a forma mais simples e rápida de colocar a aplicação em funcionamento.
 
-1.  **Python**: Versão 3.8 ou superior.
-2.  **Plex Media Server**: Totalmente configurado e acessível.
-3.  **Tautulli**: Instalado e funcionando, pois é essencial para as estatísticas e controle de sessões.
+### Pré-requisitos
 
-## Instalação
+-   **Docker** e **Docker Compose** instalados na sua máquina.
+-   **Plex Media Server** e **Tautulli** a funcionar e acessíveis na sua rede.
 
-Siga estes passos para colocar a aplicação em funcionamento:
+### Passos
 
-1.  **Clone o repositório:**
-    ```bash
-    git clone https://github.com/seu-usuario/painel-plex.git
-    cd painel-plex
+1.  **Crie o arquivo `docker-compose.yml`:**
+    Crie um arquivo `docker-compose.yml` e cole o seguinte conteúdo:
+
+    ```yaml
+    # docker-compose.yml
+    version: '3.8'
+
+    services:
+      painel-plex:
+        image: ghcr.io/clankjake/painel-plex:stable
+        container_name: painel-plex
+        ports:
+          - "5000:5000"
+        volumes:
+          - ./config:/app/config
+          - ./certs:/app/certs
+        environment:
+          - PUID=1000
+          - PGID=1000
+          - PYTHONIOENCODING=utf-8
+        restart: unless-stopped
     ```
 
-2.  **Crie e ative um ambiente virtual (recomendado):**
+2.  **Inicie a Aplicação:**
+    No mesmo diretório onde criou o arquivo, execute o comando:
     ```bash
-    # Windows
-    python -m venv venv
-    .\venv\Scripts\activate
-
-    # macOS / Linux
-    python3 -m venv venv
-    source venv/bin/activate
+    docker-compose up -d
     ```
+    O Docker irá baixar a imagem mais recente e iniciar o conteiner em segundo plano.
 
-3.  **Instale as dependências:**
-    O projeto utiliza as bibliotecas listadas no arquivo `requirements.txt`.
-    ```bash
-    pip install -r requirements.txt
-    ```
+3.  **Configuração:**
+    Abra o seu navegador e aceda a `http://SEU_ENDERECO_IP:5000`. Será redirecionado para a página de configuração inicial, onde poderá conectar a sua conta Plex, Tautulli e outros serviços.
 
-4.  **Primeira Execução:**
-    Execute a aplicação pela primeira vez para que ela crie o arquivo de configuração `config.json` e o banco de dados `app_data.db`.
-    ```bash
-    python run.py
-    ```
+    -   O aplicativo irá criar automaticamente uma pasta `config` no mesmo local do seu `docker-compose.yml`. É aqui que o seu ficheiro `config.json` e a base de dados `app_data.db` serão guardados de forma persistente.
+    -   Se utilizar pagamentos via Efí, coloque o seu arquivo de certificado `.pem` na pasta `certs` que também será criada.
 
-## Configuração
+## Instalação Manual (Desenvolvimento)
 
-A configuração inicial é feita de forma simples e guiada através da interface web.
+Esta abordagem é recomendada apenas se pretender contribuir para o desenvolvimento da aplicação.
 
-1.  Após a primeira execução, acesse `http://127.0.0.1:5000`. Você será redirecionado para a página de setup.
-
+1.  **Pré-requisitos:** Instale Python 3.8+, Node.js e npm.
+2.  **Clone o repositório:** `git clone https://github.com/ClankJake/Painel-Plex.git`
+3.  **Crie um ambiente virtual e instale as dependências Python:** `pip install -r requirements.txt`
+4.  **Instale as dependências Frontend:** `npm install`
+5.  **Inicie o processo de build do CSS:** `npm run watch:css`
+6.  **Noutro terminal, inicie a aplicação:** `python run.py`
