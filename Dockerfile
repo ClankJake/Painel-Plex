@@ -4,19 +4,24 @@
 # Usar a imagem base 'bookworm' que é uma versão mais recente do Debian
 FROM node:20-bookworm-slim AS frontend-builder
 
-WORKDIR /build
+WORKDIR /frontend
 
-# Copia os ficheiros de definição de dependências e configuração do frontend
-COPY package*.json ./
+# Copia os ficheiros de definição de dependências
+COPY package.json ./
+
+# Atualiza o npm, limpa o cache e instala as dependências com um mecanismo de repetição
+RUN npm install -g npm@latest && \
+    npm config set registry https://registry.npmjs.org/ && \
+    npm cache clean --force && \
+    (npm install || npm install || npm install)
+
+# Copia os ficheiros de configuração e o código-fonte do frontend necessários para o build
 COPY tailwind.config.js .
+COPY app/static/css/input.css ./app/static/css/input.css
+COPY app/templates ./app/templates
+COPY app/static/js ./app/static/js
 
-# Instala as dependências de frontend
-RUN npm install
-
-# Copia o código-fonte da aplicação que contém as classes do Tailwind
-COPY app ./app
-
-# Executa o build do CSS, colocando o resultado no diretório 'dist' para consistência
+# Executa o build do CSS
 RUN npm run build:css
 
 
@@ -45,11 +50,11 @@ COPY migrations ./migrations
 COPY run.py .
 COPY babel.cfg .
 
-# Copia os assets construídos e as dependências do estágio de frontend para o diretório final
-COPY --from=frontend-builder /build/app/static/dist/output.css ./app/static/dist/output.css
-COPY --from=frontend-builder /build/node_modules/chart.js/dist/chart.umd.js ./app/static/dist/chart.umd.js
-COPY --from=frontend-builder /build/node_modules/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js ./app/static/dist/chartjs-adapter-date-fns.bundle.min.js
-COPY --from=frontend-builder /build/node_modules/socket.io-client/dist/socket.io.min.js ./app/static/dist/socket.io.min.js
+# Copia os assets construídos do estágio de frontend
+COPY --from=frontend-builder /frontend/app/static/dist/output.css ./app/static/css/output.css
+COPY --from=frontend-builder /frontend/node_modules/chart.js/dist/chart.umd.js ./app/static/dist/chart.umd.js
+COPY --from=frontend-builder /frontend/node_modules/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js ./app/static/dist/chartjs-adapter-date-fns.bundle.min.js
+COPY --from=frontend-builder /frontend/node_modules/socket.io-client/dist/socket.io.min.js ./app/static/dist/socket.io.min.js
 
 
 # Expor a Porta: Informa ao Docker que a aplicação irá escutar na porta 5000.
