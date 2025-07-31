@@ -51,7 +51,7 @@ COPY run.py .
 COPY babel.cfg .
 
 # Copia os assets construídos do estágio de frontend
-COPY --from=frontend-builder /frontend/app/static/dist/output.css ./app/static/css/output.css
+COPY --from=frontend-builder /frontend/app/static/dist/output.css ./app/static/dist/output.css
 COPY --from=frontend-builder /frontend/node_modules/chart.js/dist/chart.umd.js ./app/static/dist/chart.umd.js
 COPY --from=frontend-builder /frontend/node_modules/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js ./app/static/dist/chartjs-adapter-date-fns.bundle.min.js
 COPY --from=frontend-builder /frontend/node_modules/socket.io-client/dist/socket.io.min.js ./app/static/dist/socket.io.min.js
