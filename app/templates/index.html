@@ -56,8 +56,12 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Carrega as bibliotecas necessárias antes do script da página -->
+<script src="{{ url_for('static', filename='dist/socket.io.min.js') }}"></script>
 <script src="{{ url_for('static', filename='dist/chart.umd.js') }}"></script>
 <script src="{{ url_for('static', filename='dist/chartjs-adapter-date-fns.bundle.min.js') }}"></script>
+
+<!-- Carrega o script específico da página -->
 <script id="dashboard-script"
         type="module"
         src="{{ url_for('static', filename='js/dashboard.js') }}"
