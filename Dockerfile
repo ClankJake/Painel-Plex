@@ -10,6 +10,9 @@ WORKDIR /frontend
 # evitando erros se package-lock.json não estiver presente no contexto do build.
 COPY package*.json ./
 
+# Limpa o cache do npm para evitar erros de integridade (EINTEGRITY) em ambientes de build
+RUN npm cache clean --force
+
 # Instala as dependências de frontend
 RUN npm install
 
