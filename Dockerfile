@@ -5,8 +5,8 @@ FROM node:20-slim AS frontend-builder
 
 WORKDIR /frontend
 
-# Copia os ficheiros de definição de dependências
-COPY package*.json ./
+# Copia apenas o package.json para forçar uma resolução de dependências limpa
+COPY package.json ./
 
 # Combina todos os comandos npm numa única camada RUN para evitar problemas de cache
 # e garantir uma instalação limpa e consistente.
