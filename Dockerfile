@@ -7,7 +7,7 @@ FROM node:20-bookworm-slim AS frontend-builder
 WORKDIR /build
 
 # Copia os ficheiros de definição de dependências e configuração do frontend
-COPY package*.json ./
+COPY package.json ./
 COPY tailwind.config.js .
 
 # Instala as dependências de frontend
