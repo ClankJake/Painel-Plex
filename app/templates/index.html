@@ -2,13 +2,6 @@
 
 {% block title %}{{ _('Dashboard') }} - {{ app_title }}{% endblock %}
 
-{% block extra_head %}
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-    <!-- Adiciona a biblioteca cliente do Socket.IO -->
-    <script src="https://cdn.socket.io/4.5.2/socket.io.min.js"></script>
-{% endblock %}
-
 {% block content %}
 <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
     <div>
@@ -63,6 +56,8 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='dist/chart.umd.js') }}"></script>
+<script src="{{ url_for('static', filename='dist/chartjs-adapter-date-fns.bundle.min.js') }}"></script>
 <script id="dashboard-script"
         type="module"
         src="{{ url_for('static', filename='js/dashboard.js') }}"
