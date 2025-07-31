@@ -3,7 +3,6 @@
 {% block title %}{{ _('Estatísticas') }} - {{ app_title }}{% endblock %}
 
 {% block extra_head %}
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* Apenas estilos que não podem ser feitos com classes do Tailwind permanecem, como a barra de scroll. */
         .horizontal-scroll::-webkit-scrollbar { display: none; /* Chrome, Safari, Opera */ }
@@ -181,6 +180,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='dist/chart.umd.js') }}"></script>
 <script id="statistics-script"
         type="module" 
         src="{{ url_for('static', filename='js/statistics.js') }}"
