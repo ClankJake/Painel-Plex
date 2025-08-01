@@ -29,8 +29,6 @@ def load_or_create_config():
             "SECRET_KEY": secret_key_from_env or secrets.token_hex(16),
             "INTERNAL_TRIGGER_KEY": secrets.token_hex(32),
             "APP_TITLE": "Painel Plex",
-            "APP_HOST": "0.0.0.0",
-            "APP_PORT": 5000,
             "APP_BASE_URL": "",
             "LOG_LEVEL": "INFO",
             "ADMIN_USER": "",
@@ -119,8 +117,6 @@ def load_or_create_config():
                 config['SECRET_KEY'] = secrets.token_hex(16)
                 save_app_config(config)
                 config.setdefault("INTERNAL_TRIGGER_KEY", secrets.token_hex(32))
-                config.setdefault("APP_HOST", "0.0.0.0")
-                config.setdefault("APP_PORT", 5000)
                 config.setdefault("APP_BASE_URL", "")
                 config.setdefault("LOG_LEVEL", "INFO")
                 config.setdefault("LOG_FILE", os.path.join(CONFIG_DIR, "app.log"))

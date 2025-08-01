@@ -4,6 +4,7 @@ import logging
 from functools import wraps
 from flask import jsonify, request
 from flask_babel import gettext as _
+from pydantic import ValidationError
 
 from ...extensions import plex_manager
 
@@ -43,3 +44,30 @@ def user_lookup(f):
 
         return f(user=user, *args, **kwargs)
     return decorated_function
+
+def validate_json(schema):
+    """
+    Decorator para validar o JSON de entrada de uma requisição contra um esquema Pydantic.
+    """
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            json_data = request.get_json()
+            if not json_data:
+                return jsonify({"success": False, "message": "Corpo da requisição JSON não encontrado ou vazio."}), 400
+            
+            try:
+                validated_data = schema(**json_data)
+                kwargs['validated_data'] = validated_data
+                return f(*args, **kwargs)
+            except ValidationError as e:
+                # Formata os erros de validação para uma resposta clara
+                errors = {err['loc'][0]: err['msg'] for err in e.errors()}
+                logger.warning(f"Falha na validação da API para o endpoint '{request.path}': {errors}")
+                return jsonify({
+                    "success": False,
+                    "message": "Dados de entrada inválidos.",
+                    "errors": errors
+                }), 400
+        return wrapper
+    return decorator
