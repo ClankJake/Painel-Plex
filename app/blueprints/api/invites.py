@@ -8,6 +8,8 @@ from flask_login import login_required
 
 from ...extensions import plex_manager
 from ..auth import admin_required
+from .decorators import validate_json
+from .schemas import CreateInviteSchema
 
 logger = logging.getLogger(__name__)
 invites_api_bp = Blueprint('invites_api', __name__)
@@ -15,17 +17,18 @@ invites_api_bp = Blueprint('invites_api', __name__)
 @invites_api_bp.route('/create', methods=['POST'])
 @login_required
 @admin_required
-def create_invite_route():
-    data = request.json
+@validate_json(CreateInviteSchema)
+def create_invite_route(validated_data):
+    data = validated_data.dict()
     result = plex_manager.create_invitation(
         library_titles=data.get('libraries', []), 
-        screens=int(data.get('screens', 0)), 
+        screens=data.get('screens', 0), 
         allow_downloads=data.get('allow_downloads', False), 
         expires_in_minutes=data.get('expires_in_minutes'),
         trial_duration_minutes=data.get('trial_duration_minutes', 0),
         overseerr_access=data.get('overseerr_access', False),
         custom_code=data.get('custom_code'),
-        max_uses=int(data.get('max_uses', 1))
+        max_uses=data.get('max_uses', 1)
     )
     if result.get('success'):
         result['invite_url'] = url_for('main.claim_invite_page', code=result['code'], _external=True)
@@ -41,7 +44,10 @@ def list_invites_route():
 @login_required
 @admin_required
 def delete_invite_route():
-    return jsonify(plex_manager.delete_invitation(request.json.get('code')))
+    code = request.json.get('code')
+    if not code:
+        return jsonify({"success": False, "message": "Código do convite não fornecido."}), 400
+    return jsonify(plex_manager.delete_invitation(code))
 
 @invites_api_bp.route('/details/<string:code>', methods=['GET'])
 def get_invite_details_route(code):
