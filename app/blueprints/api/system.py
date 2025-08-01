@@ -105,7 +105,7 @@ def api_settings():
         config_to_update = load_or_create_config()
         new_data = request.json
         fields_to_update = [
-            'APP_TITLE', 'APP_HOST', 'APP_PORT', 'LOG_LEVEL', 'DAYS_TO_REMOVE_BLOCKED_USER',
+            'APP_TITLE', 'LOG_LEVEL', 'DAYS_TO_REMOVE_BLOCKED_USER',
             'EXPIRATION_NOTIFICATION_TIME', 'BLOCK_REMOVAL_TIME', 'WEBHOOK_URL', 'WEBHOOK_ENABLED', 
             'WEBHOOK_AUTHORIZATION_HEADER', 'WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE', 'WEBHOOK_RENEWAL_MESSAGE_TEMPLATE',
             'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_ENABLED', 'TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE',
@@ -124,7 +124,7 @@ def api_settings():
             'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD'
         ]
         numeric_fields = [
-            'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION', 'APP_PORT', 
+            'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION', 
             'BLOCKING_NOTIFIER_ID', 'SCREEN_LIMIT_NOTIFIER_ID', 'CLEANUP_PENDING_PAYMENTS_DAYS',
             'PAYMENT_LINK_GRACE_PERIOD_DAYS',
             # Novas chaves numéricas de gamificação
@@ -180,8 +180,6 @@ def api_settings():
         reschedule_job('cleanup_job', 'CLEANUP_TIME', old_config, config_to_update)
 
         success, message = plex_manager.reload_connections()
-        if config_to_update.get('APP_PORT') != old_config.get('APP_PORT') or config_to_update.get('APP_HOST') != old_config.get('APP_HOST'):
-            message += " " + _("As alterações de Host/Porta requerem um reinício da aplicação para terem efeito.")
         return jsonify({"success": success, "message": message})
     
     config_to_send = load_or_create_config()
