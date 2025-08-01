@@ -8,6 +8,7 @@ from flask_login import current_user
 from flask_babel import gettext as _, format_date
 from tzlocal import get_localzone
 from apscheduler.jobstores.base import JobLookupError
+from pydantic import ValidationError
 
 from ...extensions import plex_manager, tautulli_manager, data_manager
 from ...config import load_or_create_config
@@ -218,71 +219,83 @@ def renew_user_subscription_route(user, validated_data):
         logger.error(f"Falha ao enviar notificação de renovação para {username}: {e}")
     return jsonify({"success": True, "message": _("Subscrição renovada com sucesso. Novo vencimento em %(date)s.", date=new_expiration_date.strftime('%d/%m/%Y'))})
 
-@users_api_bp.route('/profile/<username>', methods=['GET'])
+@users_api_bp.route('/profile/<username>', methods=['GET', 'POST'])
 @login_required
 @admin_required
-def get_user_profile_route(username):
-    profile = data_manager.get_user_profile(username)
-    config = load_or_create_config()
-    notification_settings = {
-        "telegram_enabled": config.get("TELEGRAM_ENABLED", False),
-        "discord_enabled": config.get("DISCORD_ENABLED", False),
-        "webhook_enabled": config.get("WEBHOOK_ENABLED", False)
-    }
-    return jsonify({"success": True, "profile": profile, "notification_settings": notification_settings})
+def user_profile_route(username):
+    if request.method == 'GET':
+        profile = data_manager.get_user_profile(username)
+        config = load_or_create_config()
+        notification_settings = {
+            "telegram_enabled": config.get("TELEGRAM_ENABLED", False),
+            "discord_enabled": config.get("DISCORD_ENABLED", False),
+            "webhook_enabled": config.get("WEBHOOK_ENABLED", False)
+        }
+        return jsonify({"success": True, "profile": profile, "notification_settings": notification_settings})
 
-@users_api_bp.route('/profile/<username>', methods=['POST'])
-@login_required
-@admin_required
-@validate_json(UpdateProfileSchema)
-def update_user_profile_route(username, validated_data):
-    from ...extensions import scheduler
-    from ...scheduler import end_subscription_job
-    
-    data = validated_data.dict(exclude_unset=True)
-    local_datetime_str = data.pop('expiration_datetime_local', None)
-    
-    profile_to_update = data_manager.get_user_profile(username)
-    profile_to_update.update(data)
-    
-    if not local_datetime_str:
-        logger.info(f"Removendo data de vencimento para o utilizador '{username}'.")
-        profile_to_update['expiration_date'] = None
-        old_job_id = profile_to_update.pop('expiration_job_id', None)
-        if old_job_id:
-            try: scheduler.remove_job(old_job_id)
-            except JobLookupError: logger.warning(f"Tentativa de remover a tarefa de bloqueio '{old_job_id}', mas ela não foi encontrada no agendador.")
-    else:
-        naive_dt = datetime.fromisoformat(local_datetime_str)
-        old_job_id = profile_to_update.pop('expiration_job_id', None)
-        if old_job_id:
-            try: scheduler.remove_job(old_job_id)
-            except JobLookupError: pass
+    if request.method == 'POST':
+        from ...extensions import scheduler
+        from ...scheduler import end_subscription_job
         
-        new_job_id = f"sub_end_{username}_{secrets.token_hex(4)}"
-        scheduler.add_job(id=new_job_id, func=end_subscription_job, args=[username], trigger='date', run_date=naive_dt, misfire_grace_time=3600)
+        json_data = request.get_json()
+        if not json_data:
+            return jsonify({"success": False, "message": "Corpo da requisição JSON não encontrado ou vazio."}), 400
         
-        local_tz = get_localzone()
-        local_dt = naive_dt.replace(tzinfo=local_tz)
-        profile_to_update['expiration_date'] = local_dt.isoformat()
-        profile_to_update['expiration_job_id'] = new_job_id
-        logger.info(f"Tarefa de bloqueio para '{username}' reagendada para {local_dt} com ID '{new_job_id}'.")
+        try:
+            validated_data = UpdateProfileSchema(**json_data)
+        except ValidationError as e:
+            errors = {err['loc'][0]: err['msg'] for err in e.errors()}
+            logger.warning(f"Falha na validação da API para o endpoint '{request.path}': {errors}")
+            return jsonify({
+                "success": False,
+                "message": "Dados de entrada inválidos.",
+                "errors": errors
+            }), 400
 
-    data_manager.set_user_profile(username, profile_to_update)
+        data = validated_data.dict(exclude_unset=True)
+        local_datetime_str = data.pop('expiration_datetime_local', None)
+        
+        profile_to_update = data_manager.get_user_profile(username)
+        profile_to_update.update(data)
+        
+        if not local_datetime_str:
+            logger.info(f"Removendo data de vencimento para o utilizador '{username}'.")
+            profile_to_update['expiration_date'] = None
+            old_job_id = profile_to_update.pop('expiration_job_id', None)
+            if old_job_id:
+                try: scheduler.remove_job(old_job_id)
+                except JobLookupError: logger.warning(f"Tentativa de remover a tarefa de bloqueio '{old_job_id}', mas ela não foi encontrada no agendador.")
+        else:
+            naive_dt = datetime.fromisoformat(local_datetime_str)
+            old_job_id = profile_to_update.pop('expiration_job_id', None)
+            if old_job_id:
+                try: scheduler.remove_job(old_job_id)
+                except JobLookupError: pass
+            
+            new_job_id = f"sub_end_{username}_{secrets.token_hex(4)}"
+            scheduler.add_job(id=new_job_id, func=end_subscription_job, args=[username], trigger='date', run_date=naive_dt, misfire_grace_time=3600)
+            
+            local_tz = get_localzone()
+            local_dt = naive_dt.replace(tzinfo=local_tz)
+            profile_to_update['expiration_date'] = local_dt.isoformat()
+            profile_to_update['expiration_job_id'] = new_job_id
+            logger.info(f"Tarefa de bloqueio para '{username}' reagendada para {local_dt} com ID '{new_job_id}'.")
 
-    final_expiration_date_str = profile_to_update.get('expiration_date')
-    if final_expiration_date_str:
-        final_expiration_date = datetime.fromisoformat(final_expiration_date_str)
-        now_local = datetime.now().astimezone(get_localzone())
-        user_info = next((u for u in plex_manager.get_all_plex_users() if u['username'] == username), None)
-        if user_info:
-            is_currently_blocked = data_manager.get_blocked_users(username=username) is not None
-            if now_local > final_expiration_date:
-                tautulli_manager.manage_block_unblock(user_info['email'], username, 'add', reason='expired')
-            elif is_currently_blocked:
-                tautulli_manager.manage_block_unblock(user_info['email'], username, 'remove')
-    
-    return jsonify({"success": True, "message": _("Perfil do utilizador atualizado com sucesso.")})
+        data_manager.set_user_profile(username, profile_to_update)
+
+        final_expiration_date_str = profile_to_update.get('expiration_date')
+        if final_expiration_date_str:
+            final_expiration_date = datetime.fromisoformat(final_expiration_date_str)
+            now_local = datetime.now().astimezone(get_localzone())
+            user_info = next((u for u in plex_manager.get_all_plex_users() if u['username'] == username), None)
+            if user_info:
+                is_currently_blocked = data_manager.get_blocked_users(username=username) is not None
+                if now_local > final_expiration_date:
+                    tautulli_manager.manage_block_unblock(user_info['email'], username, 'add', reason='expired')
+                elif is_currently_blocked:
+                    tautulli_manager.manage_block_unblock(user_info['email'], username, 'remove')
+        
+        return jsonify({"success": True, "message": _("Perfil do utilizador atualizado com sucesso.")})
 
 
 @users_api_bp.route('/notify/<username>', methods=['POST'])
