@@ -28,6 +28,10 @@ FROM python:3.12-slim-bullseye
 ENV PUID=1000
 ENV PGID=1000
 
+# Define a porta padrão da aplicação como uma variável de ambiente.
+# Isto permite que ela seja substituída ao iniciar o contentor.
+ENV APP_PORT=5000
+
 # Define o diretório onde a aplicação irá correr dentro do contentor.
 WORKDIR /app
 
@@ -52,8 +56,9 @@ COPY --from=frontend-builder /build/node_modules/chartjs-adapter-date-fns/dist/c
 COPY --from=frontend-builder /build/node_modules/socket.io-client/dist/socket.io.min.js ./app/static/dist/socket.io.min.js
 
 
-# Expor a Porta: Informa ao Docker que a aplicação irá escutar na porta 5000.
-EXPOSE 5000
+# Expor a Porta: Informa ao Docker que a aplicação irá escutar na porta definida pela variável de ambiente.
+EXPOSE ${APP_PORT}
 
-# Comando de Execução: O comando que será executado quando o contentor iniciar.
-CMD ["python", "run.py"]
+# Comando de Execução: Executa a migração da base de dados e depois inicia o Gunicorn.
+# O Gunicorn agora usa a variável de ambiente $APP_PORT para definir a porta de escuta.
+CMD ["sh", "-c", "flask db upgrade && gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:${APP_PORT} run:app"]
