@@ -5,11 +5,13 @@
   "main": "index.js",
   "scripts": {
     "build:css": "mkdir -p ./app/static/dist && tailwindcss -i ./app/static/css/input.css -o ./app/static/dist/output.css",
-    "watch:css": "mkdir -p ./app/static/dist && tailwindcss -i ./app/static/css/input.css -o ./app/static/dist/output.css --watch"
+    "watch:css": "mkdir -p ./app/static/dist && tailwindcss -i ./app/static/css/input.css -o ./app/static/dist/output.css --watch",
+    "build": "npm run build:css && node ./build-assets.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "alpinejs": "^3.14.0",
     "chart.js": "^4.4.3",
     "chartjs-adapter-date-fns": "^3.0.0",
     "socket.io-client": "^4.7.5"
