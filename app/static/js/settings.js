@@ -39,8 +39,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const fieldMap = {
         'APP_TITLE': { type: 'text', default: 'Painel Plex' },
-        'APP_HOST': { type: 'text', default: '0.0.0.0' },
-        'APP_PORT': { type: 'number', default: 5000 },
         'APP_BASE_URL': { type: 'text', default: 'http://127.0.0.1:5000' },
         'ENABLE_LINK_SHORTENER': { type: 'checkbox', default: true },
         'DAYS_TO_REMOVE_BLOCKED_USER': { type: 'number', default: 0 },
