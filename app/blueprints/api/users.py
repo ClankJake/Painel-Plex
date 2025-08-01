@@ -12,7 +12,8 @@ from apscheduler.jobstores.base import JobLookupError
 from ...extensions import plex_manager, tautulli_manager, data_manager
 from ...config import load_or_create_config
 from ..auth import admin_required, login_required
-from .decorators import user_lookup
+from .decorators import user_lookup, validate_json
+from .schemas import RenewSubscriptionSchema, UpdateProfileSchema, UpdateAccountProfileSchema
 from ...models import UserProfile
 
 logger = logging.getLogger(__name__)
@@ -153,16 +154,13 @@ def get_account_details():
 
 @users_api_bp.route('/account/profile', methods=['POST'])
 @login_required
-def update_account_profile():
-    data = request.get_json()
+@validate_json(UpdateAccountProfileSchema)
+def update_account_profile(validated_data):
+    data = validated_data.dict(exclude_unset=True)
     username = current_user.username
     profile = data_manager.get_user_profile(username)
     
-    # Campos que o utilizador pode atualizar
-    allowed_fields = ['name', 'telegram_user', 'discord_user_id', 'phone_number']
-    for field in allowed_fields:
-        if field in data:
-            profile[field] = data[field]
+    profile.update(data)
             
     data_manager.set_user_profile(username, profile)
     logger.info(f"Utilizador '{username}' atualizou o seu perfil.")
@@ -187,16 +185,18 @@ def update_privacy_settings():
 @login_required
 @admin_required
 @user_lookup
-def renew_user_subscription_route(user):
-    data = request.json
-    months_to_add = data.get('months', 1)
-    base_mode = data.get('base', 'today')
-    base_date_str = data.get('base_date')
-    expiration_time_str = data.get('expiration_time')
+@validate_json(RenewSubscriptionSchema)
+def renew_user_subscription_route(user, validated_data):
+    data = validated_data
     username = user['username']
-    if not isinstance(months_to_add, int) or months_to_add <= 0:
-        return jsonify({"success": False, "message": _("Número de meses inválido.")}), 400
-    new_expiration_date = plex_manager.renew_subscription(username, months_to_add, base_mode, base_date_str=base_date_str, expiration_time_str=expiration_time_str)
+
+    new_expiration_date = plex_manager.renew_subscription(
+        username, 
+        data.months, 
+        data.base, 
+        base_date_str=data.base_date, 
+        expiration_time_str=data.expiration_time
+    )
     try:
         config = load_or_create_config()
         user_profile = data_manager.get_user_profile(username)
@@ -205,10 +205,10 @@ def renew_user_subscription_route(user):
         if user_screen_limit > 0:
             screen_prices = config.get("SCREEN_PRICES", {})
             monthly_price_str = screen_prices.get(str(user_screen_limit), monthly_price_str)
-        total_value = float(monthly_price_str) * months_to_add
-        data_manager.add_manual_payment(username=username, value=total_value, description=f"Renovação Admin (+{months_to_add} mês/meses)", payment_date_str=datetime.now().isoformat())
+        total_value = float(monthly_price_str) * data.months
+        data_manager.add_manual_payment(username=username, value=total_value, description=f"Renovação Admin (+{data.months} mês/meses)", payment_date_str=datetime.now().isoformat())
         logger.info(f"Registo financeiro automático de R${total_value:.2f} criado para a renovação de '{username}'.")
-        data_manager.create_notification(message=f"Renovação manual para {username} por {months_to_add} mês(es) registada.", category='info', link=url_for('main.users_page'))
+        data_manager.create_notification(message=f"Renovação manual para {username} por {data.months} mês(es) registada.", category='info', link=url_for('main.users_page'))
     except Exception as e:
         logger.error(f"Falha ao criar registo financeiro automático para a renovação de '{username}': {e}")
     profile = data_manager.get_user_profile(username)
@@ -218,25 +218,28 @@ def renew_user_subscription_route(user):
         logger.error(f"Falha ao enviar notificação de renovação para {username}: {e}")
     return jsonify({"success": True, "message": _("Subscrição renovada com sucesso. Novo vencimento em %(date)s.", date=new_expiration_date.strftime('%d/%m/%Y'))})
 
-@users_api_bp.route('/profile/<username>', methods=['GET', 'POST'])
+@users_api_bp.route('/profile/<username>', methods=['GET'])
 @login_required
 @admin_required
-def user_profile_route(username):
-    if request.method == 'GET':
-        profile = data_manager.get_user_profile(username)
-        config = load_or_create_config()
-        notification_settings = {
-            "telegram_enabled": config.get("TELEGRAM_ENABLED", False),
-            "discord_enabled": config.get("DISCORD_ENABLED", False),
-            "webhook_enabled": config.get("WEBHOOK_ENABLED", False)
-        }
-        return jsonify({"success": True, "profile": profile, "notification_settings": notification_settings})
-    
-    # POST
+def get_user_profile_route(username):
+    profile = data_manager.get_user_profile(username)
+    config = load_or_create_config()
+    notification_settings = {
+        "telegram_enabled": config.get("TELEGRAM_ENABLED", False),
+        "discord_enabled": config.get("DISCORD_ENABLED", False),
+        "webhook_enabled": config.get("WEBHOOK_ENABLED", False)
+    }
+    return jsonify({"success": True, "profile": profile, "notification_settings": notification_settings})
+
+@users_api_bp.route('/profile/<username>', methods=['POST'])
+@login_required
+@admin_required
+@validate_json(UpdateProfileSchema)
+def update_user_profile_route(username, validated_data):
     from ...extensions import scheduler
     from ...scheduler import end_subscription_job
     
-    data = request.json
+    data = validated_data.dict(exclude_unset=True)
     local_datetime_str = data.pop('expiration_datetime_local', None)
     
     profile_to_update = data_manager.get_user_profile(username)
@@ -250,24 +253,20 @@ def user_profile_route(username):
             try: scheduler.remove_job(old_job_id)
             except JobLookupError: logger.warning(f"Tentativa de remover a tarefa de bloqueio '{old_job_id}', mas ela não foi encontrada no agendador.")
     else:
-        try:
-            naive_dt = datetime.fromisoformat(local_datetime_str)
-            old_job_id = profile_to_update.pop('expiration_job_id', None)
-            if old_job_id:
-                try: scheduler.remove_job(old_job_id)
-                except JobLookupError: pass
-            
-            new_job_id = f"sub_end_{username}_{secrets.token_hex(4)}"
-            scheduler.add_job(id=new_job_id, func=end_subscription_job, args=[username], trigger='date', run_date=naive_dt, misfire_grace_time=3600)
-            
-            local_tz = get_localzone()
-            local_dt = naive_dt.replace(tzinfo=local_tz)
-            profile_to_update['expiration_date'] = local_dt.isoformat()
-            profile_to_update['expiration_job_id'] = new_job_id
-            logger.info(f"Tarefa de bloqueio para '{username}' reagendada para {local_dt} com ID '{new_job_id}'.")
-        except (ValueError, TypeError) as e:
-            logger.error(f"Erro ao processar a data/hora de vencimento para '{username}': {e}")
-            return jsonify({"success": False, "message": _("Formato de data ou hora inválido.")}), 400
+        naive_dt = datetime.fromisoformat(local_datetime_str)
+        old_job_id = profile_to_update.pop('expiration_job_id', None)
+        if old_job_id:
+            try: scheduler.remove_job(old_job_id)
+            except JobLookupError: pass
+        
+        new_job_id = f"sub_end_{username}_{secrets.token_hex(4)}"
+        scheduler.add_job(id=new_job_id, func=end_subscription_job, args=[username], trigger='date', run_date=naive_dt, misfire_grace_time=3600)
+        
+        local_tz = get_localzone()
+        local_dt = naive_dt.replace(tzinfo=local_tz)
+        profile_to_update['expiration_date'] = local_dt.isoformat()
+        profile_to_update['expiration_job_id'] = new_job_id
+        logger.info(f"Tarefa de bloqueio para '{username}' reagendada para {local_dt} com ID '{new_job_id}'.")
 
     data_manager.set_user_profile(username, profile_to_update)
 
