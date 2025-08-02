@@ -127,14 +127,15 @@ class TautulliManager:
             return {
                 "friendly_name": _("Bloqueio de Usuario (Painel)"),
                 "actions": {"on_play": 1},
-                "notify_text": {"on_play_subject": "--jbop stream --username {user_email} --sessionId {session_id} --killMessage 'Seu acesso expirou. Caso deseje continuar só regularizar'", "on_play_body": ""},
+                "notify_text": {"on_play_subject": "--jbop allStreams --username {user_email} --sessionId {session_id} --killMessage 'Seu acesso expirou. Caso deseje continuar só regularizar'", "on_play_body": ""},
                 "custom_conditions": [{"parameter": "user_email", "operator": "is", "value": ["~"]}]
             }
         elif notifier_type == 'trial':
             return {
                 "friendly_name": _("Periodo de Teste (Painel)"),
                 "actions": {"on_play": 1},
-                "notify_text": {"on_play_subject": "--jbop stream --username {user_email} --sessionId {session_id} --killMessage 'Seu período de teste foi finalizado'", "on_play_body": ""},
+                "notify_text": {"on_play_subject": "--jbop allStreams --username {user_email} --sessionId {session_id} --killMessage 'Seu período de teste foi finalizado'", "on_play_body": ""},
                 "custom_conditions": [{"parameter": "user_email", "operator": "is", "value": ["~"]}]
             }
         return None
+
