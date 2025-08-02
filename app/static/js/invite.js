@@ -173,7 +173,7 @@ async function validateInvite() {
                 
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-white mt-4 mb-2">${i18n.howToStart}</h3>
                 <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-400 step-list">
-                    <li>${i18n.step1Text} <a href="https://www.plex.tv/sign-up/" target="_blank" rel="noopener noreferrer" class="text-yellow-500 hover:underline font-semibold">${i18n.step1Link}</a>${i18n.step1End}</li>
+                    <li>${i18n.step1Text} <a href="https://www.plex.tv/pt-br/sign-up/" target="_blank" rel="noopener noreferrer" class="text-yellow-500 hover:underline font-semibold">${i18n.step1Link}</a>${i18n.step1End}</li>
                     <li>${i18n.step2}</li>
                     <li>${i18n.step3}</li>
                 </ol>
