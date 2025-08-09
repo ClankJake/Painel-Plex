@@ -186,24 +186,46 @@ def api_settings():
     for key in ['SECRET_KEY', 'PLEX_TOKEN', 'INTERNAL_TRIGGER_KEY']: config_to_send.pop(key, None)
     return jsonify(config_to_send)
 
-# ... (restante do código do ficheiro sem alterações)
 @system_api_bp.route('/setup/servers')
 def get_plex_servers():
     token = session.get('plex_token')
-    if not token: return jsonify({"success": False, "message": _("Token do Plex não encontrado. Autentique-se novamente.")}), 401
+    if not token:
+        return jsonify({"success": False, "message": _("Token do Plex não encontrado. Autentique-se novamente.")}), 401
     try:
         account = MyPlexAccount(token=token)
         resources = account.resources()
         servers = []
         for r in resources:
             if r.product == 'Plex Media Server' and r.owned:
-                connections = sorted(r.connections, key=lambda c: (c.local, not c.uri.startswith('https')), reverse=False)
-                if connections: servers.append({ "name": r.name, "uri": connections[0].uri })
-        if not servers: return jsonify({"success": True, "servers": [], "message": _("Nenhum servidor encontrado na sua conta Plex.")})
+                server_connections = []
+                processed_uris = set()
+
+                for c in r.connections:
+                    # Adiciona a conexão original (geralmente HTTPS) se ainda não tiver sido processada
+                    if c.uri not in processed_uris:
+                        server_connections.append({"uri": c.uri, "local": c.local})
+                        processed_uris.add(c.uri)
+
+                    # Cria e adiciona a versão HTTP da URI, se for diferente
+                    http_uri = f"http://{c.address}:{c.port}"
+                    if http_uri not in processed_uris:
+                        server_connections.append({"uri": http_uri, "local": c.local})
+                        processed_uris.add(http_uri)
+                
+                if server_connections:
+                    servers.append({
+                        "name": r.name,
+                        "connections": server_connections
+                    })
+        
+        if not servers:
+            return jsonify({"success": True, "servers": [], "message": _("Nenhum servidor encontrado na sua conta Plex.")})
+            
         return jsonify({"success": True, "servers": servers, "token": token, "username": account.username})
     except Exception as e:
-        logger.error(f"Erro ao buscar servidores Plex: {e}")
+        logger.error(f"Erro ao buscar servidores Plex: {e}", exc_info=True)
         return jsonify({"success": False, "message": str(e)}), 500
+
 @system_api_bp.route('/setup/save', methods=['POST'])
 def save_setup():
     data = request.json
@@ -232,6 +254,7 @@ def save_setup():
     config['IS_CONFIGURED'] = False
     save_app_config(config)
     return jsonify({"success": False, "message": _("Configuração salva, mas falha ao conectar: %(message)s", message=message)})
+
 @system_api_bp.route('/test/tautulli-connection', methods=['POST'])
 def test_tautulli_connection():
     if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
@@ -241,6 +264,7 @@ def test_tautulli_connection():
     api_key = data.get('api_key')
     if not url or not api_key: return jsonify({'success': False, 'message': _('URL e Chave da API são obrigatórios.')}), 400
     return jsonify(tautulli_manager.test_connection(url, api_key))
+
 @system_api_bp.route('/test/overseerr-connection', methods=['POST'])
 def test_overseerr_connection():
     if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
@@ -249,6 +273,7 @@ def test_overseerr_connection():
     url = data.get('url')
     api_key = data.get('api_key')
     return jsonify(overseerr_manager.test_connection(url, api_key))
+
 @system_api_bp.route('/tautulli/auto-configure', methods=['POST'])
 def auto_configure_tautulli_notifier():
     if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
