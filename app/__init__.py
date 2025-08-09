@@ -267,6 +267,7 @@ def create_app(log_level='INFO', _from_job=False):
     from .blueprints.api.payments import payments_api_bp
     from .blueprints.api.stats import stats_api_bp
     from .blueprints.api.notifications import notifications_api_bp
+    from .blueprints.api.coupons import coupons_api_bp
     
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp, url_prefix='/auth')
@@ -278,5 +279,6 @@ def create_app(log_level='INFO', _from_job=False):
     app.register_blueprint(payments_api_bp, url_prefix='/api/payments')
     app.register_blueprint(stats_api_bp, url_prefix='/api/statistics')
     app.register_blueprint(notifications_api_bp, url_prefix='/api/notifications')
+    app.register_blueprint(coupons_api_bp, url_prefix='/api/coupons') 
 
     return app

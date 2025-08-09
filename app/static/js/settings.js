@@ -550,3 +550,4 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeEventListeners();
     });
 });
+

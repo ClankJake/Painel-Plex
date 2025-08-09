@@ -20,12 +20,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
                 i18n[i18nKey] = scriptTag.dataset[key];
             } else {
-                urls[key] = scriptTag.dataset[key];
+                const urlKey = key.replace(/-(\w)/g, (match, letter) => letter.toUpperCase());
+                urls[urlKey] = scriptTag.dataset[key];
             }
         }
     }
     
     let pollingIntervalId = null;
+    let validatedCouponCode = null;
 
     // --- LÓGICA DE NAVEGAÇÃO POR SEPARADORES ---
     function initializeTabs() {
@@ -40,13 +42,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const tabId = button.dataset.tab;
 
-            // Atualiza o estado dos botões
             tabContainer.querySelectorAll('.tab-button').forEach(btn => {
                 btn.classList.remove('active');
             });
             button.classList.add('active');
 
-            // Atualiza a visibilidade do conteúdo
             contentContainer.querySelectorAll('.tab-content').forEach(content => {
                 content.classList.remove('active');
             });
@@ -101,6 +101,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
             `;
         }
+        
+        // Adiciona o campo de cupão
+        optionsHtml += `
+            <div class="mt-4">
+                <label for="couponCodeInput" class="text-sm font-medium text-gray-500 dark:text-gray-400">Código de Desconto</label>
+                <div class="flex gap-2 mt-1">
+                    <input type="text" id="couponCodeInput" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Insira o cupão">
+                    <button id="applyCouponBtn" class="btn bg-gray-600 hover:bg-gray-500 text-white px-4" disabled>Aplicar</button>
+                </div>
+                <div id="coupon-status" class="text-xs mt-1 h-4"></div>
+            </div>
+        `;
 
         paymentSection.innerHTML = `
             ${optionsHtml}
@@ -108,11 +120,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
 
         const pixButton = document.getElementById('initiatePixButton');
+        const applyCouponBtn = document.getElementById('applyCouponBtn');
+        const couponCodeInput = document.getElementById('couponCodeInput');
+        
         document.querySelectorAll('input[name="payment-plan"]').forEach(radio => {
             radio.addEventListener('change', () => {
                 const selectedPrice = parseFloat(radio.dataset.price).toFixed(2);
                 pixButton.textContent = i18n.generatePixForPrice.replace('{price}', selectedPrice.replace('.', ','));
                 pixButton.disabled = false;
+                applyCouponBtn.disabled = false;
+                // Limpa o estado do cupão ao mudar de plano
+                document.getElementById('coupon-status').innerHTML = '';
+                couponCodeInput.value = '';
+                validatedCouponCode = null;
             });
         });
 
@@ -121,7 +141,38 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
                 if (selectedPlan) {
                     const screens = selectedPlan.value;
-                    initiatePixPayment({ screens }, providers);
+                    initiatePixPayment({ screens, coupon_code: validatedCouponCode }, providers);
+                }
+            });
+        }
+
+        if (applyCouponBtn) {
+            applyCouponBtn.addEventListener('click', async () => {
+                const code = couponCodeInput.value.trim();
+                const statusDiv = document.getElementById('coupon-status');
+                const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
+                if (!code || !selectedPlan) return;
+
+                const screens = selectedPlan.value;
+
+                try {
+                    const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens });
+                    if (result.success) {
+                        statusDiv.innerHTML = `<span class="text-green-500">${result.message}</span>`;
+                        validatedCouponCode = code;
+                        const newPriceText = result.discounted_price.toFixed(2).replace('.', ',');
+                        pixButton.textContent = i18n.generatePixForPrice.replace('{price}', newPriceText);
+                    } else {
+                        statusDiv.innerHTML = `<span class="text-red-500">${result.message}</span>`;
+                        validatedCouponCode = null;
+                        const originalPriceText = parseFloat(selectedPlan.dataset.price).toFixed(2).replace('.', ',');
+                        pixButton.textContent = i18n.generatePixForPrice.replace('{price}', originalPriceText);
+                    }
+                } catch (error) {
+                    statusDiv.innerHTML = `<span class="text-red-500">${error.message}</span>`;
+                    validatedCouponCode = null;
+                    const originalPriceText = parseFloat(selectedPlan.dataset.price).toFixed(2).replace('.', ',');
+                    pixButton.textContent = i18n.generatePixForPrice.replace('{price}', originalPriceText);
                 }
             });
         }
@@ -227,7 +278,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 showToast('Configuração de privacidade atualizada!', 'success');
             } catch (error) {
                 showToast(error.message, 'error');
-                // Reverte o toggle em caso de erro
                 event.target.checked = !isHidden;
             }
         });
@@ -312,14 +362,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                             </tr>
                         </thead>
                         <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            ${payments.map(p => `
-                                <tr>
-                                    <td class="px-4 py-2 whitespace-nowrap text-sm">${new Date(p.created_at).toLocaleString('pt-BR')}</td>
-                                    <td class="px-4 py-2 text-sm">${p.description || `${p.provider} - ${p.screens > 0 ? `${p.screens} Telas` : 'Padrão'}`}</td>
-                                    <td class="px-4 py-2 text-sm font-mono">${p.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                                    <td class="px-4 py-2 text-sm"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${p.status === 'CONCLUIDA' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'}">${p.status}</span></td>
-                                </tr>
-                            `).join('')}
+                            ${payments.map(p => {
+                                const couponHtml = p.coupon_code 
+                                    ? `<span class="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300" title="Cupom: ${p.coupon_code}">🏷️</span>` 
+                                    : '';
+                                return `
+                                    <tr>
+                                        <td class="px-4 py-2 whitespace-nowrap text-sm">${new Date(p.created_at).toLocaleString('pt-BR')}</td>
+                                        <td class="px-4 py-2 text-sm">
+                                            <span>${p.description || `${p.provider} - ${p.screens > 0 ? `${p.screens} Telas` : 'Padrão'}`}</span>
+                                            ${couponHtml}
+                                        </td>
+                                        <td class="px-4 py-2 text-sm font-mono">${p.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                                        <td class="px-4 py-2 text-sm"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${p.status === 'CONCLUIDA' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'}">${p.status}</span></td>
+                                    </tr>
+                                `
+                            }).join('')}
                         </tbody>
                     </table>
                 </div>
@@ -378,7 +436,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const data = await fetchAPI(urls.getAccountDetailsUrl);
             
-            // CORREÇÃO: A lógica de pagamento só é executada se os elementos existirem (ou seja, para não-admins)
             const paymentOptions = await fetchAPI(urls.getPaymentOptionsUrl);
             if(paymentOptions.success && paymentSection) {
                 renderPaymentOptions(paymentOptions.prices, paymentOptions.providers, paymentOptions.can_downgrade);
@@ -394,9 +451,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     case 'expired':
                         statusBanner.innerHTML = `<div class="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiredSignature}</h3><p>${i18n.expiredSignatureMessage}</p></div>`;
                         break;
-                    default: // 'manual' ou qualquer outro motivo não especificado
+                    default:
                         statusBanner.innerHTML = `<div class="bg-red-800/80 border-l-4 border-red-400 text-white p-6 rounded-lg shadow-lg"><h3 class="font-bold text-xl mb-2">${i18n.accessBlocked}</h3><p>${i18n.accessBlockedMessage}</p><p class="mt-2">${i18n.accessBlockedContact}</p></div>`;
-                        if (container) container.style.display = 'none'; // Esconde opções de pagamento se bloqueado manualmente
+                        if (container) container.style.display = 'none';
                         break;
                 }
             } else if (expiration.status === 'expired') {
@@ -431,7 +488,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 expirationContainer.classList.remove('hidden');
             }
 
-            // CORREÇÃO: Adiciona verificações para elementos que só existem para não-admins
             const libraryList = document.getElementById('library-list');
             if (libraryList) {
                 if (data.libraries && data.libraries.length > 0) {
@@ -441,7 +497,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
             
-            // CORREÇÃO: Adiciona verificações para o formulário de contato
             if (document.getElementById('contact-details-form')) {
                 populateCountryCodes();
                 if (data.profile_details) {
@@ -492,3 +547,4 @@ document.addEventListener('DOMContentLoaded', async () => {
     main();
     handlePrivacyToggle();
 });
+

@@ -1,6 +1,4 @@
-// Este ficheiro é uma cópia adaptada da lógica de pagamento de account.js,
-// mas para a página pública de pagamento.
-
+// app/static/js/payment_public.js
 import { fetchAPI, showToast, createModal } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -21,7 +19,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
                 i18n[i18nKey] = scriptTag.dataset[key];
             } else {
-                urls[key] = scriptTag.dataset[key];
+                const urlKey = key.replace(/-(\w)/g, (match, letter) => letter.toUpperCase());
+                urls[urlKey] = scriptTag.dataset[key];
             }
         }
     }
@@ -29,6 +28,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     let pollingIntervalId = null;
     const token = urls.token;
     const username = urls.username;
+    let validatedCouponCode = null;
+    let originalPrice = 0;
+    let screens = 0;
+
 
     // --- LÓGICA DE PAGAMENTO ---
     function renderPaymentInfo(prices, providers) {
@@ -40,8 +43,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        const screens = Object.keys(prices)[0];
-        const price = parseFloat(prices[screens]).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        screens = Object.keys(prices)[0];
+        const price = parseFloat(prices[screens]);
+        originalPrice = price;
         
         let planText = i18n.currentPlan;
         if (screens !== "0") {
@@ -49,18 +53,57 @@ document.addEventListener('DOMContentLoaded', async () => {
             planText = `${i18n.currentPlan}: ${screens} ${screenText}`;
         }
 
-        const priceText = parseFloat(prices[screens]).toFixed(2).replace('.', ',');
+        const priceText = price.toFixed(2).replace('.', ',');
 
         paymentSection.innerHTML = `
             <div class="text-center p-4 rounded-lg border-2 border-gray-300 dark:border-gray-600">
                 <p class="font-semibold text-gray-800 dark:text-gray-200">${planText}</p>
-                <p class="font-bold text-2xl text-gray-900 dark:text-white mt-2">${price}</p>
+                <div id="price-display" class="font-bold text-2xl text-gray-900 dark:text-white mt-2">${price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
             </div>
+
+            <div class="mt-4">
+                <label for="couponCodeInput" class="text-sm font-medium text-gray-500 dark:text-gray-400">Código de Desconto</label>
+                <div class="flex gap-2 mt-1">
+                    <input type="text" id="couponCodeInput" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Insira o cupão">
+                    <button id="applyCouponBtn" class="btn bg-gray-600 hover:bg-gray-500 text-white px-4">Aplicar</button>
+                </div>
+                <div id="coupon-status" class="text-xs mt-1 h-4"></div>
+            </div>
+
             <button id="initiatePixButton" class="w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white">${i18n.generatePixForPrice.replace('{price}', priceText)}</button>
         `;
 
         document.getElementById('initiatePixButton').addEventListener('click', () => {
-            initiatePixPayment({ username, screens }, providers);
+            initiatePixPayment({ username, screens, coupon_code: validatedCouponCode }, providers);
+        });
+
+        document.getElementById('applyCouponBtn').addEventListener('click', async () => {
+            const code = document.getElementById('couponCodeInput').value.trim();
+            const statusDiv = document.getElementById('coupon-status');
+            const pixButton = document.getElementById('initiatePixButton');
+            if (!code) return;
+
+            try {
+                const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens });
+                if (result.success) {
+                    statusDiv.innerHTML = `<span class="text-green-500">${result.message}</span>`;
+                    document.getElementById('price-display').innerHTML = `<s class="text-gray-400 text-lg">${result.original_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</s> ${result.discounted_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+                    validatedCouponCode = code;
+                    const newPriceText = result.discounted_price.toFixed(2).replace('.', ',');
+                    pixButton.textContent = i18n.generatePixForPrice.replace('{price}', newPriceText);
+                } else {
+                    statusDiv.innerHTML = `<span class="text-red-500">${result.message}</span>`;
+                    document.getElementById('price-display').innerHTML = originalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                    validatedCouponCode = null;
+                    const originalPriceText = originalPrice.toFixed(2).replace('.', ',');
+                    pixButton.textContent = i18n.generatePixForPrice.replace('{price}', originalPriceText);
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<span class="text-red-500">${error.message}</span>`;
+                validatedCouponCode = null;
+                const originalPriceText = originalPrice.toFixed(2).replace('.', ',');
+                pixButton.textContent = i18n.generatePixForPrice.replace('{price}', originalPriceText);
+            }
         });
     }
 
@@ -197,3 +240,4 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     main();
 });
+

@@ -5,7 +5,7 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from ..extensions import db
-from ..models import Invitation, BlockedUser, UserProfile, PixPayment, Notification, UnlockedAchievement, ShortLink
+from ..models import Invitation, BlockedUser, UserProfile, PixPayment, Notification, UnlockedAchievement, ShortLink, Coupon
 from sqlalchemy import func, extract, not_
 from tzlocal import get_localzone
 from flask_babel import gettext as _, ngettext
@@ -17,6 +17,50 @@ class DataManager:
     
     def __init__(self):
         pass
+
+    # --- MÉTODOS DE CUPÕES ---
+    def create_coupon(self, details):
+        try:
+            new_coupon = Coupon(**details)
+            db.session.add(new_coupon)
+            db.session.commit()
+            logger.info(f"Cupão '{details['code']}' criado com sucesso.")
+            return self._row_to_dict(new_coupon)
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Erro ao criar cupão: {e}")
+            raise
+
+    def get_coupon_by_code(self, code):
+        coupon = Coupon.query.filter_by(code=code).first()
+        return self._row_to_dict(coupon) if coupon else None
+
+    def get_all_coupons(self):
+        coupons = Coupon.query.order_by(Coupon.created_at.desc()).all()
+        return [self._row_to_dict(c) for c in coupons]
+
+    def delete_coupon(self, coupon_id):
+        coupon = Coupon.query.get(coupon_id)
+        if coupon:
+            db.session.delete(coupon)
+            db.session.commit()
+            return True
+        return False
+
+    def toggle_coupon_active(self, coupon_id):
+        coupon = Coupon.query.get(coupon_id)
+        if coupon:
+            coupon.is_active = not coupon.is_active
+            db.session.commit()
+            return self._row_to_dict(coupon)
+        return None
+
+    def increment_coupon_usage(self, code):
+        coupon = Coupon.query.filter_by(code=code).first()
+        if coupon:
+            coupon.use_count += 1
+            db.session.commit()
+            logger.info(f"Uso do cupão '{code}' incrementado para {coupon.use_count}.")
 
     # --- MÉTODOS DE GAMIFICAÇÃO (CONQUISTAS) ---
     def get_unlocked_achievements(self, username):
@@ -195,7 +239,7 @@ class DataManager:
         return {p.username: self._row_to_dict(p) for p in profiles}
 
     # --- Métodos de Pagamento PIX ---
-    def create_pix_payment(self, txid, username, value, provider, screens, external_reference):
+    def create_pix_payment(self, txid, username, value, provider, screens, external_reference, coupon_code=None):
         payment = PixPayment.query.get(txid)
         if not payment:
             payment = PixPayment(txid=txid)
@@ -206,6 +250,7 @@ class DataManager:
         payment.status = 'ATIVA'
         payment.screens = screens
         payment.external_reference = external_reference
+        payment.coupon_code = coupon_code
         db.session.add(payment)
         db.session.commit()
 
@@ -326,3 +371,4 @@ class DataManager:
         if not row:
             return None
         return {c.name: getattr(row, c.name) for c in row.__table__.columns}
+

@@ -4,9 +4,11 @@
 
 {% block extra_head %}
     <style>
-        .chart-view-btn.active {
+        .tab-button.active {
             @apply bg-white dark:bg-gray-800 shadow-md text-yellow-600 dark:text-yellow-400 font-semibold;
         }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
     </style>
 {% endblock %}
 
@@ -27,84 +29,141 @@
     </div>
 </header>
 
-<div id="loadingIndicator" class="text-center py-20">
-    <svg class="animate-spin h-10 w-10 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-    <p class="text-lg text-gray-500 dark:text-gray-400 mt-4">{{ _('A carregar dados financeiros...') }}</p>
+<!-- Adiciona a navegação por abas -->
+<div class="border-b border-gray-200 dark:border-gray-700 mb-6">
+    <nav id="financial-tabs" class="flex space-x-6">
+        <button type="button" data-tab="summary" class="tab-button active py-3 px-1 border-b-2 font-medium text-sm">{{ _('Resumo') }}</button>
+        <button type="button" data-tab="coupons" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Cupões') }}</button>
+    </nav>
 </div>
 
-<div id="errorContainer" class="hidden text-center py-10 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg">
-    <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar os dados.') }}</p>
-    <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
-</div>
+<div id="financial-tab-content">
+    <!-- Aba de Resumo -->
+    <div id="tab-summary" class="tab-content active space-y-8">
+        <div id="loadingIndicator" class="text-center py-20">
+            <svg class="animate-spin h-10 w-10 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <p class="text-lg text-gray-500 dark:text-gray-400 mt-4">{{ _('A carregar dados financeiros...') }}</p>
+        </div>
 
-<div id="financialDashboard" class="hidden space-y-8">
-    <!-- Cards de Resumo -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div class="bg-green-500/10 dark:bg-green-500/20 text-green-800 dark:text-green-200 p-4 sm:p-6 rounded-xl">
-            <div class="flex items-center gap-4">
-                <div class="p-3 bg-green-500/20 rounded-lg"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01" /></svg></div>
-                <div>
-                    <p class="text-sm font-medium opacity-80">{{ _('Receita do Mês') }}</p>
-                    <p class="text-3xl font-bold" id="totalRevenue">R$ 0,00</p>
+        <div id="errorContainer" class="hidden text-center py-10 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg">
+            <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar os dados.') }}</p>
+            <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
+        </div>
+
+        <div id="financialDashboard" class="hidden space-y-8">
+            <!-- Cards de Resumo -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="bg-green-500/10 dark:bg-green-500/20 text-green-800 dark:text-green-200 p-4 sm:p-6 rounded-xl">
+                    <div class="flex items-center gap-4">
+                        <div class="p-3 bg-green-500/20 rounded-lg"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01" /></svg></div>
+                        <div>
+                            <p class="text-sm font-medium opacity-80">{{ _('Receita do Mês') }}</p>
+                            <p class="text-3xl font-bold" id="totalRevenue">R$ 0,00</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-blue-500/10 dark:bg-blue-500/20 text-blue-800 dark:text-blue-200 p-4 sm:p-6 rounded-xl">
+                    <div class="flex items-center gap-4">
+                        <div class="p-3 bg-blue-500/20 rounded-lg"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+                        <div>
+                            <p class="text-sm font-medium opacity-80">{{ _('Assinaturas Pagas no Mês') }}</p>
+                            <p class="text-3xl font-bold" id="salesCount">0</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-yellow-500/10 dark:bg-yellow-500/20 text-yellow-800 dark:text-yellow-200 p-4 sm:p-6 rounded-xl">
+                    <div class="flex items-center gap-4">
+                        <div class="p-3 bg-yellow-500/20 rounded-lg"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
+                        <div>
+                            <p id="upcomingRenewalsLabel" class="text-sm font-medium opacity-80">{{ _('Renovações Próximas (7d)') }}</p>
+                            <p class="text-3xl font-bold" id="upcomingRenewals">0</p>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="bg-blue-500/10 dark:bg-blue-500/20 text-blue-800 dark:text-blue-200 p-4 sm:p-6 rounded-xl">
-            <div class="flex items-center gap-4">
-                <div class="p-3 bg-blue-500/20 rounded-lg"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
-                <div>
-                    <p class="text-sm font-medium opacity-80">{{ _('Assinaturas Pagas no Mês') }}</p>
-                    <p class="text-3xl font-bold" id="salesCount">0</p>
+
+            <!-- Gráfico de Receita -->
+            <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+                    <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Visão Geral da Receita') }}</h3>
+                    <div class="flex items-center bg-gray-200 dark:bg-gray-700 rounded-lg p-1 text-sm self-end sm:self-center">
+                        <button data-chart-view="daily" class="chart-view-btn active px-3 py-1 rounded-md">{{ _('Diário') }}</button>
+                        <button data-chart-view="weekly" class="chart-view-btn px-3 py-1 rounded-md">{{ _('Semanal') }}</button>
+                    </div>
                 </div>
+                <div class="h-64 sm:h-96"><canvas id="revenueChart"></canvas></div>
             </div>
-        </div>
-        <div class="bg-yellow-500/10 dark:bg-yellow-500/20 text-yellow-800 dark:text-yellow-200 p-4 sm:p-6 rounded-xl">
-            <div class="flex items-center gap-4">
-                <div class="p-3 bg-yellow-500/20 rounded-lg"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
-                <div>
-                    <p id="upcomingRenewalsLabel" class="text-sm font-medium opacity-80">{{ _('Renovações Próximas (7d)') }}</p>
-                    <p class="text-3xl font-bold" id="upcomingRenewals">0</p>
+
+            <!-- Listas de Dados -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <h3 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">{{ _('Transações Recentes') }}</h3>
+                    <div id="transactionsList" class="space-y-3 overflow-y-auto h-96 pr-2">
+                        <!-- Conteúdo inserido por JS -->
+                    </div>
+                </div>
+                <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+                        <h3 id="renewalsCardTitle" class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Próximas Renovações') }}</h3>
+                        <select id="renewalsFilter" class="bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm p-1 focus:ring-yellow-500 focus:border-yellow-500">
+                            <option value="7" selected>{{ _('Próximos 7 dias') }}</option>
+                            <option value="15">{{ _('Próximos 15 dias') }}</option>
+                            <option value="30">{{ _('Próximos 30 dias') }}</option>
+                        </select>
+                    </div>
+                     <div id="renewalsList" class="space-y-3 overflow-y-auto h-96 pr-2">
+                        <!-- Conteúdo inserido por JS -->
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Gráfico de Receita -->
-    <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Visão Geral da Receita') }}</h3>
-            <div class="flex items-center bg-gray-200 dark:bg-gray-700 rounded-lg p-1 text-sm self-end sm:self-center">
-                <button data-chart-view="daily" class="chart-view-btn active px-3 py-1 rounded-md">{{ _('Diário') }}</button>
-                <button data-chart-view="weekly" class="chart-view-btn px-3 py-1 rounded-md">{{ _('Semanal') }}</button>
+    <!-- Aba de Cupões -->
+    <div id="tab-coupons" class="tab-content space-y-8">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Formulário de Criação -->
+            <div class="lg:col-span-1 bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Criar Novo Cupão') }}</h3>
+                <form id="createCouponForm" class="space-y-4">
+                    <div>
+                        <label for="couponCode" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Código') }}</label>
+                        <input type="text" id="couponCode" required class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="EX: PROMO25">
+                    </div>
+                    <div>
+                        <label for="discountType" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Tipo de Desconto') }}</label>
+                        <select id="discountType" class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            <option value="percentage">{{ _('Percentagem (%%)') }}</option>
+                            <option value="fixed">{{ _('Valor Fixo (R$)') }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="discountValue" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Valor') }}</label>
+                        <input type="number" id="discountValue" required step="0.01" min="0" class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="25 ou 5.00">
+                    </div>
+                    <div>
+                        <label for="maxUses" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Usos Máximos') }}</label>
+                        <input type="number" id="maxUses" required min="1" value="1" class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    </div>
+                    <div>
+                        <label for="expiresAt" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Data de Validade (Opcional)') }}</label>
+                        <input type="date" id="expiresAt" class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    </div>
+                    <button type="submit" class="btn bg-green-600 hover:bg-green-500 text-white w-full">{{ _('Criar Cupão') }}</button>
+                </form>
+            </div>
+            <!-- Lista de Cupões -->
+            <div class="lg:col-span-2 bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Cupões Existentes') }}</h3>
+                <div id="couponsListContainer" class="overflow-x-auto">
+                    <!-- Tabela será inserida aqui -->
+                </div>
             </div>
         </div>
-        <div class="h-64 sm:h-96"><canvas id="revenueChart"></canvas></div>
     </div>
-
-    <!-- Listas de Dados -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-            <h3 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">{{ _('Transações Recentes') }}</h3>
-            <div id="transactionsList" class="space-y-3 overflow-y-auto h-96 pr-2">
-                <!-- Conteúdo inserido por JS -->
-            </div>
-        </div>
-        <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-                <h3 id="renewalsCardTitle" class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Próximas Renovações') }}</h3>
-                <select id="renewalsFilter" class="bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm p-1 focus:ring-yellow-500 focus:border-yellow-500">
-                    <option value="7" selected>{{ _('Próximos 7 dias') }}</option>
-                    <option value="15">{{ _('Próximos 15 dias') }}</option>
-                    <option value="30">{{ _('Próximos 30 dias') }}</option>
-                </select>
-            </div>
-             <div id="renewalsList" class="space-y-3 overflow-y-auto h-96 pr-2">
-                <!-- Conteúdo inserido por JS -->
-            </div>
-        </div>
-    </div>
-
 </div>
+
+<div id="confirmationModal" class="modal-backdrop hidden"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -114,11 +173,20 @@
         type="module"
         src="{{ url_for('static', filename='js/financial.js') }}"
         data-financial-summary-url="{{ url_for('payments_api.get_financial_summary_route') }}"
+        data-coupons-list-url="{{ url_for('coupons_api.list_coupons') }}"
+        data-coupons-create-url="{{ url_for('coupons_api.create_coupon') }}"
+        data-coupons-delete-base-url="{{ url_for('coupons_api.delete_coupon', coupon_id=0) }}"
+        data-coupons-toggle-base-url="{{ url_for('coupons_api.toggle_coupon', coupon_id=0) }}"
         data-i18n-revenue-label="{{ _('Receita') }}"
         data-i18n-days-left-singular="{{ _('dia restante') }}"
         data-i18n-days-left-plural="{{ _('dias restantes') }}"
         data-i18n-expired="{{ _('Expirado') }}"
         data-i18n-no-transactions="{{ _('Nenhuma transação este mês.') }}"
         data-i18n-no-renewals-in-days="{{ _('Nenhuma renovação nos próximos {days} dias.') }}"
+        data-i18n-confirm-delete-coupon="{{ _('Tem a certeza que deseja apagar o cupão') }}"
+        data-i18n-action-cannot-be-undone="{{ _('Esta ação não pode ser desfeita.') }}"
+        data-i18n-confirm-delete-button="{{ _('Sim, Apagar') }}"
+        data-i18n-cancel="{{ _('Cancelar') }}"
 ></script>
 {% endblock %}
+

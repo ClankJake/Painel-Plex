@@ -1,7 +1,7 @@
 # app/blueprints/api/payments.py
 
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from flask import Blueprint, jsonify, request, url_for, current_app
 from flask_login import current_user
 from flask_babel import gettext as _
@@ -60,10 +60,16 @@ def _process_successful_payment(txid):
                 )
             
             logger.info(f"Subscrição para '{username}' renovada com sucesso. Novo vencimento: {new_expiration_date.strftime('%d/%m/%Y')}")
+            
+            # Após confirmar o pagamento, incrementar o uso do cupão se houver um
+            if payment and payment.get('coupon_code'):
+                data_manager.increment_coupon_usage(payment['coupon_code'])
+
         else:
             logger.warning(f"Utilizador '{username}' do pagamento {txid} não encontrado no Plex para renovação. O pagamento foi marcado como concluído, mas a renovação falhou.")
     except Exception as e:
         logger.error(f"Ocorreu um erro crítico ao processar o pagamento para o TXID {txid}: {e}", exc_info=True)
+
 
 @payments_api_bp.route('/options')
 def get_payment_options():
@@ -121,11 +127,57 @@ def get_payment_options():
     enabled_providers = {"efi": config.get("EFI_ENABLED"), "mercadopago": config.get("MERCADOPAGO_ENABLED")}
     return jsonify({"success": True, "prices": available_prices, "providers": enabled_providers, "can_downgrade": can_downgrade})
 
+@payments_api_bp.route('/validate-coupon', methods=['POST'])
+def validate_coupon_route():
+    data = request.json
+    code = data.get('code')
+    screens_str = data.get('screens')
+
+    if not code or screens_str is None:
+        return jsonify({"success": False, "message": "Código do cupão e plano são necessários."}), 400
+
+    coupon = data_manager.get_coupon_by_code(code)
+
+    if not coupon:
+        return jsonify({"success": False, "message": "Cupão inválido ou não encontrado."}), 404
+    if not coupon['is_active']:
+        return jsonify({"success": False, "message": "Este cupão não está mais ativo."}), 403
+    if coupon['expires_at'] and datetime.utcnow() > coupon['expires_at']:
+        return jsonify({"success": False, "message": "Este cupão expirou."}), 403
+    if coupon['use_count'] >= coupon['max_uses']:
+        return jsonify({"success": False, "message": "Este cupão já atingiu o limite de utilizações."}), 403
+
+    config = load_or_create_config()
+    price_str = config.get("SCREEN_PRICES", {}).get(str(screens_str)) or config.get("RENEWAL_PRICE")
+    
+    try:
+        original_price = float(price_str)
+        discounted_price = original_price
+
+        if coupon['discount_type'] == 'percentage':
+            discounted_price = original_price * (1 - coupon['value'] / 100)
+        elif coupon['discount_type'] == 'fixed':
+            discounted_price = original_price - coupon['value']
+
+        discounted_price = max(0, discounted_price) # O preço não pode ser negativo
+
+        return jsonify({
+            "success": True,
+            "original_price": original_price,
+            "discounted_price": discounted_price,
+            "message": "Cupão aplicado com sucesso!"
+        })
+
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "Preço do plano inválido."}), 400
+
+
 @payments_api_bp.route('/create-charge', methods=['POST'])
 def create_charge_route():
     data = request.json
     provider = data.get('provider')
     screens_str = data.get('screens')
+    coupon_code = data.get('coupon_code')
     
     username = data.get('username') or (current_user.username if current_user.is_authenticated else None)
     if not username:
@@ -140,7 +192,7 @@ def create_charge_route():
     plex_user = next((u for u in plex_manager.get_all_plex_users() if u['username'] == username), None)
     if not plex_user:
         return jsonify({"success": False, "message": _("Usuário não encontrado no Plex.")}), 404
-    
+
     price_str = None
     if str(screens_str) in config.get("SCREEN_PRICES", {}):
         price_str = config.get("SCREEN_PRICES")[str(screens_str)]
@@ -150,15 +202,33 @@ def create_charge_route():
     if not price_str or float(price_str) <= 0:
         return jsonify({"success": False, "message": _("Opção de plano inválida ou sem preço definido.")}), 400
         
-    price = float(price_str)
+    final_price = float(price_str)
+
+    if coupon_code:
+        coupon = data_manager.get_coupon_by_code(coupon_code)
+        # Re-valida o cupão antes de criar a cobrança
+        if coupon and coupon['is_active'] and coupon['use_count'] < coupon['max_uses'] and (not coupon['expires_at'] or datetime.utcnow() < coupon['expires_at']):
+            if coupon['discount_type'] == 'percentage':
+                final_price *= (1 - coupon['value'] / 100)
+            elif coupon['discount_type'] == 'fixed':
+                final_price -= coupon['value']
+            final_price = max(0, final_price)
+        else:
+            return jsonify({"success": False, "message": "O cupão fornecido já não é válido."}), 400
+
+    price = final_price
     screens = int(screens_str)
     user_info = {"username": username, "name": profile.get('name', username), "email": plex_user.get('email')}
     
     result = {"success": False, "message": _("O provedor %(provider)s não está habilitado.", provider=provider)}
     if provider == 'EFI' and config.get('EFI_ENABLED'):
         result = efi_manager.create_pix_charge(user_info, price, screens)
+        if result.get('success'):
+            data_manager.create_pix_payment(result['txid'], username, price, 'EFI', screens, None, coupon_code)
     elif provider == 'MERCADOPAGO' and config.get('MERCADOPAGO_ENABLED'):
         result = mercado_pago_manager.create_pix_payment(user_info, price, screens)
+        if result.get('success'):
+            data_manager.create_pix_payment(result['payment_id'], username, price, 'MERCADOPAGO', screens, result.get('external_reference'), coupon_code)
         
     return jsonify(result)
 
@@ -261,3 +331,4 @@ def add_manual_payment_route():
     except Exception as e:
         logger.error(f"Erro ao adicionar pagamento manual: {e}", exc_info=True)
         return jsonify({"success": False, "message": str(e)}), 500
+

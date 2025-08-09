@@ -35,7 +35,19 @@ class User(UserMixin):
         """Retorna uma representação JSON do usuário."""
         return json.dumps(self.to_dict())
 
-# --- NOVOS MODELOS PARA O FLASK-MIGRATE ---
+# --- NOVOS MODELOS E ATUALIZAÇÕES ---
+
+class Coupon(db.Model):
+    __tablename__ = 'coupons'
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String, unique=True, nullable=False, index=True)
+    discount_type = db.Column(db.String, nullable=False)  # 'percentage' or 'fixed'
+    value = db.Column(db.Float, nullable=False)
+    max_uses = db.Column(db.Integer, nullable=False, default=1)
+    use_count = db.Column(db.Integer, nullable=False, default=0)
+    expires_at = db.Column(db.DateTime, nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Invitation(db.Model):
     __tablename__ = 'invitations'
@@ -88,12 +100,12 @@ class PixPayment(db.Model):
     screens = db.Column(db.Integer, nullable=True)
     external_reference = db.Column(db.String, unique=True, nullable=True)
     description = db.Column(db.String(100), nullable=True)
+    coupon_code = db.Column(db.String, db.ForeignKey('coupons.code'), nullable=True)
 
 
 class Notification(db.Model):
     __tablename__ = 'notifications'
     id = db.Column(db.Integer, primary_key=True)
-    # Adiciona uma coluna de username para notificações específicas do utilizador
     username = db.Column(db.String, db.ForeignKey('user_profiles.username'), nullable=True, index=True)
     message = db.Column(db.String, nullable=False)
     category = db.Column(db.String(20), nullable=False, default='info')
@@ -116,3 +128,4 @@ class UnlockedAchievement(db.Model):
     unlocked_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (db.UniqueConstraint('username', 'achievement_id', name='_username_achievement_uc'),)
+
