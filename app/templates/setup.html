@@ -102,7 +102,7 @@
 
             <div data-step="2" class="wizard-step hidden opacity-0 transition-opacity duration-500 ease-in-out">
                 <h2 class="text-2xl font-semibold text-yellow-500 dark:text-yellow-400 mb-6">{{ _('2. Selecionar Servidor Plex') }}</h2>
-                <div id="server-list" class="space-y-3 max-h-60 overflow-y-auto pr-2">
+                <div id="server-list" class="space-y-4 max-h-60 overflow-y-auto pr-2 text-left">
                      <p class="text-center p-8 text-gray-700 dark:text-gray-400">{{ _('Aguardando autenticação...') }}</p>
                 </div>
                 <div class="mt-8 flex justify-between items-center">
@@ -194,7 +194,7 @@
 </div>
 
 <script id="setup-script"
-    type="module" 
+    type="module"
     src="{{ url_for('static', filename='js/setup.js') }}"
     data-urls-get-plex-auth-context="{{ url_for('auth.get_plex_auth_context') }}"
     data-urls-check-plex-pin="{{ url_for('auth.check_plex_pin', client_id='__CLIENT_ID__', pin_id=999999) }}"
@@ -224,8 +224,9 @@
     data-i18n-step3-title="{{ _('Passo 4 de 4: Configurações Finais') }}"
     data-i18n-provide-notifier-id="{{ _('Por favor, insira um ID de notificador válido.') }}"
     data-i18n-provide-tautulli-credentials="{{ _('Por favor, preencha a URL e a Chave de API do Tautulli primeiro.') }}"
+    data-i18n-local="{{ _('Local') }}"
+    data-i18n-remote="{{ _('Remoto') }}"
 ></script>
 
 </body>
 </html>
-
