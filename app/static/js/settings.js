@@ -32,11 +32,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const testTautulliButton = document.getElementById('testTautulliButton');
     const testOverseerrButton = document.getElementById('testOverseerrButton');
     
-    // --- LÓGICA DE AUTENTICAÇÃO PLEX ---
-    // ... (código existente sem alterações) ...
-    
-    // --- INICIALIZAÇÃO DA PÁGINA ---
-    
     const fieldMap = {
         'APP_TITLE': { type: 'text', default: 'Painel Plex' },
         'APP_BASE_URL': { type: 'text', default: 'http://127.0.0.1:5000' },
@@ -83,7 +78,6 @@ document.addEventListener('DOMContentLoaded', () => {
         'OVERSEERR_ENABLED': { type: 'checkbox', default: false },
         'OVERSEERR_URL': { type: 'text', default: '' },
         'OVERSEERR_API_KEY': { type: 'password', default: '' },
-        // Novas chaves de gamificação
         'ACHIEVEMENT_MOVIE_MARATHON_BRONZE': { type: 'number', default: 5 },
         'ACHIEVEMENT_MOVIE_MARATHON_SILVER': { type: 'number', default: 10 },
         'ACHIEVEMENT_MOVIE_MARATHON_GOLD': { type: 'number', default: 20 },
@@ -98,18 +92,6 @@ document.addEventListener('DOMContentLoaded', () => {
         'ACHIEVEMENT_DIRECTOR_FAN_GOLD': { type: 'number', default: 7 },
     };
 
-    function loadSettings() {
-        // ... (código existente sem alterações) ...
-    }
-
-    function initializeEventListeners() {
-        // ... (código existente sem alterações) ...
-    }
-    
-    // O resto do ficheiro `settings.js` permanece inalterado, pois a lógica de salvar
-    // já é genérica o suficiente para lidar com os novos campos, desde que
-    // eles sejam adicionados ao `fieldMap`.
-    // ... (restante do código) ...
     async function loginWithPlex() {
         const reauthButton = document.getElementById('reauth-plex-button');
         const originalButtonHTML = reauthButton.innerHTML; 
@@ -194,6 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
             restoreButton();
         }
     }
+    
     function fetchPlexServersForSelection() {
         const serverSelectionContainer = document.getElementById('server-selection-container');
         if (!serverSelectionContainer) return;
@@ -208,7 +191,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     let serverHtml = `<label class="block text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.selectNewServer}</label>
                                       <select id="server-selector" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">`;
                     data.servers.forEach(server => {
-                        serverHtml += `<option value="${server.uri}">${server.name}</option>`;
+                        server.connections.forEach(conn => {
+                            const isSsl = conn.uri.startsWith('https://');
+                            const type = conn.local ? i18n.local : i18n.remote;
+                            const protocol = isSsl ? 'SSL' : 'HTTP';
+                            serverHtml += `<option value="${conn.uri}">${server.name} - ${conn.uri} [${type} / ${protocol}]</option>`;
+                        });
                     });
                     serverHtml += `</select>
                                  <button type="button" id="confirm-server-selection" class="btn bg-green-600 hover:bg-green-500 text-white mt-2">${i18n.confirmServer}</button>`;
@@ -274,6 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
     }
+    
     function fetchLogs() {
         const logDisplay = document.getElementById('log-display');
         if(!logDisplay) return;
@@ -288,6 +277,7 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch(e => logDisplay.textContent = `${i18n.connectionError}: ${e.message}`);
     }
+
     function startLogUpdates() {
         const button = document.getElementById('toggle-logs');
         if (!logIntervalId) {
@@ -299,6 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
+
     function stopLogUpdates() {
         const button = document.getElementById('toggle-logs');
         if (logIntervalId) {
@@ -310,6 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
+
     async function autoConfigureNotifier(button) {
         const notifierType = button.dataset.notifierType;
         const targetId = button.dataset.targetId;
@@ -341,10 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
             button.textContent = i18n.autoConfigure;
         }
     }
-    loadSettings().then(() => {
-        initializeEventListeners();
-    });
-    
+
     function loadSettings() {
         return fetchAPI(urls.apiSettings)
             .then(config => {
@@ -367,6 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch(error => showToast(error.message, 'error'));
     }
+
     function initializeEventListeners() {
         
         const handleTabClick = (navElement, contentContainer, contentSelector) => {
