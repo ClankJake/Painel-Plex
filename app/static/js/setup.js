@@ -52,8 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
         stepIndicator.textContent = stepTitles[currentStep];
     }
     
-    // ### INÍCIO DA CORREÇÃO ###
-    // A função loginWithPlex foi reescrita para ser mais robusta e não depender da página de redirecionamento.
     async function loginWithPlex() {
         const loginButton = document.getElementById('login-with-plex');
         if (loginButton) {
@@ -64,7 +62,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pinCheckInterval) clearInterval(pinCheckInterval);
 
         try {
-            // 1. Obter o contexto de autenticação do nosso servidor.
             const contextResponse = await fetch(urls.getPlexAuthContext);
             if (!contextResponse.ok) throw new Error(i18n.errorGeneric);
             const contextData = await contextResponse.json();
@@ -72,7 +69,6 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const { product_name, client_id } = contextData;
 
-            // 2. Fazer a requisição para a API do Plex para criar o PIN.
             const plexHeaders = {
                 'X-Plex-Product': product_name,
                 'X-Plex-Client-Identifier': client_id,
@@ -86,7 +82,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const pinData = await plexResponse.json();
             const { id: pin_id, code: pin_code } = pinData;
 
-            // 3. Construir a URL de autenticação do Plex e abrir o popup.
             const authUrlParams = new URLSearchParams({
                 'clientID': client_id,
                 'code': pin_code,
@@ -97,7 +92,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const auth_url = `https://app.plex.tv/auth#?${authUrlParams.toString()}`;
             const authWindow = window.open(auth_url, 'plexAuth', 'width=800,height=700');
 
-            // 4. Iniciar a verificação do estado do PIN com o nosso servidor.
             pinCheckInterval = setInterval(async () => {
                 if (!authWindow || authWindow.closed) {
                     clearInterval(pinCheckInterval);
@@ -119,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             authWindow.close();
                         }
                         showToast(i18n.authenticated, "success");
-                        await initializeSetup(checkData); // Passa os dados para o próximo passo
+                        await initializeSetup(checkData);
                     } else if (checkData.message === 'auth_denied') {
                         clearInterval(pinCheckInterval);
                         if (authWindow && !authWindow.closed) {
@@ -149,7 +143,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-    // ### FIM DA CORREÇÃO ###
     
     async function initializeSetup(authData) {
         navigateToStep(2);
@@ -165,17 +158,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 setupData.admin_user = data.username;
                 
                 let serverHtml = `<p class="mb-4 text-gray-600 dark:text-gray-400">${i18n.selectServer}</p>`;
-                data.servers.forEach(server => {
-                    serverHtml += `<div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg border-2 border-transparent cursor-pointer transition-all duration-200 hover:border-yellow-400 dark:hover:border-yellow-500/50 hover:bg-gray-200 dark:hover:bg-gray-700" data-uri="${server.uri}"><h3 class="font-bold text-lg text-gray-900 dark:text-white">${server.name}</h3><p class="text-sm text-gray-600 dark:text-gray-400">${server.uri}</p></div>`;
+                
+                data.servers.forEach((server, index) => {
+                    serverHtml += `
+                    <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg border-2 border-gray-300 dark:border-gray-600">
+                        <h3 class="font-bold text-lg text-gray-900 dark:text-white mb-2">${server.name}</h3>
+                        <div class="space-y-2">
+                            ${server.connections.map((conn, connIndex) => {
+                                const isSsl = conn.uri.startsWith('https://');
+                                return `
+                                <label for="server-${index}-${connIndex}" class="flex items-center p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer transition-colors duration-200">
+                                    <input type="radio" id="server-${index}-${connIndex}" name="selected_server_uri" value="${conn.uri}" class="form-radio h-4 w-4 text-yellow-500 bg-gray-200 dark:bg-gray-900 border-gray-400 dark:border-gray-500 focus:ring-yellow-500 focus:ring-offset-gray-800">
+                                    <span class="ml-3 text-sm text-gray-700 dark:text-gray-300 break-all">${conn.uri}</span>
+                                    <span class="ml-auto flex items-center gap-2 flex-shrink-0">
+                                        <span class="text-xs font-medium px-2 py-1 rounded-full ${isSsl ? 'bg-teal-200 text-teal-800 dark:bg-teal-900 dark:text-teal-200' : 'bg-orange-200 text-orange-800 dark:bg-orange-900 dark:text-orange-300'}">
+                                            ${isSsl ? 'SSL' : 'HTTP'}
+                                        </span>
+                                        <span class="text-xs font-medium px-2 py-1 rounded-full ${conn.local ? 'bg-blue-200 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200'}">
+                                            ${conn.local ? i18n.local : i18n.remote}
+                                        </span>
+                                    </span>
+                                </label>
+                                `
+                            }).join('')}
+                        </div>
+                    </div>`;
                 });
+
                 serverListDiv.innerHTML = serverHtml;
                 
-                document.querySelectorAll('[data-uri]').forEach(card => {
-                    card.addEventListener('click', () => {
-                        document.querySelectorAll('[data-uri]').forEach(c => c.classList.remove('border-yellow-500', 'ring-2', 'ring-yellow-500', 'bg-yellow-100/50', 'dark:bg-yellow-500/20'));
-                        card.classList.add('border-yellow-500', 'ring-2', 'ring-yellow-500', 'bg-yellow-100/50', 'dark:bg-yellow-500/20');
-                        setupData.plex_url = card.dataset.uri;
-                        document.getElementById('next-2').disabled = false;
+                document.querySelectorAll('input[name="selected_server_uri"]').forEach(radio => {
+                    radio.addEventListener('change', (e) => {
+                        if (e.target.checked) {
+                            setupData.plex_url = e.target.value;
+                            document.getElementById('next-2').disabled = false;
+                        }
                     });
                 });
             } else {
@@ -318,4 +335,3 @@ document.addEventListener('DOMContentLoaded', () => {
     
     navigateToStep(0);
 });
-
