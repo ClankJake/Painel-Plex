@@ -345,7 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else {
                             const key = field.key || id;
                             if (field.type === 'checkbox') {
-                                el.checked = config[key] || field.default;
+                                el.checked = config[key] !== undefined ? config[key] : field.default;
                             } else {
                                 el.value = config[key] !== undefined ? config[key] : field.default;
                             }
@@ -550,4 +550,3 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeEventListeners();
     });
 });
-
