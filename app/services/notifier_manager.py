@@ -5,7 +5,7 @@ import logging
 import uuid
 from datetime import datetime
 import requests
-from flask_babel import gettext as _
+from flask_babel import gettext as _, ngettext
 from flask import url_for
 
 from ..config import load_or_create_config
@@ -110,12 +110,31 @@ class NotifierManager:
         config = load_or_create_config()
         request_id = uuid.uuid4()
         
+        # Determina o preço de renovação e o nome do plano para o utilizador
+        user_screen_limit = user_profile.get('screen_limit', 0)
+        screen_prices = config.get("SCREEN_PRICES", {})
+        renewal_price_str = config.get("RENEWAL_PRICE", "0.00") # Fallback
+
+        if str(user_screen_limit) in screen_prices:
+            renewal_price_str = screen_prices[str(user_screen_limit)]
+        
+        try:
+            price_value = float(renewal_price_str.replace(',', '.'))
+            formatted_price = f"R$ {price_value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except (ValueError, TypeError):
+            formatted_price = "N/A"
+            logger.warning(f"Não foi possível formatar o preço '{renewal_price_str}' para o utilizador {user.get('username')}.")
+
+        if user_screen_limit > 0:
+            plan_name = ngettext('%(num)d Tela', '%(num)d Telas', user_screen_limit) % {'num': user_screen_limit}
+        else:
+            plan_name = _("Plano Padrão")
+
         app_base_url = config.get("APP_BASE_URL")
         if not app_base_url or "127.0.0.1" in app_base_url or "localhost" in app_base_url:
             logger.warning(f"A APP_BASE_URL ('{app_base_url}') não está configurada ou está definida para um endereço local. Os links de pagamento gerados podem não ser acessíveis externamente.")
 
         payment_link = "#"
-        # CORREÇÃO: Apenas gera um link de pagamento se o evento não for uma confirmação de renovação.
         if event_type != 'renewal' and user_profile.get('payment_token'):
             long_url = url_for('main.payment_page', token=user_profile['payment_token'], _external=True)
             logger.info(f"URL de pagamento longa gerada para '{user.get('username')}': {long_url}")
@@ -143,8 +162,11 @@ class NotifierManager:
             'email': user.get('email'),
             'greeting': get_greeting(),
             'telegram_user': user_profile.get('telegram_user', ''),
+            'discord_user_id': user_profile.get('discord_user_id', ''),
             'phone_number': user_profile.get('phone_number', ''),
-            'payment_link': payment_link
+            'payment_link': payment_link,
+            'price': formatted_price,
+            'plan_name': plan_name
         }
         placeholders.update(context)
         
@@ -184,16 +206,14 @@ class NotifierManager:
         # --- Envio para Discord ---
         if config.get("DISCORD_ENABLED"):
             discord_template_str = config.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE")
-            discord_user_id = user_profile.get('discord_user_id') # Usa um novo campo do perfil
+            discord_user_id = user_profile.get('discord_user_id')
 
             if discord_template_str and discord_user_id:
                 try:
-                    # Adiciona o ID do utilizador ao placeholder para poder mencioná-lo
                     placeholders['discord_user_id'] = discord_user_id
                     
                     message_with_placeholders = discord_template_str
                     for key, value in placeholders.items():
-                        # Substitui as variáveis no JSON
                         message_with_placeholders = message_with_placeholders.replace(f"{{{key}}}", str(value))
                     
                     discord_payload = json.loads(message_with_placeholders)
@@ -239,5 +259,5 @@ class NotifierManager:
             event_type='trial_end', 
             user=user,
             user_profile=user_profile, 
-            context={} # Sem contexto extra necessário para este evento
+            context={}
         )
