@@ -84,13 +84,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!code) return;
 
             try {
-                const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens });
+                const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens, username });
                 if (result.success) {
                     statusDiv.innerHTML = `<span class="text-green-500">${result.message}</span>`;
                     document.getElementById('price-display').innerHTML = `<s class="text-gray-400 text-lg">${result.original_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</s> ${result.discounted_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
                     validatedCouponCode = code;
                     const newPriceText = result.discounted_price.toFixed(2).replace('.', ',');
-                    pixButton.textContent = i18n.generatePixForPrice.replace('{price}', newPriceText);
+                    
+                    if (result.discounted_price <= 0) {
+                        pixButton.textContent = i18n.activateFreeSubscription;
+                    } else {
+                        pixButton.textContent = i18n.generatePixForPrice.replace('{price}', newPriceText);
+                    }
                 } else {
                     statusDiv.innerHTML = `<span class="text-red-500">${result.message}</span>`;
                     document.getElementById('price-display').innerHTML = originalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -110,6 +115,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function initiatePixPayment(payload, providers) {
         const activeProviders = Object.keys(providers).filter(p => providers[p]).map(p => p.toUpperCase());
         
+        // Se houver um cupão validado e o preço for zero, vai direto para a geração (que tratará o caso especial)
+        const selectedPriceEl = document.getElementById('price-display');
+        if (validatedCouponCode && selectedPriceEl && !selectedPriceEl.textContent.includes('<s>')) {
+             await generatePix(payload);
+             return;
+        }
+
         if (activeProviders.length === 1) {
             payload.provider = activeProviders[0];
             await generatePix(payload);
@@ -149,9 +161,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const originalText = button.textContent;
         button.disabled = true;
         button.textContent = i18n.wait;
+        let result = null;
 
         try {
-            const result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
+            result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
+            
+            if (result && result.success && result.free_renewal) {
+                showToast(result.message, 'success');
+                setTimeout(() => window.location.reload(), 3000);
+                return; 
+            }
             
             if(result && result.success) {
                 paymentSection.style.display = 'none';
@@ -165,8 +184,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             showToast(error.message, 'error');
         } finally {
-            button.disabled = false;
-            button.textContent = originalText;
+            if (!(result && result.success && result.free_renewal)) {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
         }
     }
 
@@ -240,4 +261,3 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     main();
 });
-
