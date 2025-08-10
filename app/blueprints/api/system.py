@@ -299,13 +299,24 @@ def auto_configure_tautulli_notifier():
 def bulk_notify():
     data = request.get_json()
     message = data.get('message')
+    contacts_only = data.get('contacts_only', False)
 
     if not message:
         return jsonify({"success": False, "message": _("A mensagem não pode estar vazia.")}), 400
 
+    # MELHORIA: Verifica se algum agente de notificação está ativo antes de iniciar a thread
+    config = load_or_create_config()
+    is_any_notifier_enabled = (
+        config.get("TELEGRAM_ENABLED", False) or
+        config.get("DISCORD_ENABLED", False) or
+        config.get("WEBHOOK_ENABLED", False)
+    )
+    if not is_any_notifier_enabled:
+        return jsonify({"success": False, "message": _("Nenhum agente de notificação (Telegram, Discord, etc.) está ativado nas configurações.")}), 400
+
     # Inicia o envio em uma nova thread para não bloquear a resposta da API
     app = current_app._get_current_object()
-    thread = threading.Thread(target=notifier_manager.send_bulk_notification, args=(app, message))
+    thread = threading.Thread(target=notifier_manager.send_bulk_notification, args=(app, message, contacts_only))
     thread.daemon = True
     thread.start()
 
