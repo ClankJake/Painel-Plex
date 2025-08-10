@@ -59,6 +59,10 @@ def load_or_create_config():
             "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Aviso de Vencimento\", \"description\": \"Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).\", \"color\": 16776960}]}",
             "DISCORD_RENEWAL_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Renovação Confirmada!\", \"description\": \"Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!\", \"color\": 65280}]}",
             "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Período de Teste Terminou\", \"description\": \"Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).\", \"color\": 16711680}]}",
+            "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Período de Teste Terminou\", \"description\": \"Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).\", \"color\": 16711680}]}",
+            "TELEGRAM_BULK_MESSAGE_TEMPLATE": "Olá {name}, um aviso do servidor: {message}",
+            "DISCORD_BULK_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Aviso do Servidor\", \"description\": \"{message}\", \"color\": 3447003}]}",
+            "WEBHOOK_BULK_MESSAGE_TEMPLATE": "{\"phone\": \"{phone_number}@s.whatsapp.net\", \"message\": \"{message}\"}",
             "DAYS_TO_NOTIFY_EXPIRATION": 2,
             "LOG_FILE": os.path.join(CONFIG_DIR, "app.log"),
             "LOG_MAX_BYTES": 1024 * 1024, # 1 MB
@@ -168,6 +172,10 @@ def load_or_create_config():
                 config.setdefault("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3)
                 config.setdefault("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5)
                 config.setdefault("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7)
+                config.setdefault("TELEGRAM_BULK_MESSAGE_TEMPLATE", "Olá {name}, um aviso do servidor: {message}")
+                config.setdefault("DISCORD_BULK_MESSAGE_TEMPLATE", "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Aviso do Servidor\", \"description\": \"{message}\", \"color\": 3447003}]}")
+                config.setdefault("WEBHOOK_BULK_MESSAGE_TEMPLATE", "{\"phone\": \"{phone_number}@s.whatsapp.net\", \"message\": \"{message}\"}")
+
 
             log_file_path = config.get("LOG_FILE")
             if log_file_path and not os.path.isabs(log_file_path):
