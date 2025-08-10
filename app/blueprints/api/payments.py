@@ -61,9 +61,9 @@ def _process_successful_payment(txid):
             
             logger.info(f"Subscrição para '{username}' renovada com sucesso. Novo vencimento: {new_expiration_date.strftime('%d/%m/%Y')}")
             
-            # Após confirmar o pagamento, incrementar o uso do cupão se houver um
+            # Após confirmar o pagamento, registar o uso do cupão pelo utilizador
             if payment and payment.get('coupon_code'):
-                data_manager.increment_coupon_usage(payment['coupon_code'])
+                data_manager.record_coupon_usage(payment['coupon_code'], payment['username'])
 
         else:
             logger.warning(f"Utilizador '{username}' do pagamento {txid} não encontrado no Plex para renovação. O pagamento foi marcado como concluído, mas a renovação falhou.")
@@ -132,9 +132,15 @@ def validate_coupon_route():
     data = request.json
     code = data.get('code')
     screens_str = data.get('screens')
+    username = data.get('username')
 
     if not code or screens_str is None:
         return jsonify({"success": False, "message": "Código do cupão e plano são necessários."}), 400
+
+    if not username:
+        logger.warning("A validação do cupão foi chamada sem um nome de utilizador. A verificação de uso único por utilizador será ignorada.")
+    elif data_manager.has_user_used_coupon(username, code):
+        return jsonify({"success": False, "message": "Você já usou esse cupom."}), 403
 
     coupon = data_manager.get_coupon_by_code(code)
 
@@ -183,7 +189,7 @@ def create_charge_route():
     if not username:
         return jsonify({"success": False, "message": _("Usuário não especificado para a cobrança.")}), 400
 
-    if not provider or screens_str is None:
+    if not provider and not coupon_code:
         return jsonify({"success": False, "message": _("Dados insuficientes para gerar cobrança.")}), 400
 
     config = load_or_create_config()
@@ -205,8 +211,10 @@ def create_charge_route():
     final_price = float(price_str)
 
     if coupon_code:
+        if data_manager.has_user_used_coupon(username, coupon_code):
+             return jsonify({"success": False, "message": "Você já usou esse cupom."}), 403
+        
         coupon = data_manager.get_coupon_by_code(coupon_code)
-        # Re-valida o cupão antes de criar a cobrança
         if coupon and coupon['is_active'] and coupon['use_count'] < coupon['max_uses'] and (not coupon['expires_at'] or datetime.utcnow() < coupon['expires_at']):
             if coupon['discount_type'] == 'percentage':
                 final_price *= (1 - coupon['value'] / 100)
@@ -215,6 +223,27 @@ def create_charge_route():
             final_price = max(0, final_price)
         else:
             return jsonify({"success": False, "message": "O cupão fornecido já não é válido."}), 400
+
+    # --- CORREÇÃO: Lógica para cupão de 100% ---
+    if coupon_code and final_price <= 0:
+        try:
+            logger.info(f"A processar renovação gratuita para '{username}' com o cupão '{coupon_code}'.")
+            plex_manager.renew_subscription(username, 1, 'expiry_date')
+            data_manager.record_coupon_usage(coupon_code, username)
+            data_manager.add_manual_payment(
+                username=username,
+                value=0.00,
+                description=f"Renovação via Cupão 100% ({coupon_code})",
+                payment_date_str=datetime.now().isoformat()
+            )
+            return jsonify({
+                "success": True,
+                "free_renewal": True,
+                "message": _("Assinatura gratuita ativada com sucesso!")
+            })
+        except Exception as e:
+            logger.error(f"Erro ao processar renovação gratuita para '{username}': {e}", exc_info=True)
+            return jsonify({"success": False, "message": "Ocorreu um erro ao ativar a sua assinatura gratuita."}), 500
 
     price = final_price
     screens = int(screens_str)
@@ -331,4 +360,3 @@ def add_manual_payment_route():
     except Exception as e:
         logger.error(f"Erro ao adicionar pagamento manual: {e}", exc_info=True)
         return jsonify({"success": False, "message": str(e)}), 500
-
