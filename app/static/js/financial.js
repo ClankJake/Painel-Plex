@@ -163,12 +163,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (summary.recent_transactions && summary.recent_transactions.length > 0) {
             transactionsList.innerHTML = summary.recent_transactions.map(tx => {
-                let planDescription = tx.description || '';
-                if (!planDescription || planDescription.toLowerCase().includes('renovação')) {
+                let planDescription;
+                // CORREÇÃO: Se a descrição já indica que foi via cupão, usa-a diretamente.
+                if (tx.description && (tx.description.toLowerCase().includes('cupão') || tx.description.toLowerCase().includes('coupon'))) {
+                    planDescription = tx.description;
+                } else {
+                    // Caso contrário, monta a descrição padrão.
                     planDescription = tx.screens > 0 ? `${tx.screens} Tela(s)` : 'Plano Padrão';
                 }
 
-                const couponHtml = tx.coupon_code 
+                // O couponHtml continua útil para pagamentos que tiveram desconto mas não foram 100%
+                const couponHtml = tx.coupon_code && !planDescription.toLowerCase().includes('cupão')
                     ? `<span class="px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300" title="Cupom Utilizado: ${tx.coupon_code}">🏷️ Cupom</span>`
                     : '';
                 
@@ -428,4 +433,3 @@ document.addEventListener('DOMContentLoaded', () => {
     updateMonthLabel();
     loadFinancialData();
 });
-
