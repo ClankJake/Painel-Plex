@@ -1,4 +1,4 @@
-import { fetchAPI } from './utils.js';
+import { fetchAPI, showToast, createModal } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- ELEMENTOS E DADOS GLOBAIS ---
@@ -7,10 +7,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorContainer = document.getElementById('errorContainer');
     const errorMessage = document.getElementById('errorMessage');
     const realtimeStatus = document.getElementById('realtime-status');
+    const sendBulkNotificationBtn = document.getElementById('send-bulk-notification-btn');
 
     const scriptTag = document.getElementById('dashboard-script');
-    const summaryUrl = scriptTag.dataset.summaryUrl;
-    const healthUrl = scriptTag.dataset.healthUrl;
+    const urls = {
+        summary: scriptTag.dataset.summaryUrl,
+        health: scriptTag.dataset.healthUrl,
+        bulkNotify: scriptTag.dataset.bulkNotifyUrl
+    };
     const i18n = {};
     for (const key in scriptTag.dataset) {
         if (key.startsWith('i18n')) {
@@ -69,7 +73,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const revenueCanvas = document.getElementById('monthlyRevenueChart');
         const userStatusCanvas = document.getElementById('userStatusChart');
 
-        // Atualiza ou cria o gráfico de receita
         if (revenueCanvas) {
             const dailyData = summary.daily_revenue || {};
             const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
@@ -79,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (monthlyRevenueChart) {
                 monthlyRevenueChart.data.labels = labels;
                 monthlyRevenueChart.data.datasets[0].data = data;
-                monthlyRevenueChart.update('none'); // 'none' para evitar animações tremidas
+                monthlyRevenueChart.update('none');
             } else {
                  monthlyRevenueChart = new Chart(revenueCanvas.getContext('2d'), {
                     type: 'bar',
@@ -107,12 +110,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // Atualiza ou cria o gráfico de status de utilizador
         if (userStatusCanvas) {
             const data = [summary.active_users, summary.blocked_users];
             if (userStatusChart) {
                 userStatusChart.data.datasets[0].data = data;
-                userStatusChart.update('none'); // 'none' para evitar animações tremidas
+                userStatusChart.update('none');
             } else {
                  userStatusChart = new Chart(userStatusCanvas.getContext('2d'), {
                     type: 'doughnut',
@@ -180,8 +182,8 @@ document.addEventListener('DOMContentLoaded', () => {
         errorContainer.classList.add('hidden');
 
         try {
-            const summaryPromise = fetchAPI(`${summaryUrl}?force=true`); // Força a atualização na carga inicial
-            const healthPromise = fetchAPI(healthUrl);
+            const summaryPromise = fetchAPI(`${urls.summary}?force=true`);
+            const healthPromise = fetchAPI(urls.health);
 
             const [summaryData, healthData] = await Promise.all([summaryPromise, healthPromise]);
 
@@ -263,9 +265,44 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Erro de conexão com o WebSocket:', error);
             setStatus('disconnected', i18n.disconnected);
         });
+
+        // Listen for bulk notification progress
+        const progressContainer = document.getElementById('bulk-progress-container');
+        const progressBar = document.getElementById('bulk-progress-bar');
+        const progressText = document.getElementById('bulk-progress-text');
+        const progressPercent = document.getElementById('bulk-progress-percent');
+
+        socket.on('bulk_notification_start', (data) => {
+            progressContainer.classList.remove('hidden');
+            sendBulkNotificationBtn.disabled = true;
+            sendBulkNotificationBtn.textContent = i18n.sendingBulkNotification;
+            progressBar.style.width = '0%';
+            progressPercent.textContent = '0%';
+            progressText.textContent = i18n.bulkSendProgress.replace('{current}', 0).replace('{total}', data.total);
+        });
+
+        socket.on('bulk_notification_progress', (data) => {
+            const percent = Math.round((data.current / data.total) * 100);
+            progressBar.style.width = `${percent}%`;
+            progressPercent.textContent = `${percent}%`;
+            progressText.textContent = i18n.bulkSendProgress.replace('{current}', data.current).replace('{total}', data.total);
+        });
+
+        socket.on('bulk_notification_end', (data) => {
+            progressBar.style.width = '100%';
+            progressPercent.textContent = '100%';
+            progressText.textContent = i18n.bulkSendComplete;
+            showToast(i18n.bulkSendComplete, 'success');
+            setTimeout(() => {
+                sendBulkNotificationBtn.disabled = false;
+                sendBulkNotificationBtn.innerHTML = `<svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086L2.279 16.76a.75.75 0 00.95.826l16-5.333a.75.75 0 000-1.418l-16-5.333z" /></svg> ${i18n.sendToAllActive}`;
+                progressContainer.classList.add('hidden');
+                document.getElementById('bulk_message').value = '';
+            }, 3000);
+        });
     }
 
-    // --- INICIALIZAÇÃO ---
+    // --- EVENT LISTENERS ---
     window.addEventListener('themeChanged', () => {
        if(dashboardContainer.classList.contains('hidden')) return;
         const colors = getChartColors();
@@ -282,6 +319,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    if (sendBulkNotificationBtn) {
+        sendBulkNotificationBtn.addEventListener('click', () => {
+            const message = document.getElementById('bulk_message').value;
+            if (!message.trim()) {
+                showToast('Por favor, escreva uma mensagem para enviar.', 'error');
+                return;
+            }
+            
+            createModal('confirmationModal', i18n.confirmBulkSendTitle, 
+                `<p>${i18n.confirmBulkSendMessage}</p>`,
+                `<button id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmSendButton}</button>
+                 <button id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
+            );
+            
+            document.getElementById('modalConfirm').onclick = async () => {
+               document.getElementById('confirmationModal').classList.add('hidden');
+               try {
+                   const result = await fetchAPI(urls.bulkNotify, 'POST', { message });
+                   showToast(result.message, result.success ? 'success' : 'info');
+               } catch (error) {
+                   showToast(error.message, 'error');
+               }
+            };
+            document.getElementById('modalCancel').onclick = () => document.getElementById('confirmationModal').classList.add('hidden');
+        });
+    }
+
+    // --- INICIALIZAÇÃO ---
     loadDashboardData();
-    setupWebSocket(); // Inicia a conexão WebSocket
+    setupWebSocket();
 });
