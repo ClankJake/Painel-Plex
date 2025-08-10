@@ -14,6 +14,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const urls = {};
     const i18n = {};
+    let currentUser = null; // Será preenchido com os dados da conta
+
     if (scriptTag) {
         for (const key in scriptTag.dataset) {
             if (key.startsWith('i18n')) {
@@ -151,17 +153,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const code = couponCodeInput.value.trim();
                 const statusDiv = document.getElementById('coupon-status');
                 const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
-                if (!code || !selectedPlan) return;
+                if (!code || !selectedPlan || !currentUser) return;
 
                 const screens = selectedPlan.value;
 
                 try {
-                    const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens });
+                    const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens, username: currentUser.username });
                     if (result.success) {
                         statusDiv.innerHTML = `<span class="text-green-500">${result.message}</span>`;
                         validatedCouponCode = code;
                         const newPriceText = result.discounted_price.toFixed(2).replace('.', ',');
-                        pixButton.textContent = i18n.generatePixForPrice.replace('{price}', newPriceText);
+                        
+                        if (result.discounted_price <= 0) {
+                            pixButton.textContent = i18n.activateFreeSubscription;
+                        } else {
+                            pixButton.textContent = i18n.generatePixForPrice.replace('{price}', newPriceText);
+                        }
                     } else {
                         statusDiv.innerHTML = `<span class="text-red-500">${result.message}</span>`;
                         validatedCouponCode = null;
@@ -180,6 +187,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function initiatePixPayment(payload, providers) {
         const activeProviders = Object.keys(providers).filter(p => providers[p]).map(p => p.toUpperCase());
+        
+        const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
+        const price = selectedPlan ? parseFloat(selectedPlan.dataset.price) : -1;
+
+        if (validatedCouponCode && price > 0) {
+            const statusDivText = document.getElementById('coupon-status')?.textContent || '';
+            // Se o cupão foi aplicado com sucesso e o preço final é zero
+            if (statusDivText.includes(i18n.couponAppliedSuccess)) {
+                const discountedPriceText = document.getElementById('initiatePixButton').textContent;
+                if (!discountedPriceText.includes('R$')) { // Heurística para saber se o preço é zero
+                    await generatePix(payload);
+                    return;
+                }
+            }
+        }
         
         if (activeProviders.length === 1) {
             payload.provider = activeProviders[0];
@@ -220,9 +242,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const originalText = button.textContent;
         button.disabled = true;
         button.textContent = i18n.wait;
+        let result = null;
 
         try {
-            const result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
+            result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
+            
+            if (result && result.success && result.free_renewal) {
+                showToast(result.message, 'success');
+                setTimeout(() => window.location.reload(), 3000);
+                return;
+            }
             
             if(result && result.success) {
                 paymentSection.style.display = 'none';
@@ -230,12 +259,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('pix-qr-code').src = result.qr_code_image;
                 document.getElementById('pix-copy-paste').value = result.pix_copy_paste;
                 startPaymentStatusPolling(result.payment_id || result.txid);
+            } else {
+                showToast(result.message, 'error');
             }
         } catch (error) {
             showToast(error.message, 'error');
         } finally {
-            button.disabled = false;
-            button.textContent = originalText;
+            if (!(result && result.success && result.free_renewal)) {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
         }
     }
 
@@ -435,6 +468,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function main() {
         try {
             const data = await fetchAPI(urls.getAccountDetailsUrl);
+            currentUser = { username: data.username }; // Armazena o nome do utilizador
             
             const paymentOptions = await fetchAPI(urls.getPaymentOptionsUrl);
             if(paymentOptions.success && paymentSection) {
@@ -547,4 +581,3 @@ document.addEventListener('DOMContentLoaded', async () => {
     main();
     handlePrivacyToggle();
 });
-
