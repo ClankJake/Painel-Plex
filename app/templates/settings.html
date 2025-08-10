@@ -449,9 +449,6 @@
                         </div>
                     </div>
                 </div>
-                <div class="pt-6 flex justify-end">
-                    <button type="button" id="saveTemplatesButton" class="btn bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20">{{ _('Salvar Templates') }}</button>
-                </div>
             </div>
         </div>
 
@@ -459,45 +456,34 @@
         <div id="tab-comunicacoes" class="tab-content">
             <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-6">
                 <div>
-                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Avisos em Massa') }}</h3>
-                    <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Envie uma mensagem personalizada para todos os seus utilizadores ativos.') }}</p>
+                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Templates para Avisos em Massa') }}</h3>
+                    <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Defina os modelos base para as mensagens em massa. Use o placeholder {message} onde a mensagem do dashboard deve ser inserida.') }}</p>
                 </div>
-                <div id="bulk-notification-form" class="space-y-4">
-                    <div id="telegram-bulk-container">
-                        <label for="telegram_bulk_message" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Mensagem para Telegram') }}
+                <div id="bulk-notification-templates" class="space-y-4">
+                    <div>
+                        <label for="TELEGRAM_BULK_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                            {{ _('Template para Telegram') }}
                             <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
                         </label>
-                        <textarea id="telegram_bulk_message" rows="4" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: Olá {name}, o servidor entrará em manutenção em 1 hora.') }}"></textarea>
+                        <textarea id="TELEGRAM_BULK_MESSAGE_TEMPLATE" rows="4" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: Olá {name}, temos um aviso importante: {message}') }}"></textarea>
                     </div>
-                    <div id="discord-bulk-container">
-                        <label for="discord_bulk_message" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Mensagem para Discord (JSON)') }}
+                    <div>
+                        <label for="DISCORD_BULK_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                            {{ _('Template para Discord (JSON)') }}
                              <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
                         </label>
-                        <textarea id="discord_bulk_message" rows="6" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono" placeholder='{"content": "<@{discord_user_id}> Olá {name}, aviso importante!", "embeds": [{"title": "Manutenção Programada", "description": "O servidor ficará offline por aproximadamente 1 hora."}]}'></textarea>
+                        <textarea id="DISCORD_BULK_MESSAGE_TEMPLATE" rows="6" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono" placeholder='{"content": "<@{discord_user_id}> Olá {name}!", "embeds": [{"title": "Aviso Importante", "description": "{message}"}]}'></textarea>
                     </div>
-                    <div id="webhook-bulk-container">
-                        <label for="webhook_bulk_message" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Mensagem para Webhook (JSON)') }}
+                    <div>
+                        <label for="WEBHOOK_BULK_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                            {{ _('Template para Webhook (JSON)') }}
                              <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
                         </label>
-                        <textarea id="webhook_bulk_message" rows="6" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono" placeholder='{"content": "Olá {name}, aviso importante!"}'></textarea>
+                        <textarea id="WEBHOOK_BULK_MESSAGE_TEMPLATE" rows="6" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono" placeholder='{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}'></textarea>
                     </div>
-                    <div class="pt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-                        <button type="button" id="send-bulk-notification-btn" class="btn bg-red-600 hover:bg-red-500 text-white w-full sm:w-auto shadow-lg shadow-red-500/20">
-                            <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086L2.279 16.76a.75.75 0 00.95.826l16-5.333a.75.75 0 000-1.418l-16-5.333z" /></svg>
-                            {{ _('Enviar para Todos os Utilizadores Ativos') }}
-                        </button>
-                        <div id="bulk-progress-container" class="w-full sm:w-1/2 hidden">
-                            <div class="flex justify-between mb-1">
-                                <span id="bulk-progress-text" class="text-sm font-medium text-gray-700 dark:text-white">{{ _('A iniciar...') }}</span>
-                                <span id="bulk-progress-percent" class="text-sm font-medium text-gray-700 dark:text-white">0%</span>
-                            </div>
-                            <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-                                <div id="bulk-progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
-                            </div>
-                        </div>
+                    <!-- Botão de Salvar específico para templates de comunicação -->
+                    <div class="pt-4 flex justify-end">
+                        <button type="button" id="saveBulkTemplatesButton" class="btn bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20">{{ _('Salvar Templates de Comunicação') }}</button>
                     </div>
                 </div>
             </div>
@@ -626,6 +612,7 @@
             <strong class="font-mono text-blue-600 dark:text-blue-400">{payment_link}</strong> <span>- {{ _('O link direto para a página de pagamento do utilizador.') }}</span>
             <strong class="font-mono text-blue-600 dark:text-blue-400">{price}</strong> <span>- {{ _('O valor da renovação do plano do utilizador (ex: R$ 10,00).') }}</span>
             <strong class="font-mono text-blue-600 dark:text-blue-400">{plan_name}</strong> <span>- {{ _('O plano que o usuario utiliza.') }}</span>
+            <strong class="font-mono text-red-500 dark:text-red-400">{message}</strong> <span>- {{ _('A mensagem personalizada inserida no dashboard (apenas para templates de avisos em massa).') }}</span>
         </div>
     </div>
 </div>
@@ -646,7 +633,6 @@
     data-urls-test-overseerr="{{ url_for('system_api.test_overseerr_connection') }}"
     data-urls-auto-configure-tautulli="{{ url_for('system_api.auto_configure_tautulli_notifier') }}"
     data-urls-set-language="/language/"
-    data-urls-bulk-notify="{{ url_for('system_api.bulk_notify') }}"
     data-i18n-authenticated="{{ _('Autenticado com sucesso! Buscando servidores...') }}"
     data-i18n-verification-error="{{ _('Erro de verificação:') }}"
     data-i18n-verifying="{{ _('Verificando...') }}"
@@ -670,17 +656,9 @@
     data-i18n-provide-tautulli-credentials="{{ _('Por favor, preencha a URL e a Chave de API do Tautulli primeiro.') }}"
     data-i18n-confirm-server="{{ _('Confirmar Servidor') }}"
     data-i18n-server-updated="{{ _('Servidor atualizado com sucesso!') }}"
-    data-i18n-save-templates="{{ _('Salvar Templates') }}"
-    data-i18n-saving-templates="{{ _('Salvando templates...') }}"
     data-i18n-local="{{ _('Local') }}"
     data-i18n-remote="{{ _('Remoto') }}"
-    data-i18n-confirm-bulk-send-title="{{ _('Confirmar Envio em Massa') }}"
-    data-i18n-confirm-bulk-send-message="{{ _('Tem a certeza que deseja enviar esta mensagem para todos os utilizadores ativos? Esta ação não pode ser desfeita.') }}"
-    data-i18n-confirm-send-button="{{ _('Sim, Enviar para Todos') }}"
-    data-i18n-sending-bulk-notification="{{ _('Enviando...') }}"
-    data-i18n-send-to-all-active="{{ _('Enviar para Todos os Utilizadores Ativos') }}"
-    data-i18n-bulk-send-started="{{ _('O envio em massa foi iniciado.') }}"
-    data-i18n-bulk-send-complete="{{ _('Envio em massa concluído!') }}"
-    data-i18n-bulk-send-progress="{{ _('Enviando {current} de {total}...') }}"
+    data-i18n-save-templates="{{ _('Salvar Templates de Comunicação') }}"
+    data-i18n-saving-templates="{{ _('Salvando templates...') }}"
 ></script>
 {% endblock %}
