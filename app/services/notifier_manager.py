@@ -261,7 +261,7 @@ class NotifierManager:
             context={}
         )
 
-    def send_bulk_notification(self, app, telegram_message_template=None, discord_message_template=None, webhook_message_template=None):
+    def send_bulk_notification(self, app, message):
         """Envia uma notificação em massa para todos os utilizadores ativos."""
         with app.app_context():
             from ..extensions import data_manager, plex_manager
@@ -278,6 +278,11 @@ class NotifierManager:
             if self.socketio:
                 self.socketio.emit('bulk_notification_start', {'total': total_users}, namespace='/dashboard')
 
+            # Carrega os templates de mensagem em massa da configuração
+            telegram_message_template = config.get("TELEGRAM_BULK_MESSAGE_TEMPLATE")
+            discord_message_template = config.get("DISCORD_BULK_MESSAGE_TEMPLATE")
+            webhook_message_template = config.get("WEBHOOK_BULK_MESSAGE_TEMPLATE")
+
             for i, user in enumerate(active_users):
                 username = user.get('username')
                 user_profile = data_manager.get_user_profile(username)
@@ -290,13 +295,14 @@ class NotifierManager:
                     'telegram_user': user_profile.get('telegram_user', ''),
                     'discord_user_id': user_profile.get('discord_user_id', ''),
                     'phone_number': user_profile.get('phone_number', ''),
+                    'message': message # Adiciona a mensagem simples aos placeholders
                 }
 
                 if config.get("TELEGRAM_ENABLED") and telegram_message_template:
                     telegram_user_id = user_profile.get('telegram_user')
                     if telegram_user_id:
-                        message = telegram_message_template.format(**placeholders)
-                        self._send_telegram_notification(message, telegram_user_id, request_id)
+                        full_message = telegram_message_template.format(**placeholders)
+                        self._send_telegram_notification(full_message, telegram_user_id, request_id)
                 
                 if config.get("DISCORD_ENABLED") and discord_message_template:
                     discord_user_id = user_profile.get('discord_user_id')
@@ -327,7 +333,6 @@ class NotifierManager:
                 if self.socketio:
                     self.socketio.emit('bulk_notification_progress', {'current': i + 1, 'total': total_users}, namespace='/dashboard')
                 
-                # Cooldown para evitar rate limiting
                 time.sleep(2) 
 
             logger.info(f"[ID: {request_id}] Envio em massa concluído.")
