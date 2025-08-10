@@ -23,12 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let pinCheckInterval = null;
     let authWindow = null;
     let logIntervalId = null;
-    let bulkNotifySocket = null;
 
     // --- ELEMENTOS DO DOM ---
     const form = document.getElementById('settingsForm');
     const saveButton = document.getElementById('saveButton');
-    const saveTemplatesButton = document.getElementById('saveTemplatesButton');
+    const saveBulkTemplatesButton = document.getElementById('saveBulkTemplatesButton');
     const logLevelSelector = document.getElementById('log_level_selector');
     const testTautulliButton = document.getElementById('testTautulliButton');
     const testOverseerrButton = document.getElementById('testOverseerrButton');
@@ -91,6 +90,9 @@ document.addEventListener('DOMContentLoaded', () => {
         'ACHIEVEMENT_DIRECTOR_FAN_BRONZE': { type: 'number', default: 3 },
         'ACHIEVEMENT_DIRECTOR_FAN_SILVER': { type: 'number', default: 5 },
         'ACHIEVEMENT_DIRECTOR_FAN_GOLD': { type: 'number', default: 7 },
+        'TELEGRAM_BULK_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
+        'DISCORD_BULK_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
+        'WEBHOOK_BULK_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
     };
 
     async function loginWithPlex() {
@@ -358,45 +360,6 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch(error => showToast(error.message, 'error'));
     }
 
-    function setupBulkNotificationSocket() {
-        if (bulkNotifySocket) return;
-
-        bulkNotifySocket = io('/dashboard'); // Usando o mesmo namespace do dashboard
-        const progressContainer = document.getElementById('bulk-progress-container');
-        const progressBar = document.getElementById('bulk-progress-bar');
-        const progressText = document.getElementById('bulk-progress-text');
-        const progressPercent = document.getElementById('bulk-progress-percent');
-        const sendButton = document.getElementById('send-bulk-notification-btn');
-
-        bulkNotifySocket.on('bulk_notification_start', (data) => {
-            progressContainer.classList.remove('hidden');
-            sendButton.disabled = true;
-            sendButton.textContent = i18n.sendingBulkNotification;
-            progressBar.style.width = '0%';
-            progressPercent.textContent = '0%';
-            progressText.textContent = i18n.bulkSendProgress.replace('{current}', 0).replace('{total}', data.total);
-        });
-
-        bulkNotifySocket.on('bulk_notification_progress', (data) => {
-            const percent = Math.round((data.current / data.total) * 100);
-            progressBar.style.width = `${percent}%`;
-            progressPercent.textContent = `${percent}%`;
-            progressText.textContent = i18n.bulkSendProgress.replace('{current}', data.current).replace('{total}', data.total);
-        });
-
-        bulkNotifySocket.on('bulk_notification_end', (data) => {
-            progressBar.style.width = '100%';
-            progressPercent.textContent = '100%';
-            progressText.textContent = i18n.bulkSendComplete;
-            showToast(i18n.bulkSendComplete, 'success');
-            setTimeout(() => {
-                sendButton.disabled = false;
-                sendButton.innerHTML = `<svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086L2.279 16.76a.75.75 0 00.95.826l16-5.333a.75.75 0 000-1.418l-16-5.333z" /></svg> ${i18n.sendToAllActive}`;
-                progressContainer.classList.add('hidden');
-            }, 3000);
-        });
-    }
-
     function initializeEventListeners() {
         
         const handleTabClick = (navElement, contentContainer, contentSelector) => {
@@ -411,9 +374,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         startLogUpdates();
                     } else {
                         stopLogUpdates();
-                    }
-                    if (tabId === 'comunicacoes') {
-                        setupBulkNotificationSocket();
                     }
                 } else if (e.target.tagName === 'BUTTON' && e.target.dataset.subtab) {
                     const subtabId = e.target.dataset.subtab;
@@ -464,6 +424,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                         } else if (!field.readonly) {
                             const key = field.key || id;
+                            // Não incluir os templates de comunicação em massa no save principal
+                            if (key.includes('_BULK_MESSAGE_TEMPLATE')) continue;
+
                             if (field.type === 'checkbox') {
                                 newConfig[key] = el.checked;
                             } else if (field.type === 'number') {
@@ -497,18 +460,16 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        if (saveTemplatesButton) {
-            saveTemplatesButton.addEventListener('click', async () => {
-                saveTemplatesButton.disabled = true;
-                saveTemplatesButton.textContent = i18n.savingTemplates;
+        // CORREÇÃO: Event listener para o botão de salvar templates
+        if (saveBulkTemplatesButton) {
+            saveBulkTemplatesButton.addEventListener('click', async () => {
+                saveBulkTemplatesButton.disabled = true;
+                saveBulkTemplatesButton.textContent = i18n.savingTemplates;
 
                 const templateData = {
-                    'TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE': document.getElementById('TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE').value,
-                    'TELEGRAM_RENEWAL_MESSAGE_TEMPLATE': document.getElementById('TELEGRAM_RENEWAL_MESSAGE_TEMPLATE').value,
-                    'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE': document.getElementById('TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE').value,
-                    'WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE': document.getElementById('WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE').value,
-                    'WEBHOOK_RENEWAL_MESSAGE_TEMPLATE': document.getElementById('WEBHOOK_RENEWAL_MESSAGE_TEMPLATE').value,
-                    'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE': document.getElementById('WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE').value,
+                    'TELEGRAM_BULK_MESSAGE_TEMPLATE': document.getElementById('TELEGRAM_BULK_MESSAGE_TEMPLATE').value,
+                    'DISCORD_BULK_MESSAGE_TEMPLATE': document.getElementById('DISCORD_BULK_MESSAGE_TEMPLATE').value,
+                    'WEBHOOK_BULK_MESSAGE_TEMPLATE': document.getElementById('WEBHOOK_BULK_MESSAGE_TEMPLATE').value,
                 };
 
                 try {
@@ -517,8 +478,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (error) {
                     showToast(error.message || i18n.unknownError, 'error');
                 } finally {
-                    saveTemplatesButton.disabled = false;
-                    saveTemplatesButton.textContent = i18n.saveTemplates;
+                    saveBulkTemplatesButton.disabled = false;
+                    saveBulkTemplatesButton.textContent = i18n.saveTemplates;
                 }
             });
         }
@@ -586,38 +547,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } finally {
                 if (toggleButton) toggleButton.disabled = false;
             }
-        });
-
-        document.getElementById('send-bulk-notification-btn')?.addEventListener('click', () => {
-             const telegramMessage = document.getElementById('telegram_bulk_message').value;
-             const discordMessage = document.getElementById('discord_bulk_message').value;
-             const webhookMessage = document.getElementById('webhook_bulk_message').value;
-
-             if (!telegramMessage && !discordMessage && !webhookMessage) {
-                 showToast('Escreva uma mensagem para pelo menos uma plataforma.', 'error');
-                 return;
-             }
-             
-             createModal('confirmationModal', i18n.confirmBulkSendTitle, 
-                `<p>${i18n.confirmBulkSendMessage}</p>`,
-                `<button id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmSendButton}</button>
-                 <button id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
-             );
-             
-             document.getElementById('modalConfirm').onclick = async () => {
-                document.getElementById('confirmationModal').classList.add('hidden');
-                try {
-                    const result = await fetchAPI(urls.bulkNotify, 'POST', {
-                        telegram_message: telegramMessage,
-                        discord_message: discordMessage,
-                        webhook_message: webhookMessage
-                    });
-                    showToast(result.message, result.success ? 'success' : 'info');
-                } catch (error) {
-                    showToast(error.message, 'error');
-                }
-             };
-             document.getElementById('modalCancel').onclick = () => document.getElementById('confirmationModal').classList.add('hidden');
         });
     }
     
