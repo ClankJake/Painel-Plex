@@ -38,6 +38,13 @@
                 <textarea id="bulk_message" rows="3" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: O servidor entrará em manutenção em 1 hora.') }}"></textarea>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Esta mensagem será inserida nos templates que você configurou. Use {username} para mencionar o usuário.') }}</p>
             </div>
+            <!-- MELHORIA: Adiciona o checkbox de filtro -->
+            <div class="flex items-center">
+                <input id="contacts_only_checkbox" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                <label for="contacts_only_checkbox" class="ml-2 text-sm font-medium text-gray-900 dark:text-gray-300">
+                    {{ _('Enviar apenas para utilizadores com contacto registado (Telegram, Discord ou Telefone)') }}
+                </label>
+            </div>
             <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <button type="button" id="send-bulk-notification-btn" class="btn bg-red-600 hover:bg-red-500 text-white w-full sm:w-auto shadow-lg shadow-red-500/20">
                     <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086L2.279 16.76a.75.75 0 00.95.826l16-5.333a.75.75 0 000-1.418l-16-5.333z" /></svg>
