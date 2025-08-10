@@ -48,6 +48,17 @@ class Coupon(db.Model):
     expires_at = db.Column(db.DateTime, nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    usages = db.relationship('CouponUsage', backref='coupon', lazy=True, cascade="all, delete-orphan")
+
+class CouponUsage(db.Model):
+    __tablename__ = 'coupon_usages'
+    id = db.Column(db.Integer, primary_key=True)
+    user_username = db.Column(db.String, db.ForeignKey('user_profiles.username'), nullable=False)
+    coupon_id = db.Column(db.Integer, db.ForeignKey('coupons.id'), nullable=False)
+    used_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('user_username', 'coupon_id', name='_user_coupon_uc'),)
+
 
 class Invitation(db.Model):
     __tablename__ = 'invitations'
@@ -88,6 +99,8 @@ class UserProfile(db.Model):
     hide_from_leaderboard = db.Column(db.Boolean, default=False, nullable=False)
     libraries = db.Column(db.Text, nullable=True)
     payment_token = db.Column(db.String, unique=True, nullable=True)
+    coupon_usages = db.relationship('CouponUsage', backref='user', lazy=True, cascade="all, delete-orphan")
+
 
 class PixPayment(db.Model):
     __tablename__ = 'pix_payments'
@@ -128,4 +141,3 @@ class UnlockedAchievement(db.Model):
     unlocked_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (db.UniqueConstraint('username', 'achievement_id', name='_username_achievement_uc'),)
-
