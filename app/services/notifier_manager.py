@@ -15,6 +15,23 @@ from ..models import UserProfile
 
 logger = logging.getLogger(__name__)
 
+# --- CONSTANTES DE TEMPLATES PADRÃO ---
+# Fallback para garantir que as notificações nunca sejam enviadas vazias se o utilizador apagar o template nas configurações.
+DEFAULT_TEMPLATES = {
+    "TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}",
+    "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ Olá {username}! A sua subscrição foi renovada com sucesso. O seu novo vencimento é em {new_date}.",
+    "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "Seu período de teste para {username} terminou. Para continuar com o acesso, renove sua assinatura em: {payment_link}",
+    "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
+    "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
+    "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
+    "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
+    "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
+    "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}',
+    "TELEGRAM_BULK_MESSAGE_TEMPLATE": "Olá {name}, um aviso do servidor: {message}",
+    "DISCORD_BULK_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}',
+    "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}'
+}
+
 def get_greeting():
     """Retorna uma saudação com base na hora atual."""
     current_hour = datetime.now().hour
@@ -175,7 +192,8 @@ class NotifierManager:
         logger.debug(f"[ID: {request_id}] Placeholders para notificação: {placeholders}")
 
         if config.get("TELEGRAM_ENABLED"):
-            telegram_template = config.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE")
+            template_key = f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE"
+            telegram_template = config.get(template_key) or DEFAULT_TEMPLATES.get(template_key)
             telegram_user_id = user_profile.get('telegram_user')
             
             if telegram_template and telegram_user_id:
@@ -185,7 +203,8 @@ class NotifierManager:
                  logger.warning(f"[ID: {request_id}] A notificação por Telegram para '{placeholders['username']}' foi ignorada porque o ID do Telegram não está definido no seu perfil.")
 
         if config.get("WEBHOOK_ENABLED"):
-            webhook_template_str = config.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE")
+            template_key = f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE"
+            webhook_template_str = config.get(template_key) or DEFAULT_TEMPLATES.get(template_key)
             phone_number = user_profile.get('phone_number')
 
             if webhook_template_str and phone_number:
@@ -204,7 +223,8 @@ class NotifierManager:
                 logger.warning(f"[ID: {request_id}] A notificação via Webhook para '{placeholders['username']}' foi ignorada porque o número de telefone não está definido no seu perfil.")
 
         if config.get("DISCORD_ENABLED"):
-            discord_template_str = config.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE")
+            template_key = f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE"
+            discord_template_str = config.get(template_key) or DEFAULT_TEMPLATES.get(template_key)
             discord_user_id = user_profile.get('discord_user_id')
 
             if discord_template_str and discord_user_id:
@@ -261,8 +281,8 @@ class NotifierManager:
             context={}
         )
 
-    def send_bulk_notification(self, app, message):
-        """Envia uma notificação em massa para todos os utilizadores ativos."""
+    def send_bulk_notification(self, app, message, contacts_only=False):
+        """Envia uma notificação em massa para os utilizadores selecionados."""
         with app.app_context():
             from ..extensions import data_manager, plex_manager
             
@@ -271,19 +291,40 @@ class NotifierManager:
             
             all_users = plex_manager.get_all_plex_users()
             blocked_users = [u['username'] for u in data_manager.get_blocked_users()]
-            active_users = [u for u in all_users if u['username'] not in blocked_users]
+            target_users = [u for u in all_users if u['username'] not in blocked_users]
             
-            total_users = len(active_users)
-            logger.info(f"[ID: {request_id}] A iniciar envio em massa para {total_users} utilizadores ativos.")
+            # MELHORIA: Filtro de contactos mais inteligente, considera os agentes ativos
+            if contacts_only:
+                logger.info(f"[ID: {request_id}] A filtrar utilizadores para enviar apenas para aqueles com contacto registado para um agente ATIVO.")
+                users_with_contacts = []
+                telegram_enabled = config.get("TELEGRAM_ENABLED", False)
+                discord_enabled = config.get("DISCORD_ENABLED", False)
+                webhook_enabled = config.get("WEBHOOK_ENABLED", False)
+
+                for user in target_users:
+                    profile = data_manager.get_user_profile(user['username'])
+                    has_contact_for_active_notifier = (
+                        (telegram_enabled and profile.get('telegram_user')) or 
+                        (discord_enabled and profile.get('discord_user_id')) or 
+                        (webhook_enabled and profile.get('phone_number'))
+                    )
+                    if has_contact_for_active_notifier:
+                        users_with_contacts.append(user)
+                
+                original_count = len(target_users)
+                target_users = users_with_contacts
+                logger.info(f"[ID: {request_id}] Filtro aplicado. De {original_count} utilizadores ativos, {len(target_users)} têm contacto e serão notificados.")
+
+            total_users = len(target_users)
+            logger.info(f"[ID: {request_id}] A iniciar envio em massa para {total_users} utilizadores.")
             if self.socketio:
                 self.socketio.emit('bulk_notification_start', {'total': total_users}, namespace='/dashboard')
 
-            # Carrega os templates de mensagem em massa da configuração
-            telegram_message_template = config.get("TELEGRAM_BULK_MESSAGE_TEMPLATE")
-            discord_message_template = config.get("DISCORD_BULK_MESSAGE_TEMPLATE")
-            webhook_message_template = config.get("WEBHOOK_BULK_MESSAGE_TEMPLATE")
+            telegram_message_template = config.get("TELEGRAM_BULK_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get("TELEGRAM_BULK_MESSAGE_TEMPLATE")
+            discord_message_template = config.get("DISCORD_BULK_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get("DISCORD_BULK_MESSAGE_TEMPLATE")
+            webhook_message_template = config.get("WEBHOOK_BULK_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get("WEBHOOK_BULK_MESSAGE_TEMPLATE")
 
-            for i, user in enumerate(active_users):
+            for i, user in enumerate(target_users):
                 username = user.get('username')
                 user_profile = data_manager.get_user_profile(username)
                 
@@ -295,7 +336,7 @@ class NotifierManager:
                     'telegram_user': user_profile.get('telegram_user', ''),
                     'discord_user_id': user_profile.get('discord_user_id', ''),
                     'phone_number': user_profile.get('phone_number', ''),
-                    'message': message # Adiciona a mensagem simples aos placeholders
+                    'message': message 
                 }
 
                 if config.get("TELEGRAM_ENABLED") and telegram_message_template:
