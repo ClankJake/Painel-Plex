@@ -1,4 +1,4 @@
-import { fetchAPI, showToast } from './utils.js';
+import { fetchAPI, showToast, createModal } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- ELEMENTOS E DADOS GLOBAIS ---
@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let pinCheckInterval = null;
     let authWindow = null;
     let logIntervalId = null;
+    let bulkNotifySocket = null;
 
     // --- ELEMENTOS DO DOM ---
     const form = document.getElementById('settingsForm');
@@ -357,6 +358,45 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch(error => showToast(error.message, 'error'));
     }
 
+    function setupBulkNotificationSocket() {
+        if (bulkNotifySocket) return;
+
+        bulkNotifySocket = io('/dashboard'); // Usando o mesmo namespace do dashboard
+        const progressContainer = document.getElementById('bulk-progress-container');
+        const progressBar = document.getElementById('bulk-progress-bar');
+        const progressText = document.getElementById('bulk-progress-text');
+        const progressPercent = document.getElementById('bulk-progress-percent');
+        const sendButton = document.getElementById('send-bulk-notification-btn');
+
+        bulkNotifySocket.on('bulk_notification_start', (data) => {
+            progressContainer.classList.remove('hidden');
+            sendButton.disabled = true;
+            sendButton.textContent = i18n.sendingBulkNotification;
+            progressBar.style.width = '0%';
+            progressPercent.textContent = '0%';
+            progressText.textContent = i18n.bulkSendProgress.replace('{current}', 0).replace('{total}', data.total);
+        });
+
+        bulkNotifySocket.on('bulk_notification_progress', (data) => {
+            const percent = Math.round((data.current / data.total) * 100);
+            progressBar.style.width = `${percent}%`;
+            progressPercent.textContent = `${percent}%`;
+            progressText.textContent = i18n.bulkSendProgress.replace('{current}', data.current).replace('{total}', data.total);
+        });
+
+        bulkNotifySocket.on('bulk_notification_end', (data) => {
+            progressBar.style.width = '100%';
+            progressPercent.textContent = '100%';
+            progressText.textContent = i18n.bulkSendComplete;
+            showToast(i18n.bulkSendComplete, 'success');
+            setTimeout(() => {
+                sendButton.disabled = false;
+                sendButton.innerHTML = `<svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086L2.279 16.76a.75.75 0 00.95.826l16-5.333a.75.75 0 000-1.418l-16-5.333z" /></svg> ${i18n.sendToAllActive}`;
+                progressContainer.classList.add('hidden');
+            }, 3000);
+        });
+    }
+
     function initializeEventListeners() {
         
         const handleTabClick = (navElement, contentContainer, contentSelector) => {
@@ -371,6 +411,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         startLogUpdates();
                     } else {
                         stopLogUpdates();
+                    }
+                    if (tabId === 'comunicacoes') {
+                        setupBulkNotificationSocket();
                     }
                 } else if (e.target.tagName === 'BUTTON' && e.target.dataset.subtab) {
                     const subtabId = e.target.dataset.subtab;
@@ -543,6 +586,38 @@ document.addEventListener('DOMContentLoaded', () => {
             } finally {
                 if (toggleButton) toggleButton.disabled = false;
             }
+        });
+
+        document.getElementById('send-bulk-notification-btn')?.addEventListener('click', () => {
+             const telegramMessage = document.getElementById('telegram_bulk_message').value;
+             const discordMessage = document.getElementById('discord_bulk_message').value;
+             const webhookMessage = document.getElementById('webhook_bulk_message').value;
+
+             if (!telegramMessage && !discordMessage && !webhookMessage) {
+                 showToast('Escreva uma mensagem para pelo menos uma plataforma.', 'error');
+                 return;
+             }
+             
+             createModal('confirmationModal', i18n.confirmBulkSendTitle, 
+                `<p>${i18n.confirmBulkSendMessage}</p>`,
+                `<button id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmSendButton}</button>
+                 <button id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
+             );
+             
+             document.getElementById('modalConfirm').onclick = async () => {
+                document.getElementById('confirmationModal').classList.add('hidden');
+                try {
+                    const result = await fetchAPI(urls.bulkNotify, 'POST', {
+                        telegram_message: telegramMessage,
+                        discord_message: discordMessage,
+                        webhook_message: webhookMessage
+                    });
+                    showToast(result.message, result.success ? 'success' : 'info');
+                } catch (error) {
+                    showToast(error.message, 'error');
+                }
+             };
+             document.getElementById('modalCancel').onclick = () => document.getElementById('confirmationModal').classList.add('hidden');
         });
     }
     
