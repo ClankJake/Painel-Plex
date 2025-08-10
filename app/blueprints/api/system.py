@@ -1,6 +1,7 @@
 # app/blueprints/api/system.py
 
 import logging
+import threading
 from flask import Blueprint, jsonify, request, current_app, session, url_for
 from flask_login import login_user, current_user
 from plexapi.myplex import MyPlexAccount
@@ -8,7 +9,7 @@ from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 
-from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, overseerr_manager, scheduler
+from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, overseerr_manager, scheduler, notifier_manager
 from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
 from ..auth import admin_required, login_required
@@ -201,12 +202,10 @@ def get_plex_servers():
                 processed_uris = set()
 
                 for c in r.connections:
-                    # Adiciona a conexão original (geralmente HTTPS) se ainda não tiver sido processada
                     if c.uri not in processed_uris:
                         server_connections.append({"uri": c.uri, "local": c.local})
                         processed_uris.add(c.uri)
 
-                    # Cria e adiciona a versão HTTP da URI, se for diferente
                     http_uri = f"http://{c.address}:{c.port}"
                     if http_uri not in processed_uris:
                         server_connections.append({"uri": http_uri, "local": c.local})
@@ -294,3 +293,23 @@ def auto_configure_tautulli_notifier():
         return jsonify({"success": False, "message": _("URL e Chave API do Tautulli não estão preenchidos.")}), 400
     result = tautulli_manager.set_notifier_conditions(tautulli_url, tautulli_api_key, notifier_id, notifier_type)
     return jsonify(result)
+
+@system_api_bp.route('/bulk-notify', methods=['POST'])
+@login_required
+@admin_required
+def bulk_notify():
+    data = request.get_json()
+    telegram_message = data.get('telegram_message')
+    discord_message = data.get('discord_message')
+    webhook_message = data.get('webhook_message')
+
+    if not telegram_message and not discord_message and not webhook_message:
+        return jsonify({"success": False, "message": _("Pelo menos uma mensagem deve ser fornecida.")}), 400
+
+    # Inicia o envio em uma nova thread para não bloquear a resposta da API
+    app = current_app._get_current_object()
+    thread = threading.Thread(target=notifier_manager.send_bulk_notification, args=(app, telegram_message, discord_message, webhook_message))
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({"success": True, "message": _("O envio de notificações em massa foi iniciado.")})
