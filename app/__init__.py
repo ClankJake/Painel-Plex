@@ -3,7 +3,7 @@ import logging
 import atexit
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta, timezone
-from flask import Flask, request, redirect, url_for, session, jsonify, flash, send_from_directory, render_template, Response
+from flask import Flask, request, redirect, url_for, session, jsonify, flash, send_from_directory, render_template, Response, has_request_context
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_login import current_user, logout_user
 from flask_babel import get_locale, gettext as _
@@ -82,9 +82,11 @@ def create_app(log_level='INFO', _from_job=False):
     
     def get_user_locale():
         """Seleciona o idioma a ser usado para a request atual."""
-        if 'language' in session:
-            return session['language']
-        return request.accept_languages.best_match(app.config['LANGUAGES'].keys())
+        if has_request_context():
+            if 'language' in session:
+                return session['language']
+            return request.accept_languages.best_match(app.config['LANGUAGES'].keys())
+        return app.config.get('BABEL_DEFAULT_LOCALE', 'pt_BR')
 
     app.config['LANGUAGES'] = {'pt_BR': 'Português'}
     app.config['BABEL_DEFAULT_LOCALE'] = 'pt_BR'
@@ -133,9 +135,7 @@ def create_app(log_level='INFO', _from_job=False):
     extensions.login_manager.init_app(app)
     extensions.babel.init_app(app, locale_selector=get_user_locale)
     
-    # Inicializa o SocketIO com a app
     extensions.socketio.init_app(app, async_mode='eventlet')
-    # Passa a instância da app para o módulo de sockets para que o contexto possa ser usado na tarefa de fundo
     sockets.app_instance = app
 
     if not extensions.scheduler.running:
@@ -159,7 +159,7 @@ def create_app(log_level='INFO', _from_job=False):
     extensions.data_manager = DataManager()
     extensions.tautulli_manager = TautulliManager(data_manager=extensions.data_manager)
     extensions.link_shortener = LinkShortener()
-    extensions.notifier_manager = NotifierManager(link_shortener_service=extensions.link_shortener)
+    extensions.notifier_manager = NotifierManager(link_shortener_service=extensions.link_shortener, socketio_instance=extensions.socketio)
     extensions.efi_manager = EfiManager(data_manager=extensions.data_manager)
     extensions.mercado_pago_manager = MercadoPagoManager(data_manager=extensions.data_manager)
     extensions.overseerr_manager = OverseerrManager()
@@ -260,7 +260,6 @@ def create_app(log_level='INFO', _from_job=False):
     from .blueprints.main import main_bp
     from .blueprints.auth import auth_bp
     from .blueprints.redirect import redirect_bp
-    # Importar os novos blueprints da API
     from .blueprints.api.system import system_api_bp
     from .blueprints.api.users import users_api_bp
     from .blueprints.api.invites import invites_api_bp
@@ -272,8 +271,7 @@ def create_app(log_level='INFO', _from_job=False):
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(redirect_bp)
-    # Registar os novos blueprints, todos sob o prefixo /api
-    app.register_blueprint(system_api_bp, url_prefix='/api')
+    app.register_blueprint(system_api_bp, url_prefix='/api/system')
     app.register_blueprint(users_api_bp, url_prefix='/api/users')
     app.register_blueprint(invites_api_bp, url_prefix='/api/invites')
     app.register_blueprint(payments_api_bp, url_prefix='/api/payments')
