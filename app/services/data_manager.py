@@ -5,7 +5,7 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from ..extensions import db
-from ..models import Invitation, BlockedUser, UserProfile, PixPayment, Notification, UnlockedAchievement, ShortLink, Coupon
+from ..models import Invitation, BlockedUser, UserProfile, PixPayment, Notification, UnlockedAchievement, ShortLink, Coupon, CouponUsage
 from sqlalchemy import func, extract, not_
 from tzlocal import get_localzone
 from flask_babel import gettext as _, ngettext
@@ -55,12 +55,37 @@ class DataManager:
             return self._row_to_dict(coupon)
         return None
 
-    def increment_coupon_usage(self, code):
+    def record_coupon_usage(self, code, username):
+        """Regista o uso de um cupão por um utilizador e incrementa a contagem global."""
         coupon = Coupon.query.filter_by(code=code).first()
-        if coupon:
-            coupon.use_count += 1
-            db.session.commit()
-            logger.info(f"Uso do cupão '{code}' incrementado para {coupon.use_count}.")
+        user_profile = UserProfile.query.get(username)
+        if coupon and user_profile:
+            try:
+                # Incrementa a contagem global
+                coupon.use_count += 1
+                # Regista o uso individual
+                new_usage = CouponUsage(user_username=username, coupon_id=coupon.id)
+                db.session.add(new_usage)
+                db.session.commit()
+                logger.info(f"Uso do cupão '{code}' registado para o utilizador '{username}'. Contagem total: {coupon.use_count}.")
+                return True
+            except Exception as e:
+                db.session.rollback()
+                # Evita erro de constraint duplicada caso a lógica seja chamada mais de uma vez
+                if 'UNIQUE constraint failed' in str(e):
+                    logger.warning(f"Tentativa de registar uso duplicado do cupão '{code}' para '{username}'. Ignorando.")
+                    return True
+                logger.error(f"Erro ao registar o uso do cupão '{code}' para '{username}': {e}")
+                return False
+        return False
+
+    def has_user_used_coupon(self, username, code):
+        """Verifica se um utilizador específico já utilizou um determinado cupão."""
+        usage = db.session.query(CouponUsage).join(Coupon).filter(
+            Coupon.code == code,
+            CouponUsage.user_username == username
+        ).first()
+        return usage is not None
 
     # --- MÉTODOS DE GAMIFICAÇÃO (CONQUISTAS) ---
     def get_unlocked_achievements(self, username):
@@ -371,4 +396,3 @@ class DataManager:
         if not row:
             return None
         return {c.name: getattr(row, c.name) for c in row.__table__.columns}
-
