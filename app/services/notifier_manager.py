@@ -3,6 +3,8 @@
 import json
 import logging
 import uuid
+import time
+import threading
 from datetime import datetime
 import requests
 from flask_babel import gettext as _, ngettext
@@ -27,9 +29,10 @@ class NotifierManager:
     """
     Gestor responsável por enviar notificações para diferentes serviços.
     """
-    def __init__(self, link_shortener_service=None):
+    def __init__(self, link_shortener_service=None, socketio_instance=None):
         """Inicializa o gestor de notificações."""
         self.link_shortener = link_shortener_service
+        self.socketio = socketio_instance
 
     def _send_telegram_notification(self, message, chat_id, request_id):
         """Envia uma notificação para um chat específico do Telegram."""
@@ -110,10 +113,9 @@ class NotifierManager:
         config = load_or_create_config()
         request_id = uuid.uuid4()
         
-        # Determina o preço de renovação e o nome do plano para o utilizador
         user_screen_limit = user_profile.get('screen_limit', 0)
         screen_prices = config.get("SCREEN_PRICES", {})
-        renewal_price_str = config.get("RENEWAL_PRICE", "0.00") # Fallback
+        renewal_price_str = config.get("RENEWAL_PRICE", "0.00") 
 
         if str(user_screen_limit) in screen_prices:
             renewal_price_str = screen_prices[str(user_screen_limit)]
@@ -172,7 +174,6 @@ class NotifierManager:
         
         logger.debug(f"[ID: {request_id}] Placeholders para notificação: {placeholders}")
 
-        # --- Envio para Telegram ---
         if config.get("TELEGRAM_ENABLED"):
             telegram_template = config.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE")
             telegram_user_id = user_profile.get('telegram_user')
@@ -183,7 +184,6 @@ class NotifierManager:
             elif telegram_template and not telegram_user_id:
                  logger.warning(f"[ID: {request_id}] A notificação por Telegram para '{placeholders['username']}' foi ignorada porque o ID do Telegram não está definido no seu perfil.")
 
-        # --- Envio para Webhook ---
         if config.get("WEBHOOK_ENABLED"):
             webhook_template_str = config.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE")
             phone_number = user_profile.get('phone_number')
@@ -203,7 +203,6 @@ class NotifierManager:
             elif webhook_template_str and not phone_number:
                 logger.warning(f"[ID: {request_id}] A notificação via Webhook para '{placeholders['username']}' foi ignorada porque o número de telefone não está definido no seu perfil.")
 
-        # --- Envio para Discord ---
         if config.get("DISCORD_ENABLED"):
             discord_template_str = config.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE")
             discord_user_id = user_profile.get('discord_user_id')
@@ -261,3 +260,76 @@ class NotifierManager:
             user_profile=user_profile, 
             context={}
         )
+
+    def send_bulk_notification(self, app, telegram_message_template=None, discord_message_template=None, webhook_message_template=None):
+        """Envia uma notificação em massa para todos os utilizadores ativos."""
+        with app.app_context():
+            from ..extensions import data_manager, plex_manager
+            
+            config = load_or_create_config()
+            request_id = uuid.uuid4()
+            
+            all_users = plex_manager.get_all_plex_users()
+            blocked_users = [u['username'] for u in data_manager.get_blocked_users()]
+            active_users = [u for u in all_users if u['username'] not in blocked_users]
+            
+            total_users = len(active_users)
+            logger.info(f"[ID: {request_id}] A iniciar envio em massa para {total_users} utilizadores ativos.")
+            if self.socketio:
+                self.socketio.emit('bulk_notification_start', {'total': total_users}, namespace='/dashboard')
+
+            for i, user in enumerate(active_users):
+                username = user.get('username')
+                user_profile = data_manager.get_user_profile(username)
+                
+                placeholders = {
+                    'username': username,
+                    'name': user_profile.get('name') or username,
+                    'email': user.get('email'),
+                    'greeting': get_greeting(),
+                    'telegram_user': user_profile.get('telegram_user', ''),
+                    'discord_user_id': user_profile.get('discord_user_id', ''),
+                    'phone_number': user_profile.get('phone_number', ''),
+                }
+
+                if config.get("TELEGRAM_ENABLED") and telegram_message_template:
+                    telegram_user_id = user_profile.get('telegram_user')
+                    if telegram_user_id:
+                        message = telegram_message_template.format(**placeholders)
+                        self._send_telegram_notification(message, telegram_user_id, request_id)
+                
+                if config.get("DISCORD_ENABLED") and discord_message_template:
+                    discord_user_id = user_profile.get('discord_user_id')
+                    if discord_user_id:
+                        try:
+                            message_with_placeholders = discord_message_template
+                            for key, value in placeholders.items():
+                                message_with_placeholders = message_with_placeholders.replace(f"{{{key}}}", str(value))
+                            
+                            payload = json.loads(message_with_placeholders)
+                            self._send_discord_notification(payload, request_id)
+                        except Exception as e:
+                            logger.error(f"[ID: {request_id}] Falha ao processar a mensagem do Discord para {username}: {e}")
+                
+                if config.get("WEBHOOK_ENABLED") and webhook_message_template:
+                    phone_number = user_profile.get('phone_number')
+                    if phone_number:
+                        try:
+                            message_with_placeholders = webhook_message_template
+                            for key, value in placeholders.items():
+                                message_with_placeholders = message_with_placeholders.replace(f"{{{key}}}", str(value))
+                            
+                            payload = json.loads(message_with_placeholders)
+                            self._send_webhook_notification(payload, request_id)
+                        except Exception as e:
+                            logger.error(f"[ID: {request_id}] Falha ao processar a mensagem do Webhook para {username}: {e}")
+
+                if self.socketio:
+                    self.socketio.emit('bulk_notification_progress', {'current': i + 1, 'total': total_users}, namespace='/dashboard')
+                
+                # Cooldown para evitar rate limiting
+                time.sleep(2) 
+
+            logger.info(f"[ID: {request_id}] Envio em massa concluído.")
+            if self.socketio:
+                self.socketio.emit('bulk_notification_end', {'total': total_users}, namespace='/dashboard')
