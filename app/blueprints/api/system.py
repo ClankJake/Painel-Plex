@@ -118,17 +118,16 @@ def api_settings():
             'OVERSEERR_ENABLED', 'OVERSEERR_URL', 'OVERSEERR_API_KEY',
             'CLEANUP_PENDING_PAYMENTS_ENABLED', 'CLEANUP_PENDING_PAYMENTS_DAYS', 'CLEANUP_TIME',
             'ENABLE_LINK_SHORTENER', 'PAYMENT_LINK_GRACE_PERIOD_DAYS',
-            # Novas chaves de gamificação
             'ACHIEVEMENT_MOVIE_MARATHON_BRONZE', 'ACHIEVEMENT_MOVIE_MARATHON_SILVER', 'ACHIEVEMENT_MOVIE_MARATHON_GOLD',
             'ACHIEVEMENT_SERIES_BINGER_BRONZE', 'ACHIEVEMENT_SERIES_BINGER_SILVER', 'ACHIEVEMENT_SERIES_BINGER_GOLD',
             'ACHIEVEMENT_TIME_TRAVELER_BRONZE', 'ACHIEVEMENT_TIME_TRAVELER_SILVER', 'ACHIEVEMENT_TIME_TRAVELER_GOLD',
-            'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD'
+            'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD',
+            'TELEGRAM_BULK_MESSAGE_TEMPLATE', 'DISCORD_BULK_MESSAGE_TEMPLATE', 'WEBHOOK_BULK_MESSAGE_TEMPLATE'
         ]
         numeric_fields = [
             'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION', 
             'BLOCKING_NOTIFIER_ID', 'SCREEN_LIMIT_NOTIFIER_ID', 'CLEANUP_PENDING_PAYMENTS_DAYS',
             'PAYMENT_LINK_GRACE_PERIOD_DAYS',
-            # Novas chaves numéricas de gamificação
             'ACHIEVEMENT_MOVIE_MARATHON_BRONZE', 'ACHIEVEMENT_MOVIE_MARATHON_SILVER', 'ACHIEVEMENT_MOVIE_MARATHON_GOLD',
             'ACHIEVEMENT_SERIES_BINGER_BRONZE', 'ACHIEVEMENT_SERIES_BINGER_SILVER', 'ACHIEVEMENT_SERIES_BINGER_GOLD',
             'ACHIEVEMENT_TIME_TRAVELER_BRONZE', 'ACHIEVEMENT_TIME_TRAVELER_SILVER', 'ACHIEVEMENT_TIME_TRAVELER_GOLD',
@@ -299,16 +298,14 @@ def auto_configure_tautulli_notifier():
 @admin_required
 def bulk_notify():
     data = request.get_json()
-    telegram_message = data.get('telegram_message')
-    discord_message = data.get('discord_message')
-    webhook_message = data.get('webhook_message')
+    message = data.get('message')
 
-    if not telegram_message and not discord_message and not webhook_message:
-        return jsonify({"success": False, "message": _("Pelo menos uma mensagem deve ser fornecida.")}), 400
+    if not message:
+        return jsonify({"success": False, "message": _("A mensagem não pode estar vazia.")}), 400
 
     # Inicia o envio em uma nova thread para não bloquear a resposta da API
     app = current_app._get_current_object()
-    thread = threading.Thread(target=notifier_manager.send_bulk_notification, args=(app, telegram_message, discord_message, webhook_message))
+    thread = threading.Thread(target=notifier_manager.send_bulk_notification, args=(app, message))
     thread.daemon = True
     thread.start()
 
