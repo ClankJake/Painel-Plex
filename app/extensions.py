@@ -40,5 +40,6 @@ tautulli_manager = None
 notifier_manager = None
 efi_manager = None
 mercado_pago_manager = None
+bpix_manager = None
 overseerr_manager = None
 link_shortener = None
