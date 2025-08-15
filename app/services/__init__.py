@@ -13,6 +13,7 @@ from .efi_manager import EfiManager
 from .mercado_pago_manager import MercadoPagoManager
 from .overseerr_manager import OverseerrManager
 from .link_shortener import LinkShortener
+from .bpix_manager import BpixManager
 
 __all__ = [
     'DataManager',
@@ -23,4 +24,5 @@ __all__ = [
     'MercadoPagoManager',
     'OverseerrManager',
     'LinkShortener',
+    'BpixManager',
 ]
