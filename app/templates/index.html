@@ -30,6 +30,16 @@
     <div id="summaryCards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
     </div>
 
+    <!-- Nova secção para Streams Ativos -->
+    <div id="active-streams-section" class="hidden">
+        <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Reproduzindo Agora') }}</h3>
+            <div id="activeStreamsContainer" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                <!-- Conteúdo será injetado pelo JS -->
+            </div>
+        </div>
+    </div>
+
     <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
         <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Avisos em Massa') }}</h3>
         <div id="bulk-notification-form" class="space-y-4">
@@ -38,7 +48,6 @@
                 <textarea id="bulk_message" rows="3" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: O servidor entrará em manutenção em 1 hora.') }}"></textarea>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Esta mensagem será inserida nos templates que você configurou. Use {username} para mencionar o usuário.') }}</p>
             </div>
-            <!-- MELHORIA: Adiciona o checkbox de filtro -->
             <div class="flex items-center">
                 <input id="contacts_only_checkbox" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
                 <label for="contacts_only_checkbox" class="ml-2 text-sm font-medium text-gray-900 dark:text-gray-300">
@@ -80,9 +89,6 @@
         </div>
     </div>
 </div>
-
-<!-- Modal para Streams Ativos -->
-<div id="activeStreamsModal" class="modal-backdrop hidden"></div>
 {% endblock %}
 
 {% block scripts %}
