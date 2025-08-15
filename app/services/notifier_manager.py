@@ -211,7 +211,9 @@ class NotifierManager:
                 try:
                     message_with_placeholders = webhook_template_str
                     for key, value in placeholders.items():
-                        message_with_placeholders = message_with_placeholders.replace(f"{{{key}}}", str(value))
+                        # CORREÇÃO: Escapa os valores que podem conter caracteres especiais de JSON
+                        json_escaped_value = json.dumps(str(value))[1:-1]
+                        message_with_placeholders = message_with_placeholders.replace(f"{{{key}}}", json_escaped_value)
 
                     webhook_payload = json.loads(message_with_placeholders)
                     self._send_webhook_notification(webhook_payload, request_id)
@@ -233,7 +235,9 @@ class NotifierManager:
                     
                     message_with_placeholders = discord_template_str
                     for key, value in placeholders.items():
-                        message_with_placeholders = message_with_placeholders.replace(f"{{{key}}}", str(value))
+                        # CORREÇÃO: Escapa os valores que podem conter caracteres especiais de JSON
+                        json_escaped_value = json.dumps(str(value))[1:-1]
+                        message_with_placeholders = message_with_placeholders.replace(f"{{{key}}}", json_escaped_value)
                     
                     discord_payload = json.loads(message_with_placeholders)
                     self._send_discord_notification(discord_payload, request_id)
@@ -293,7 +297,6 @@ class NotifierManager:
             blocked_users = [u['username'] for u in data_manager.get_blocked_users()]
             target_users = [u for u in all_users if u['username'] not in blocked_users]
             
-            # MELHORIA: Filtro de contactos mais inteligente, considera os agentes ativos
             if contacts_only:
                 logger.info(f"[ID: {request_id}] A filtrar utilizadores para enviar apenas para aqueles com contacto registado para um agente ATIVO.")
                 users_with_contacts = []
@@ -345,28 +348,34 @@ class NotifierManager:
                         full_message = telegram_message_template.format(**placeholders)
                         self._send_telegram_notification(full_message, telegram_user_id, request_id)
                 
+                # CORREÇÃO: Lógica de substituição segura para JSON
                 if config.get("DISCORD_ENABLED") and discord_message_template:
                     discord_user_id = user_profile.get('discord_user_id')
                     if discord_user_id:
                         try:
-                            message_with_placeholders = discord_message_template
+                            escaped_message = json.dumps(message)[1:-1]
+                            processed_template = discord_message_template.replace('{message}', escaped_message)
                             for key, value in placeholders.items():
-                                message_with_placeholders = message_with_placeholders.replace(f"{{{key}}}", str(value))
+                                if key != 'message':
+                                    processed_template = processed_template.replace(f"{{{key}}}", str(value))
                             
-                            payload = json.loads(message_with_placeholders)
+                            payload = json.loads(processed_template)
                             self._send_discord_notification(payload, request_id)
                         except Exception as e:
                             logger.error(f"[ID: {request_id}] Falha ao processar a mensagem do Discord para {username}: {e}")
                 
+                # CORREÇÃO: Lógica de substituição segura para JSON
                 if config.get("WEBHOOK_ENABLED") and webhook_message_template:
                     phone_number = user_profile.get('phone_number')
                     if phone_number:
                         try:
-                            message_with_placeholders = webhook_message_template
+                            escaped_message = json.dumps(message)[1:-1]
+                            processed_template = webhook_message_template.replace('{message}', escaped_message)
                             for key, value in placeholders.items():
-                                message_with_placeholders = message_with_placeholders.replace(f"{{{key}}}", str(value))
+                                if key != 'message':
+                                    processed_template = processed_template.replace(f"{{{key}}}", str(value))
                             
-                            payload = json.loads(message_with_placeholders)
+                            payload = json.loads(processed_template)
                             self._send_webhook_notification(payload, request_id)
                         except Exception as e:
                             logger.error(f"[ID: {request_id}] Falha ao processar a mensagem do Webhook para {username}: {e}")
