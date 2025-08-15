@@ -63,12 +63,14 @@ document.addEventListener('DOMContentLoaded', () => {
         'TRIAL_BLOCK_NOTIFIER_ID': { type: 'number', default: 0 },
         'EFI_ENABLED': { type: 'checkbox', default: false },
         'MERCADOPAGO_ENABLED': { type: 'checkbox', default: false },
+        'BPIX_ENABLED': { type: 'checkbox', default: false },
         'EFI_CLIENT_ID': { type: 'text', default: '' },
         'EFI_CLIENT_SECRET': { type: 'password', default: '' },
         'EFI_CERTIFICATE': { type: 'text', default: '' },
         'EFI_SANDBOX': { type: 'checkbox', default: false },
         'EFI_PIX_KEY': { type: 'text', default: '' },
         'MERCADOPAGO_ACCESS_TOKEN': { type: 'password', default: '' },
+        'BPIX_AUTH_TOKEN': { type: 'password', default: '' },
         'RENEWAL_PRICE': { type: 'text', default: '10.00' },
         'PAYMENT_LINK_GRACE_PERIOD_DAYS': { type: 'number', default: 7 },
         'PRICE_SCREEN_1': { type: 'price', key: '1' },
@@ -158,12 +160,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (checkData.success) {
                         clearInterval(pinCheckInterval);
-                        if(authWindow && !authWindow.closed) authWindow.close();
+                        if(authWindow && !authWindow.closed) {
+                            authWindow.close();
+                        }
                         showToast(i18n.authenticated, 'success');
                         await fetchPlexServersForSelection();
                     } else if (checkData.message === 'auth_denied') {
                         clearInterval(pinCheckInterval);
-                        if(authWindow && !authWindow.closed) authWindow.close();
+                        if(authWindow && !authWindow.closed) {
+                            authWindow.close();
+                        }
                         showToast(checkData.error, 'error');
                         restoreButton();
                     }
@@ -460,7 +466,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        // CORREÇÃO: Event listener para o botão de salvar templates
         if (saveBulkTemplatesButton) {
             saveBulkTemplatesButton.addEventListener('click', async () => {
                 saveBulkTemplatesButton.disabled = true;
