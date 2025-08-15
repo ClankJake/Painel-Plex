@@ -80,6 +80,18 @@ def get_dashboard_summary():
         logger.error(f"Erro ao obter o resumo do dashboard: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Falha ao obter dados do dashboard."}), 500
 
+@system_api_bp.route('/active-streams')
+@login_required
+@admin_required
+def get_active_streams():
+    """Retorna detalhes das sessões ativas."""
+    try:
+        sessions_data = plex_manager.get_active_sessions()
+        return jsonify(sessions_data)
+    except Exception as e:
+        logger.error(f"Erro ao obter streams ativos: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "Falha ao obter streams ativos."}), 500
+
 @system_api_bp.route('/system-health')
 @login_required
 @admin_required
