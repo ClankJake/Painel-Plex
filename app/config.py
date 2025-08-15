@@ -76,6 +76,8 @@ def load_or_create_config():
             "EFI_PIX_KEY": "", # A sua chave PIX
             "MERCADOPAGO_ENABLED": False,
             "MERCADOPAGO_ACCESS_TOKEN": "",
+            "BPIX_ENABLED": False,
+            "BPIX_AUTH_TOKEN": "",
             "RENEWAL_PRICE": "10.00",
             "SCREEN_PRICES": {
                 "1": "10.00",
@@ -152,6 +154,8 @@ def load_or_create_config():
                 config.setdefault("SCREEN_PRICES", {"1": "10.00", "2": "18.00", "3": "25.00", "4": "30.00"})
                 config.setdefault("MERCADOPAGO_ENABLED", False)
                 config.setdefault("MERCADOPAGO_ACCESS_TOKEN", "")
+                config.setdefault("BPIX_ENABLED", False)
+                config.setdefault("BPIX_AUTH_TOKEN", "")
                 config.setdefault("OVERSEERR_ENABLED", False)
                 config.setdefault("OVERSEERR_URL", "")
                 config.setdefault("OVERSEERR_API_KEY", "")
