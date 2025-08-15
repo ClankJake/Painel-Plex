@@ -28,7 +28,7 @@
 
 <div id="dashboardContainer" class="hidden space-y-8">
     <div id="summaryCards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        </div>
+    </div>
 
     <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
         <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Avisos em Massa') }}</h3>
@@ -80,6 +80,9 @@
         </div>
     </div>
 </div>
+
+<!-- Modal para Streams Ativos -->
+<div id="activeStreamsModal" class="modal-backdrop hidden"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -93,6 +96,7 @@
         data-summary-url="{{ url_for('system_api.get_dashboard_summary') }}"
         data-health-url="{{ url_for('system_api.get_system_health') }}"
         data-bulk-notify-url="{{ url_for('system_api.bulk_notify') }}"
+        data-active-streams-url="{{ url_for('system_api.get_active_streams') }}"
         data-i18n-active-streams="{{ _('Streams Ativos') }}"
         data-i18n-total-users="{{ _('Utilizadores Totais') }}"
         data-i18n-monthly-revenue="{{ _('Receita do Mês') }}"
@@ -123,5 +127,8 @@
         data-i18n-bulk-send-started="{{ _('O envio em massa foi iniciado.') }}"
         data-i18n-bulk-send-complete="{{ _('Envio em massa concluído!') }}"
         data-i18n-bulk-send-progress="{{ _('Enviando {current} de {total}...') }}"
+        data-i18n-now-playing="{{ _('Reproduzindo Agora') }}"
+        data-i18n-no-active-streams="{{ _('Nenhuma reprodução ativa no momento.') }}"
+        data-i18n-close="{{ _('Fechar') }}"
 ></script>
 {% endblock %}
