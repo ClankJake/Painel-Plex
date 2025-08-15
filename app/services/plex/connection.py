@@ -51,18 +51,50 @@ class PlexConnectionManager:
 
     def get_active_sessions(self):
         """
-        Busca as sessões de reprodução ativas no servidor Plex.
+        Busca as sessões de reprodução ativas no servidor Plex, retornando detalhes.
         """
         if not self.plex:
             logger.warning(_("Não é possível obter sessões ativas. A conexão com o Plex não foi estabelecida."))
-            return {"success": False, "stream_count": 0}
+            return {"success": False, "sessions": [], "stream_count": 0}
         
         try:
             sessions = self.plex.sessions()
-            return {"success": True, "stream_count": len(sessions)}
+            session_details = []
+            for s in sessions:
+                progress = (s.viewOffset / s.duration) * 100 if s.duration else 0
+                
+                # MELHORIA: Prioriza a arte da série para episódios
+                if s.type == 'episode':
+                    art_key = s.grandparentArt if hasattr(s, 'grandparentArt') and s.grandparentArt else s.art
+                    thumb_key = s.grandparentThumb if hasattr(s, 'grandparentThumb') and s.grandparentThumb else s.thumb
+                else:
+                    art_key = s.art if hasattr(s, 'art') and s.art else None
+                    thumb_key = s.thumb if hasattr(s, 'thumb') and s.thumb else None
+
+                art_url = self.plex.url(art_key, includeToken=True) if art_key else None
+                thumb_url = self.plex.url(thumb_key, includeToken=True) if thumb_key else None
+                
+                session_details.append({
+                    "user": s.user.title,
+                    "user_thumb": s.user.thumb,
+                    "player": s.player.title,
+                    "platform": s.player.platform,
+                    "type": s.type,
+                    "title": s.title,
+                    "series": s.grandparentTitle if s.type == 'episode' else None,
+                    "season_episode": f"S{s.parentIndex} · E{s.index}" if s.type == 'episode' else None,
+                    "year": s.year if hasattr(s, 'year') else None,
+                    "duration": s.duration,
+                    "view_offset": s.viewOffset,
+                    "progress": round(progress, 2),
+                    "art_url": art_url,
+                    "thumb_url": thumb_url,
+                    "state": getattr(s, 'state', 'playing')
+                })
+            return {"success": True, "sessions": session_details, "stream_count": len(sessions)}
         except Exception as e:
             logger.error(_("Erro inesperado ao obter sessões do Plex: %(error)s", error=e))
-            return {"success": False, "stream_count": 0}
+            return {"success": False, "sessions": [], "stream_count": 0}
 
     def get_libraries(self):
         """
