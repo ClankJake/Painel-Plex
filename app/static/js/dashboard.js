@@ -14,7 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const urls = {
         summary: scriptTag.dataset.summaryUrl,
         health: scriptTag.dataset.healthUrl,
-        bulkNotify: scriptTag.dataset.bulkNotifyUrl
+        bulkNotify: scriptTag.dataset.bulkNotifyUrl,
+        activeStreams: scriptTag.dataset.activeStreamsUrl
     };
     const i18n = {};
     for (const key in scriptTag.dataset) {
@@ -26,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let monthlyRevenueChart = null;
     let userStatusChart = null;
+    let isStreamsModalOpen = false; // Flag para controlar o estado do modal de streams
 
     // --- FUNÇÕES AUXILIARES ---
     function getChartColors() {
@@ -45,15 +47,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // --- LÓGICA DE RENDERIZAÇÃO ---
-    function createSummaryCard(icon, label, value, colorClass) {
+    function createSummaryCard(id, icon, label, value, colorClass, isButton = false) {
+        const tag = isButton ? 'button' : 'div';
+        const buttonClasses = isButton ? 'hover:scale-105 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white/50' : '';
         return `
-            <div class="p-4 rounded-xl flex items-center gap-4 transition-all duration-300 ${colorClass}">
+            <${tag} id="${id}" class="p-4 rounded-xl flex items-center gap-4 transition-all duration-300 ${colorClass} ${buttonClasses} text-left w-full">
                 <div class="p-3 bg-white/20 rounded-lg">${icon}</div>
                 <div>
                     <p class="text-sm font-medium opacity-80">${label}</p>
                     <p class="text-2xl font-bold">${value}</p>
                 </div>
-            </div>
+            </${tag}>
         `;
     }
 
@@ -62,11 +66,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!summaryCardsContainer) return;
 
         summaryCardsContainer.innerHTML = `
-            ${createSummaryCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>', i18n.activeStreams, summary.active_streams, 'bg-blue-500 text-white')}
-            ${createSummaryCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>', i18n.totalUsers, summary.total_users, 'bg-purple-500 text-white')}
-            ${createSummaryCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01" /></svg>', i18n.monthlyRevenue, formatCurrency(summary.monthly_revenue), 'bg-green-500 text-white')}
-            ${createSummaryCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>', i18n.upcomingRenewals, summary.upcoming_renewals, 'bg-yellow-500 text-white')}
+            ${createSummaryCard('active-streams-card', '<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>', i18n.activeStreams, summary.active_streams, 'bg-blue-500 text-white', true)}
+            ${createSummaryCard('total-users-card', '<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>', i18n.totalUsers, summary.total_users, 'bg-purple-500 text-white')}
+            ${createSummaryCard('monthly-revenue-card', '<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01" /></svg>', i18n.monthlyRevenue, formatCurrency(summary.monthly_revenue), 'bg-green-500 text-white')}
+            ${createSummaryCard('upcoming-renewals-card', '<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>', i18n.upcomingRenewals, summary.upcoming_renewals, 'bg-yellow-500 text-white')}
         `;
+
+        const activeStreamsCard = document.getElementById('active-streams-card');
+        if (activeStreamsCard) {
+            activeStreamsCard.addEventListener('click', showActiveStreamsModal);
+        }
     }
 
     function renderCharts(summary) {
@@ -177,6 +186,86 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     }
 
+    // Função para renderizar o conteúdo do modal de streams
+    function renderActiveStreamsContent(sessions) {
+        const modalBody = document.querySelector('#activeStreamsModal .modal-body');
+        if (!modalBody) return;
+
+        if (sessions.length > 0) {
+            const streamsHtml = sessions.map(s => {
+                const title = s.type === 'episode' ? `${s.series}` : s.title;
+                const subtitle = s.type === 'episode' ? `${s.season_episode} - ${s.title}` : (s.year || '');
+
+                let stateIcon = '';
+                if (s.state === 'paused') {
+                    stateIcon = `<svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" /></svg>`;
+                } else if (s.state === 'buffering') {
+                    stateIcon = `<svg class="w-5 h-5 text-blue-500 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+                } else { // playing
+                    stateIcon = `<svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>`;
+                }
+
+                return `
+                    <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                        <img src="${s.thumb_url || 'https://placehold.co/100x150/1F2937/E5E7EB?text=?'}" class="w-24 h-36 object-cover rounded-md shadow-sm flex-shrink-0" alt="Poster">
+                        <div class="flex-1 min-w-0">
+                            <h4 class="font-bold text-lg truncate text-gray-900 dark:text-white" title="${title}">${title}</h4>
+                            <p class="text-sm truncate text-gray-500 dark:text-gray-400" title="${subtitle}">${subtitle}</p>
+                            
+                            <div class="flex items-center gap-2 mt-3 text-sm text-gray-600 dark:text-gray-300">
+                                <img src="${s.user_thumb || 'https://placehold.co/24x24/1F2937/E5E7EB?text=?'}" class="w-6 h-6 rounded-full">
+                                <span class="font-semibold truncate">${s.user}</span>
+                            </div>
+                            <div class="flex items-center gap-2 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                <span>${s.player}</span>
+                                <span class="mx-1">•</span>
+                                <span class="truncate">${s.platform}</span>
+                                <span class="ml-auto">${stateIcon}</span>
+                            </div>
+
+                            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-4">
+                                <div class="bg-yellow-400 h-1.5 rounded-full" style="width: ${s.progress}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            modalBody.innerHTML = `<div class="space-y-4 max-h-[70vh] overflow-y-auto pr-2">${streamsHtml}</div>`;
+        } else {
+            modalBody.innerHTML = `<p class="text-center py-8 text-gray-500 dark:text-gray-400">${i18n.noActiveStreams}</p>`;
+        }
+    }
+
+    async function showActiveStreamsModal() {
+        isStreamsModalOpen = true; // Define a flag quando o modal é aberto
+        const loadingHtml = `
+            <div class="text-center py-8">
+                <svg class="animate-spin h-8 w-8 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>`;
+        
+        const modal = createModal('activeStreamsModal', i18n.nowPlaying, loadingHtml, `<button id="modalClose" class="btn bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200">${i18n.close}</button>`);
+        
+        const closeModal = () => {
+            isStreamsModalOpen = false; // Limpa a flag quando o modal é fechado
+            modal.classList.add('hidden');
+        };
+        modal.querySelector('#modalClose').onclick = closeModal;
+
+        try {
+            const data = await fetchAPI(urls.activeStreams);
+            if (data.success) {
+                renderActiveStreamsContent(data.sessions);
+            } else {
+                throw new Error(data.message);
+            }
+        } catch (error) {
+            modal.querySelector('.modal-body').innerHTML = `<p class="text-red-500">${error.message}</p>`;
+        }
+    }
+
     async function loadDashboardData() {
         loadingIndicator.style.display = 'block';
         dashboardContainer.classList.add('hidden');
@@ -245,10 +334,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         socket.on('dashboard_update', (data) => {
-            console.log('Atualização recebida:', data);
+            console.log('Atualização de resumo recebida:', data);
             if (data.summary) {
                 renderSummaryCards(data.summary);
                 renderCharts(data.summary);
+            }
+        });
+        
+        // NOVO: Listener para atualizações de streams ativos
+        socket.on('active_streams_update', (data) => {
+            // Só atualiza a UI se o modal estiver aberto
+            if (isStreamsModalOpen) {
+                console.log('Atualização de streams em tempo real recebida.');
+                renderActiveStreamsContent(data.sessions);
             }
         });
 
