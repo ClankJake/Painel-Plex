@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
         api_users_update_all_limits: scriptTag.dataset.urlApiUsersUpdateAllLimits,
         api_users_payments_base: scriptTag.dataset.urlApiUsersPaymentsBase,
         base_invite_page: scriptTag.dataset.urlBaseInvitePage,
+        // CORREÇÃO: A URL para atualização em massa de bibliotecas estava em falta
         api_users_update_all_libraries: '/api/users/update-all-libraries' 
     };
 
