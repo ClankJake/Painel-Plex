@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 from plexapi.exceptions import NotFound
 from requests.exceptions import RequestException
 from flask_babel import gettext as _
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
+from flask import current_app
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +115,52 @@ class PlexUserManager:
         except Exception as e:
             logger.error(_("Erro ao atualizar bibliotecas para %(email)s: %(error)s", email=email, error=e), exc_info=True)
             return {"success": False, "message": str(e)}
+
+    def update_all_users_libraries(self, library_titles):
+        """
+        Atualiza as bibliotecas para TODOS os utilizadores com acesso ao servidor, usando threads para otimização.
+        """
+        if not self.conn.account:
+            return {"success": False, "message": _("A conta Plex não está configurada.")}
+        
+        all_users = self.get_all_plex_users()
+        if not all_users:
+            return {"success": False, "message": _("Não foi possível obter a lista de utilizadores do Plex.")}
+
+        libraries_to_share = [s for s in self.conn.plex.library.sections() if s.title in library_titles]
+        
+        success_count = 0
+        error_count = 0
+        lock = Lock()
+        app = current_app._get_current_object()
+
+        def _update_single_user(user_data, app_context):
+            nonlocal success_count, error_count
+            with app_context.app_context():
+                try:
+                    user_to_update = self.conn.account.user(user_data['email'])
+                    self.conn.account.updateFriend(user=user_to_update, server=self.conn.plex, sections=libraries_to_share)
+                    
+                    profile = self.data_manager.get_user_profile(user_data['username'])
+                    profile['libraries'] = json.dumps(library_titles)
+                    self.data_manager.set_user_profile(user_data['username'], profile)
+                    
+                    with lock:
+                        success_count += 1
+                    logger.info(f"Bibliotecas de {user_data['username']} atualizadas com sucesso (em massa).")
+                except Exception as e:
+                    with lock:
+                        error_count += 1
+                    logger.error(f"Erro ao atualizar bibliotecas para {user_data['username']} (em massa): {e}")
+
+        # Reduz o número de workers para evitar sobrecarregar a API do Plex
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(_update_single_user, user, app) for user in all_users]
+            for future in as_completed(futures):
+                future.result()
+
+        message = _("Bibliotecas atualizadas para %(success)d utilizadores. Falha em %(errors)d.", success=success_count, errors=error_count)
+        return {"success": error_count == 0, "message": message}
 
     def remove_user(self, email):
         """
