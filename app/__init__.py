@@ -153,7 +153,7 @@ def create_app(log_level='INFO', _from_job=False):
     from .services import (
         DataManager, TautulliManager, PlexManager, 
         NotifierManager, EfiManager, MercadoPagoManager,
-        OverseerrManager, LinkShortener
+        OverseerrManager, LinkShortener, BpixManager
     )
 
     extensions.data_manager = DataManager()
@@ -162,6 +162,7 @@ def create_app(log_level='INFO', _from_job=False):
     extensions.notifier_manager = NotifierManager(link_shortener_service=extensions.link_shortener, socketio_instance=extensions.socketio)
     extensions.efi_manager = EfiManager(data_manager=extensions.data_manager)
     extensions.mercado_pago_manager = MercadoPagoManager(data_manager=extensions.data_manager)
+    extensions.bpix_manager = BpixManager(data_manager=extensions.data_manager)
     extensions.overseerr_manager = OverseerrManager()
     extensions.plex_manager = PlexManager(
         data_manager=extensions.data_manager, 
@@ -214,7 +215,7 @@ def create_app(log_level='INFO', _from_job=False):
             'system_api.test_overseerr_connection', 'system_api.auto_configure_tautulli_notifier',
             'system_api.get_logs', 'system_api.clear_logs',
             'invites_api.get_invite_details_route', 'invites_api.claim_invite_route',
-            'payments_api.efi_webhook', 'payments_api.mercadopago_webhook',
+            'payments_api.efi_webhook', 'payments_api.mercadopago_webhook', 'payments_api.bpix_webhook',
             'set_language', 'main.claim_invite_page', 'serve_manifest', 'serve_sw',
             'main.payment_page', 'users_api.get_public_user_profile_by_token', 'payments_api.get_payment_options',
             'payments_api.create_charge_route', 'payments_api.get_payment_status',
