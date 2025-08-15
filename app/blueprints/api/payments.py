@@ -7,7 +7,7 @@ from flask_login import current_user
 from flask_babel import gettext as _
 from flask_login import login_required
 
-from ...extensions import plex_manager, tautulli_manager, data_manager, efi_manager, mercado_pago_manager
+from ...extensions import plex_manager, tautulli_manager, data_manager, efi_manager, mercado_pago_manager, bpix_manager
 from ...config import load_or_create_config
 from ..auth import admin_required
 from ...models import UserProfile
@@ -124,7 +124,11 @@ def get_payment_options():
         if not available_prices and renewal_price and float(renewal_price) > 0:
             available_prices["0"] = renewal_price
     
-    enabled_providers = {"efi": config.get("EFI_ENABLED"), "mercadopago": config.get("MERCADOPAGO_ENABLED")}
+    enabled_providers = {
+        "efi": config.get("EFI_ENABLED"), 
+        "mercadopago": config.get("MERCADOPAGO_ENABLED"),
+        "bpix": config.get("BPIX_ENABLED")
+    }
     return jsonify({"success": True, "prices": available_prices, "providers": enabled_providers, "can_downgrade": can_downgrade})
 
 @payments_api_bp.route('/validate-coupon', methods=['POST'])
@@ -224,7 +228,6 @@ def create_charge_route():
         else:
             return jsonify({"success": False, "message": "O cupão fornecido já não é válido."}), 400
 
-    # --- CORREÇÃO: Lógica para cupão de 100% ---
     if coupon_code and final_price <= 0:
         try:
             logger.info(f"A processar renovação gratuita para '{username}' com o cupão '{coupon_code}'.")
@@ -258,6 +261,8 @@ def create_charge_route():
         result = mercado_pago_manager.create_pix_payment(user_info, price, screens)
         if result.get('success'):
             data_manager.create_pix_payment(result['payment_id'], username, price, 'MERCADOPAGO', screens, result.get('external_reference'), coupon_code)
+    elif provider == 'BPIX' and config.get('BPIX_ENABLED'):
+        result = bpix_manager.create_pix_charge(user_info, price, screens)
         
     return jsonify(result)
 
@@ -266,19 +271,28 @@ def get_payment_status(txid):
     payment = data_manager.get_pix_payment(txid)
     if not payment: return jsonify({"success": False, "status": "NOT_FOUND"}), 404
     if payment.get('status') == 'CONCLUIDA': return jsonify({"success": True, "status": "CONCLUIDA"})
+    
     provider = payment.get('provider', 'EFI') 
     is_confirmed = False
+    
     if provider == 'EFI':
-        efi_status_result = efi_manager.detail_pix_charge(txid)
-        if efi_status_result.get("success") and efi_status_result.get("data", {}).get("status") == 'CONCLUIDA':
+        status_result = efi_manager.detail_pix_charge(txid)
+        if status_result.get("success") and status_result.get("data", {}).get("status") == 'CONCLUIDA':
             is_confirmed = True
     elif provider == 'MERCADOPAGO':
-        mp_status_result = mercado_pago_manager.get_payment_details(txid)
-        if mp_status_result.get("success") and mp_status_result.get("data", {}).get("status") == 'approved':
+        status_result = mercado_pago_manager.get_payment_details(txid)
+        if status_result.get("success") and status_result.get("data", {}).get("status") == 'approved':
             is_confirmed = True
+    elif provider == 'BPIX':
+        status_result = bpix_manager.detail_pix_charge(txid)
+        # CORREÇÃO: Usa 'in_status' para verificar o status do pagamento da BPIX
+        if status_result.get("success") and status_result.get("data", {}).get("in_status") == 'PAID':
+            is_confirmed = True
+
     if is_confirmed:
         _process_successful_payment(txid)
         return jsonify({"success": True, "status": "CONCLUIDA"})
+        
     return jsonify({"success": True, "status": payment.get('status')})
 
 @payments_api_bp.route('/webhook/efi', methods=['POST'])
@@ -325,6 +339,25 @@ def mercadopago_webhook():
         return jsonify(status="error", message="Internal Server Error"), 500
 
     return jsonify(status="received"), 200
+
+@payments_api_bp.route('/webhook/bpix', methods=['POST'])
+def bpix_webhook():
+    data = request.json
+    logger.info(f"Webhook da BPIX recebido: {data}")
+    try:
+        # CORREÇÃO: Usa os campos corretos do payload do webhook da BPIX
+        txid = data.get("transaction_pix_id")
+        status = data.get("in_status")
+        if txid and status == "PAID":
+            _process_successful_payment(txid)
+        else:
+            logger.warning(f"Webhook da BPIX para TXID {txid} recebido, mas o estado não é 'PAID'. Estado: {status}")
+    except Exception as e:
+        logger.error(f"Erro ao processar o webhook da BPIX: {e}", exc_info=True)
+        return jsonify(status="error", message="Internal Server Error"), 500
+    
+    return jsonify(status="received"), 200
+
 
 @payments_api_bp.route('/financial/summary')
 @login_required
