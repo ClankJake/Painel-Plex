@@ -332,6 +332,19 @@ def update_libraries_route(user):
     data = request.json
     return jsonify(plex_manager.update_user_libraries(user['email'], data.get('libraries', [])))
 
+# ROTA ADICIONADA
+@users_api_bp.route('/update-all-libraries', methods=['POST'])
+@login_required
+@admin_required
+def update_all_libraries_route():
+    data = request.json
+    libraries = data.get('libraries')
+    if libraries is None:
+        return jsonify({"success": False, "message": "Lista de bibliotecas não fornecida."}), 400
+    
+    result = plex_manager.update_all_users_libraries(libraries)
+    return jsonify(result)
+
 @users_api_bp.route('/remove', methods=['POST'])
 @login_required
 @admin_required
