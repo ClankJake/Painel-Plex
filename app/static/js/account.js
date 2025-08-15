@@ -193,10 +193,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (validatedCouponCode && price > 0) {
             const statusDivText = document.getElementById('coupon-status')?.textContent || '';
-            // Se o cupão foi aplicado com sucesso e o preço final é zero
             if (statusDivText.includes(i18n.couponAppliedSuccess)) {
                 const discountedPriceText = document.getElementById('initiatePixButton').textContent;
-                if (!discountedPriceText.includes('R$')) { // Heurística para saber se o preço é zero
+                if (!discountedPriceText.includes('R$')) {
                     await generatePix(payload);
                     return;
                 }
@@ -220,6 +219,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (providers.includes('MERCADOPAGO')) {
             buttonsHtml += `<button data-provider="MERCADOPAGO" class="btn bg-blue-600 hover:bg-blue-500 text-white w-full mt-2">${i18n.payWithMp}</button>`;
+        }
+        if (providers.includes('BPIX')) {
+            buttonsHtml += `<button data-provider="BPIX" class="btn bg-purple-600 hover:bg-purple-500 text-white w-full mt-2">Pagar com BPIX</button>`;
         }
 
         const body = `<div class="space-y-3">${buttonsHtml}</div>`;
@@ -250,7 +252,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (result && result.success && result.free_renewal) {
                 showToast(result.message, 'success');
                 setTimeout(() => window.location.reload(), 3000);
-                return;
+                return; 
             }
             
             if(result && result.success) {
