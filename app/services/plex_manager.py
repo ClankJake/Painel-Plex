@@ -83,6 +83,10 @@ class PlexManager:
     def update_user_libraries(self, email, library_titles):
         return self.users.update_user_libraries(email, library_titles)
 
+    # MÉTODO ADICIONADO
+    def update_all_users_libraries(self, library_titles):
+        return self.users.update_all_users_libraries(library_titles)
+
     def remove_user(self, email):
         return self.users.remove_user(email)
 
