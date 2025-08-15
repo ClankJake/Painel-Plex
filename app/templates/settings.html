@@ -189,6 +189,7 @@
                         <nav id="payment-provider-tabs" class="flex space-x-6 overflow-x-auto no-scrollbar">
                             <button type="button" data-subtab="EFI" class="tab-button active">Efí</button>
                             <button type="button" data-subtab="MERCADOPAGO" class="tab-button">Mercado Pago</button>
+                            <button type="button" data-subtab="BPIX" class="tab-button">BPIX</button>
                         </nav>
                     </div>
                     <div id="payment-provider-tab-content" class="space-y-6">
@@ -229,6 +230,18 @@
                                 <div>
                                     <label for="MERCADOPAGO_ACCESS_TOKEN" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Access Token do Mercado Pago') }}</label>
                                     <input type="password" id="MERCADOPAGO_ACCESS_TOKEN" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                </div>
+                            </div>
+                        </div>
+                        <div id="subtab-BPIX" class="sub-tab-content space-y-4 input-group">
+                            <div class="flex items-center">
+                                <input id="BPIX_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                                <label for="BPIX_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar BPIX') }}</label>
+                            </div>
+                            <div class="disablable-input space-y-4">
+                                <div>
+                                    <label for="BPIX_AUTH_TOKEN" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Token de Autorização') }}</label>
+                                    <input type="password" id="BPIX_AUTH_TOKEN" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                                 </div>
                             </div>
                         </div>
