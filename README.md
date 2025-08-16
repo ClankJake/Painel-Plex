@@ -56,6 +56,7 @@ Esta é a forma mais simples e rápida de colocar a aplicação em funcionamento
         environment:
           - PUID=1000
           - PGID=1000
+          - TZ=America/Sao_Paulo
           - APP_PORT=5000 # opcional
           - PYTHONIOENCODING=utf-8
         restart: unless-stopped
