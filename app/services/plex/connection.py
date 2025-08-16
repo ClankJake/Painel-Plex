@@ -51,7 +51,7 @@ class PlexConnectionManager:
 
     def get_active_sessions(self):
         """
-        Busca as sessões de reprodução ativas no servidor Plex, retornando detalhes.
+        Busca as sessões de reprodução ativas no servidor Plex, retornando detalhes aprimorados.
         """
         if not self.plex:
             logger.warning(_("Não é possível obter sessões ativas. A conexão com o Plex não foi estabelecida."))
@@ -61,40 +61,80 @@ class PlexConnectionManager:
             sessions = self.plex.sessions()
             session_details = []
             for s in sessions:
-                progress = (s.viewOffset / s.duration) * 100 if s.duration else 0
-                
-                # MELHORIA: Prioriza a arte da série para episódios
-                if s.type == 'episode':
-                    art_key = s.grandparentArt if hasattr(s, 'grandparentArt') and s.grandparentArt else s.art
-                    thumb_key = s.grandparentThumb if hasattr(s, 'grandparentThumb') and s.grandparentThumb else s.thumb
-                else:
-                    art_key = s.art if hasattr(s, 'art') and s.art else None
-                    thumb_key = s.thumb if hasattr(s, 'thumb') and s.thumb else None
+                # Cálculo de progresso mais robusto
+                progress = 0
+                view_offset = getattr(s, 'viewOffset', None)
+                duration = getattr(s, 'duration', None)
+                if view_offset is not None and duration is not None and duration > 0:
+                    progress = (view_offset / duration) * 100
 
-                art_url = self.plex.url(art_key, includeToken=True) if art_key else None
-                thumb_url = self.plex.url(thumb_key, includeToken=True) if thumb_key else None
+                # Estado da Reprodução
+                state = "stopped"
+                if s.players:
+                    player_state = getattr(s.players[0], "state", "stopped")
+                    state = {"paused": "paused", "playing": "playing", "buffering": "buffering"}.get(player_state, "stopped")
+
+                # Detalhes de Transcodificação (forma segura)
+                is_transcoding = False
+                video_decision = "Direct Play"
+                audio_decision = "Direct Play"
                 
+                transcode_session = getattr(s, "transcodeSession", None)
+                if transcode_session:
+                    _video_decision = getattr(transcode_session, 'videoDecision', 'copy')
+                    _audio_decision = getattr(transcode_session, 'audioDecision', 'copy')
+                    
+                    if _video_decision == "transcode":
+                        is_transcoding = True
+                        video_decision = "Transcode"
+                    
+                    if _audio_decision == "transcode":
+                        is_transcoding = True
+                        audio_decision = "Transcode"
+
+                stream_type = "Transcode" if is_transcoding else "Direct Play"
+
+                # Detalhes do Media
+                media = s.media[0] if s.media else None
+                video_codec = getattr(media, "videoCodec", "N/A").upper()
+                audio_codec = getattr(media, "audioCodec", "N/A").upper()
+                container = getattr(media, "container", "N/A").upper()
+                video_resolution = getattr(media, "videoResolution", "N/A")
+
+                # Título e Subtítulo
+                title = s.title
+                subtitle = str(s.year) if hasattr(s, 'year') and s.year else ''
+                if s.type == 'episode':
+                    title = s.grandparentTitle
+                    subtitle = f"S{s.parentIndex:02d} · E{s.index:02d} - {s.title}"
+
+                # Arte (Thumbnail)
+                thumb_key = s.grandparentThumb if s.type == 'episode' and hasattr(s, 'grandparentThumb') and s.grandparentThumb else s.thumb
+                thumb_url = self.plex.url(thumb_key, includeToken=True) if thumb_key else None
+
                 session_details.append({
                     "user": s.user.title,
                     "user_thumb": s.user.thumb,
                     "player": s.player.title,
                     "platform": s.player.platform,
                     "type": s.type,
-                    "title": s.title,
-                    "series": s.grandparentTitle if s.type == 'episode' else None,
-                    "season_episode": f"S{s.parentIndex} · E{s.index}" if s.type == 'episode' else None,
-                    "year": s.year if hasattr(s, 'year') else None,
-                    "duration": s.duration,
-                    "view_offset": s.viewOffset,
+                    "title": title,
+                    "subtitle": subtitle,
                     "progress": round(progress, 2),
-                    "art_url": art_url,
                     "thumb_url": thumb_url,
-                    "state": getattr(s, 'state', 'playing')
+                    "state": state,
+                    "stream_details": {
+                        "video": f"{video_decision} ({video_codec} {video_resolution}p)",
+                        "audio": f"{audio_decision} ({audio_codec})",
+                        "stream": stream_type,
+                        "container": container
+                    }
                 })
             return {"success": True, "sessions": session_details, "stream_count": len(sessions)}
         except Exception as e:
-            logger.error(_("Erro inesperado ao obter sessões do Plex: %(error)s", error=e))
+            logger.error(_("Erro inesperado ao obter sessões do Plex: %(error)s", error=e), exc_info=True)
             return {"success": False, "sessions": [], "stream_count": 0}
+
 
     def get_libraries(self):
         """
