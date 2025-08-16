@@ -188,9 +188,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sessions && sessions.length > 0) {
             section.classList.remove('hidden');
             const streamsHtml = sessions.map(s => {
-                const title = s.type === 'episode' ? `${s.series}` : s.title;
-                const subtitle = s.type === 'episode' ? `${s.season_episode} - ${s.title}` : (s.year || '');
-
                 let stateIcon = '';
                 if (s.state === 'paused') {
                     stateIcon = `<svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" /></svg>`;
@@ -200,23 +197,31 @@ document.addEventListener('DOMContentLoaded', () => {
                     stateIcon = `<svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>`;
                 }
 
+                const platform_icon_name = (s.platform || 'default').toLowerCase().split(' ')[0];
+
                 return `
-                    <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4 overflow-hidden">
-                        <img src="${s.thumb_url || 'https://placehold.co/100x150/1F2937/E5E7EB?text=?'}" class="w-24 h-36 object-cover rounded-md shadow-sm flex-shrink-0" alt="Poster">
-                        <div class="flex-1 min-w-0">
-                            <h4 class="font-bold text-lg text-gray-900 dark:text-white" title="${title}">${title}</h4>
-                            <p class="text-sm text-gray-500 dark:text-gray-400" title="${subtitle}">${subtitle}</p>
-                            <div class="flex items-center gap-2 mt-3 text-sm text-gray-600 dark:text-gray-300">
+                    <div class="bg-white dark:bg-gray-800/80 p-4 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row items-center gap-4 overflow-hidden">
+                        <img src="${s.thumb_url || 'https://placehold.co/150x225/1F2937/E5E7EB?text=?'}" class="w-32 sm:w-28 h-48 sm:h-42 object-cover rounded-md shadow-sm flex-shrink-0" alt="Poster">
+                        <div class="flex-1 min-w-0 w-full space-y-3">
+                            <div class="flex justify-between items-start gap-2">
+                                <div>
+                                    <h4 class="font-bold text-lg text-gray-900 dark:text-white" title="${s.title}">${s.title}</h4>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400" title="${s.subtitle}">${s.subtitle}</p>
+                                </div>
+                                <div class="platform-icon platform-${platform_icon_name}" title="${s.platform}"></div>
+                            </div>
+                            <div class="space-y-1 text-xs text-gray-500 dark:text-gray-400">
+                                <p><strong>Dispositivo:</strong> ${s.player}</p>
+                                <p><strong>Stream:</strong> ${s.stream_details.stream} (${s.stream_details.container})</p>
+                                <p><strong>Video:</strong> ${s.stream_details.video}</p>
+                                <p><strong>Audio:</strong> ${s.stream_details.audio}</p>
+                            </div>
+                            <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                                 <img src="${s.user_thumb || 'https://placehold.co/24x24/1F2937/E5E7EB?text=?'}" class="w-6 h-6 rounded-full">
                                 <span class="font-semibold truncate">${s.user}</span>
-                            </div>
-                            <div class="flex items-center gap-2 mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                <span class="truncate">${s.player}</span>
-                                <span class="mx-1">•</span>
-                                <span class="truncate">${s.platform}</span>
                                 <span class="ml-auto flex-shrink-0">${stateIcon}</span>
                             </div>
-                            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-4">
+                            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
                                 <div class="bg-yellow-400 h-1.5 rounded-full" style="width: ${s.progress}%"></div>
                             </div>
                         </div>
