@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let monthlyRevenueChart = null;
     let userStatusChart = null;
+    let activeTimers = {}; // Para controlar os temporizadores de progresso
 
     // --- FUNÇÕES AUXILIARES ---
     function getChartColors() {
@@ -43,6 +44,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function formatCurrency(value) {
         return (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function formatTime(ms) {
+        if (typeof ms !== 'number' || ms < 0) {
+            return '00:00';
+        }
+        const totalSeconds = Math.floor(ms / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+
+        if (hours > 0) {
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     }
     
     // --- LÓGICA DE RENDERIZAÇÃO ---
@@ -185,54 +201,116 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('activeStreamsContainer');
         if (!section || !container) return;
 
+        const newSessionKeys = new Set(sessions.map(s => s.session_key));
+        
+        for (const key in activeTimers) {
+            if (!newSessionKeys.has(key)) {
+                clearInterval(activeTimers[key].interval);
+                delete activeTimers[key];
+            }
+        }
+
         if (sessions && sessions.length > 0) {
             section.classList.remove('hidden');
-            const streamsHtml = sessions.map(s => {
+            container.innerHTML = sessions.map(s => {
                 let stateIcon = '';
+                let iconColorClass = '';
+
                 if (s.state === 'paused') {
-                    stateIcon = `<svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" /></svg>`;
+                    iconColorClass = 'text-yellow-500';
+                    stateIcon = `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M9 8h2v8H9zm4 0h2v8h-2z"></path></svg>`;
                 } else if (s.state === 'buffering') {
-                    stateIcon = `<svg class="w-5 h-5 text-blue-500 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+                    iconColorClass = 'text-blue-500';
+                    stateIcon = `<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
                 } else { // playing
-                    stateIcon = `<svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>`;
+                    iconColorClass = 'text-green-500';
+                    stateIcon = `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>`;
                 }
 
-                const platform_icon_name = (s.platform || 'default').toLowerCase().split(' ')[0];
+                const platform_icon_name = (s.platform || 'default').toLowerCase().replace(/\s+/g, '');
 
                 return `
-                    <div class="bg-white dark:bg-gray-800/80 p-4 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row items-center gap-4 overflow-hidden">
-                        <img src="${s.thumb_url || 'https://placehold.co/150x225/1F2937/E5E7EB?text=?'}" class="w-32 sm:w-28 h-48 sm:h-42 object-cover rounded-md shadow-sm flex-shrink-0" alt="Poster">
-                        <div class="flex-1 min-w-0 w-full space-y-3">
+                    <div class="bg-white dark:bg-gray-800/80 p-3 sm:p-4 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex items-center gap-3 sm:gap-4 overflow-hidden">
+                        <img src="${s.thumb_url || 'https://placehold.co/150x225/1F2937/E5E7EB?text=?'}" class="w-24 h-36 sm:w-28 sm:h-42 object-cover rounded-md shadow-sm flex-shrink-0" alt="Poster">
+                        <div class="flex-1 min-w-0 w-full space-y-2">
                             <div class="flex justify-between items-start gap-2">
                                 <div>
-                                    <h4 class="font-bold text-lg text-gray-900 dark:text-white" title="${s.title}">${s.title}</h4>
-                                    <p class="text-sm text-gray-500 dark:text-gray-400" title="${s.subtitle}">${s.subtitle}</p>
+                                    <h4 class="font-bold text-base sm:text-lg text-gray-900 dark:text-white" title="${s.title}">${s.title}</h4>
+                                    <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400" title="${s.subtitle}">${s.subtitle}</p>
                                 </div>
                                 <div class="platform-icon platform-${platform_icon_name}" title="${s.platform}"></div>
                             </div>
-                            <div class="space-y-1 text-xs text-gray-500 dark:text-gray-400">
+                            
+                            <div class="hidden md:block space-y-1 text-xs text-gray-500 dark:text-gray-400">
                                 <p><strong>Dispositivo:</strong> ${s.player}</p>
                                 <p><strong>Stream:</strong> ${s.stream_details.stream} (${s.stream_details.container})</p>
                                 <p><strong>Video:</strong> ${s.stream_details.video}</p>
                                 <p><strong>Audio:</strong> ${s.stream_details.audio}</p>
                             </div>
-                            <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+
+                            <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 pt-1">
                                 <img src="${s.user_thumb || 'https://placehold.co/24x24/1F2937/E5E7EB?text=?'}" class="w-6 h-6 rounded-full">
                                 <span class="font-semibold truncate">${s.user}</span>
-                                <span class="ml-auto flex-shrink-0">${stateIcon}</span>
+                                <div class="ml-auto flex items-center gap-1">
+                                    <span id="time-${s.session_key}" class="text-xs font-mono whitespace-nowrap">${formatTime(s.view_offset)}/${formatTime(s.duration)}</span>
+                                    <span class="${iconColorClass}">${stateIcon}</span>
+                                </div>
                             </div>
                             <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                                <div class="bg-yellow-400 h-1.5 rounded-full" style="width: ${s.progress}%"></div>
+                                <div id="progress-${s.session_key}" class="bg-yellow-400 h-1.5 rounded-full" style="width: ${s.progress}%"></div>
                             </div>
                         </div>
                     </div>
                 `;
             }).join('');
-            container.innerHTML = streamsHtml;
         } else {
             section.classList.add('hidden');
             container.innerHTML = '';
         }
+
+        sessions.forEach(s => {
+            const timer = activeTimers[s.session_key];
+
+            if (timer) {
+                timer.view_offset = s.view_offset;
+                timer.duration = s.duration;
+                
+                if (s.state !== 'playing' && timer.interval) {
+                    clearInterval(timer.interval);
+                    timer.interval = null;
+                }
+                else if (s.state === 'playing' && !timer.interval) {
+                    timer.interval = setInterval(() => {
+                        const currentTimer = activeTimers[s.session_key];
+                        if (!currentTimer) return;
+                        currentTimer.view_offset += 1000;
+                        const timeEl = document.getElementById(`time-${s.session_key}`);
+                        const progressEl = document.getElementById(`progress-${s.session_key}`);
+                        if (timeEl) timeEl.textContent = `${formatTime(currentTimer.view_offset)}/${formatTime(currentTimer.duration)}`;
+                        if (progressEl && currentTimer.duration > 0) progressEl.style.width = `${Math.min(100, (currentTimer.view_offset / currentTimer.duration) * 100)}%`;
+                    }, 1000);
+                }
+                timer.state = s.state;
+            } else {
+                activeTimers[s.session_key] = {
+                    view_offset: s.view_offset,
+                    duration: s.duration,
+                    state: s.state,
+                    interval: null
+                };
+                if (s.state === 'playing') {
+                    activeTimers[s.session_key].interval = setInterval(() => {
+                        const currentTimer = activeTimers[s.session_key];
+                        if (!currentTimer) return;
+                        currentTimer.view_offset += 1000;
+                        const timeEl = document.getElementById(`time-${s.session_key}`);
+                        const progressEl = document.getElementById(`progress-${s.session_key}`);
+                        if (timeEl) timeEl.textContent = `${formatTime(currentTimer.view_offset)}/${formatTime(currentTimer.duration)}`;
+                        if (progressEl && currentTimer.duration > 0) progressEl.style.width = `${Math.min(100, (currentTimer.view_offset / currentTimer.duration) * 100)}%`;
+                    }, 1000);
+                }
+            }
+        });
     }
 
     async function loadDashboardData() {
