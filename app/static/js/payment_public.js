@@ -1,3 +1,4 @@
+// app/static/js/payment_public.js
 import { fetchAPI, showToast, createModal } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -9,12 +10,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const paymentSection = document.getElementById('payment-section');
     const pixDisplay = document.getElementById('pix-display');
     const scriptTag = document.getElementById('payment-public-script');
-    
+
     const urls = {};
     const i18n = {};
-    let currentUser = null;
-    let paymentToken = null;
-
     if (scriptTag) {
         for (const key in scriptTag.dataset) {
             if (key.startsWith('i18n')) {
@@ -25,126 +23,105 @@ document.addEventListener('DOMContentLoaded', async () => {
                 urls[urlKey] = scriptTag.dataset[key];
             }
         }
-        paymentToken = scriptTag.dataset.token;
     }
-    
+
     let pollingIntervalId = null;
+    const token = urls.token;
+    const username = urls.username;
     let validatedCouponCode = null;
+    let originalPrice = 0;
+    let screens = 0;
+
 
     // --- LÓGICA DE PAGAMENTO ---
-
-    function renderPaymentOptions(prices, providers) {
+    function renderPaymentInfo(prices, providers) {
         if (!paymentSection) return;
 
         const anyProviderEnabled = providers && Object.values(providers).some(enabled => enabled);
-        if (!anyProviderEnabled) {
-            paymentSection.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center">${i18n.noPaymentMethod}</p>`;
+        if (!anyProviderEnabled || !prices || Object.keys(prices).length === 0) {
+            paymentSection.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${i18n.noProvider}</p>`;
             return;
         }
 
-        if (!prices || Object.keys(prices).length === 0) {
-            paymentSection.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center">${i18n.noPriceDefined}</p>`;
-            return;
+        screens = Object.keys(prices)[0];
+        const price = parseFloat(prices[screens]);
+        originalPrice = price;
+
+        let planText = i18n.currentPlan;
+        if (screens !== "0") {
+            const screenText = parseInt(screens) > 1 ? i18n.screenPlural : i18n.screenSingular;
+            planText = `${i18n.currentPlan}: ${screens} ${screenText}`;
         }
 
-        let optionsHtml = '<div class="space-y-3">';
-        Object.keys(prices).sort((a,b) => parseInt(a) - parseInt(b)).forEach(screens => {
-            const price = parseFloat(prices[screens]).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            
-            let planText = i18n.defaultPlan;
-            if (screens !== "0") {
-                const screenText = parseInt(screens) > 1 ? i18n.screenPlural : i18n.screenSingular;
-                planText = `${screens} ${screenText}`;
-            }
+        const priceText = price.toFixed(2).replace('.', ',');
 
-            optionsHtml += `
-                <label class="flex items-center justify-between p-4 rounded-lg border-2 border-gray-300 dark:border-gray-600 has-[:checked]:border-yellow-500 has-[:checked]:ring-2 has-[:checked]:ring-yellow-500 cursor-pointer transition-all">
-                    <div class="flex items-center">
-                        <input type="radio" name="payment-plan" value="${screens}" data-price="${prices[screens]}" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300" checked>
-                        <span class="ml-3 font-semibold text-gray-800 dark:text-gray-200">${planText}</span>
-                    </div>
-                    <span class="font-bold text-lg text-gray-900 dark:text-white">${price}</span>
-                </label>
-            `;
-        });
-        optionsHtml += '</div>';
-        
-        optionsHtml += `
+        paymentSection.innerHTML = `
+            <div class="text-center p-4 rounded-lg border-2 border-gray-300 dark:border-gray-600">
+                <p class="font-semibold text-gray-800 dark:text-gray-200">${planText}</p>
+                <div id="price-display" class="font-bold text-2xl text-gray-900 dark:text-white mt-2">${price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+
             <div class="mt-4">
-                <label for="couponCodeInput" class="text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.discountCode}</label>
+                <label for="couponCodeInput" class="text-sm font-medium text-gray-500 dark:text-gray-400">Código de Desconto</label>
                 <div class="flex gap-2 mt-1">
-                    <input type="text" id="couponCodeInput" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="${i18n.insertCoupon}">
-                    <button id="applyCouponBtn" class="btn bg-gray-600 hover:bg-gray-500 text-white px-4">${i18n.apply}</button>
+                    <input type="text" id="couponCodeInput" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Insira o cupão">
+                    <button id="applyCouponBtn" class="btn bg-gray-600 hover:bg-gray-500 text-white px-4">Aplicar</button>
                 </div>
                 <div id="coupon-status" class="text-xs mt-1 h-4"></div>
             </div>
+
+            <button id="initiatePixButton" class="w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white">${i18n.generatePixForPrice.replace('{price}', priceText)}</button>
         `;
 
-        paymentSection.innerHTML = `
-            ${optionsHtml}
-            <button id="initiatePixButton" class="w-full mt-4 btn bg-green-600 hover:bg-green-500 text-white disabled:opacity-50">${i18n.generatePix}</button>
-        `;
-        
-        const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
-        const pixButton = document.getElementById('initiatePixButton');
-        if (selectedPlan) {
-            const selectedPrice = parseFloat(selectedPlan.dataset.price).toFixed(2);
-            pixButton.textContent = i18n.generatePixForPrice.replace('{price}', selectedPrice.replace('.', ','));
-        }
+        document.getElementById('initiatePixButton').addEventListener('click', () => {
+            initiatePixPayment({ username, screens, coupon_code: validatedCouponCode }, providers);
+        });
 
-        const applyCouponBtn = document.getElementById('applyCouponBtn');
-        const couponCodeInput = document.getElementById('couponCodeInput');
-        
-        if (pixButton) {
-            pixButton.addEventListener('click', () => {
-                const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
-                if (selectedPlan) {
-                    const screens = selectedPlan.value;
-                    initiatePixPayment({ screens, coupon_code: validatedCouponCode, username: currentUser.username }, providers);
-                }
-            });
-        }
+        document.getElementById('applyCouponBtn').addEventListener('click', async () => {
+            const code = document.getElementById('couponCodeInput').value.trim();
+            const statusDiv = document.getElementById('coupon-status');
+            const pixButton = document.getElementById('initiatePixButton');
+            if (!code) return;
 
-        if (applyCouponBtn) {
-            applyCouponBtn.addEventListener('click', async () => {
-                const code = couponCodeInput.value.trim();
-                const statusDiv = document.getElementById('coupon-status');
-                const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
-                if (!code || !selectedPlan || !currentUser) return;
-
-                const screens = selectedPlan.value;
-
-                try {
-                    const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens, username: currentUser.username });
-                    if (result.success) {
-                        statusDiv.innerHTML = `<span class="text-green-500">${result.message}</span>`;
-                        validatedCouponCode = code;
-                        const newPriceText = result.discounted_price.toFixed(2).replace('.', ',');
-                        
-                        if (result.discounted_price <= 0) {
-                            pixButton.textContent = i18n.activateFreeSubscription;
-                        } else {
-                            pixButton.textContent = i18n.generatePixForPrice.replace('{price}', newPriceText);
-                        }
+            try {
+                const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens });
+                if (result.success) {
+                    statusDiv.innerHTML = `<span class="text-green-500">${result.message}</span>`;
+                    document.getElementById('price-display').innerHTML = `<s class="text-gray-400 text-lg">${result.original_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</s> ${result.discounted_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+                    validatedCouponCode = code;
+                    const newPriceText = result.discounted_price.toFixed(2).replace('.', ',');
+                    
+                    if (result.discounted_price <= 0) {
+                        pixButton.textContent = i18n.activateFreeSubscription;
                     } else {
-                        statusDiv.innerHTML = `<span class="text-red-500">${result.message}</span>`;
-                        validatedCouponCode = null;
-                        const originalPriceText = parseFloat(selectedPlan.dataset.price).toFixed(2).replace('.', ',');
-                        pixButton.textContent = i18n.generatePixForPrice.replace('{price}', originalPriceText);
+                        pixButton.textContent = i18n.generatePixForPrice.replace('{price}', newPriceText);
                     }
-                } catch (error) {
-                    statusDiv.innerHTML = `<span class="text-red-500">${error.message}</span>`;
+                } else {
+                    statusDiv.innerHTML = `<span class="text-red-500">${result.message}</span>`;
+                    document.getElementById('price-display').innerHTML = originalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                     validatedCouponCode = null;
-                    const originalPriceText = parseFloat(selectedPlan.dataset.price).toFixed(2).replace('.', ',');
+                    const originalPriceText = originalPrice.toFixed(2).replace('.', ',');
                     pixButton.textContent = i18n.generatePixForPrice.replace('{price}', originalPriceText);
                 }
-            });
-        }
+            } catch (error) {
+                statusDiv.innerHTML = `<span class="text-red-500">${error.message}</span>`;
+                validatedCouponCode = null;
+                const originalPriceText = originalPrice.toFixed(2).replace('.', ',');
+                pixButton.textContent = i18n.generatePixForPrice.replace('{price}', originalPriceText);
+            }
+        });
     }
 
     async function initiatePixPayment(payload, providers) {
         const activeProviders = Object.keys(providers).filter(p => providers[p]).map(p => p.toUpperCase());
-        
+
+        // Se o preço for zero (devido a um cupão), gera o PIX diretamente sem mostrar o modal.
+        const pixButtonText = document.getElementById('initiatePixButton').textContent;
+        if (pixButtonText === i18n.activateFreeSubscription) {
+            await generatePix(payload);
+            return;
+        }
+
         if (activeProviders.length === 1) {
             payload.provider = activeProviders[0];
             await generatePix(payload);
@@ -154,7 +131,7 @@ document.addEventListener('DOMContentLoaded', async () => {
              showToast(i18n.noProvider, "error");
         }
     }
-    
+
     function showProviderChoiceModal(payload, providers) {
         let buttonsHtml = '';
         if (providers.includes('EFI')) {
@@ -163,9 +140,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (providers.includes('MERCADOPAGO')) {
             buttonsHtml += `<button data-provider="MERCADOPAGO" class="btn bg-blue-600 hover:bg-blue-500 text-white w-full mt-2">${i18n.payWithMp}</button>`;
         }
-        // CORREÇÃO: Adiciona o botão para o BPIX
+        // CORREÇÃO: Adiciona o botão para BPIX se estiver habilitado
         if (providers.includes('BPIX')) {
-            buttonsHtml += `<button data-provider="BPIX" class="btn bg-purple-600 hover:bg-purple-500 text-white w-full mt-2">${i18n.payWithBpix}</button>`;
+            buttonsHtml += `<button data-provider="BPIX" class="btn bg-purple-600 hover:bg-purple-500 text-white w-full mt-2">${i18n.payWithBpix || 'Pagar com BPIX'}</button>`;
         }
 
         const body = `<div class="space-y-3">${buttonsHtml}</div>`;
@@ -182,17 +159,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             modal.querySelector('#cancel-provider').onclick = () => modal.classList.add('hidden');
         }
     }
-    
+
     async function generatePix(payload) {
         const button = document.getElementById('initiatePixButton');
         const originalText = button.textContent;
         button.disabled = true;
         button.textContent = i18n.wait;
-        let result = null;
 
         try {
-            result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
-            
+            const result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
+
+            // Se for uma renovação gratuita via cupão, o backend já processou tudo.
             if (result && result.success && result.free_renewal) {
                 showToast(result.message, 'success');
                 setTimeout(() => window.location.reload(), 3000);
@@ -211,7 +188,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             showToast(error.message, 'error');
         } finally {
-            if (!(result && result.success && result.free_renewal)) {
+            // Não restaura o botão se a renovação gratuita foi bem-sucedida
+            const pixButtonText = document.getElementById('initiatePixButton').textContent;
+            if (pixButtonText !== i18n.activateFreeSubscription) {
                 button.disabled = false;
                 button.textContent = originalText;
             }
@@ -224,7 +203,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         pollingIntervalId = setInterval(async () => {
             try {
-                const statusResult = await fetchAPI(`/api/payments/status/${txid}`);
+                const statusResult = await fetchAPI(urls.getPaymentStatusBaseUrl.replace('__TXID__', txid));
                 if (statusResult.success && statusResult.status === 'CONCLUIDA') {
                     clearInterval(pollingIntervalId);
                     showToast(i18n.paymentConfirmed, "success");
@@ -236,7 +215,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, 5000);
     }
-    
+
     const copyButton = document.getElementById('copy-pix-code');
     if (copyButton) {
         copyButton.onclick = () => {
@@ -248,45 +227,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function main() {
-        if (!paymentToken) {
-            errorMessage.textContent = i18n.invalidLink;
-            errorContainer.classList.remove('hidden');
-            loadingIndicator.style.display = 'none';
-            return;
-        }
-
         try {
-            const data = await fetchAPI(`${urls.getPublicProfileUrl}/${paymentToken}`);
-            if (!data.success) throw new Error(data.message);
-            
-            currentUser = data.profile;
-            const paymentOptions = await fetchAPI(`${urls.getPaymentOptionsUrl}?token=${paymentToken}`);
-            
+            const profileData = await fetchAPI(urls.getPublicProfileUrl);
+            if (!profileData.success) throw new Error(profileData.message);
+
+            const paymentOptions = await fetchAPI(`${urls.getPaymentOptionsUrl}?token=${token}`);
             if(paymentOptions.success) {
-                renderPaymentOptions(paymentOptions.prices, paymentOptions.providers);
+                renderPaymentInfo(paymentOptions.prices, paymentOptions.providers);
             } else {
-                throw new Error(paymentOptions.message || i18n.errorLoadingOptions);
-            }
-            
-            document.getElementById('user-thumb').src = data.profile.thumb || 'https://placehold.co/96x96/1F2937/E5E7EB?text=?';
-            document.getElementById('user-username').textContent = data.profile.username;
-            
-            const expirationContainer = document.getElementById('user-expiration-container');
-            if (data.profile.expiration_date_formatted) {
-                expirationContainer.innerHTML = `${i18n.expiresOn} <span class="font-semibold">${data.profile.expiration_date_formatted}</span>`;
-                expirationContainer.classList.remove('hidden');
+                paymentSection.innerHTML = `<p class="text-yellow-500">${paymentOptions.message || i18n.noPlanPrice}</p>`;
             }
 
-            loadingIndicator.style.display = 'none';
-            container.classList.remove('hidden');
+            document.getElementById('user-thumb').src = profileData.profile.thumb || 'https://placehold.co/96x96/1F2937/E5E7EB?text=?';
+            document.getElementById('user-username').textContent = profileData.profile.username;
+
+            const expirationElem = document.getElementById('user-expiration');
+            if (profileData.profile.expiration_date_iso) {
+                const expDate = new Date(profileData.profile.expiration_date_iso);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                if (expDate < today) {
+                    expirationElem.textContent = `${i18n.expiredOn} ${profileData.profile.expiration_date_formatted}`;
+                    expirationElem.classList.add('text-red-500', 'dark:text-red-400', 'font-semibold');
+                } else {
+                    expirationElem.textContent = `${i18n.expiresOn} ${profileData.profile.expiration_date_formatted}`;
+                }
+            }
+
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+            if (container) container.classList.remove('hidden');
 
         } catch (error) {
-            loadingIndicator.style.display = 'none';
-            errorMessage.textContent = error.message;
-            errorContainer.classList.remove('hidden');
-            showToast(error.message, 'error');
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+            if (errorMessage) errorMessage.textContent = error.message;
+            if (errorContainer) errorContainer.classList.remove('hidden');
         }
     }
-    
+
     main();
 });
