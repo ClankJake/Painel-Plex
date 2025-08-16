@@ -201,9 +201,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 return `
-                    <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4">
+                    <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md flex items-center gap-4 overflow-hidden">
                         <img src="${s.thumb_url || 'https://placehold.co/100x150/1F2937/E5E7EB?text=?'}" class="w-24 h-36 object-cover rounded-md shadow-sm flex-shrink-0" alt="Poster">
-                        <div class="flex-1 min-w-0 overflow-hidden">
+                        <div class="flex-1 min-w-0">
                             <h4 class="font-bold text-lg truncate whitespace-nowrap text-gray-900 dark:text-white" title="${title}">${title}</h4>
                             <p class="text-sm truncate whitespace-nowrap text-gray-500 dark:text-gray-400" title="${subtitle}">${subtitle}</p>
                             <div class="flex items-center gap-2 mt-3 text-sm text-gray-600 dark:text-gray-300">
@@ -406,7 +406,6 @@ document.addEventListener('DOMContentLoaded', () => {
                        contacts_only: contactsOnlyCheckbox.checked 
                    };
                    const result = await fetchAPI(urls.bulkNotify, 'POST', payload);
-                   // MELHORIA: Usa 'error' em vez de 'info' para falhas previsíveis
                    showToast(result.message, result.success ? 'success' : 'error');
                } catch (error) {
                    showToast(error.message, 'error');
