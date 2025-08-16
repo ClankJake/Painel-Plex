@@ -63,9 +63,9 @@ class PlexConnectionManager:
             for s in sessions:
                 # Cálculo de progresso mais robusto
                 progress = 0
-                view_offset = getattr(s, 'viewOffset', None)
-                duration = getattr(s, 'duration', None)
-                if view_offset is not None and duration is not None and duration > 0:
+                view_offset = getattr(s, 'viewOffset', 0)
+                duration = getattr(s, 'duration', 0)
+                if view_offset and duration and duration > 0:
                     progress = (view_offset / duration) * 100
 
                 # Estado da Reprodução
@@ -113,6 +113,7 @@ class PlexConnectionManager:
                 thumb_url = self.plex.url(thumb_key, includeToken=True) if thumb_key else None
 
                 session_details.append({
+                    "session_key": s.sessionKey,
                     "user": s.user.title,
                     "user_thumb": s.user.thumb,
                     "player": s.player.title,
@@ -121,6 +122,8 @@ class PlexConnectionManager:
                     "title": title,
                     "subtitle": subtitle,
                     "progress": round(progress, 2),
+                    "view_offset": view_offset,
+                    "duration": duration,
                     "thumb_url": thumb_url,
                     "state": state,
                     "stream_details": {
