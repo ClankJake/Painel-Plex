@@ -93,6 +93,7 @@ class NotifierHandler:
             custom_conditions = current_config.get("custom_conditions", [])
             for c in custom_conditions:
                 if c.get("parameter") == "user_email": c["value"] = ['~']
+            
             if screens > 0:
                 condition_found = False
                 for i, c in enumerate(custom_conditions):
@@ -103,16 +104,24 @@ class NotifierHandler:
                         break
                 if not condition_found:
                     raise ValueError(_("Condição para %(screens)s tela(s) não encontrada.", screens=screens))
+            
             current_config["custom_conditions"] = custom_conditions
             return current_config
         
         result = self._update_notifier_safely(notifier_id, update_logic)
         if result.get("success"):
+            # CORREÇÃO: O valor -1 é um sinal para remover o limite, que é representado por 0 no banco de dados.
+            screens_to_save = 0 if screens < 0 else screens
+
             for user in users:
                 profile = self.data_manager.get_user_profile(user['username'])
-                profile['screen_limit'] = screens
+                profile['screen_limit'] = screens_to_save
                 self.data_manager.set_user_profile(user['username'], profile)
-            result["message"] = _("Limite de %(screens)s tela(s) aplicado para todos.", screens=screens) if screens > 0 else _("Limites removidos de todos.")
+            
+            if screens > 0:
+                result["message"] = _("Limite de %(screens)s tela(s) aplicado para todos.", screens=screens)
+            else:
+                result["message"] = _("Limites removidos de todos.")
         return result
 
     def manage_block_unblock(self, user_email, username, action: str, notifier_id: int = None, reason: str = 'manual'):
