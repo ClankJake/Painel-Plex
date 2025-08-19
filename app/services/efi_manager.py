@@ -64,13 +64,14 @@ class EfiManager:
         app_title = self.config.get("APP_TITLE", "Painel Plex")
         service_description = f"Renovação Plex - {screens} Tela(s)" if screens > 0 else "Renovação Plex - Plano Padrão"
 
-        # **MELHORIA: Adiciona a configuração do webhook**
-        webhook_url = None
+        # Lembrete: A URL de webhook da Efí deve ser configurada no painel da Efí para a chave PIX,
+        # não enviada em cada requisição de cobrança.
         app_base_url = self.config.get("APP_BASE_URL")
         if app_base_url:
             webhook_url = f"{app_base_url.strip('/')}{url_for('payments_api.efi_webhook')}"
+            logger.info(f"Lembrete: Certifique-se de que a URL de webhook '{webhook_url}' está configurada na sua conta Efí para a chave PIX utilizada.")
         else:
-            logger.warning("APP_BASE_URL não está configurada. A URL do webhook para a Efí não será enviada, a confirmação dependerá do polling.")
+            logger.warning("APP_BASE_URL não está configurada. A confirmação de pagamento da Efí dependerá do polling na página, pois o webhook não pode ser determinado.")
 
         body = {
             "calendario": {
@@ -87,10 +88,9 @@ class EfiManager:
                 {"nome": "Utilizador", "valor": user_info.get('username')}
             ]
         }
-
-        if webhook_url:
-            body['webhookUrl'] = webhook_url
-            logger.info(f"URL de webhook da Efí definida como: {webhook_url}")
+        
+        # O campo 'webhookUrl' foi removido do corpo da requisição pois não é um parâmetro válido
+        # para a criação de cobranças imediatas, causando o erro 'json_invalido'.
 
         try:
             logger.info(f"A criar cobrança PIX para o utilizador '{user_info['username']}' no valor de {price:.2f} ({screens} tela(s)).")
