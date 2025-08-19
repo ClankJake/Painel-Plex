@@ -172,7 +172,7 @@
                     <p id="polling-status" class="text-sm text-gray-500 dark:text-gray-400">{{ _('A aguardar confirmação de pagamento...') }}</p>
                     <div class="mt-4 p-3 bg-yellow-100 dark:bg-yellow-500/20 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-200 text-left rounded-md">
                         <p class="font-bold">{{ _('Importante!') }}</p>
-                        <p class="text-sm">{{ _('Para garantir que sua assinatura seja ativada instantaneamente, por favor, mantenha esta página aberta até que o pagamento seja confirmado. Fechar a página pode causar atrasos na ativação.') }}</p>
+                        <p class="text-sm">{{ _('Para uma confirmação instantânea, pode manter esta página aberta. Se fechar, não se preocupe, a sua assinatura será ativada automaticamente em segundo plano assim que o pagamento for processado pelo banco.') }}</p>
                     </div>
                 </div>
             </div>
@@ -248,11 +248,11 @@
         data-i18n-value="{{ _('Valor') }}"
         data-i18n-status="{{ _('Status') }}"
         data-i18n-last-seen="{{ _('Último Acesso') }}"
-        data-i18n-years-ago="{{ _('anos atrás') }}"
-        data-i18n-months-ago="{{ _('meses atrás') }}"
-        data-i18n-days-ago="{{ _('dias atrás') }}"
-        data-i18n-hours-ago="{{ _('horas atrás') }}"
-        data-i18n-minutes-ago="{{ _('minutos atrás') }}"
+        data-i18n-years-ago="{{ _('há {count} anos') }}"
+        data-i18n-months-ago="{{ _('há {count} meses') }}"
+        data-i18n-days-ago="{{ _('há {count} dias') }}"
+        data-i18n-hours-ago="{{ _('há {count} horas') }}"
+        data-i18n-minutes-ago="{{ _('há {count} minutos') }}"
         data-i18n-just-now="{{ _('Agora mesmo') }}"
         data-i18n-no-devices-found="{{ _('Nenhum dispositivo encontrado no seu histórico recente.') }}"
         data-i18n-saving="{{ _('Salvando...') }}"
