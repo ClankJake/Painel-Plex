@@ -167,6 +167,10 @@ def api_settings():
         tautulli_manager.reload_credentials()
         overseerr_manager.reload_config()
 
+        # **MELHORIA: Tenta configurar o webhook da Efí após salvar**
+        if config_to_update.get("EFI_ENABLED"):
+            efi_manager.configure_webhook()
+
         log_level_map = {'DEBUG': logging.DEBUG, 'INFO': logging.INFO, 'WARNING': logging.WARNING, 'ERROR': logging.ERROR}
         new_log_level = config_to_update.get('LOG_LEVEL', 'INFO')
         if new_log_level != old_config.get('LOG_LEVEL'):
@@ -253,6 +257,12 @@ def save_setup():
     save_app_config(config)
     tautulli_manager.reload_credentials()
     overseerr_manager.reload_config()
+    efi_manager.reload_credentials() # Recarrega as credenciais da Efí
+    
+    # **MELHORIA: Tenta configurar o webhook da Efí após o setup inicial**
+    if config.get("EFI_ENABLED"):
+        efi_manager.configure_webhook()
+
     success, message = plex_manager.reload_connections()
     if success:
         user_details = {'id': config.get('ADMIN_USER'), 'username': config.get('ADMIN_USER'), 'role': 'admin'}
@@ -317,7 +327,6 @@ def bulk_notify():
     if not message:
         return jsonify({"success": False, "message": _("A mensagem não pode estar vazia.")}), 400
 
-    # MELHORIA: Verifica se algum agente de notificação está ativo antes de iniciar a thread
     config = load_or_create_config()
     is_any_notifier_enabled = (
         config.get("TELEGRAM_ENABLED", False) or
@@ -327,7 +336,6 @@ def bulk_notify():
     if not is_any_notifier_enabled:
         return jsonify({"success": False, "message": _("Nenhum agente de notificação (Telegram, Discord, etc.) está ativado nas configurações.")}), 400
 
-    # Inicia o envio em uma nova thread para não bloquear a resposta da API
     app = current_app._get_current_object()
     thread = threading.Thread(target=notifier_manager.send_bulk_notification, args=(app, message, contacts_only))
     thread.daemon = True
