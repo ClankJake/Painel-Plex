@@ -55,6 +55,33 @@ class EfiManager:
         else:
             return {"status": "OFFLINE", "message": _("Ativado, mas falha na configuração (verifique as credenciais).")}
 
+    def configure_webhook(self):
+        """
+        Configura o URL do webhook na API da Efí para a chave PIX principal.
+        Esta função deve ser chamada ao salvar as configurações.
+        """
+        if not self.efi:
+            logger.warning("Não é possível configurar o webhook da Efí: o serviço não está inicializado.")
+            return
+
+        pix_key = self.config.get("EFI_PIX_KEY")
+        app_base_url = self.config.get("APP_BASE_URL")
+
+        if not pix_key or not app_base_url:
+            logger.warning("Não é possível configurar o webhook da Efí: Chave PIX ou URL Base da Aplicação não definidos.")
+            return
+
+        try:
+            webhook_url = f"{app_base_url.strip('/')}{url_for('payments_api.efi_webhook')}"
+            params = {'chave': pix_key}
+            body = {'webhookUrl': webhook_url}
+            
+            logger.info(f"A tentar configurar o webhook para a chave PIX '{pix_key}' com o URL: {webhook_url}")
+            self.efi.pix_config_webhook(params=params, body=body)
+            logger.info(f"Webhook da Efí para a chave '{pix_key}' configurado com sucesso.")
+        except Exception as e:
+            logger.error(f"Falha ao configurar o webhook da Efí para a chave '{pix_key}': {e}", exc_info=True)
+
 
     def create_pix_charge(self, user_info, price, screens):
         """Cria uma cobrança PIX imediata para um utilizador."""
@@ -63,15 +90,6 @@ class EfiManager:
         
         app_title = self.config.get("APP_TITLE", "Painel Plex")
         service_description = f"Renovação Plex - {screens} Tela(s)" if screens > 0 else "Renovação Plex - Plano Padrão"
-
-        # Lembrete: A URL de webhook da Efí deve ser configurada no painel da Efí para a chave PIX,
-        # não enviada em cada requisição de cobrança.
-        app_base_url = self.config.get("APP_BASE_URL")
-        if app_base_url:
-            webhook_url = f"{app_base_url.strip('/')}{url_for('payments_api.efi_webhook')}"
-            logger.info(f"Lembrete: Certifique-se de que a URL de webhook '{webhook_url}' está configurada na sua conta Efí para a chave PIX utilizada.")
-        else:
-            logger.warning("APP_BASE_URL não está configurada. A confirmação de pagamento da Efí dependerá do polling na página, pois o webhook não pode ser determinado.")
 
         body = {
             "calendario": {
@@ -89,9 +107,6 @@ class EfiManager:
             ]
         }
         
-        # O campo 'webhookUrl' foi removido do corpo da requisição pois não é um parâmetro válido
-        # para a criação de cobranças imediatas, causando o erro 'json_invalido'.
-
         try:
             logger.info(f"A criar cobrança PIX para o utilizador '{user_info['username']}' no valor de {price:.2f} ({screens} tela(s)).")
             response = self.efi.pix_create_immediate_charge(body=body)
