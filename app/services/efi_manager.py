@@ -70,9 +70,23 @@ class EfiManager:
         if not pix_key or not app_base_url:
             logger.warning("Não é possível configurar o webhook da Efí: Chave PIX ou URL Base da Aplicação não definidos.")
             return
+        
+        # --- MELHORIA: Validação da APP_BASE_URL ---
+        # Esta é a causa mais comum de falhas em webhooks.
+        if "localhost" in app_base_url or "127.0.0.1" in app_base_url:
+            logger.critical(
+                "### ALERTA DE CONFIGURAÇÃO CRÍTICA ###\n"
+                "A sua 'URL Base da Aplicação' está definida para um endereço local ('%s').\n"
+                "O webhook da Efí NÃO FUNCIONARÁ, pois os servidores da Efí não conseguirão alcançar sua aplicação.\n"
+                "Por favor, configure uma URL pública acessível (ex: https://meudominio.com) nas Configurações Gerais.",
+                app_base_url
+            )
+            return
 
         try:
-            webhook_url = f"{app_base_url.strip('/')}{url_for('payments_api.efi_webhook')}"
+            # Garante que a URL do webhook seja absoluta
+            webhook_url = url_for('payments_api.efi_webhook', _external=True)
+            
             params = {'chave': pix_key}
             body = {'webhookUrl': webhook_url}
             
