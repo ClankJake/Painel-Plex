@@ -297,26 +297,41 @@ def get_payment_status(txid):
 
 @payments_api_bp.route('/webhook/efi', methods=['POST'])
 def efi_webhook():
+    # --- MELHORIA: Lógica de Webhook Aprimorada ---
     notification_data = request.json
-    logger.info(f"Webhook da Efí recebido: {notification_data}")
+    logger.info(f"Webhook da Efí recebido. Corpo da requisição: {notification_data}")
     try:
-        if 'pix' in notification_data:
+        # A Efí envia um array de notificações dentro da chave 'pix'
+        if 'pix' in notification_data and isinstance(notification_data['pix'], list):
             for pix_notification in notification_data['pix']:
                 txid = pix_notification.get('txid')
                 if not txid:
                     logger.warning("Webhook da Efí recebido sem TXID na notificação pix.")
                     continue
                 
+                logger.info(f"Processando notificação de webhook para o TXID: {txid}")
+                
+                # A prática segura é sempre verificar o status final da cobrança
+                # para evitar processar pagamentos que possam ter sido revertidos.
                 efi_status_result = efi_manager.detail_pix_charge(txid)
+                
                 if efi_status_result.get("success") and efi_status_result.get("data", {}).get("status") == 'CONCLUIDA':
+                    logger.info(f"Verificação de status para TXID {txid} confirmada como 'CONCLUIDA'.")
                     _process_successful_payment(txid)
                 else:
-                    logger.warning(f"Webhook da Efí para TXID {txid} recebido, mas o estado não é 'CONCLUIDA' ou a verificação falhou. Estado: {efi_status_result.get('data', {}).get('status')}")
+                    status = efi_status_result.get('data', {}).get('status', 'desconhecido')
+                    logger.warning(f"Webhook da Efí para TXID {txid} recebido, mas o estado não é 'CONCLUIDA' ou a verificação falhou. Estado atual: '{status}'")
+        else:
+            logger.warning(f"Formato de webhook da Efí inesperado. Chave 'pix' não encontrada ou não é uma lista. Payload: {notification_data}")
+
     except Exception as e:
         logger.error(f"Erro ao processar o webhook da Efí: {e}", exc_info=True)
+        # Retorna um erro 500 para que a Efí possa tentar reenviar o webhook.
         return jsonify(status="error", message="Internal Server Error"), 500
         
+    # Retorna 200 OK para a Efí para confirmar o recebimento.
     return jsonify(status="received"), 200
+
 
 @payments_api_bp.route('/webhook/mercadopago', methods=['POST'])
 def mercadopago_webhook():
