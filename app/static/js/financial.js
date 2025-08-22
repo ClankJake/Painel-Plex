@@ -164,15 +164,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (summary.recent_transactions && summary.recent_transactions.length > 0) {
             transactionsList.innerHTML = summary.recent_transactions.map(tx => {
                 let planDescription;
-                // CORREÇÃO: Se a descrição já indica que foi via cupão, usa-a diretamente.
                 if (tx.description && (tx.description.toLowerCase().includes('cupão') || tx.description.toLowerCase().includes('coupon'))) {
                     planDescription = tx.description;
                 } else {
-                    // Caso contrário, monta a descrição padrão.
                     planDescription = tx.screens > 0 ? `${tx.screens} Tela(s)` : 'Plano Padrão';
                 }
 
-                // O couponHtml continua útil para pagamentos que tiveram desconto mas não foram 100%
                 const couponHtml = tx.coupon_code && !planDescription.toLowerCase().includes('cupão')
                     ? `<span class="px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300" title="Cupom Utilizado: ${tx.coupon_code}">🏷️ Cupom</span>`
                     : '';
@@ -187,9 +184,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${new Date(tx.created_at).toLocaleString('pt-BR')}</p>
                     </div>
-                    <div class="font-mono text-green-600 dark:text-green-400 font-semibold">${formatCurrency(tx.value)}</div>
+                    <div class="flex items-center gap-4">
+                        <div class="font-mono text-green-600 dark:text-green-400 font-semibold">${formatCurrency(tx.value)}</div>
+                        <button data-txid="${tx.txid}" title="${'Apagar Transação'}" class="delete-transaction-btn p-1 text-gray-400 hover:text-red-500 transition-colors">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                        </button>
+                    </div>
                 </div>
             `}).join('');
+            transactionsList.querySelectorAll('.delete-transaction-btn').forEach(button => {
+                button.addEventListener('click', handleDeleteTransaction);
+            });
         } else {
             transactionsList.innerHTML = `<p class="py-4 text-center text-gray-500">${i18n.noTransactions}</p>`;
         }
@@ -252,6 +257,31 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             loadingIndicator.style.display = 'none';
         }
+    }
+
+    function handleDeleteTransaction(event) {
+        const button = event.currentTarget;
+        const txid = button.dataset.txid;
+        if (!txid) return;
+    
+        showConfirmationModal({
+            title: i18n.confirmDeleteTransaction,
+            message: `${i18n.actionCannotBeUndone}`,
+            confirmText: i18n.confirmDeleteButton,
+            confirmClass: 'bg-red-600 text-white',
+            onConfirm: async () => {
+                try {
+                    const url = urls.deleteTransactionBaseUrl.replace('__TXID__', txid);
+                    const result = await fetchAPI(url, 'POST');
+                    showToast(result.message, result.success ? 'success' : 'error');
+                    if (result.success) {
+                        loadFinancialData(); // Refresh data
+                    }
+                } catch (error) {
+                    showToast(error.message, 'error');
+                }
+            }
+        });
     }
 
     // --- LÓGICA DE CUPÕES ---
