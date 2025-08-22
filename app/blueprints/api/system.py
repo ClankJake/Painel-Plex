@@ -135,7 +135,8 @@ def api_settings():
             'ACHIEVEMENT_SERIES_BINGER_BRONZE', 'ACHIEVEMENT_SERIES_BINGER_SILVER', 'ACHIEVEMENT_SERIES_BINGER_GOLD',
             'ACHIEVEMENT_TIME_TRAVELER_BRONZE', 'ACHIEVEMENT_TIME_TRAVELER_SILVER', 'ACHIEVEMENT_TIME_TRAVELER_GOLD',
             'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD',
-            'TELEGRAM_BULK_MESSAGE_TEMPLATE', 'DISCORD_BULK_MESSAGE_TEMPLATE', 'WEBHOOK_BULK_MESSAGE_TEMPLATE'
+            'TELEGRAM_BULK_MESSAGE_TEMPLATE', 'DISCORD_BULK_MESSAGE_TEMPLATE', 'WEBHOOK_BULK_MESSAGE_TEMPLATE',
+            'UNIVERSAL_EXPIRATION_ENABLED', 'UNIVERSAL_EXPIRATION_TIME'
         ]
         numeric_fields = [
             'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION', 
@@ -167,7 +168,6 @@ def api_settings():
         tautulli_manager.reload_credentials()
         overseerr_manager.reload_config()
 
-        # **MELHORIA: Tenta configurar o webhook da Efí após salvar**
         if config_to_update.get("EFI_ENABLED"):
             efi_manager.configure_webhook()
 
