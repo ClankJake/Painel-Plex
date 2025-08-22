@@ -42,7 +42,7 @@ class PlexUserManager:
             logger.debug(_("A devolver a lista de utilizadores do servidor a partir da cache."))
             return self._user_cache
 
-        logger.info(_("A obter e filtrar a lista de utilizadores da API do Plex (cache expirada ou forçada)."))
+        logger.debug(_("A obter e filtrar a lista de utilizadores da API do Plex (cache expirada ou forçada)."))
         try:
             if force_refresh:
                 self.conn.account.reload()
