@@ -39,6 +39,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'DAYS_TO_REMOVE_BLOCKED_USER': { type: 'number', default: 0 },
         'EXPIRATION_NOTIFICATION_TIME': { type: 'text', default: '09:00' },
         'BLOCK_REMOVAL_TIME': { type: 'text', default: '02:00' },
+        'UNIVERSAL_EXPIRATION_ENABLED': { type: 'checkbox', default: false },
+        'UNIVERSAL_EXPIRATION_TIME': { type: 'text', default: '23:59' },
         'CLEANUP_PENDING_PAYMENTS_ENABLED': { type: 'checkbox', default: true },
         'CLEANUP_PENDING_PAYMENTS_DAYS': { type: 'number', default: 3 },
         'CLEANUP_TIME': { type: 'text', default: '03:00' },
