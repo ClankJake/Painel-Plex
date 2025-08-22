@@ -285,8 +285,8 @@ def get_payment_status(txid):
             is_confirmed = True
     elif provider == 'BPIX':
         status_result = bpix_manager.detail_pix_charge(txid)
-        # CORREÇÃO: Usa 'in_status' para verificar o status do pagamento da BPIX
-        if status_result.get("success") and status_result.get("data", {}).get("in_status") == 'PAID':
+        status_data = status_result.get("data", {})
+        if status_result.get("success") and (status_data.get("status") == 'Pagamento realizado' or status_data.get("international_status") == "PAYMENT_RECEIVED"):
             is_confirmed = True
 
     if is_confirmed:
@@ -297,11 +297,14 @@ def get_payment_status(txid):
 
 @payments_api_bp.route('/webhook/efi', methods=['POST'])
 def efi_webhook():
-    # --- MELHORIA: Lógica de Webhook Aprimorada ---
     notification_data = request.json
     logger.info(f"Webhook da Efí recebido. Corpo da requisição: {notification_data}")
     try:
-        # A Efí envia um array de notificações dentro da chave 'pix'
+        # Verifica se é um evento de teste de webhook da Efí
+        if notification_data.get('evento') == 'teste_webhook':
+            logger.info("Webhook de teste da Efí recebido e validado com sucesso.")
+            return jsonify(status="received"), 200
+
         if 'pix' in notification_data and isinstance(notification_data['pix'], list):
             for pix_notification in notification_data['pix']:
                 txid = pix_notification.get('txid')
@@ -311,8 +314,6 @@ def efi_webhook():
                 
                 logger.info(f"Processando notificação de webhook para o TXID: {txid}")
                 
-                # A prática segura é sempre verificar o status final da cobrança
-                # para evitar processar pagamentos que possam ter sido revertidos.
                 efi_status_result = efi_manager.detail_pix_charge(txid)
                 
                 if efi_status_result.get("success") and efi_status_result.get("data", {}).get("status") == 'CONCLUIDA':
@@ -326,10 +327,8 @@ def efi_webhook():
 
     except Exception as e:
         logger.error(f"Erro ao processar o webhook da Efí: {e}", exc_info=True)
-        # Retorna um erro 500 para que a Efí possa tentar reenviar o webhook.
         return jsonify(status="error", message="Internal Server Error"), 500
         
-    # Retorna 200 OK para a Efí para confirmar o recebimento.
     return jsonify(status="received"), 200
 
 
@@ -360,19 +359,21 @@ def bpix_webhook():
     data = request.json
     logger.info(f"Webhook da BPIX recebido: {data}")
     try:
-        # CORREÇÃO: Usa os campos corretos do payload do webhook da BPIX
         txid = data.get("transaction_pix_id")
-        status = data.get("in_status")
-        if txid and status == "PAID":
+        status = data.get("status")
+        international_status = data.get("international_status")
+
+        is_paid = (status == "Pagamento realizado") or (international_status == "PAYMENT_RECEIVED")
+
+        if txid and is_paid:
             _process_successful_payment(txid)
         else:
-            logger.warning(f"Webhook da BPIX para TXID {txid} recebido, mas o estado não é 'PAID'. Estado: {status}")
+            logger.warning(f"Webhook da BPIX para TXID {txid} recebido, mas o estado não indica pagamento confirmado. Status: '{status}', International Status: '{international_status}'")
     except Exception as e:
         logger.error(f"Erro ao processar o webhook da BPIX: {e}", exc_info=True)
         return jsonify(status="error", message="Internal Server Error"), 500
     
     return jsonify(status="received"), 200
-
 
 @payments_api_bp.route('/financial/summary')
 @login_required
