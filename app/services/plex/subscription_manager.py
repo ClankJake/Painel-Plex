@@ -23,6 +23,7 @@ class PlexSubscriptionManager:
         from app.scheduler import end_subscription_job, end_trial_job
         from app.config import load_or_create_config
 
+        config = load_or_create_config()
         profile = self.data_manager.get_user_profile(username)
         local_tz = get_localzone()
 
@@ -31,7 +32,6 @@ class PlexSubscriptionManager:
             try: scheduler.remove_job(profile['expiration_job_id'])
             except JobLookupError: logger.info(_("A tarefa de expiração para '%(username)s' não foi encontrada, provavelmente já foi executada.", username=username))
 
-        # --- INÍCIO DA CORREÇÃO ---
         # Verifica se o utilizador estava em teste e limpa os dados relacionados.
         was_on_trial = bool(profile.get('trial_end_date'))
         if was_on_trial:
@@ -44,10 +44,8 @@ class PlexSubscriptionManager:
                 except JobLookupError:
                     logger.info(_("A tarefa de fim de teste '%(job_id)s' já não existia no agendador.", job_id=trial_job_id))
             
-            # Limpa os campos de teste do perfil
             profile['trial_end_date'] = None
             profile['trial_job_id'] = None
-        # --- FIM DA CORREÇÃO ---
 
         # Determina a data de início para o cálculo da renovação
         now_aware = datetime.now(local_tz)
@@ -55,7 +53,6 @@ class PlexSubscriptionManager:
 
         if base_date_str:
             try: 
-                # CORREÇÃO: Usa .replace(tzinfo=...) em vez de .localize()
                 start_date = datetime.strptime(base_date_str, '%Y-%m-%d').replace(tzinfo=local_tz)
             except (ValueError, TypeError): 
                 base_date_str = None
@@ -64,7 +61,6 @@ class PlexSubscriptionManager:
             try:
                 current_expiration = datetime.fromisoformat(profile['expiration_date'])
                 if current_expiration.tzinfo is None:
-                    # CORREÇÃO: Usa .replace(tzinfo=...) em vez de .localize()
                     current_expiration = current_expiration.replace(tzinfo=local_tz)
                 if current_expiration > now_aware:
                     start_date = current_expiration
@@ -82,12 +78,20 @@ class PlexSubscriptionManager:
             days_to_add = 30 * months_to_add
             new_expiration_date = start_date + timedelta(days=days_to_add)
 
-        if expiration_time_str:
+        # --- LÓGICA DO HORÁRIO DE VENCIMENTO UNIVERSAL ---
+        final_expiration_time_str = expiration_time_str
+        if config.get("UNIVERSAL_EXPIRATION_ENABLED"):
+            universal_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59")
+            logger.info(f"Horário de vencimento universal ativado. A usar '{universal_time}' para '{username}'.")
+            final_expiration_time_str = universal_time
+        
+        if final_expiration_time_str:
             try:
-                time_parts = list(map(int, expiration_time_str.split(':')))
-                new_expiration_date = new_expiration_date.replace(hour=time_parts[0], minute=time_parts[1], second=0)
+                time_parts = list(map(int, final_expiration_time_str.split(':')))
+                new_expiration_date = new_expiration_date.replace(hour=time_parts[0], minute=time_parts[1], second=0, microsecond=0)
             except (ValueError, IndexError):
-                logger.warning(_("Formato de hora inválido '%(time)s'. A ignorar.", time=expiration_time_str))
+                logger.warning(_("Formato de hora inválido '%(time)s'. A ignorar.", time=final_expiration_time_str))
+        # --- FIM DA LÓGICA ---
 
         # Agenda a nova tarefa de expiração
         naive_run_date = new_expiration_date.replace(tzinfo=None)
@@ -105,7 +109,6 @@ class PlexSubscriptionManager:
             logger.info(_("O utilizador '%(username)s' está bloqueado. A tentar desbloquear após a renovação.", username=username))
             plex_user = next((u for u in self.user_manager.get_all_plex_users() if u['username'] == username), None)
             if plex_user:
-                config = load_or_create_config()
                 block_reason = blocked_user_info.get('block_reason')
                 notifier_id_to_unblock = config.get('TRIAL_BLOCK_NOTIFIER_ID') if block_reason == 'trial_expired' else config.get('BLOCKING_NOTIFIER_ID')
                 self.tautulli_manager.manage_block_unblock(plex_user['email'], username, 'remove', notifier_id=notifier_id_to_unblock)
