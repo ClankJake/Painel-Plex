@@ -87,25 +87,14 @@ class BpixManager:
         
         expire_at = datetime.utcnow() + timedelta(minutes=20)
 
-        webhook_url = None
-        app_base_url = self.config.get("APP_BASE_URL")
-        if app_base_url:
-            webhook_url = f"{app_base_url.strip('/')}/api/payments/webhook/bpix"
-        else:
-            logger.warning("APP_BASE_URL não está configurada. A URL do webhook para a BPIX não será enviada.")
-
         payload = {
             "amount": float(price),
             "clientMode": "fillDataNow",
             "expire_at": expire_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "description": f"Pagamento para {user_info.get('username')} - {service_description}",
             "name_client": user_info.get('name', user_info.get('username')),
-            "email": user_info.get('email'),
-            "webhook_url": webhook_url
+            "email": user_info.get('email')
         }
-        
-        if not payload.get("webhook_url"):
-            payload.pop("webhook_url", None)
 
         try:
             logger.info(f"A criar cobrança PIX na BPIX para o utilizador '{user_info['username']}' no valor de {price:.2f}.")
@@ -117,6 +106,7 @@ class BpixManager:
             lookup_id = data.get("id")
 
             if txid and lookup_id:
+                logger.info(f"Cobrança BPIX criada com sucesso. TXID: {txid}, Lookup ID: {lookup_id}")
                 self.data_manager.create_pix_payment(
                     txid=txid,
                     username=user_info['username'],
@@ -165,6 +155,6 @@ class BpixManager:
 
         current_status = payment.get('status')
         if current_status == 'CONCLUIDA':
-            return {"success": True, "data": {"in_status": "PAID"}}
+            return {"success": True, "data": {"status": "Pagamento realizado"}}
         else:
-            return {"success": True, "data": {"in_status": "WAITING_PAYMENT"}}
+            return {"success": True, "data": {"status": "WAITING_PAYMENT"}}
