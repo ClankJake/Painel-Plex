@@ -177,6 +177,7 @@
         data-coupons-create-url="{{ url_for('coupons_api.create_coupon') }}"
         data-coupons-delete-base-url="{{ url_for('coupons_api.delete_coupon', coupon_id=0) }}"
         data-coupons-toggle-base-url="{{ url_for('coupons_api.toggle_coupon', coupon_id=0) }}"
+        data-delete-transaction-base-url="{{ url_for('payments_api.delete_payment_route', txid='__TXID__') }}"
         data-i18n-revenue-label="{{ _('Receita') }}"
         data-i18n-days-left-singular="{{ _('dia restante') }}"
         data-i18n-days-left-plural="{{ _('dias restantes') }}"
@@ -187,6 +188,6 @@
         data-i18n-action-cannot-be-undone="{{ _('Esta ação não pode ser desfeita.') }}"
         data-i18n-confirm-delete-button="{{ _('Sim, Apagar') }}"
         data-i18n-cancel="{{ _('Cancelar') }}"
+        data-i18n-confirm-delete-transaction="{{ _('Apagar Transação') }}"
 ></script>
 {% endblock %}
-
