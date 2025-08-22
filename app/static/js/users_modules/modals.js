@@ -280,9 +280,10 @@ export async function showUserProfileModal(user) {
                     <label for="profileExpiration" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.expirationDate}</label>
                     <input type="date" id="profileExpiration" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                 </div>
-                <div>
+                <div id="expiration-time-container">
                     <label for="profileExpirationTime" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.blockTime}</label>
                     <input type="time" id="profileExpirationTime" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <p id="universal-time-notice" class="hidden text-xs text-yellow-500 mt-1"></p>
                 </div>
             </div>
             <div class="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700"><label for="profileOverseerrAccess" class="text-sm font-medium text-gray-600 dark:text-gray-300">${i18n.overseerrAccess}</label><input type="checkbox" id="profileOverseerrAccess" class="form-checkbox h-5 w-5 rounded text-yellow-500"></div>
@@ -302,6 +303,8 @@ export async function showUserProfileModal(user) {
     const modal = createModal('userProfileModal', `${i18n.manageProfileTitle} ${user.username}`, body, footer);
 
     const sendNotificationButton = modal.querySelector('#sendNotificationButton');
+    const expirationTimeInput = modal.querySelector('#profileExpirationTime');
+    const universalTimeNotice = modal.querySelector('#universal-time-notice');
 
     api.fetchUserProfile(user.username).then(data => {
         if(data.success) {
@@ -319,7 +322,7 @@ export async function showUserProfileModal(user) {
                     const hours = expDate.getHours().toString().padStart(2, '0');
                     const minutes = expDate.getMinutes().toString().padStart(2, '0');
                     modal.querySelector('#profileExpiration').value = `${year}-${month}-${day}`;
-                    modal.querySelector('#profileExpirationTime').value = `${hours}:${minutes}`;
+                    expirationTimeInput.value = `${hours}:${minutes}`;
                     sendNotificationButton.disabled = false;
                 }
             }
@@ -329,13 +332,18 @@ export async function showUserProfileModal(user) {
                 if (telegramField && !data.notification_settings.telegram_enabled) telegramField.classList.add('hidden');
                 if (discordField && !data.notification_settings.discord_enabled) discordField.classList.add('hidden');
             }
+            if (data.universal_expiration_settings && data.universal_expiration_settings.enabled) {
+                expirationTimeInput.disabled = true;
+                universalTimeNotice.textContent = `Horário universal ativo: ${data.universal_expiration_settings.time}`;
+                universalTimeNotice.classList.remove('hidden');
+            }
         }
     }).catch(error => showToast(error.message, 'error'));
 
     modal.querySelector('#modalCancel').onclick = () => modal.classList.add('hidden');
     modal.querySelector('#saveProfileButton').onclick = async () => {
         const dateValue = modal.querySelector('#profileExpiration').value;
-        const timeValue = modal.querySelector('#profileExpirationTime').value || '00:00';
+        const timeValue = expirationTimeInput.value || '00:00';
         const localDateTimeString = dateValue ? `${dateValue}T${timeValue}` : null;
         const profileData = {
             name: modal.querySelector('#profileName').value,
@@ -378,8 +386,8 @@ export async function showUserProfileModal(user) {
         button.disabled = true;
         const expirationInput = modal.querySelector('#profileExpiration');
         if (expirationInput && expirationInput.value) payload.base_date = expirationInput.value;
-        const timeInput = modal.querySelector('#profileExpirationTime');
-        if (timeInput && timeInput.value) payload.expiration_time = timeInput.value;
+        const timeInput = expirationTimeInput;
+        if (timeInput && timeInput.value && !timeInput.disabled) payload.expiration_time = timeInput.value;
 
         try {
             const result = await api.renewSubscription(user.username, payload);
