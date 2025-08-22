@@ -231,7 +231,16 @@ def user_profile_route(username):
             "discord_enabled": config.get("DISCORD_ENABLED", False),
             "webhook_enabled": config.get("WEBHOOK_ENABLED", False)
         }
-        return jsonify({"success": True, "profile": profile, "notification_settings": notification_settings})
+        universal_expiration_settings = {
+            "enabled": config.get("UNIVERSAL_EXPIRATION_ENABLED", False),
+            "time": config.get("UNIVERSAL_EXPIRATION_TIME", "23:59")
+        }
+        return jsonify({
+            "success": True, 
+            "profile": profile, 
+            "notification_settings": notification_settings,
+            "universal_expiration_settings": universal_expiration_settings
+        })
 
     if request.method == 'POST':
         from ...extensions import scheduler
@@ -266,7 +275,18 @@ def user_profile_route(username):
                 try: scheduler.remove_job(old_job_id)
                 except JobLookupError: logger.warning(f"Tentativa de remover a tarefa de bloqueio '{old_job_id}', mas ela não foi encontrada no agendador.")
         else:
+            config = load_or_create_config()
             naive_dt = datetime.fromisoformat(local_datetime_str)
+
+            # Aplica o horário universal se estiver ativado
+            if config.get("UNIVERSAL_EXPIRATION_ENABLED"):
+                universal_time_str = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59")
+                try:
+                    time_parts = list(map(int, universal_time_str.split(':')))
+                    naive_dt = naive_dt.replace(hour=time_parts[0], minute=time_parts[1], second=0, microsecond=0)
+                except (ValueError, IndexError):
+                    logger.warning(f"Formato de hora universal inválido '{universal_time_str}'. A usar o horário original.")
+
             old_job_id = profile_to_update.pop('expiration_job_id', None)
             if old_job_id:
                 try: scheduler.remove_job(old_job_id)
