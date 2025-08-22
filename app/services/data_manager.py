@@ -165,38 +165,42 @@ class DataManager:
 
     # --- MÉTODOS FINANCEIROS ---
     def get_financial_summary(self, year, month, renewal_days=7):
-        confirmed_payments_query = db.session.query(
-            PixPayment
-        ).filter(
+        # --- OTIMIZAÇÃO INÍCIO ---
+        # 1. Busca todos os pagamentos confirmados do mês de uma só vez.
+        confirmed_payments = PixPayment.query.filter(
             extract('year', PixPayment.created_at) == year,
             extract('month', PixPayment.created_at) == month,
             PixPayment.status == 'CONCLUIDA'
-        )
-        confirmed_payments = confirmed_payments_query.order_by(PixPayment.created_at.desc()).all()
-        total_revenue = sum(p.value for p in confirmed_payments)
+        ).order_by(PixPayment.created_at.desc()).all()
+
+        # 2. Calcula os agregados em Python a partir da lista de pagamentos.
+        total_revenue = 0
         sales_count = len(confirmed_payments)
-        daily_revenue_data = db.session.query(
-            extract('day', PixPayment.created_at).label('day'),
-            func.sum(PixPayment.value).label('total')
-        ).filter(
-            extract('year', PixPayment.created_at) == year,
-            extract('month', PixPayment.created_at) == month,
-            PixPayment.status == 'CONCLUIDA'
-        ).group_by('day').order_by('day').all()
-        weekly_revenue_data = db.session.query(
-            func.strftime('%W', PixPayment.created_at).label('week_number'),
-            func.sum(PixPayment.value).label('total')
-        ).filter(
-            extract('year', PixPayment.created_at) == year,
-            extract('month', PixPayment.created_at) == month,
-            PixPayment.status == 'CONCLUIDA'
-        ).group_by('week_number').order_by('week_number').all()
+        daily_revenue_dict = {}
         weekly_revenue_dict = {}
-        if weekly_revenue_data:
-            first_week_num = int(weekly_revenue_data[0].week_number)
-            for row in weekly_revenue_data:
-                relative_week = int(row.week_number) - first_week_num + 1
-                weekly_revenue_dict[f"Semana {relative_week}"] = row.total
+        
+        if confirmed_payments:
+            # Obtém o número da primeira semana do mês para calcular as semanas relativas
+            first_payment_date = datetime.fromisoformat(confirmed_payments[-1].created_at)
+            first_week_num = first_payment_date.isocalendar()[1]
+
+            for p in confirmed_payments:
+                total_revenue += p.value
+                payment_date = datetime.fromisoformat(p.created_at)
+                day = payment_date.day
+                week_num = payment_date.isocalendar()[1]
+                
+                # Agrega por dia
+                daily_revenue_dict[day] = daily_revenue_dict.get(day, 0) + p.value
+                
+                # Agrega por semana relativa
+                relative_week = week_num - first_week_num + 1
+                week_key = f"Semana {relative_week}"
+                weekly_revenue_dict[week_key] = weekly_revenue_dict.get(week_key, 0) + p.value
+
+        # --- OTIMIZAÇÃO FIM ---
+
+        # A consulta de renovações futuras permanece, pois é em outra tabela.
         today = datetime.now(get_localzone()).date()
         end_date = today + timedelta(days=renewal_days)
         today_str = today.isoformat()
@@ -225,7 +229,15 @@ class DataManager:
                     'screen_limit': user_profile.screen_limit
                 })
             except (ValueError, TypeError): continue
-        return { "total_revenue": total_revenue, "sales_count": sales_count, "recent_transactions": [self._row_to_dict(p) for p in confirmed_payments[:10]], "daily_revenue": {day: total for day, total in daily_revenue_data}, "weekly_revenue": weekly_revenue_dict, "upcoming_expirations": upcoming_expirations }
+        
+        return { 
+            "total_revenue": total_revenue, 
+            "sales_count": sales_count, 
+            "recent_transactions": [self._row_to_dict(p) for p in confirmed_payments[:10]], 
+            "daily_revenue": daily_revenue_dict, 
+            "weekly_revenue": weekly_revenue_dict, 
+            "upcoming_expirations": upcoming_expirations 
+        }
 
     # --- Métodos para Perfis de Utilizador ---
     def get_user_profile(self, username):
@@ -304,6 +316,21 @@ class DataManager:
         except Exception as e:
             logger.error(f"Erro ao buscar pagamentos para o utilizador '{username}': {e}")
             return []
+
+    def delete_pix_payment(self, txid):
+        """Apaga um registo de pagamento da base de dados."""
+        payment = PixPayment.query.get(txid)
+        if payment:
+            try:
+                db.session.delete(payment)
+                db.session.commit()
+                logger.info(f"Pagamento com TXID '{txid}' apagado com sucesso.")
+                return True
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"Erro ao apagar o pagamento com TXID '{txid}': {e}")
+                raise
+        return False
 
     # --- Métodos de Limpeza de Dados ---
     def delete_old_pending_payments(self, days_old):
