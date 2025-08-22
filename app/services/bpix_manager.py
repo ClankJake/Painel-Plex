@@ -3,6 +3,7 @@
 import logging
 import requests
 import uuid
+import time
 from flask import url_for
 from flask_babel import gettext as _
 from datetime import datetime, timedelta
@@ -39,11 +40,41 @@ class BpixManager:
         else:
             return {"status": "OFFLINE", "message": _("Ativado, mas falha na configuração (verifique o Token de Autorização).")}
 
+    def test_connection(self, auth_token):
+        """Testa a conexão com a BPIX usando um token de autorização."""
+        if not auth_token:
+            return {'success': False, 'message': _('O Token de Autorização é obrigatório.')}
+        
+        endpoint = f"{self.base_url}/payments"
+        headers = {
+            "Authorization": f"Bearer {auth_token}",
+            "Content-Type": "application/json"
+        }
+        params = {"limit": 1} 
+
+        try:
+            logger.info("A testar a conexão com a BPIX...")
+            response = requests.get(endpoint, headers=headers, params=params, timeout=15)
+            response.raise_for_status()
+            logger.info("Conexão com a BPIX bem-sucedida.")
+            return {'success': True, 'message': _('Conexão com a BPIX bem-sucedida!')}
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                logger.warning("Falha no teste de conexão com a BPIX: Token inválido.")
+                return {'success': False, 'message': _('Falha na autenticação: O Token de Autorização parece ser inválido.')}
+            error_text = e.response.text
+            logger.error(f"Erro HTTP ao testar a conexão com a BPIX: {e}. Resposta: {error_text}")
+            return {'success': False, 'message': f"Erro do gateway: {e.response.status_code}"}
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erro de comunicação ao testar a conexão com a BPIX: {e}", exc_info=True)
+            return {'success': False, 'message': _("Falha na conexão: Verifique a URL e a sua conexão de rede.")}
+
     def create_pix_charge(self, user_info, price, screens):
         """Cria uma cobrança PIX na BPIX."""
-        self.reload_credentials()
         if not self.auth_token:
-            return {"success": False, "message": "O serviço de pagamento BPIX não está configurado corretamente."}
+            self.reload_credentials() # Garante que as credenciais estão carregadas
+            if not self.auth_token:
+                return {"success": False, "message": "O serviço de pagamento BPIX não está configurado corretamente."}
         
         endpoint = f"{self.base_url}/payments"
         
@@ -56,7 +87,6 @@ class BpixManager:
         
         expire_at = datetime.utcnow() + timedelta(minutes=20)
 
-        # CORREÇÃO: Adiciona a URL do webhook ao criar a cobrança
         webhook_url = None
         app_base_url = self.config.get("APP_BASE_URL")
         if app_base_url:
@@ -67,17 +97,15 @@ class BpixManager:
         payload = {
             "amount": float(price),
             "clientMode": "fillDataNow",
-            "expire_at": expire_at.isoformat() + "Z",
+            "expire_at": expire_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "description": f"Pagamento para {user_info.get('username')} - {service_description}",
-            "external_reference": str(uuid.uuid4()), # Mantemos uma referência interna única
             "name_client": user_info.get('name', user_info.get('username')),
             "email": user_info.get('email'),
             "webhook_url": webhook_url
         }
         
-        # Remove a chave do webhook se a URL não estiver disponível
-        if not payload["webhook_url"]:
-            del payload["webhook_url"]
+        if not payload.get("webhook_url"):
+            payload.pop("webhook_url", None)
 
         try:
             logger.info(f"A criar cobrança PIX na BPIX para o utilizador '{user_info['username']}' no valor de {price:.2f}.")
@@ -121,40 +149,22 @@ class BpixManager:
             return {"success": False, "message": "Ocorreu um erro ao comunicar com o serviço de pagamentos BPIX."}
 
     def detail_pix_charge(self, txid):
-        """Consulta os detalhes de uma cobrança PIX na API da BPIX."""
-        self.reload_credentials()
+        """
+        Verifica o estado de uma cobrança PIX. Para a BPIX, a confirmação
+        depende primariamente do webhook. Esta função evita fazer polling
+        na API para prevenir erros de 'não encontrado' no log.
+        """
         if not self.auth_token:
             return {"success": False, "message": "O serviço de pagamento BPIX não está configurado."}
 
+        # Apenas verifica se o pagamento existe localmente.
         payment = self.data_manager.get_pix_payment(txid)
         if not payment:
-            logger.warning(f"Pagamento BPIX com TXID {txid} não encontrado na base de dados local.")
+            logger.warning(f"Pagamento BPIX com TXID {txid} não encontrado na base de dados local durante a consulta de estado.")
             return {"success": False, "message": "Pagamento não encontrado localmente."}
-        
-        lookup_id = payment.get('external_reference')
-        if not lookup_id:
-            logger.error(f"ID de consulta (lookup_id) não encontrado para o pagamento BPIX com TXID {txid}.")
-            return {"success": False, "message": "ID de consulta interno em falta."}
 
-        endpoint = f"{self.base_url}/payments/{lookup_id}"
-        headers = {
-            "Authorization": f"Bearer {self.auth_token}",
-            "Content-Type": "application/json"
-        }
-
-        try:
-            logger.info(f"Consultando status do pagamento BPIX com ID de consulta: {lookup_id} (TXID: {txid})")
-            response = requests.get(endpoint, headers=headers, timeout=15)
-            response.raise_for_status()
-            data = response.json()
-            return {"success": True, "data": data}
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 404:
-                logger.warning(f"Pagamento BPIX com ID de consulta {lookup_id} não encontrado na API.")
-                return {"success": False, "message": "Pagamento não encontrado no gateway."}
-            error_text = e.response.text
-            logger.error(f"Erro HTTP ao consultar pagamento BPIX (ID de consulta: {lookup_id}): {e}. Resposta: {error_text}")
-            return {"success": False, "message": f"Erro do gateway de pagamento: {error_text}"}
-        except Exception as e:
-            logger.error(f"Erro ao consultar cobrança PIX na BPIX (ID de consulta: {lookup_id}): {e}")
-            return {"success": False, "message": "Ocorreu um erro ao consultar o estado do pagamento."}
+        current_status = payment.get('status')
+        if current_status == 'CONCLUIDA':
+            return {"success": True, "data": {"in_status": "PAID"}}
+        else:
+            return {"success": True, "data": {"in_status": "WAITING_PAYMENT"}}
