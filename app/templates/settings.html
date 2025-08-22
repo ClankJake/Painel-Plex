@@ -124,6 +124,20 @@
                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Defina 0 para desativar.')}}</p>
                 </div>
                 <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
+                    <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Vencimento Universal') }}</h4>
+                    <div class="input-group space-y-4">
+                        <div class="flex items-center">
+                            <input id="UNIVERSAL_EXPIRATION_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                            <label for="UNIVERSAL_EXPIRATION_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar horário de vencimento universal') }}</label>
+                        </div>
+                        <div class="disablable-input">
+                            <label for="UNIVERSAL_EXPIRATION_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Horário Universal de Vencimento') }}</label>
+                            <input type="time" id="UNIVERSAL_EXPIRATION_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Se ativado, todas as assinaturas expirarão neste horário, ignorando as configurações individuais.')}}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
                     <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Limpeza Automática de Dados') }}</h4>
                      <div class="flex items-center">
                         <input id="CLEANUP_PENDING_PAYMENTS_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
