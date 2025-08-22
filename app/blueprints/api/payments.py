@@ -408,3 +408,17 @@ def add_manual_payment_route():
     except Exception as e:
         logger.error(f"Erro ao adicionar pagamento manual: {e}", exc_info=True)
         return jsonify({"success": False, "message": str(e)}), 500
+
+@payments_api_bp.route('/financial/delete/<string:txid>', methods=['POST'])
+@login_required
+@admin_required
+def delete_payment_route(txid):
+    """Endpoint para apagar um registo de pagamento."""
+    try:
+        if data_manager.delete_pix_payment(txid):
+            return jsonify({"success": True, "message": _("Transação apagada com sucesso.")})
+        else:
+            return jsonify({"success": False, "message": _("Transação não encontrada.")}), 404
+    except Exception as e:
+        logger.error(f"Erro ao apagar a transação {txid}: {e}", exc_info=True)
+        return jsonify({"success": False, "message": _("Falha ao apagar a transação.")}), 500
