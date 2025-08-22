@@ -42,6 +42,8 @@ def load_or_create_config():
             "DAYS_TO_REMOVE_BLOCKED_USER": 0,
             "EXPIRATION_NOTIFICATION_TIME": "09:00",
             "BLOCK_REMOVAL_TIME": "02:00",
+            "UNIVERSAL_EXPIRATION_ENABLED": False,
+            "UNIVERSAL_EXPIRATION_TIME": "23:59",
             "WEBHOOK_URL": "",
             "WEBHOOK_AUTHORIZATION_HEADER": "",
             "WEBHOOK_ENABLED": False,
@@ -131,6 +133,8 @@ def load_or_create_config():
                 config.setdefault("TRIAL_BLOCK_NOTIFIER_ID", 0)
                 config.setdefault("EXPIRATION_NOTIFICATION_TIME", "09:00")
                 config.setdefault("BLOCK_REMOVAL_TIME", "02:00")
+                config.setdefault("UNIVERSAL_EXPIRATION_ENABLED", False)
+                config.setdefault("UNIVERSAL_EXPIRATION_TIME", "23:59")
                 config.setdefault("WEBHOOK_AUTHORIZATION_HEADER", "")
                 config.setdefault("WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE", "{\"content\": \"Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}\"}")
                 config.setdefault("WEBHOOK_RENEWAL_MESSAGE_TEMPLATE", "{\"content\": \"✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}.\"}")
