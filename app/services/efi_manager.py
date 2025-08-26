@@ -84,8 +84,9 @@ class EfiManager:
             return
 
         try:
-            # Garante que a URL do webhook seja absoluta
-            webhook_url = url_for('payments_api.efi_webhook', _external=True)
+            # Garante que a URL do webhook seja absoluta e adiciona o parâmetro
+            base_webhook_url = url_for('payments_api.efi_webhook', _external=True)
+            webhook_url = f"{base_webhook_url}?ignorar="
             
             params = {'chave': pix_key}
             body = {'webhookUrl': webhook_url}
