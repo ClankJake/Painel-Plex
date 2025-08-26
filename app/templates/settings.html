@@ -214,6 +214,18 @@
                             </div>
                             <div class="disablable-input space-y-4">
                                 <div class="flex items-center">
+                                    <input id="EFI_USE_MTLS" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                                    <label for="EFI_USE_MTLS" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Usar mTLS (Modo Seguro Recomendado)') }}</label>
+                                </div>
+                                <div id="efi-hmac-section" class="hidden space-y-2 pl-6">
+                                    <label for="EFI_WEBHOOK_HMAC_SECRET" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('HMAC Secret para Webhook') }}</label>
+                                    <div class="flex items-center gap-2">
+                                        <input type="text" id="EFI_WEBHOOK_HMAC_SECRET" readonly class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-200 border-gray-300 text-gray-900 dark:bg-gray-800 dark:border-gray-600 dark:text-white">
+                                        <button type="button" id="generateHmacSecret" class="btn bg-blue-600 hover:bg-blue-500 text-white text-sm">{{ _('Gerar Novo') }}</button>
+                                    </div>
+                                    <p class="text-xs text-yellow-600 dark:text-yellow-400 mt-2">{{_('Aviso: Desativar o mTLS é menos seguro. Use o HMAC como uma camada extra de validação.')}}</p>
+                                </div>
+                                <div class="flex items-center">
                                     <input id="EFI_SANDBOX" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
                                     <label for="EFI_SANDBOX" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Modo de Teste (Sandbox)') }}</label>
                                 </div>
@@ -577,11 +589,11 @@
                            <label for="OVERSEERR_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar integração') }}</label>
                        </div>
                         <div>
-                            <label for="OVERSEERR_URL" class="block text-sm font-medium text-gray-500 dark:text-gray-400">URL</label>
+                            <label for="OVERSEERR_URL" class="block text-sm font-medium text-gray-600 dark:text-gray-300">URL</label>
                             <input type="url" id="OVERSEERR_URL" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="http://127.0.0.1:5055">
                         </div>
                         <div>
-                            <label for="OVERSEERR_API_KEY" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Chave da API') }}</label>
+                            <label for="OVERSEERR_API_KEY" class="block text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('Chave da API') }}</label>
                             <input type="password" id="OVERSEERR_API_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                         </div>
                     </div>
@@ -662,14 +674,13 @@
     data-urls-set-language="/language/"
     data-i18n-authenticated="{{ _('Autenticado com sucesso! Buscando servidores...') }}"
     data-i18n-verification-error="{{ _('Erro de verificação:') }}"
-    data-i18n-verifying="{{ _('Verificando...') }}"
+    data-i18n-verifying="{{ _('Verificando... Por favor, conclua a autenticação na nova janela.') }}"
     data-i18n-fetching-servers="{{ _('A buscar servidores...') }}"
     data-i18n-select-new-server="{{ _('Selecione o novo servidor:') }}"
     data-i18n-no-servers-found="{{ _('Nenhum servidor encontrado.') }}"
     data-i18n-error-generic="{{ _('Erro:') }}"
     data-i18n-saving="{{ _('Salvando...') }}"
-    data-i18n-unknown-error="{{ _('Ocorreu um erro desconhecido.') }}"
-    data-i18n-save-changes="{{ _('Salvar Alterações') }}"
+    data-i18n-finish-setup="{{ _('Finalizar e Salvar') }}"
     data-i18n-testing="{{ _('Testando...') }}"
     data-i18n-auto-configuring="{{ _('Configurando...') }}"
     data-i18n-auto-configure="{{ _('Auto-Configurar') }}"
