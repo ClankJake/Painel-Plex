@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, request, url_for, current_app
 from flask_login import current_user
 from flask_babel import gettext as _
 from flask_login import login_required
+from functools import wraps
 
 from ...extensions import plex_manager, tautulli_manager, data_manager, efi_manager, mercado_pago_manager, bpix_manager
 from ...config import load_or_create_config
@@ -14,6 +15,39 @@ from ...models import UserProfile
 
 logger = logging.getLogger(__name__)
 payments_api_bp = Blueprint('payments_api', __name__)
+
+def efi_webhook_security(f):
+    """Decorator para proteger o endpoint do webhook da Efí."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # 1. Verificar o Endereço IP
+        EFI_IP = '34.193.116.226'
+        
+        # Obtém o IP real, considerando proxies como Nginx ou Cloudflare.
+        if 'X-Forwarded-For' in request.headers:
+            # 'X-Forwarded-For' pode ser uma lista de IPs. O primeiro é o do cliente original.
+            remote_ip = request.headers.getlist("X-Forwarded-For")[0].rpartition(' ')[-1]
+        else:
+            remote_ip = request.remote_addr or 'UNKNOWN'
+
+        if remote_ip != EFI_IP:
+            logger.warning(f"Webhook da Efí bloqueado: IP de origem '{remote_ip}' não corresponde ao IP esperado '{EFI_IP}'.")
+            return jsonify(status="error", message="IP not allowed"), 403
+
+        # 2. Verificar o HMAC se o mTLS estiver desativado
+        config = load_or_create_config()
+        use_mtls = config.get("EFI_USE_MTLS", True)
+
+        if not use_mtls:
+            hmac_secret = config.get("EFI_WEBHOOK_HMAC_SECRET")
+            received_hmac = request.args.get('hmac')
+
+            if not hmac_secret or not received_hmac or hmac_secret != received_hmac:
+                logger.warning("Webhook da Efí bloqueado: HMAC inválido ou ausente.")
+                return jsonify(status="error", message="Invalid HMAC"), 403
+        
+        return f(*args, **kwargs)
+    return decorated_function
 
 def _process_successful_payment(txid):
     """
@@ -296,11 +330,16 @@ def get_payment_status(txid):
     return jsonify({"success": True, "status": payment.get('status')})
 
 @payments_api_bp.route('/webhook/efi', methods=['POST'])
+@efi_webhook_security
 def efi_webhook():
-    notification_data = request.json
+    notification_data = request.get_json(silent=True)
+    
+    if notification_data is None:
+        logger.info("Webhook da Efí recebido, possivelmente uma chamada de validação (corpo vazio). A responder com 200 OK.")
+        return jsonify(status="validation_received"), 200
+
     logger.info(f"Webhook da Efí recebido. Corpo da requisição: {notification_data}")
     try:
-        # Verifica se é um evento de teste de webhook da Efí
         if notification_data.get('evento') == 'teste_webhook':
             logger.info("Webhook de teste da Efí recebido e validado com sucesso.")
             return jsonify(status="received"), 200
