@@ -1,3 +1,4 @@
+# app/config.py
 import os
 import json
 import secrets
@@ -76,6 +77,8 @@ def load_or_create_config():
             "EFI_CERTIFICATE": "/app/certs/efisandbox.pem",
             "EFI_SANDBOX": True,
             "EFI_PIX_KEY": "", # A sua chave PIX
+            "EFI_USE_MTLS": True,
+            "EFI_WEBHOOK_HMAC_SECRET": secrets.token_hex(16),
             "MERCADOPAGO_ENABLED": False,
             "MERCADOPAGO_ACCESS_TOKEN": "",
             "BPIX_ENABLED": False,
