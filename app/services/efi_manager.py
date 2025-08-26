@@ -85,17 +85,17 @@ class EfiManager:
 
         try:
             base_webhook_url = url_for('payments_api.efi_webhook', _external=True)
-            # CORREÇÃO: Inicia sempre o URL com o parâmetro 'ignorar'
-            webhook_url = f"{base_webhook_url}?ignorar="
-            
+            webhook_url = ""
             headers = {}
+
             if use_mtls:
                 headers['x-skip-mtls-checking'] = 'false'
+                webhook_url = f"{base_webhook_url}?ignorar="
             else:
                 headers['x-skip-mtls-checking'] = 'true'
                 if hmac_secret:
-                    # Adiciona o HMAC como um segundo parâmetro
-                    webhook_url = f"{webhook_url}&hmac={hmac_secret}"
+                    # CORREÇÃO: Constrói a URL com a ordem correta dos parâmetros
+                    webhook_url = f"{base_webhook_url}?hmac={hmac_secret}&ignorar="
                 else:
                     logger.error("HMAC secret não está configurado, mas o mTLS está desativado. Esta é uma configuração insegura.")
                     return
