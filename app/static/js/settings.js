@@ -71,6 +71,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'EFI_CERTIFICATE': { type: 'text', default: '' },
         'EFI_SANDBOX': { type: 'checkbox', default: false },
         'EFI_PIX_KEY': { type: 'text', default: '' },
+        'EFI_USE_MTLS': { type: 'checkbox', default: true },
+        'EFI_WEBHOOK_HMAC_SECRET': { type: 'text', default: '' },
         'MERCADOPAGO_ACCESS_TOKEN': { type: 'password', default: '' },
         'BPIX_AUTH_TOKEN': { type: 'password', default: '' },
         'RENEWAL_PRICE': { type: 'text', default: '10.00' },
@@ -555,9 +557,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (toggleButton) toggleButton.disabled = false;
             }
         });
+
+        // Lógica para a nova secção de segurança da Efí
+        const efiUseMtlsCheckbox = document.getElementById('EFI_USE_MTLS');
+        const efiHmacSection = document.getElementById('efi-hmac-section');
+        const generateHmacButton = document.getElementById('generateHmacSecret');
+        const hmacInput = document.getElementById('EFI_WEBHOOK_HMAC_SECRET');
+
+        const toggleHmacSection = () => {
+            if (efiUseMtlsCheckbox && efiHmacSection) {
+                if (efiUseMtlsCheckbox.checked) {
+                    efiHmacSection.classList.add('hidden');
+                } else {
+                    efiHmacSection.classList.remove('hidden');
+                }
+            }
+        };
+
+        if (efiUseMtlsCheckbox) {
+            efiUseMtlsCheckbox.addEventListener('change', toggleHmacSection);
+        }
+
+        if (generateHmacButton && hmacInput) {
+            generateHmacButton.addEventListener('click', () => {
+                const randomString = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                    .map(b => b.toString(16).padStart(2, '0'))
+                    .join('');
+                hmacInput.value = randomString;
+            });
+        }
     }
     
     loadSettings().then(() => {
         initializeEventListeners();
+        // Garante que o estado inicial da secção HMAC é o correto
+        const efiUseMtlsCheckbox = document.getElementById('EFI_USE_MTLS');
+        const efiHmacSection = document.getElementById('efi-hmac-section');
+        if (efiUseMtlsCheckbox && efiHmacSection) {
+            if (efiUseMtlsCheckbox.checked) {
+                efiHmacSection.classList.add('hidden');
+            } else {
+                efiHmacSection.classList.remove('hidden');
+            }
+        }
     });
 });
