@@ -465,6 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     showToast(error.message || i18n.unknownError, 'error')
                 } finally {
                     saveButton.disabled = false;
+                    // CORREÇÃO: Usar a chave correta do i18n que foi adicionada no HTML.
                     saveButton.textContent = i18n.saveChanges;
                 }
             });
