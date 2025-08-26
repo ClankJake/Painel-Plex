@@ -66,13 +66,13 @@ class EfiManager:
 
         pix_key = self.config.get("EFI_PIX_KEY")
         app_base_url = self.config.get("APP_BASE_URL")
+        use_mtls = self.config.get("EFI_USE_MTLS", True)
+        hmac_secret = self.config.get("EFI_WEBHOOK_HMAC_SECRET")
 
         if not pix_key or not app_base_url:
             logger.warning("Não é possível configurar o webhook da Efí: Chave PIX ou URL Base da Aplicação não definidos.")
             return
         
-        # --- MELHORIA: Validação da APP_BASE_URL ---
-        # Esta é a causa mais comum de falhas em webhooks.
         if "localhost" in app_base_url or "127.0.0.1" in app_base_url:
             logger.critical(
                 "### ALERTA DE CONFIGURAÇÃO CRÍTICA ###\n"
@@ -84,15 +84,27 @@ class EfiManager:
             return
 
         try:
-            # Garante que a URL do webhook seja absoluta e adiciona o parâmetro
             base_webhook_url = url_for('payments_api.efi_webhook', _external=True)
+            # CORREÇÃO: Inicia sempre o URL com o parâmetro 'ignorar'
             webhook_url = f"{base_webhook_url}?ignorar="
             
+            headers = {}
+            if use_mtls:
+                headers['x-skip-mtls-checking'] = 'false'
+            else:
+                headers['x-skip-mtls-checking'] = 'true'
+                if hmac_secret:
+                    # Adiciona o HMAC como um segundo parâmetro
+                    webhook_url = f"{webhook_url}&hmac={hmac_secret}"
+                else:
+                    logger.error("HMAC secret não está configurado, mas o mTLS está desativado. Esta é uma configuração insegura.")
+                    return
+
             params = {'chave': pix_key}
             body = {'webhookUrl': webhook_url}
             
             logger.info(f"A tentar configurar o webhook para a chave PIX '{pix_key}' com o URL: {webhook_url}")
-            self.efi.pix_config_webhook(params=params, body=body)
+            self.efi.pix_config_webhook(params=params, body=body, headers=headers)
             logger.info(f"Webhook da Efí para a chave '{pix_key}' configurado com sucesso.")
         except Exception as e:
             logger.error(f"Falha ao configurar o webhook da Efí para a chave '{pix_key}': {e}", exc_info=True)
