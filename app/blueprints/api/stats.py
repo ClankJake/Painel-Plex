@@ -59,9 +59,6 @@ def get_user_statistics(username):
 @login_required
 def get_user_watch_history_route():
     """Endpoint para obter o histórico de visualização paginado do utilizador logado."""
-    if current_user.is_admin():
-        return jsonify({"success": False, "message": _("Rota não disponível para administradores.")}), 403
-
     try:
         page = request.args.get('page', 1, type=int)
         length = request.args.get('length', 15, type=int)
