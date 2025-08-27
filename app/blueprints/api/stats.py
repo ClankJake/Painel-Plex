@@ -55,6 +55,29 @@ def get_user_statistics(username):
         logger.warning(f"Acesso negado para '{current_user.username}' ao tentar ver as estatísticas privadas de '{username}'.")
         return jsonify({"success": False, "message": _("Este usuário prefere manter suas estatísticas privadas.")}), 403
 
+@stats_api_bp.route('/user/history')
+@login_required
+def get_user_watch_history_route():
+    """Endpoint para obter o histórico de visualização paginado do utilizador logado."""
+    if current_user.is_admin():
+        return jsonify({"success": False, "message": _("Rota não disponível para administradores.")}), 403
+
+    try:
+        page = request.args.get('page', 1, type=int)
+        length = request.args.get('length', 15, type=int)
+        search = request.args.get('search', '', type=str)
+        
+        history_data = tautulli_manager.get_user_watch_history(
+            username=current_user.username,
+            page=page,
+            length=length,
+            search=search
+        )
+        return jsonify(history_data)
+    except Exception as e:
+        logger.error(f"Erro ao obter o histórico de visualização para {current_user.username}: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "Falha ao obter histórico de visualização."}), 500
+
 @stats_api_bp.route('/recently-added')
 @login_required
 def get_recently_added_route():
