@@ -53,6 +53,9 @@ class TautulliManager:
     def get_user_watch_details(self, username, days=7, current_user=None):
         return self.stats.get_user_watch_details(username, days, current_user)
 
+    def get_user_watch_history(self, username, page=1, length=25, search=""):
+        return self.stats.get_user_watch_history(username, page, length, search)
+
     def get_recently_added(self, days=7):
         return self.stats.get_recently_added(days)
 
@@ -138,5 +141,3 @@ class TautulliManager:
                 "custom_conditions": [{"parameter": "user_email", "operator": "is", "value": ["~"]}]
             }
         return None
-
-
