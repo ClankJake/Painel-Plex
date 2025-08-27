@@ -165,40 +165,55 @@ class DataManager:
 
     # --- MÉTODOS FINANCEIROS ---
     def get_financial_summary(self, year, month, renewal_days=7):
-        # --- OTIMIZAÇÃO INÍCIO ---
-        # 1. Busca todos os pagamentos confirmados do mês de uma só vez.
-        confirmed_payments = PixPayment.query.filter(
+        """
+        Obtém um resumo financeiro para um determinado mês e ano, com consultas otimizadas.
+        """
+        # --- OTIMIZAÇÃO: Consultas agregadas diretamente na base de dados ---
+
+        # 1. Busca o total de receita e o número de vendas com uma única consulta.
+        summary_query = db.session.query(
+            func.sum(PixPayment.value),
+            func.count(PixPayment.txid)
+        ).filter(
             extract('year', PixPayment.created_at) == year,
             extract('month', PixPayment.created_at) == month,
             PixPayment.status == 'CONCLUIDA'
-        ).order_by(PixPayment.created_at.desc()).all()
+        ).first()
+        total_revenue = summary_query[0] or 0.0
+        sales_count = summary_query[1] or 0
 
-        # 2. Calcula os agregados em Python a partir da lista de pagamentos.
-        total_revenue = 0
-        sales_count = len(confirmed_payments)
-        daily_revenue_dict = {}
-        weekly_revenue_dict = {}
-        
-        if confirmed_payments:
-            # Obtém o número da primeira semana do mês para calcular as semanas relativas
-            first_payment_date = datetime.fromisoformat(confirmed_payments[-1].created_at)
-            first_week_num = first_payment_date.isocalendar()[1]
+        # 2. Agrega a receita por dia.
+        daily_revenue_query = db.session.query(
+            extract('day', PixPayment.created_at).label('day'),
+            func.sum(PixPayment.value).label('total')
+        ).filter(
+            extract('year', PixPayment.created_at) == year,
+            extract('month', PixPayment.created_at) == month,
+            PixPayment.status == 'CONCLUIDA'
+        ).group_by('day').all()
+        daily_revenue_dict = {day: total for day, total in daily_revenue_query}
 
-            for p in confirmed_payments:
-                total_revenue += p.value
-                payment_date = datetime.fromisoformat(p.created_at)
-                day = payment_date.day
-                week_num = payment_date.isocalendar()[1]
-                
-                # Agrega por dia
-                daily_revenue_dict[day] = daily_revenue_dict.get(day, 0) + p.value
-                
-                # Agrega por semana relativa
-                relative_week = week_num - first_week_num + 1
-                week_key = f"Semana {relative_week}"
-                weekly_revenue_dict[week_key] = weekly_revenue_dict.get(week_key, 0) + p.value
+        # 3. Agrega a receita por semana (específico para SQLite com strftime).
+        # Para outros bancos de dados, pode ser necessário usar funções diferentes.
+        weekly_revenue_query = db.session.query(
+            func.strftime('%W', PixPayment.created_at).label('week_num'),
+            func.sum(PixPayment.value).label('total')
+        ).filter(
+            extract('year', PixPayment.created_at) == year,
+            extract('month', PixPayment.created_at) == month,
+            PixPayment.status == 'CONCLUIDA'
+        ).group_by('week_num').order_by('week_num').all()
+        # Converte o número da semana do ano para uma chave relativa ao mês (Semana 1, Semana 2, etc.)
+        weekly_revenue_dict = {f"Semana {i+1}": total for i, (week_num, total) in enumerate(weekly_revenue_query)}
 
-        # --- OTIMIZAÇÃO FIM ---
+        # 4. Busca as transações mais recentes (já era uma consulta otimizada).
+        recent_transactions = PixPayment.query.filter(
+            extract('year', PixPayment.created_at) == year,
+            extract('month', PixPayment.created_at) == month,
+            PixPayment.status == 'CONCLUIDA'
+        ).order_by(PixPayment.created_at.desc()).limit(10).all()
+
+        # --- FIM DA OTIMIZAÇÃO ---
 
         # A consulta de renovações futuras permanece, pois é em outra tabela.
         today = datetime.now(get_localzone()).date()
@@ -213,6 +228,7 @@ class DataManager:
             UserProfile.expiration_date < end_date_str,
             not_(UserProfile.username.in_(blocked_usernames))
         ).order_by(UserProfile.expiration_date.asc()).all()
+        
         upcoming_expirations = []
         for user_profile in expiring_users_query:
             try:
@@ -221,6 +237,7 @@ class DataManager:
                 if days_left < 0: days_left_text = _("Expirado")
                 elif days_left == 0: days_left_text = _("Hoje")
                 else: days_left_text = ngettext('%(num)d dia restante', '%(num)d dias restantes', days_left) % {'num': days_left}
+                
                 upcoming_expirations.append({
                     'username': user_profile.username,
                     'expiration_date': exp_date.strftime('%d/%m/%Y'),
@@ -233,7 +250,7 @@ class DataManager:
         return { 
             "total_revenue": total_revenue, 
             "sales_count": sales_count, 
-            "recent_transactions": [self._row_to_dict(p) for p in confirmed_payments[:10]], 
+            "recent_transactions": [self._row_to_dict(p) for p in recent_transactions], 
             "daily_revenue": daily_revenue_dict, 
             "weekly_revenue": weekly_revenue_dict, 
             "upcoming_expirations": upcoming_expirations 
