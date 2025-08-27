@@ -9,7 +9,7 @@ from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 
-from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, overseerr_manager, scheduler, notifier_manager
+from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, notifier_manager
 from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
 from ..auth import admin_required, login_required
@@ -102,6 +102,7 @@ def get_system_health():
         "tautulli": tautulli_manager.check_status(),
         "efi": efi_manager.check_status(),
         "mercado_pago": mercado_pago_manager.check_status(),
+        "bpix": bpix_manager.check_status(),
         "scheduler": {
             "status": "RUNNING" if scheduler.running else "STOPPED",
             "message": _("Agendador em execução.") if scheduler.running else _("Agendador parado.")
@@ -200,8 +201,33 @@ def api_settings():
         success, message = plex_manager.reload_connections()
         return jsonify({"success": success, "message": message})
     
+    # GET Request Logic
     config_to_send = load_or_create_config()
-    for key in ['SECRET_KEY', 'PLEX_TOKEN', 'INTERNAL_TRIGGER_KEY']: config_to_send.pop(key, None)
+
+    # Define secret keys that should not be sent to the client
+    sensitive_keys = [
+        'SECRET_KEY', 'PLEX_TOKEN', 'INTERNAL_TRIGGER_KEY',
+        'TELEGRAM_BOT_TOKEN', 'TAUTULLI_API_KEY', 'EFI_CLIENT_SECRET',
+        'MERCADOPAGO_ACCESS_TOKEN', 'BPIX_AUTH_TOKEN', 'OVERSEERR_API_KEY'
+    ]
+
+    # Process sensitive keys to return only their length if they are set
+    for key in sensitive_keys:
+        if key in config_to_send and config_to_send[key]:
+            # Replace the secret with an object containing its length
+            config_to_send[key] = {
+                "is_set": True,
+                "length": len(config_to_send[key])
+            }
+        else:
+            # Ensure the key exists but is marked as not set
+            if key in config_to_send:
+                config_to_send[key] = { "is_set": False, "length": 0 }
+
+    # Pop keys that should absolutely never be sent, even as length
+    config_to_send.pop('SECRET_KEY', None)
+    config_to_send.pop('INTERNAL_TRIGGER_KEY', None)
+    
     return jsonify(config_to_send)
 
 @system_api_bp.route('/setup/servers')
@@ -343,4 +369,3 @@ def bulk_notify():
     thread.start()
 
     return jsonify({"success": True, "message": _("O envio de notificações em massa foi iniciado.")})
-
