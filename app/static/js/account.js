@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const urls = {};
     const i18n = {};
-    let currentUser = null; // Será preenchido com os dados da conta
+    let currentUser = null; 
 
     if (scriptTag) {
         for (const key in scriptTag.dataset) {
@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     let pollingIntervalId = null;
     let validatedCouponCode = null;
+    let historySearchTimeout = null;
 
     // --- LÓGICA DE NAVEGAÇÃO POR SEPARADORES ---
     function initializeTabs() {
@@ -53,7 +54,99 @@ document.addEventListener('DOMContentLoaded', async () => {
                 content.classList.remove('active');
             });
             document.getElementById(`tab-${tabId}`).classList.add('active');
+            
+            if (tabId === 'history') {
+                fetchAndRenderHistory();
+            }
         });
+    }
+
+    // --- LÓGICA DO HISTÓRICO DE VISUALIZAÇÃO ---
+    async function fetchAndRenderHistory(page = 1, search = '') {
+        const container = document.getElementById('history-container');
+        const paginationContainer = document.getElementById('history-pagination');
+        if (!container || !paginationContainer) return;
+
+        container.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.loadingHistory}</p>`;
+        paginationContainer.innerHTML = '';
+
+        try {
+            const data = await fetchAPI(`${urls.getWatchHistoryUrl}?page=${page}&search=${encodeURIComponent(search)}`);
+            if (data.success) {
+                renderWatchHistoryTable(data.history, data.pagination);
+            } else {
+                throw new Error(data.message);
+            }
+        } catch (error) {
+            container.innerHTML = `<p class="text-center text-red-500 dark:text-red-400">${error.message}</p>`;
+        }
+    }
+
+    function renderWatchHistoryTable(history, pagination) {
+        const container = document.getElementById('history-container');
+        const paginationContainer = document.getElementById('history-pagination');
+        
+        if (history.length === 0) {
+            container.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.noHistoryFound}</p>`;
+            paginationContainer.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = `
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700/50">
+                    <tr>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.title}</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.date}</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.player}</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.progress}</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    ${history.map(item => `
+                        <tr>
+                            <td class="px-4 py-2 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <img src="${item.poster_url}" class="w-10 h-14 object-cover rounded-md mr-4" alt="Poster" onerror="this.style.display='none'">
+                                    <div>
+                                        <div class="text-sm font-semibold text-gray-900 dark:text-white">${item.title}</div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400">${item.subtitle}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${item.date}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${item.player}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${item.percent_complete}%</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+
+        // Render Pagination
+        const { current_page: currentPage, total_pages: totalPages } = pagination;
+        const pageOfText = i18n.pageOf.replace('{currentPage}', currentPage).replace('{totalPages}', totalPages);
+        paginationContainer.innerHTML = `
+            <button id="historyPrevPage" class="px-3 py-1 bg-gray-200 dark:bg-gray-600 rounded-md disabled:opacity-50" ${currentPage === 1 ? 'disabled' : ''}>${i18n.previous}</button>
+            <span>${pageOfText}</span>
+            <button id="historyNextPage" class="px-3 py-1 bg-gray-200 dark:bg-gray-600 rounded-md disabled:opacity-50" ${currentPage === totalPages ? 'disabled' : ''}>${i18n.next}</button>
+        `;
+        
+        const searchInput = document.getElementById('historySearchInput');
+        document.getElementById('historyPrevPage').onclick = () => fetchAndRenderHistory(currentPage - 1, searchInput.value);
+        document.getElementById('historyNextPage').onclick = () => fetchAndRenderHistory(currentPage + 1, searchInput.value);
+    }
+
+    function initializeHistorySearch() {
+        const searchInput = document.getElementById('historySearchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(historySearchTimeout);
+                historySearchTimeout = setTimeout(() => {
+                    fetchAndRenderHistory(1, e.target.value);
+                }, 500); // Debounce de 500ms
+            });
+        }
     }
 
     // --- LÓGICA DE PAGAMENTO ---
@@ -323,15 +416,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const seconds = Math.floor((now - date) / 1000);
 
         let interval = seconds / 31536000;
-        if (interval > 1) return `${Math.floor(interval)} ${i18n.yearsAgo}`;
+        if (interval > 1) return i18n.yearsAgo.replace('{count}', Math.floor(interval));
         interval = seconds / 2592000;
-        if (interval > 1) return `${Math.floor(interval)} ${i18n.monthsAgo}`;
+        if (interval > 1) return i18n.monthsAgo.replace('{count}', Math.floor(interval));
         interval = seconds / 86400;
-        if (interval > 1) return `${Math.floor(interval)} ${i18n.daysAgo}`;
+        if (interval > 1) return i18n.daysAgo.replace('{count}', Math.floor(interval));
         interval = seconds / 3600;
-        if (interval > 1) return `${Math.floor(interval)} ${i18n.hoursAgo}`;
+        if (interval > 1) return i18n.hoursAgo.replace('{count}', Math.floor(interval));
         interval = seconds / 60;
-        if (interval > 1) return `${Math.floor(interval)} ${i18n.minutesAgo}`;
+        if (interval > 1) return i18n.minutesAgo.replace('{count}', Math.floor(interval));
         return i18n.justNow;
     }
 
@@ -571,6 +664,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (container) container.classList.remove('hidden');
 
             initializeTabs();
+            initializeHistorySearch();
 
         } catch (error) {
             if (loadingIndicator) loadingIndicator.style.display = 'none';
