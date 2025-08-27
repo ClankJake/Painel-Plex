@@ -244,6 +244,57 @@ class StatsHandler:
             logger.error(_("Erro inesperado ao processar detalhes do utilizador: %(error)s", error=e), exc_info=True)
             return {"success": False, "message": _("Erro inesperado: %(error)s", error=e)}
     
+    def get_user_watch_history(self, username, page=1, length=25, search=""):
+        """Obtém o histórico de visualização paginado para um utilizador."""
+        try:
+            start_index = (page - 1) * length
+            history_response = self.api.get_history(
+                user=username, 
+                length=length, 
+                start=start_index,
+                search=search
+            )
+            
+            history_data = history_response.get('data', [])
+            total_count = history_response.get('recordsFiltered', 0)
+            
+            processed_history = []
+            for item in history_data:
+                poster_url = f"{self.api.base_url}/pms_image_proxy?img={item['thumb']}&width=100&height=150&apikey={self.api.api_key}" if item.get('thumb') else ''
+                
+                title = item.get('title', 'N/A')
+                subtitle = str(item.get('year', ''))
+                if item.get('media_type') == 'episode':
+                    title = item.get('grandparent_title', title)
+                    subtitle = f"S{item.get('parent_media_index', 0):02d} · E{item.get('media_index', 0):02d} - {item.get('title', '')}"
+
+                processed_history.append({
+                    "date": datetime.fromtimestamp(item.get('date')).strftime('%d/%m/%Y %H:%M'),
+                    "poster_url": poster_url,
+                    "title": title,
+                    "subtitle": subtitle,
+                    "duration": item.get('duration', 0),
+                    "percent_complete": item.get('percent_complete', 0),
+                    "player": item.get('player', 'N/A'),
+                    "platform": item.get('platform', 'N/A')
+                })
+
+            return {
+                "success": True,
+                "history": processed_history,
+                "pagination": {
+                    "total_records": total_count,
+                    "current_page": page,
+                    "total_pages": (total_count + length - 1) // length,
+                    "page_size": length
+                }
+            }
+        except RequestException as e:
+            return {"success": False, "message": _("Erro de conexão com o Tautulli: %(error)s", error=e)}
+        except Exception as e:
+            logger.error(_("Erro inesperado ao processar histórico do utilizador: %(error)s", error=e), exc_info=True)
+            return {"success": False, "message": _("Erro inesperado: %(error)s", error=e)}
+            
     def get_recently_added(self, days=7):
         """Obtém os itens adicionados recentemente do Tautulli e filtra por data."""
         try:
