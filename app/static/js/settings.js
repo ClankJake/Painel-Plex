@@ -353,15 +353,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 for (const [id, field] of Object.entries(fieldMap)) {
                     const el = document.getElementById(id);
                     if (el) {
+                        const key = field.key || id;
                         if (field.type === 'price') {
                             el.value = (config.SCREEN_PRICES && config.SCREEN_PRICES[field.key]) || '';
-                        } else {
-                            const key = field.key || id;
-                            if (field.type === 'checkbox') {
-                                el.checked = config[key] !== undefined ? config[key] : field.default;
+                        } else if (field.type === 'checkbox') {
+                            el.checked = config[key] !== undefined ? config[key] : field.default;
+                        } else if (field.type === 'password') {
+                            // **MELHORIA**: Mostra '*' com base no comprimento do token.
+                            const secretInfo = config[key];
+                            if (secretInfo && secretInfo.is_set && secretInfo.length > 0) {
+                                el.value = '*'.repeat(secretInfo.length);
+                                // Armazena o comprimento original para comparação ao salvar
+                                el.dataset.originalLength = secretInfo.length;
                             } else {
-                                el.value = config[key] !== undefined ? config[key] : field.default;
+                                el.value = '';
+                                el.dataset.originalLength = '0';
                             }
+                        } else {
+                            el.value = config[key] !== undefined ? config[key] : field.default;
                         }
                     }
                 }
@@ -441,8 +450,17 @@ document.addEventListener('DOMContentLoaded', () => {
                                 newConfig[key] = el.checked;
                             } else if (field.type === 'number') {
                                 newConfig[key] = parseInt(el.value) || 0;
-                            } else if (field.type === 'password' && el.value.trim() !== '' && el.value !== '********') {
-                                newConfig[key] = el.value;
+                            } else if (field.type === 'password') {
+                                // **MELHORIA**: Só envia o valor se for diferente do placeholder de asteriscos.
+                                const originalLength = parseInt(el.dataset.originalLength || '0', 10);
+                                const isPlaceholder = el.value === '*'.repeat(originalLength);
+
+                                if (!isPlaceholder) {
+                                    // Se o campo foi alterado (incluindo ser limpo), envia o novo valor.
+                                    newConfig[key] = el.value;
+                                }
+                                // Se o valor ainda for o placeholder de asteriscos, não envia nada,
+                                // e o backend manterá o valor antigo.
                             } else if (field.type !== 'password') {
                                 newConfig[key] = el.value;
                             }
@@ -465,7 +483,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     showToast(error.message || i18n.unknownError, 'error')
                 } finally {
                     saveButton.disabled = false;
-                    // CORREÇÃO: Usar a chave correta do i18n que foi adicionada no HTML.
                     saveButton.textContent = i18n.saveChanges;
                 }
             });
