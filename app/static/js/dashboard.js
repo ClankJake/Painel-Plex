@@ -168,6 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tautulli: { label: i18n.tautulli },
             efi: { label: i18n.paymentEfi },
             mercado_pago: { label: i18n.paymentMp },
+            bpix: { label: i18n.paymentBpix },
             scheduler: { label: i18n.scheduler }
         };
 
