@@ -31,7 +31,7 @@ class PlexConnectionManager:
             if not all(k in config and config[k] for k in ["PLEX_URL", "PLEX_TOKEN"]):
                 raise ValueError(_("Configurações do Plex (URL e Token) não encontradas ou estão vazias."))
             
-            self.plex = PlexServer(config["PLEX_URL"], config["PLEX_TOKEN"], timeout=20)
+            self.plex = PlexServer(config["PLEX_URL"], config["PLEX_TOKEN"], timeout=10)
             self.account = self.plex.myPlexAccount()
             
             if not from_job:
