@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const pixDisplay = document.getElementById('pix-display');
     const scriptTag = document.getElementById('account-script');
     const privacyToggle = document.getElementById('hide-leaderboard-toggle');
+    const accountContent = document.getElementById('main-account-content');
 
     const urls = {};
     const i18n = {};
@@ -38,6 +39,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const contentContainer = document.getElementById('account-tab-content');
 
         if (!tabContainer || !contentContainer) return;
+
+        // Oculta abas que não se aplicam ao utilizador atual
+        if (!currentUser || currentUser.is_admin) {
+            tabContainer.querySelector('[data-tab="overview"]').style.display = 'none';
+            tabContainer.querySelector('[data-tab="payment"]').style.display = 'none';
+        }
 
         tabContainer.addEventListener('click', (e) => {
             const button = e.target.closest('button');
@@ -563,7 +570,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function main() {
         try {
             const data = await fetchAPI(urls.getAccountDetailsUrl);
-            currentUser = { username: data.username }; // Armazena o nome do utilizador
+            currentUser = { username: data.username, is_admin: data.role === 'admin' };
             
             const paymentOptions = await fetchAPI(urls.getPaymentOptionsUrl);
             if(paymentOptions.success && paymentSection) {
@@ -572,6 +579,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             const expiration = data.expiration_info;
             
+            // Lógica do Banner de Status
             if (data.is_blocked) {
                 switch (data.block_reason) {
                     case 'trial_expired':
@@ -580,9 +588,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     case 'expired':
                         statusBanner.innerHTML = `<div class="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiredSignature}</h3><p>${i18n.expiredSignatureMessage}</p></div>`;
                         break;
-                    default:
+                    default: // Bloqueio manual
                         statusBanner.innerHTML = `<div class="bg-red-800/80 border-l-4 border-red-400 text-white p-6 rounded-lg shadow-lg"><h3 class="font-bold text-xl mb-2">${i18n.accessBlocked}</h3><p>${i18n.accessBlockedMessage}</p><p class="mt-2">${i18n.accessBlockedContact}</p></div>`;
-                        if (container) container.style.display = 'none';
+                        if (accountContent) accountContent.style.display = 'none'; // Esconde o conteúdo principal
                         break;
                 }
             } else if (expiration.status === 'expired') {
