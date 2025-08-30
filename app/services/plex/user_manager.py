@@ -23,6 +23,7 @@ class PlexUserManager:
         self._user_cache = None
         self._user_cache_time = None
         self._cache_ttl = timedelta(seconds=300)
+        self.stream_manager = None # Será injetado pelo PlexManager
 
     def invalidate_user_cache(self):
         """Invalida a cache de utilizadores."""
@@ -153,7 +154,6 @@ class PlexUserManager:
                         error_count += 1
                     logger.error(f"Erro ao atualizar bibliotecas para {user_data['username']} (em massa): {e}")
 
-        # Reduz o número de workers para evitar sobrecarregar a API do Plex
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(_update_single_user, user, app) for user in all_users]
             for future in as_completed(futures):
@@ -161,6 +161,54 @@ class PlexUserManager:
 
         message = _("Bibliotecas atualizadas para %(success)d utilizadores. Falha em %(errors)d.", success=success_count, errors=error_count)
         return {"success": error_count == 0, "message": message}
+
+    def block_user(self, email, reason='manual'):
+        """
+        Bloqueia um utilizador, terminando as suas sessões e atualizando o estado na base de dados.
+        """
+        if not self.conn.account:
+            return {"success": False, "message": _("A conta Plex não está configurada.")}
+
+        try:
+            user_to_block = self.conn.account.user(email)
+            username = user_to_block.username
+            
+            self.data_manager.add_blocked_user(username, reason=reason)
+
+            if self.stream_manager:
+                reason_message = "O seu acesso ao servidor foi bloqueado pelo administrador."
+                if reason == 'expired':
+                    reason_message = "A sua subscrição expirou. Por favor, renove para continuar."
+                elif reason == 'trial_expired':
+                    reason_message = "O seu período de teste terminou. Renove para continuar."
+                
+                self.stream_manager.block_user_sessions(username, reason=reason_message)
+            
+            return {"success": True, "message": _("Utilizador %(username)s bloqueado com sucesso.", username=username)}
+        except NotFound:
+            return {"success": False, "message": _("Utilizador com o email %(email)s não encontrado.", email=email)}
+        except Exception as e:
+            logger.error(_("Erro ao bloquear o utilizador %(email)s: %(error)s", email=email, error=e), exc_info=True)
+            return {"success": False, "message": str(e)}
+
+    def unblock_user(self, email):
+        """
+        Desbloqueia um utilizador, removendo-o da base de dados de bloqueio.
+        """
+        if not self.conn.account:
+            return {"success": False, "message": _("A conta Plex não está configurada.")}
+        try:
+            user_to_unblock = self.conn.account.user(email)
+            username = user_to_unblock.username
+            
+            self.data_manager.remove_blocked_user(username)
+            
+            return {"success": True, "message": _("Utilizador %(username)s desbloqueado com sucesso.", username=username)}
+        except NotFound:
+            return {"success": False, "message": _("Utilizador com o email %(email)s não encontrado.", email=email)}
+        except Exception as e:
+            logger.error(_("Erro ao desbloquear o utilizador %(email)s: %(error)s", email=email, error=e), exc_info=True)
+            return {"success": False, "message": str(e)}
 
     def remove_user(self, email):
         """
@@ -170,13 +218,16 @@ class PlexUserManager:
             return {"success": False, "message": _("O Plex não está configurado.")}
         try:
             from app.extensions import scheduler
-            from app.config import load_or_create_config
             
             user_to_remove = self.conn.account.user(email)
             username = user_to_remove.username
             profile = self.data_manager.get_user_profile(username)
-            config = load_or_create_config()
 
+            # 1. Termina as sessões ativas
+            if self.stream_manager:
+                self.stream_manager.block_user_sessions(username, "A sua conta está a ser removida do servidor.")
+            
+            # 2. Remove tarefas agendadas associadas
             if profile.get('trial_job_id'):
                 try: scheduler.remove_job(profile['trial_job_id'])
                 except Exception as e: logger.warning(_("Não foi possível remover a tarefa de teste agendada '%(job_id)s': %(error)s", job_id=profile['trial_job_id'], error=e))
@@ -184,20 +235,19 @@ class PlexUserManager:
                  try: scheduler.remove_job(profile['expiration_job_id'])
                  except Exception as e: logger.warning(_("Não foi possível remover a tarefa de expiração agendada '%(job_id)s': %(error)s", job_id=profile['expiration_job_id'], error=e))
 
-            self.tautulli_manager.update_screen_limit(email, username, 0)
-            self.tautulli_manager.manage_block_unblock(email, username, 'remove', notifier_id=config.get('BLOCKING_NOTIFIER_ID'))
-            if profile.get('trial_end_date'):
-                self.tautulli_manager.manage_block_unblock(email, username, 'remove', notifier_id=config.get('TRIAL_BLOCK_NOTIFIER_ID'))
-
-            self.conn.account.removeFriend(user_to_remove)
+            # 3. Remove o acesso ao Overseerr
             if profile.get('overseerr_access'):
                 self.overseerr_manager.remove_user(email)
+
+            # 4. Remove a partilha do Plex
+            self.conn.account.removeFriend(user_to_remove)
             
+            # 5. Limpa os dados locais
             self.invalidate_user_cache()
             self.data_manager.remove_blocked_user(username)
             self.data_manager.delete_user_profile(username)
 
-            return {"success": True, "message": _("Utilizador %(username)s removido.", username=username)}
+            return {"success": True, "message": _("Utilizador %(username)s removido com sucesso de todos os serviços.", username=username)}
         except NotFound:
             return {"success": False, "message": _("Utilizador com o email %(email)s não encontrado.", email=email)}
         except Exception as e:
@@ -225,3 +275,4 @@ class PlexUserManager:
             return {"success": True, "message": message}
         else:
             return {"success": False, "message": result.get("message", _("Erro desconhecido."))}
+
