@@ -265,6 +265,22 @@ class DataManager:
         profiles = UserProfile.query.all()
         return [self._row_to_dict(p) for p in profiles]
 
+    def get_user_profiles_by_username(self, usernames):
+        """
+        Retorna um dicionário de perfis de utilizador para uma lista de nomes de utilizador.
+        """
+        if not usernames:
+            return {}
+        try:
+            profiles = UserProfile.query.filter(UserProfile.username.in_(usernames)).all()
+            return {
+                p.username: self._row_to_dict(p)
+                for p in profiles
+            }
+        except Exception as e:
+            logger.error(f"Erro ao obter perfis para os utilizadores {usernames}: {e}", exc_info=True)
+            return {}
+
     def set_user_profile(self, username, profile_data):
         profile = UserProfile.query.get(username)
         if not profile:
@@ -414,12 +430,20 @@ class DataManager:
         return invitation.claimed_at if invitation else None
 
     # --- Métodos de Utilizadores Bloqueados ---
-    def get_blocked_users(self, username=None):
-        if username:
-            user = BlockedUser.query.get(username)
-            return self._row_to_dict(user) if user else None
+    def get_blocked_user(self, username):
+        """Busca um único utilizador bloqueado pelo nome."""
+        user = BlockedUser.query.get(username)
+        return self._row_to_dict(user) if user else None
+
+    def get_blocked_users_list(self):
+        """Retorna uma LISTA de todos os utilizadores bloqueados. Ideal para a API /api/users/status."""
         users = BlockedUser.query.all()
         return [self._row_to_dict(u) for u in users]
+
+    def get_blocked_users_dict(self):
+        """Retorna um DICIONÁRIO de utilizadores bloqueados para performance otimizada (O(1)) no StreamManager."""
+        users = BlockedUser.query.all()
+        return {u.username: self._row_to_dict(u) for u in users}
 
     def add_blocked_user(self, username, reason='manual'):
         user = BlockedUser.query.get(username)
@@ -440,3 +464,4 @@ class DataManager:
         if not row:
             return None
         return {c.name: getattr(row, c.name) for c in row.__table__.columns}
+
