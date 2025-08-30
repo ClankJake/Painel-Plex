@@ -57,8 +57,13 @@ def get_public_user_profile_by_token(token):
 def get_status():
     if not plex_manager.plex: return jsonify({"error": _("Plex não configurado.")}), 500
     all_users = plex_manager.get_all_plex_users(force_refresh=request.args.get('force', 'false').lower() == 'true')
+    
+    # --- OTIMIZAÇÃO: Busca apenas os perfis necessários em uma única consulta ---
+    plex_usernames = [u['username'] for u in all_users]
+    all_user_profiles = data_manager.get_user_profiles_by_username(plex_usernames)
+    # --- FIM DA OTIMIZAÇÃO ---
+    
     blocked_users_data = data_manager.get_blocked_users_list()
-    all_user_profiles = {profile['username']: profile for profile in data_manager.get_all_user_profiles()}
     blocked_users = [user['username'] for user in blocked_users_data]
     users_with_access = []
     for u in all_users:
@@ -477,4 +482,3 @@ def get_account_devices():
     except Exception as e:
         logger.error(f"Erro ao obter dispositivos para {current_user.username}: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Falha ao obter lista de dispositivos."}), 500
-
