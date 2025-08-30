@@ -73,145 +73,145 @@
 </div>
 
 <div id="accountDetailsContainer" class="hidden">
-    <!-- Cartão de Detalhes do Utilizador (Sempre Visível) -->
-    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-8">
-        <div class="flex items-center space-x-4">
-            <img id="user-thumb" src="" alt="Avatar" class="w-24 h-24 rounded-full">
-            <div>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white" id="user-username"></p>
-                <p class="text-sm text-gray-500 dark:text-gray-400" id="user-email"></p>
-                <div id="user-dates">
-                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">{{ _('Membro desde:') }} <span id="user-join-date" class="font-semibold"></span></p>
-                    <p id="user-expiration-container" class="hidden text-sm text-gray-500 dark:text-gray-400 mt-2"></p>
-                </div>
-                <p class="text-sm text-gray-500 dark:text-gray-400">{{ _('Limite de Telas:') }} <span id="user-screen-limit" class="font-semibold"></span></p>
-            </div>
-        </div>
-        <div class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
-            <h4 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">{{ _('Privacidade') }}</h4>
-            <div class="flex items-center justify-between">
-                <div>
-                    <label for="hide-leaderboard-toggle" class="font-medium text-gray-700 dark:text-gray-300">{{ _('Ocultar meu nome e foto nos rankings') }}</label>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">{{ _('Seu nome será ofuscado (ex: U******r) e sua foto será genérica.') }}</p>
-                </div>
-                <label for="hide-leaderboard-toggle" class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" value="" id="hide-leaderboard-toggle" class="sr-only peer">
-                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                </label>
-            </div>
-        </div>
-    </div>
-
+    <!-- O banner de status é movido para aqui, fora do conteúdo principal, para que possa ser exibido mesmo que o resto seja ocultado. -->
     <div id="status-banner" class="hidden mb-8"></div>
 
-    <!-- Navegação por Separadores -->
-    <div class="border-b border-gray-200 dark:border-gray-700 mb-8">
-        <nav id="account-tabs" class="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
-            {% if not current_user.is_admin() %}
-            <button type="button" data-tab="overview" class="tab-button active py-3 px-1 border-b-2 font-medium text-sm">{{ _('Visão Geral') }}</button>
-            <button type="button" data-tab="payment" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Pagamentos e Assinatura') }}</button>
-            {% endif %}
-            <button type="button" data-tab="security" class="tab-button {% if current_user.is_admin() %}active{% endif %} py-3 px-1 border-b-2 font-medium text-sm">{{ _('Dispositivos Conectados') }}</button>
-            <button type="button" data-tab="history" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Histórico') }}</button>
-        </nav>
-    </div>
-
-    <!-- Conteúdo dos Separadores -->
-    <div id="account-tab-content">
-        {% if not current_user.is_admin() %}
-        <!-- Separador Visão Geral -->
-        <div id="tab-overview" class="tab-content active space-y-8">
-            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Acesso às Bibliotecas') }}</h3>
-                <div id="library-list" class="flex flex-wrap gap-2"></div>
+    <!-- Wrapper para o conteúdo que pode ser ocultado (ex: em caso de bloqueio manual) -->
+    <div id="main-account-content">
+        <!-- Cartão de Detalhes do Utilizador (Sempre Visível) -->
+        <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-8">
+            <div class="flex items-center space-x-4">
+                <img id="user-thumb" src="" alt="Avatar" class="w-24 h-24 rounded-full">
+                <div>
+                    <p class="text-2xl font-bold text-gray-900 dark:text-white" id="user-username"></p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400" id="user-email"></p>
+                    <div id="user-dates">
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">{{ _('Membro desde:') }} <span id="user-join-date" class="font-semibold"></span></p>
+                        <p id="user-expiration-container" class="hidden text-sm text-gray-500 dark:text-gray-400 mt-2"></p>
+                    </div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">{{ _('Limite de Telas:') }} <span id="user-screen-limit" class="font-semibold"></span></p>
+                </div>
             </div>
-            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Detalhes de Contato para Notificações') }}</h3>
-                <div id="contact-details-form" class="space-y-4">
+            <div class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
+                <h4 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">{{ _('Privacidade') }}</h4>
+                <div class="flex items-center justify-between">
                     <div>
-                        <label for="profileName" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Nome Completo') }}</label>
-                        <input type="text" id="profileName" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        <label for="hide-leaderboard-toggle" class="font-medium text-gray-700 dark:text-gray-300">{{ _('Ocultar meu nome e foto nos rankings') }}</label>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">{{ _('Seu nome será ofuscado (ex: U******r) e sua foto será genérica.') }}</p>
                     </div>
-                    <div id="telegram-field-container" class="hidden">
-                        <label for="profileTelegram" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID de Utilizador do Telegram') }}</label>
-                        <input type="text" id="profileTelegram" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Apenas números') }}">
-                    </div>
-                    <div id="discord-field-container" class="hidden">
-                        <label for="profileDiscord" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID de Utilizador do Discord') }}</label>
-                        <input type="text" id="profileDiscord" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: 123456789012345678') }}">
-                    </div>
-                    <div id="phone-field-container" class="hidden">
-                        <label for="profilePhone" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Número de Telefone') }}</label>
-                        <div class="flex">
-                            <select id="countryCode" class="p-2.5 text-sm rounded-l-lg border border-r-0 bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                                <!-- Opções serão preenchidas por JS -->
-                            </select>
-                            <input type="tel" id="profilePhone" class="w-full p-2.5 text-sm rounded-r-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="21999998888">
+                    <label for="hide-leaderboard-toggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" value="" id="hide-leaderboard-toggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navegação por Separadores -->
+        <div class="border-b border-gray-200 dark:border-gray-700 mb-8">
+            <nav id="account-tabs" class="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
+                <button type="button" data-tab="overview" class="tab-button {% if not current_user.is_admin() %}active{% endif %} py-3 px-1 border-b-2 font-medium text-sm">{{ _('Visão Geral') }}</button>
+                <button type="button" data-tab="payment" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Pagamentos e Assinatura') }}</button>
+                <button type="button" data-tab="security" class="tab-button {% if current_user.is_admin() %}active{% endif %} py-3 px-1 border-b-2 font-medium text-sm">{{ _('Dispositivos Conectados') }}</button>
+                <button type="button" data-tab="history" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Histórico') }}</button>
+            </nav>
+        </div>
+
+        <!-- Conteúdo dos Separadores -->
+        <div id="account-tab-content">
+            <!-- Separador Visão Geral -->
+            <div id="tab-overview" class="tab-content {% if not current_user.is_admin() %}active{% endif %} space-y-8">
+                <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Acesso às Bibliotecas') }}</h3>
+                    <div id="library-list" class="flex flex-wrap gap-2"></div>
+                </div>
+                <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Detalhes de Contato para Notificações') }}</h3>
+                    <div id="contact-details-form" class="space-y-4">
+                        <div>
+                            <label for="profileName" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Nome Completo') }}</label>
+                            <input type="text" id="profileName" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                        <div id="telegram-field-container" class="hidden">
+                            <label for="profileTelegram" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID de Utilizador do Telegram') }}</label>
+                            <input type="text" id="profileTelegram" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Apenas números') }}">
+                        </div>
+                        <div id="discord-field-container" class="hidden">
+                            <label for="profileDiscord" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID de Utilizador do Discord') }}</label>
+                            <input type="text" id="profileDiscord" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: 123456789012345678') }}">
+                        </div>
+                        <div id="phone-field-container" class="hidden">
+                            <label for="profilePhone" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Número de Telefone') }}</label>
+                            <div class="flex">
+                                <select id="countryCode" class="p-2.5 text-sm rounded-l-lg border border-r-0 bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                    <!-- Opções serão preenchidas por JS -->
+                                </select>
+                                <input type="tel" id="profilePhone" class="w-full p-2.5 text-sm rounded-r-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="21999998888">
+                            </div>
+                        </div>
+                        <div class="flex justify-end">
+                            <button id="saveContactDetails" class="btn bg-green-600 hover:bg-green-500 text-white">{{ _('Salvar Detalhes') }}</button>
                         </div>
                     </div>
-                    <div class="flex justify-end">
-                        <button id="saveContactDetails" class="btn bg-green-600 hover:bg-green-500 text-white">{{ _('Salvar Detalhes') }}</button>
-                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Separador Pagamentos -->
-        <div id="tab-payment" class="tab-content space-y-8">
-            <div id="payment-card" class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Renovação via PIX') }}</h3>
-                <div id="payment-section" class="space-y-4">
-                    <p class="text-gray-500 dark:text-gray-400">{{ _('A carregar planos de renovação...') }}</p>
-                </div>
-                <div id="pix-display" class="hidden text-center space-y-4 mt-6">
-                    <p>{{ _('Pagamento PIX gerado! Utilize o QR Code ou o código abaixo para pagar.') }}</p>
-                    <img id="pix-qr-code" src="" class="mx-auto border-4 border-white dark:border-gray-600 rounded-lg w-56 h-56">
-                    <div class="flex items-center space-x-2">
-                        <input type="text" id="pix-copy-paste" readonly class="w-full p-2 text-sm text-gray-900 bg-gray-200 rounded-lg border-none dark:bg-gray-700 dark:text-white">
-                        <button id="copy-pix-code" class="p-2 rounded-md bg-blue-500 text-white hover:bg-blue-600">{{ _('Copiar') }}</button>
+            <!-- Separador Pagamentos -->
+            <div id="tab-payment" class="tab-content space-y-8">
+                <div id="payment-card" class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Renovação via PIX') }}</h3>
+                    <div id="payment-section" class="space-y-4">
+                        <p class="text-gray-500 dark:text-gray-400">{{ _('A carregar planos de renovação...') }}</p>
                     </div>
-                    <p id="polling-status" class="text-sm text-gray-500 dark:text-gray-400">{{ _('A aguardar confirmação de pagamento...') }}</p>
-                    <div class="mt-4 p-3 bg-yellow-100 dark:bg-yellow-500/20 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-200 text-left rounded-md">
-                        <p class="font-bold">{{ _('Importante!') }}</p>
-                        <p class="text-sm">{{ _('Para garantir que sua assinatura seja ativada instantaneamente, por favor, mantenha esta página aberta até que o pagamento seja confirmado. Fechar a página pode causar atrasos na ativação.') }}</p>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Histórico de Pagamentos') }}</h3>
-                <div id="payment-history-container" class="space-y-3 max-h-96 overflow-y-auto pr-2">
-                    <p class="text-gray-500 dark:text-gray-400">{{ _('A carregar histórico...') }}</p>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Separador Segurança -->
-        <div id="tab-security" class="tab-content {% if current_user.is_admin() %}active{% endif %} space-y-8">
-            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Dispositivos Conectados') }}</h3>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('Lista de dispositivos que acederam à sua conta recentemente.') }}</p>
-                <div id="device-list-container" class="space-y-3 max-h-96 overflow-y-auto pr-2"></div>
-            </div>
-        </div>
-
-        <!-- Separador Histórico -->
-        <div id="tab-history" class="tab-content space-y-8">
-            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-                    <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Histórico de Visualização') }}</h3>
-                    <div class="relative w-full sm:w-64">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" /></svg>
+                    <div id="pix-display" class="hidden text-center space-y-4 mt-6">
+                        <p>{{ _('Pagamento PIX gerado! Utilize o QR Code ou o código abaixo para pagar.') }}</p>
+                        <img id="pix-qr-code" src="" class="mx-auto border-4 border-white dark:border-gray-600 rounded-lg w-56 h-56">
+                        <div class="flex items-center space-x-2">
+                            <input type="text" id="pix-copy-paste" readonly class="w-full p-2 text-sm text-gray-900 bg-gray-200 rounded-lg border-none dark:bg-gray-700 dark:text-white">
+                            <button id="copy-pix-code" class="p-2 rounded-md bg-blue-500 text-white hover:bg-blue-600">{{ _('Copiar') }}</button>
                         </div>
-                        <input type="search" id="historySearchInput" placeholder="{{ _('Pesquisar no histórico...') }}" class="w-full p-2 pl-10 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        <p id="polling-status" class="text-sm text-gray-500 dark:text-gray-400">{{ _('A aguardar confirmação de pagamento...') }}</p>
+                        <div class="mt-4 p-3 bg-yellow-100 dark:bg-yellow-500/20 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-200 text-left rounded-md">
+                            <p class="font-bold">{{ _('Importante!') }}</p>
+                            <p class="text-sm">{{ _('Para garantir que sua assinatura seja ativada instantaneamente, por favor, mantenha esta página aberta até que o pagamento seja confirmado. Fechar a página pode causar atrasos na ativação.') }}</p>
+                        </div>
                     </div>
                 </div>
-                <div id="history-container" class="overflow-x-auto">
-                    <!-- Tabela será injetada aqui -->
+                <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Histórico de Pagamentos') }}</h3>
+                    <div id="payment-history-container" class="space-y-3 max-h-96 overflow-y-auto pr-2">
+                        <p class="text-gray-500 dark:text-gray-400">{{ _('A carregar histórico...') }}</p>
+                    </div>
                 </div>
-                <div id="history-pagination" class="flex justify-center items-center mt-4 text-sm gap-4">
-                    <!-- Controlos de paginação serão injetados aqui -->
+            </div>
+
+            <!-- Separador Segurança -->
+            <div id="tab-security" class="tab-content {% if current_user.is_admin() %}active{% endif %} space-y-8">
+                <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Dispositivos Conectados') }}</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ _('Lista de dispositivos que acederam à sua conta recentemente.') }}</p>
+                    <div id="device-list-container" class="space-y-3 max-h-96 overflow-y-auto pr-2"></div>
+                </div>
+            </div>
+
+            <!-- Separador Histórico -->
+            <div id="tab-history" class="tab-content space-y-8">
+                <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+                        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Histórico de Visualização') }}</h3>
+                        <div class="relative w-full sm:w-64">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" /></svg>
+                            </div>
+                            <input type="search" id="historySearchInput" placeholder="{{ _('Pesquisar no histórico...') }}" class="w-full p-2 pl-10 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        </div>
+                    </div>
+                    <div id="history-container" class="overflow-x-auto">
+                        <!-- Tabela será injetada aqui -->
+                    </div>
+                    <div id="history-pagination" class="flex justify-center items-center mt-4 text-sm gap-4">
+                        <!-- Controlos de paginação serão injetados aqui -->
+                    </div>
                 </div>
             </div>
         </div>
@@ -292,3 +292,4 @@
         >
 </script>
 {% endblock %}
+
