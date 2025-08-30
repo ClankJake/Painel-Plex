@@ -13,10 +13,10 @@ class PlexSubscriptionManager:
     """
     Gere a lógica de subscrição dos utilizadores, como renovações.
     """
-    def __init__(self, data_manager, user_manager, tautulli_manager):
+    def __init__(self, data_manager, user_manager):
         self.data_manager = data_manager
         self.user_manager = user_manager
-        self.tautulli_manager = tautulli_manager
+        self.plex_manager = None # Será injetado pelo PlexManager para evitar dependência circular
 
     def renew_subscription(self, username, months_to_add, base_mode='today', base_date_str=None, expiration_time_str=None):
         from app.extensions import scheduler
@@ -78,7 +78,7 @@ class PlexSubscriptionManager:
             days_to_add = 30 * months_to_add
             new_expiration_date = start_date + timedelta(days=days_to_add)
 
-        # --- LÓGICA DO HORÁRIO DE VENCIMENTO UNIVERSAL ---
+        # Lógica do horário de vencimento universal
         final_expiration_time_str = expiration_time_str
         if config.get("UNIVERSAL_EXPIRATION_ENABLED"):
             universal_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59")
@@ -91,8 +91,7 @@ class PlexSubscriptionManager:
                 new_expiration_date = new_expiration_date.replace(hour=time_parts[0], minute=time_parts[1], second=0, microsecond=0)
             except (ValueError, IndexError):
                 logger.warning(_("Formato de hora inválido '%(time)s'. A ignorar.", time=final_expiration_time_str))
-        # --- FIM DA LÓGICA ---
-
+        
         # Agenda a nova tarefa de expiração
         naive_run_date = new_expiration_date.replace(tzinfo=None)
         job_id = f"sub_end_{username}_{secrets.token_hex(4)}"
@@ -108,12 +107,13 @@ class PlexSubscriptionManager:
         if blocked_user_info:
             logger.info(_("O utilizador '%(username)s' está bloqueado. A tentar desbloquear após a renovação.", username=username))
             plex_user = next((u for u in self.user_manager.get_all_plex_users() if u['username'] == username), None)
-            if plex_user:
-                block_reason = blocked_user_info.get('block_reason')
-                notifier_id_to_unblock = config.get('TRIAL_BLOCK_NOTIFIER_ID') if block_reason == 'trial_expired' else config.get('BLOCKING_NOTIFIER_ID')
-                self.tautulli_manager.manage_block_unblock(plex_user['email'], username, 'remove', notifier_id=notifier_id_to_unblock)
+            if plex_user and self.plex_manager:
+                self.plex_manager.unblock_user(plex_user['email'])
                 logger.info(_("Comando de desbloqueio enviado para o utilizador '%(username)s'.", username=username))
+            elif not self.plex_manager:
+                 logger.error("PlexManager não foi injetado no SubscriptionManager. Não é possível desbloquear o utilizador.")
             else:
                 logger.warning(_("Não foi possível encontrar os detalhes do utilizador Plex para '%(username)s' para o desbloquear.", username=username))
 
         return new_expiration_date
+
