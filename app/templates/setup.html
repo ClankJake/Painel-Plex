@@ -44,29 +44,6 @@
 
     <div id="toast" class="fixed bottom-6 right-6 px-6 py-4 rounded-lg text-white opacity-0 translate-y-5 transition-all duration-300 z-[9999]"></div>
     
-    <div id="helpModal" class="hidden fixed inset-0 bg-black/75 flex justify-center items-center z-50 backdrop-blur-sm p-4">
-        <div class="bg-white dark:bg-gray-800 p-6 rounded-xl max-w-2xl w-full shadow-2xl">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-gray-900 dark:text-white">{{ _('Como Configurar os Notificadores') }}</h3>
-                <button id="closeHelpModal" class="text-gray-400 hover:text-white text-3xl">&times;</button>
-            </div>
-            <div class="modal-body space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-                <p>{{ _('Para que as funções de <strong>bloqueio</strong>, <strong>limite de telas</strong> e <strong>limite de teste</strong> funcionem, você precisa configurar dois \'Agentes de Notificação\' (Notification Agents) do tipo \'Script\' no seu Tautulli.')|safe }}</p>
-                <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-                    <h4 class="font-semibold text-lg">{{ _('Notificadores') }}</h4>
-                    <ol class="list-decimal list-inside text-sm mt-2 space-y-1">
-                        <li>{{ _('Vá para') }} <strong>Settings > Notification Agents > Add a new Notification Agent</strong>.</li>
-                        <li>{{ _('Selecione') }} <strong>Script</strong>.</li>
-                        <li><strong>{{ _('Script Folder') }}</strong>: {{ _('Selecione a pasta onde o') }} <code>kill_stream.py</code> {{ _('do Tautulli está (geralmente na pasta') }} <code>/scripts</code>).</li>
-                        <li><strong>{{ _('Script File') }}</strong>: {{ _('Selecione') }} <code>kill_stream.py</code>.</li>
-                        <li>{{ _('Salve e anote o') }} <strong>Notifier ID</strong> {{ _('que aparece na URL para inserir aqui.') }}</li>
-                        <li>{{ _('Depois de todos configurados, clique nos botões') }} <strong>{{ _('Auto-configurar') }}</strong> {{ _('para aplicar as condições.') }}</li>
-                    </ol>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div class="container mx-auto max-w-3xl px-4 py-8 md:py-16">
         <div class="text-center mb-10">
             <h1 class="text-4xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-5xl">{{ _('Configuração Inicial') }}</h1>
@@ -123,10 +100,8 @@
                     </div>
                     
                     <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border dark:border-gray-600 space-y-4">
-                        <h4 class="font-semibold text-lg flex items-center gap-2">{{ _('Tautulli') }} <button id="showTautulliHelp" type="button" class="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400">
-                             <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
-                        </button></h4>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">{{_('Necessário para o ranking de estatísticas e controle de sessões.')}}</p>
+                        <h4 class="font-semibold text-lg">{{ _('Tautulli (Opcional)') }}</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">{{_('Necessário para o ranking de estatísticas e gamificação.')}}</p>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                             <div>
                                 <label for="tautulli_url" class="block mb-2 text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('URL do Tautulli') }}</label>
@@ -137,25 +112,6 @@
                                 <input type="password" id="tautulli_api_key" class="mt-1 block w-full p-2.5 text-sm rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-yellow-500 focus:border-yellow-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white">
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 items-end">
-                            <div>
-                                <label for="blocking_notifier_id" class="block mb-2 text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('ID Notificador (Bloqueio)') }}</label>
-                                <input type="number" id="blocking_notifier_id" class="mt-1 block w-full p-2.5 text-sm rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-yellow-500 focus:border-yellow-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="Ex: 7">
-                            </div>
-                             <button type="button" data-notifier-type="blocking" data-target-id="blocking_notifier_id" class="btn-auto-config inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-indigo-600 hover:bg-indigo-500 text-white text-sm hover:-translate-y-0.5">{{ _('Auto-Configurar') }}</button>
-                            
-                            <div>
-                                <label for="screen_limit_notifier_id" class="block mb-2 text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('ID Notificador (Limite de Tela)') }}</label>
-                                <input type="number" id="screen_limit_notifier_id" class="mt-1 block w-full p-2.5 text-sm rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-yellow-500 focus:border-yellow-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="Ex: 6">
-                            </div>
-                            <button type="button" data-notifier-type="screen_limit" data-target-id="screen_limit_notifier_id" class="btn-auto-config inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-indigo-600 hover:bg-indigo-500 text-white text-sm hover:-translate-y-0.5">{{ _('Auto-Configurar') }}</button>
-                            
-                            <div>
-                                <label for="trial_block_notifier_id" class="block mb-2 text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('ID Notificador (Teste)') }}</label>
-                                <input type="number" id="trial_block_notifier_id" class="mt-1 block w-full p-2.5 text-sm rounded-lg border transition-colors duration-200 bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-yellow-500 focus:border-yellow-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white" placeholder="Ex: 8">
-                            </div>
-                            <button type="button" data-notifier-type="trial" data-target-id="trial_block_notifier_id" class="btn-auto-config inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-indigo-600 hover:bg-indigo-500 text-white text-sm hover:-translate-y-0.5">{{ _('Auto-Configurar') }}</button>
-                        </div>
                         <div class="flex items-center gap-2 mt-4">
                             <button id="testTautulli" type="button" class="inline-flex items-center justify-center px-3 py-2 rounded-lg font-semibold transition-transform duration-200 ease-in-out border border-transparent bg-blue-600 hover:bg-blue-500 text-white text-sm hover:-translate-y-0.5">{{ _('Testar Conexão') }}</button>
                             <span id="tautulli-test-result" class="transition-opacity duration-300"></span>
@@ -163,7 +119,7 @@
                     </div>
 
                     <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border dark:border-gray-600 space-y-4">
-                        <h4 class="font-semibold text-lg">{{ _('Overseerr / Jellyseerr') }}</h4>
+                        <h4 class="font-semibold text-lg">{{ _('Overseerr / Jellyseerr (Opcional)') }}</h4>
                         <div class="flex items-center">
                             <input id="overseerr_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
                             <label for="overseerr_enabled" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar integração') }}</label>
@@ -202,7 +158,6 @@
     data-urls-get-plex-servers="{{ url_for('system_api.get_plex_servers') }}"
     data-urls-test-tautulli="{{ url_for('system_api.test_tautulli_connection') }}"
     data-urls-test-overseerr="{{ url_for('system_api.test_overseerr_connection') }}"
-    data-urls-auto-configure-tautulli="{{ url_for('system_api.auto_configure_tautulli_notifier') }}"
     data-i18n-error="{{ _('Erro') }}"
     data-i18n-verifying="{{ _('Verificando... Por favor, conclua a autenticação na nova janela.') }}"
     data-i18n-authenticated="{{ _('Autenticado com sucesso!') }}"
@@ -214,16 +169,12 @@
     data-i18n-saving="{{ _('Salvando...') }}"
     data-i18n-finish-setup="{{ _('Finalizar e Salvar') }}"
     data-i18n-testing="{{ _('Testando...') }}"
-    data-i18n-auto-configuring="{{ _('Configurando...') }}"
-    data-i18n-auto-configure="{{ _('Auto-Configurar') }}"
     data-i18n-test-connection="{{ _('Testar Conexão') }}"
     data-i18n-invalid-response-from-server="{{ _('Resposta inválida do servidor. Verifique os logs da aplicação para mais detalhes.') }}"
     data-i18n-step0-title="{{ _('Passo 1 de 4: Boas-vindas') }}"
     data-i18n-step1-title="{{ _('Passo 2 de 4: Autenticação') }}"
     data-i18n-step2-title="{{ _('Passo 3 de 4: Seleção do Servidor') }}"
     data-i18n-step3-title="{{ _('Passo 4 de 4: Configurações Finais') }}"
-    data-i18n-provide-notifier-id="{{ _('Por favor, insira um ID de notificador válido.') }}"
-    data-i18n-provide-tautulli-credentials="{{ _('Por favor, preencha a URL e a Chave de API do Tautulli primeiro.') }}"
     data-i18n-local="{{ _('Local') }}"
     data-i18n-remote="{{ _('Remoto') }}"
 ></script>
