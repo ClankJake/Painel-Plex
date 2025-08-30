@@ -66,13 +66,32 @@ class StreamManager:
         else:
             placeholders['date'] = 'N/A'
             placeholders['days'] = 'N/A'
-
+        
+        # --- CORREÇÃO: Lógica robusta para gerar URL de pagamento ---
         payment_token = profile.get('payment_token')
+        payment_link = '' # Valor padrão
+
         if payment_token:
-            long_url = url_for('main.payment_page', token=payment_token, _external=True)
-            placeholders['payment_link'] = long_url
-        else:
-            placeholders['payment_link'] = ''
+            try:
+                # Tenta gerar a URL da forma ideal, com o contexto da aplicação
+                long_url = url_for('main.payment_page', token=payment_token, _external=True)
+                payment_link = long_url
+            except RuntimeError:
+                # Fallback: Se estiver fora de um contexto de requisição, constrói a URL manualmente
+                base_url = config.get("APP_BASE_URL", "").rstrip('/')
+                if base_url:
+                    payment_link = f"{base_url}/pay/{payment_token}"
+                    logger.warning(
+                        "Não foi possível construir a URL via url_for() fora do contexto da requisição. "
+                        f"A recorrer à construção manual da URL: {payment_link}"
+                    )
+                else:
+                    logger.warning(
+                        "Não foi possível construir a URL de pagamento. 'APP_BASE_URL' não está configurada."
+                    )
+        placeholders['payment_link'] = payment_link
+        # --- FIM DA CORREÇÃO ---
+
 
         # Placeholders de plano e preço
         user_screen_limit = profile.get('screen_limit', 0)
@@ -188,4 +207,3 @@ class StreamManager:
 
         except Exception as e:
             logger.error(f"Erro inesperado ao verificar e impor streams: {e}", exc_info=True)
-
