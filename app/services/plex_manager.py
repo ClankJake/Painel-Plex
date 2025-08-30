@@ -23,7 +23,13 @@ class PlexManager:
         self.conn = PlexConnectionManager()
         self.users = PlexUserManager(self.conn, data_manager, tautulli_manager, overseerr_manager)
         self.invites = PlexInviteManager(self.conn, self.users, data_manager, tautulli_manager, overseerr_manager, notifier_manager)
-        self.subscriptions = PlexSubscriptionManager(data_manager, self.users, tautulli_manager)
+        self.subscriptions = PlexSubscriptionManager(data_manager, self.users)
+        
+        # Injeta a instância do PlexManager (self) no SubscriptionManager para resolver a dependência circular
+        self.subscriptions.plex_manager = self
+        
+        # O StreamManager será injetado após a inicialização para evitar dependência circular
+        self.stream_manager = None
         
         # Mantém referências a outros gestores para injeção de dependências
         self.data_manager = data_manager
@@ -41,9 +47,9 @@ class PlexManager:
         if is_configured():
             self.reload_connections()
 
-    def reload_connections(self):
+    def reload_connections(self, from_job=False):
         """Recarrega as conexões e atualiza as referências dos objetos principais."""
-        success, message = self.conn.reload()
+        success, message = self.conn.reload(from_job=from_job)
         if success:
             self.plex = self.conn.plex
             self.account = self.conn.account
@@ -66,8 +72,21 @@ class PlexManager:
         return {"status": "OFFLINE", "message": _("Não configurado ou falha na conexão inicial.")}
 
     # --- Métodos de Fachada ---
-    # Estes métodos delegam as chamadas para o sub-gestor apropriado.
     
+    def block_user(self, email, reason='manual'):
+        """
+        Bloqueia um utilizador, terminando as suas sessões e atualizando o estado.
+        """
+        if self.stream_manager and not self.users.stream_manager:
+            self.users.stream_manager = self.stream_manager
+        return self.users.block_user(email, reason)
+
+    def unblock_user(self, email):
+        """
+        Desbloqueia um utilizador.
+        """
+        return self.users.unblock_user(email)
+
     def get_active_sessions(self):
         return self.conn.get_active_sessions()
 
@@ -83,11 +102,12 @@ class PlexManager:
     def update_user_libraries(self, email, library_titles):
         return self.users.update_user_libraries(email, library_titles)
 
-    # MÉTODO ADICIONADO
     def update_all_users_libraries(self, library_titles):
         return self.users.update_all_users_libraries(library_titles)
 
     def remove_user(self, email):
+        if self.stream_manager and not self.users.stream_manager:
+            self.users.stream_manager = self.stream_manager
         return self.users.remove_user(email)
 
     def toggle_overseerr_access(self, email, username, access: bool):
@@ -114,7 +134,6 @@ class PlexManager:
     # --- Métodos que permanecem no gestor principal para coordenação ---
 
     def get_users_to_notify(self):
-        # Esta lógica poderia ser movida para um task_manager.py no futuro
         from app.config import load_or_create_config
         from datetime import datetime
         from tzlocal import get_localzone
@@ -139,7 +158,6 @@ class PlexManager:
         return users_to_notify
         
     def get_users_to_remove(self):
-        # Esta lógica também poderia ser movida para um task_manager.py
         from app.config import load_or_create_config
         from datetime import datetime
         from tzlocal import get_localzone
@@ -161,3 +179,4 @@ class PlexManager:
             except (ValueError, TypeError, AttributeError):
                 continue
         return users_to_remove
+
