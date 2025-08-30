@@ -58,7 +58,7 @@ def get_dashboard_summary():
             
         all_users = plex_manager.get_all_plex_users()
         total_users = len(all_users) if all_users else 0
-        blocked_users_list = data_manager.get_blocked_users()
+        blocked_users_list = data_manager.get_blocked_users_list()
         blocked_users = len(blocked_users_list)
         active_users = total_users - blocked_users
 
@@ -138,7 +138,10 @@ def api_settings():
             'ACHIEVEMENT_TIME_TRAVELER_BRONZE', 'ACHIEVEMENT_TIME_TRAVELER_SILVER', 'ACHIEVEMENT_TIME_TRAVELER_GOLD',
             'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD',
             'TELEGRAM_BULK_MESSAGE_TEMPLATE', 'DISCORD_BULK_MESSAGE_TEMPLATE', 'WEBHOOK_BULK_MESSAGE_TEMPLATE',
-            'UNIVERSAL_EXPIRATION_ENABLED', 'UNIVERSAL_EXPIRATION_TIME'
+            'UNIVERSAL_EXPIRATION_ENABLED', 'UNIVERSAL_EXPIRATION_TIME',
+            # Novas chaves de configuração
+            'STREAM_CHECK_INTERVAL_SECONDS', 'TERMINATION_MSG_BLOCKED_MANUAL', 'TERMINATION_MSG_BLOCKED_EXPIRED',
+            'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED', 'TERMINATION_MSG_SCREEN_LIMIT'
         ]
         numeric_fields = [
             'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION', 
@@ -147,7 +150,8 @@ def api_settings():
             'ACHIEVEMENT_MOVIE_MARATHON_BRONZE', 'ACHIEVEMENT_MOVIE_MARATHON_SILVER', 'ACHIEVEMENT_MOVIE_MARATHON_GOLD',
             'ACHIEVEMENT_SERIES_BINGER_BRONZE', 'ACHIEVEMENT_SERIES_BINGER_SILVER', 'ACHIEVEMENT_SERIES_BINGER_GOLD',
             'ACHIEVEMENT_TIME_TRAVELER_BRONZE', 'ACHIEVEMENT_TIME_TRAVELER_SILVER', 'ACHIEVEMENT_TIME_TRAVELER_GOLD',
-            'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD'
+            'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD',
+            'STREAM_CHECK_INTERVAL_SECONDS'
         ]
         
         if 'SCREEN_PRICES' in new_data:
@@ -180,23 +184,30 @@ def api_settings():
             app.logger.setLevel(log_level_map.get(new_log_level, logging.INFO))
             logger.info(f"Nível de log atualizado para {new_log_level}")
         
-        def reschedule_job(job_id, time_key, old_config, new_config):
-            new_time = new_config.get(time_key)
-            if new_time and new_time != old_config.get(time_key):
+        def reschedule_job(job_id, config_key, old_config, new_config, trigger_type='cron'):
+            new_value = new_config.get(config_key)
+            if new_value and new_value != old_config.get(config_key):
                 try:
-                    hour, minute = map(int, new_time.split(':')[:2])
-                    try:
-                        tz_str = get_localzone_name()
-                    except Exception:
-                        tz_str = 'UTC'
-                    scheduler.reschedule_job(job_id, trigger=CronTrigger(hour=hour, minute=minute, timezone=tz_str))
-                    logger.info(f"Tarefa '{job_id}' reagendada para as {hour:02d}:{minute:02d}.")
+                    if trigger_type == 'cron':
+                        hour, minute = map(int, new_value.split(':')[:2])
+                        try:
+                            tz_str = get_localzone_name()
+                        except Exception:
+                            tz_str = 'UTC'
+                        scheduler.reschedule_job(job_id, trigger=CronTrigger(hour=hour, minute=minute, timezone=tz_str))
+                        logger.info(f"Tarefa '{job_id}' reagendada para as {hour:02d}:{minute:02d}.")
+                    elif trigger_type == 'interval':
+                        seconds = int(new_value)
+                        scheduler.reschedule_job(job_id, trigger='interval', seconds=seconds)
+                        logger.info(f"Tarefa '{job_id}' reagendada para um intervalo de {seconds} segundos.")
                 except Exception as e:
                     logger.error(f"Falha ao reagendar a tarefa '{job_id}': {e}", exc_info=True)
 
         reschedule_job('expiration_notification_job', 'EXPIRATION_NOTIFICATION_TIME', old_config, config_to_update)
         reschedule_job('removal_job', 'BLOCK_REMOVAL_TIME', old_config, config_to_update)
         reschedule_job('cleanup_job', 'CLEANUP_TIME', old_config, config_to_update)
+        reschedule_job('stream_check_job', 'STREAM_CHECK_INTERVAL_SECONDS', old_config, config_to_update, trigger_type='interval')
+
 
         success, message = plex_manager.reload_connections()
         return jsonify({"success": success, "message": message})
@@ -307,19 +318,48 @@ def save_setup():
 def test_tautulli_connection():
     if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
         return jsonify({'success': False, 'message': _('Acesso não autorizado.')}), 403
+    
+    config = load_or_create_config()
     data = request.get_json()
     url = data.get('url')
     api_key = data.get('api_key')
-    if not url or not api_key: return jsonify({'success': False, 'message': _('URL e Chave da API são obrigatórios.')}), 400
+
+    if not url:
+        return jsonify({'success': False, 'message': _('URL é obrigatória.')}), 400
+
+    # Lógica para usar a chave guardada se a chave recebida for um placeholder
+    is_placeholder = all(char == '*' for char in api_key) if api_key else False
+    if is_placeholder:
+        # Tenta usar a chave da configuração
+        api_key = config.get('TAUTULLI_API_KEY')
+        logger.info("Chave de API do Tautulli recebida como placeholder. A usar a chave guardada na configuração para o teste.")
+
+    if not api_key: 
+        return jsonify({'success': False, 'message': _('Chave da API é obrigatória.')}), 400
+    
     return jsonify(tautulli_manager.test_connection(url, api_key))
 
 @system_api_bp.route('/test/overseerr-connection', methods=['POST'])
 def test_overseerr_connection():
     if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
         return jsonify({'success': False, 'message': _('Acesso não autorizado.')}), 403
+    
+    config = load_or_create_config()
     data = request.get_json()
     url = data.get('url')
     api_key = data.get('api_key')
+
+    if not url:
+        return jsonify({'success': False, 'message': _('URL é obrigatória.')}), 400
+
+    is_placeholder = all(char == '*' for char in api_key) if api_key else False
+    if is_placeholder:
+        api_key = config.get('OVERSEERR_API_KEY')
+        logger.info("Chave de API do Overseerr recebida como placeholder. A usar a chave guardada na configuração para o teste.")
+
+    if not api_key:
+        return jsonify({'success': False, 'message': _('Chave da API é obrigatória.')}), 400
+
     return jsonify(overseerr_manager.test_connection(url, api_key))
 
 @system_api_bp.route('/tautulli/auto-configure', methods=['POST'])
@@ -369,3 +409,4 @@ def bulk_notify():
     thread.start()
 
     return jsonify({"success": True, "message": _("O envio de notificações em massa foi iniciado.")})
+
