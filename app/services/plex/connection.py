@@ -17,11 +17,15 @@ class PlexConnectionManager:
         self.plex = None
         self.account = None
 
-    def reload(self):
+    def reload(self, from_job=False):
         """
         Recarrega a configuração e tenta conectar-se ao servidor Plex.
         """
-        logger.info(_("A recarregar a conexão com o Plex..."))
+        if not from_job:
+            logger.info(_("A recarregar a conexão com o Plex..."))
+        else:
+            logger.debug("A estabelecer conexão com o Plex para tarefa agendada...")
+
         config = load_or_create_config()
         try:
             if not all(k in config and config[k] for k in ["PLEX_URL", "PLEX_TOKEN"]):
@@ -29,7 +33,12 @@ class PlexConnectionManager:
             
             self.plex = PlexServer(config["PLEX_URL"], config["PLEX_TOKEN"], timeout=20)
             self.account = self.plex.myPlexAccount()
-            logger.info(_("Conexão com o Plex recarregada com sucesso."))
+            
+            if not from_job:
+                logger.info(_("Conexão com o Plex recarregada com sucesso."))
+            else:
+                logger.debug("Conexão com o Plex estabelecida para tarefa agendada.")
+
             return True, _("Configurações aplicadas e conexões testadas com sucesso.")
         
         except (ConnectTimeout, ReadTimeout, ConnectionError) as e:
