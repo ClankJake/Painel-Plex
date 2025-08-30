@@ -19,7 +19,12 @@ def _obfuscate_username(username):
 def get_statistics_data():
     days = request.args.get('days', 7, type=int)
     plex_users = plex_manager.get_all_plex_users()
-    all_profiles = {p['username']: p for p in data_manager.get_all_user_profiles()}
+    
+    # --- OTIMIZAÇÃO: Busca apenas os perfis necessários em uma única consulta ---
+    plex_usernames = [u['username'] for u in plex_users]
+    all_profiles = data_manager.get_user_profiles_by_username(plex_usernames)
+    # --- FIM DA OTIMIZAÇÃO ---
+    
     plex_users_info = {u['username']: u['thumb'] for u in plex_users}
     tautulli_data = tautulli_manager.get_watch_stats(days=days, plex_users_info=plex_users_info)
     if tautulli_data.get("success"):
