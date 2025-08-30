@@ -44,11 +44,13 @@ class TautulliApiClient:
 
         api_url = f"{self.base_url}/api/v2"
         params['apikey'] = self.api_key
+        # CORREÇÃO: Adiciona um cabeçalho User-Agent para melhorar a compatibilidade com reverse proxies.
+        headers = {'User-Agent': 'PainelPlex/1.0'}
 
         if method.upper() == 'GET':
-            response = requests.get(api_url, params=params, timeout=timeout)
+            response = requests.get(api_url, params=params, headers=headers, timeout=timeout)
         elif method.upper() == 'POST':
-            response = requests.post(api_url, params=params, data=data, timeout=timeout)
+            response = requests.post(api_url, params=params, data=data, headers=headers, timeout=timeout)
         else:
             raise ValueError(f"Método HTTP não suportado: {method}")
 
@@ -91,7 +93,9 @@ class TautulliApiClient:
         try:
             api_url = f"{url.rstrip('/')}/api/v2"
             logger.info(_("A testar a conexão com o Tautulli em: %(url)s", url=api_url))
-            response = requests.get(api_url, params={"apikey": api_key, "cmd": "status"}, timeout=10)
+            # CORREÇÃO: Adiciona um cabeçalho User-Agent também no teste de conexão.
+            headers = {'User-Agent': 'PainelPlex/1.0'}
+            response = requests.get(api_url, params={"apikey": api_key, "cmd": "status"}, headers=headers, timeout=10)
             response.raise_for_status()
             data = response.json()
             if data.get("response", {}).get("result") == "success":
