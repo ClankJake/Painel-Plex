@@ -10,7 +10,7 @@ from tzlocal import get_localzone
 from apscheduler.jobstores.base import JobLookupError
 from pydantic import ValidationError
 
-from ...extensions import plex_manager, data_manager
+from ...extensions import plex_manager, data_manager, tautulli_manager
 from ...config import load_or_create_config
 from ..auth import admin_required, login_required
 from .decorators import user_lookup, validate_json
@@ -57,7 +57,6 @@ def get_public_user_profile_by_token(token):
 def get_status():
     if not plex_manager.plex: return jsonify({"error": _("Plex não configurado.")}), 500
     all_users = plex_manager.get_all_plex_users(force_refresh=request.args.get('force', 'false').lower() == 'true')
-    # CORREÇÃO: Chama a função que retorna uma lista, como esta API espera.
     blocked_users_data = data_manager.get_blocked_users_list()
     all_user_profiles = {profile['username']: profile for profile in data_manager.get_all_user_profiles()}
     blocked_users = [user['username'] for user in blocked_users_data]
@@ -97,7 +96,6 @@ def get_account_details():
     email = current_user.email
     profile = data_manager.get_user_profile(username)
     expiration_date_str = profile.get('expiration_date')
-    # CORREÇÃO: Chama a função otimizada para buscar um único utilizador.
     blocked_user_info = data_manager.get_blocked_user(username)
     is_blocked = blocked_user_info is not None
     block_reason = blocked_user_info.get('block_reason') if is_blocked else None
@@ -129,8 +127,8 @@ def get_account_details():
             except ValueError: pass
     libraries_data = plex_manager.get_user_libraries(email)
     
-    from ..extensions import tautulli_manager
-    watch_data = tautulli_manager.get_user_watch_details(username)
+    # CORREÇÃO: Passar o objeto 'current_user' para a função de estatísticas
+    watch_data = tautulli_manager.get_user_watch_details(username, current_user=current_user)
     screen_limit = profile.get('screen_limit', 0)
     
     notification_settings = {
@@ -473,7 +471,6 @@ def get_user_payments_history(username):
 @login_required
 def get_account_devices():
     """Endpoint para obter os dispositivos conectados do utilizador."""
-    from ..extensions import tautulli_manager
     try:
         devices_data = tautulli_manager.get_user_devices(current_user.username)
         return jsonify(devices_data)
