@@ -11,11 +11,10 @@ logger = logging.getLogger(__name__)
 class TautulliManager:
     """
     Atua como uma fachada para os serviços do Tautulli, agora focado
-    principalmente em estatísticas, já que o controlo de streams foi internalizado.
+    exclusivamente em estatísticas.
     """
     def __init__(self, data_manager):
         self.api_client = TautulliApiClient()
-        # O NotifierHandler já não é necessário aqui, pois a sua lógica foi internalizada.
         self.stats = StatsHandler(self.api_client, data_manager)
         self.data_manager = data_manager
 
