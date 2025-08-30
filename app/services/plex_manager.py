@@ -167,7 +167,7 @@ class PlexManager:
         days_to_remove = config.get("DAYS_TO_REMOVE_BLOCKED_USER", 0)
         if not days_to_remove > 0: return []
 
-        blocked_users_data = {u['username']: u for u in self.data_manager.get_blocked_users()}
+        blocked_users_data = self.data_manager.get_blocked_users_dict()
         if not blocked_users_data: return []
             
         today = datetime.now(get_localzone()).date()
@@ -179,4 +179,3 @@ class PlexManager:
             except (ValueError, TypeError, AttributeError):
                 continue
         return users_to_remove
-
