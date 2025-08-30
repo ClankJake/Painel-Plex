@@ -77,9 +77,13 @@ def _process_successful_payment(txid):
             screens_to_set = payment.get('screens')
             new_expiration_date = plex_manager.renew_subscription(username, 1, 'expiry_date')
             
-            if screens_to_set is not None and screens_to_set > 0:
+            # CORREÇÃO: A lógica de limite de telas foi movida do Tautulli para o DataManager.
+            # Apenas guardamos o limite no perfil do utilizador. O StreamManager irá tratar da aplicação.
+            if screens_to_set is not None and screens_to_set >= 0:
                 logger.info(f"Atualizando limite de telas para '{username}' para {screens_to_set}.")
-                tautulli_manager.update_screen_limit(user['email'], username, screens_to_set)
+                profile = data_manager.get_user_profile(username)
+                profile['screen_limit'] = screens_to_set
+                data_manager.set_user_profile(username, profile)
             
             profile = data_manager.get_user_profile(username)
             plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
