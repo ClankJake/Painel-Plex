@@ -20,10 +20,11 @@ logger = logging.getLogger(__name__)
 def index():
     """
     Página inicial (Dashboard).
-    Redireciona para o dashboard de admin ou para a página de estatísticas do utilizador.
+    Redireciona para o dashboard de admin ou para a página da conta do utilizador.
     """
     if not current_user.is_admin():
-        return redirect(url_for('main.statistics_page'))
+        # Alterado para redirecionar para 'account_page' que é mais útil para o utilizador
+        return redirect(url_for('main.account_page'))
         
     return render_template('index.html')
 
@@ -134,3 +135,4 @@ def payment_page(token):
                                    reason_message=message)
     except (ValueError, TypeError):
         return render_template('payment_public.html', token=token, username=username)
+
