@@ -15,7 +15,8 @@ from . import extensions
 from .config import load_or_create_config, is_configured
 from .scheduler import setup_scheduler
 from . import models
-from . import sockets # Importa o novo módulo de sockets
+from . import sockets
+from . import scheduler # Adiciona esta importação
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ def setup_logging(app, log_level='INFO'):
     logger.info(f"Logging reconfigurado para nível {log_level} e ficheiro {log_file}.")
 
 
-def create_app(log_level='INFO', _from_job=False):
+def create_app():
     """
     Cria e configura uma instância da aplicação Flask (Application Factory).
     """
@@ -91,7 +92,6 @@ def create_app(log_level='INFO', _from_job=False):
     app.config['LANGUAGES'] = {'pt_BR': 'Português'}
     app.config['BABEL_DEFAULT_LOCALE'] = 'pt_BR'
     
-    # Carrega a configuração do ficheiro config.json
     app_config = load_or_create_config()
     
     app_config.pop('LOG_FILE', None)
@@ -128,7 +128,12 @@ def create_app(log_level='INFO', _from_job=False):
         app.config['APPLICATION_ROOT'] = parsed_url.path or '/'
         app.config['PREFERRED_URL_SCHEME'] = parsed_url.scheme
 
-    setup_logging(app, log_level)
+    setup_logging(app, app.config.get('LOG_LEVEL', 'INFO'))
+
+    # --- MELHORIA DE LOG: Reduz a verbosidade do agendador ---
+    # Altera o nível de log do APScheduler para WARNING para evitar spam de mensagens de rotina.
+    logging.getLogger('apscheduler').setLevel(logging.WARNING)
+    # --- FIM DA MELHORIA ---
 
     extensions.db.init_app(app)
     extensions.migrate.init_app(app, extensions.db)
@@ -153,7 +158,7 @@ def create_app(log_level='INFO', _from_job=False):
     from .services import (
         DataManager, TautulliManager, PlexManager, 
         NotifierManager, EfiManager, MercadoPagoManager,
-        OverseerrManager, LinkShortener, BpixManager
+        OverseerrManager, LinkShortener, BpixManager, StreamManager
     )
 
     extensions.data_manager = DataManager()
@@ -164,6 +169,7 @@ def create_app(log_level='INFO', _from_job=False):
     extensions.mercado_pago_manager = MercadoPagoManager(data_manager=extensions.data_manager)
     extensions.bpix_manager = BpixManager(data_manager=extensions.data_manager)
     extensions.overseerr_manager = OverseerrManager()
+    
     extensions.plex_manager = PlexManager(
         data_manager=extensions.data_manager, 
         tautulli_manager=extensions.tautulli_manager,
@@ -171,14 +177,23 @@ def create_app(log_level='INFO', _from_job=False):
         overseerr_manager=extensions.overseerr_manager
     )
     extensions.plex_manager.init_app(app)
+    
+    # Inicialização corrigida para evitar dependência circular
+    extensions.stream_manager = StreamManager(
+        plex_connection=extensions.plex_manager.conn,
+        data_manager=extensions.data_manager
+    )
+    extensions.plex_manager.stream_manager = extensions.stream_manager
+    
+    # Passa a instância da aplicação para o módulo do agendador
+    scheduler.set_app_for_jobs(app)
 
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
     
     try:
-        if is_configured() and not _from_job and not extensions.scheduler.running:
-            if not extensions.scheduler.running:
-                setup_scheduler(app)
-                atexit.register(shutdown_scheduler)
+        if is_configured() and not extensions.scheduler.running:
+            setup_scheduler(app)
+            atexit.register(shutdown_scheduler)
     except Exception as e:
         logger.error(f"Falha ao iniciar o agendador de tarefas: {e}")
 
@@ -203,8 +218,8 @@ def create_app(log_level='INFO', _from_job=False):
     @app.route('/service-worker.js')
     def serve_sw():
         return send_from_directory(os.path.join(app.root_path, 'static', 'js'),
-                                   'service-worker.js',
-                                   mimetype='application/javascript')
+                                     'service-worker.js',
+                                     mimetype='application/javascript')
 
     @app.before_request
     def check_configuration_and_user():
@@ -228,27 +243,16 @@ def create_app(log_level='INFO', _from_job=False):
             return redirect(url_for('main.setup'))
         
         if current_user.is_authenticated and not current_user.is_admin():
-            logger.debug(f"DIAGNÓSTICO: A iniciar verificação de acesso para o utilizador '{current_user.username}' no endpoint '{request.endpoint}'.")
             try:
                 all_users = extensions.plex_manager.get_all_plex_users(force_refresh=False)
-
-                if all_users is None:
-                    logger.warning(f"DIAGNÓSTICO: Não foi possível obter a lista de utilizadores do Plex. A verificação para '{current_user.username}' foi ignorada nesta requisição.")
-                    return
-
-                plex_usernames = [user['username'] for user in all_users]
-                logger.debug(f"DIAGNÓSTICO: Encontrados {len(plex_usernames)} utilizadores no servidor. A verificar se '{current_user.username}' está na lista.")
-                
-                if current_user.username not in plex_usernames:
-                    logger.warning(f"DIAGNÓSTICO: O utilizador '{current_user.username}' NÃO foi encontrado na lista de acesso atual do Plex. A terminar a sessão.")
-                    flash(_("O seu acesso a este servidor foi removido. Você foi desconectado."), "warning")
-                    logout_user()
-                    return redirect(url_for('auth.login'))
-                else:
-                    logger.debug(f"DIAGNÓSTICO: O utilizador '{current_user.username}' foi encontrado. Acesso permitido.")
-                    
+                if all_users is not None:
+                    plex_usernames = [user['username'] for user in all_users]
+                    if current_user.username not in plex_usernames:
+                        flash(_("O seu acesso a este servidor foi removido. Você foi desconectado."), "warning")
+                        logout_user()
+                        return redirect(url_for('auth.login'))
             except Exception as e:
-                logger.error(f"DIAGNÓSTICO: Ocorreu uma exceção ao verificar o acesso do utilizador '{current_user.username}': {e}")
+                logger.error(f"Ocorreu uma exceção ao verificar o acesso do utilizador '{current_user.username}': {e}")
         
         if current_user.is_authenticated and not current_user.is_admin():
             if request.endpoint in ('main.index', 'main.settings_page', 'main.users_page'):
@@ -281,3 +285,4 @@ def create_app(log_level='INFO', _from_job=False):
     app.register_blueprint(coupons_api_bp, url_prefix='/api/coupons') 
 
     return app
+
