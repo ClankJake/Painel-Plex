@@ -3,14 +3,14 @@
 import logging
 import secrets
 from datetime import datetime, timezone
-from flask import Blueprint, jsonify, request, url_for
+from flask import Blueprint, jsonify, request, url_for, current_app
 from flask_login import current_user
 from flask_babel import gettext as _, format_date
 from tzlocal import get_localzone
 from apscheduler.jobstores.base import JobLookupError
 from pydantic import ValidationError
 
-from ...extensions import plex_manager, tautulli_manager, data_manager
+from ...extensions import plex_manager, data_manager
 from ...config import load_or_create_config
 from ..auth import admin_required, login_required
 from .decorators import user_lookup, validate_json
@@ -57,7 +57,8 @@ def get_public_user_profile_by_token(token):
 def get_status():
     if not plex_manager.plex: return jsonify({"error": _("Plex não configurado.")}), 500
     all_users = plex_manager.get_all_plex_users(force_refresh=request.args.get('force', 'false').lower() == 'true')
-    blocked_users_data = data_manager.get_blocked_users()
+    # CORREÇÃO: Chama a função que retorna uma lista, como esta API espera.
+    blocked_users_data = data_manager.get_blocked_users_list()
     all_user_profiles = {profile['username']: profile for profile in data_manager.get_all_user_profiles()}
     blocked_users = [user['username'] for user in blocked_users_data]
     users_with_access = []
@@ -96,8 +97,8 @@ def get_account_details():
     email = current_user.email
     profile = data_manager.get_user_profile(username)
     expiration_date_str = profile.get('expiration_date')
-    blocked_users_data = data_manager.get_blocked_users()
-    blocked_user_info = next((u for u in blocked_users_data if u['username'] == username), None)
+    # CORREÇÃO: Chama a função otimizada para buscar um único utilizador.
+    blocked_user_info = data_manager.get_blocked_user(username)
     is_blocked = blocked_user_info is not None
     block_reason = blocked_user_info.get('block_reason') if is_blocked else None
     expiration_info = { "date": None, "days_left": None, "status": "active" }
@@ -127,8 +128,11 @@ def get_account_details():
                 join_date = format_date(join_date_obj, 'd \'de\' MMMM \'de\' yyyy')
             except ValueError: pass
     libraries_data = plex_manager.get_user_libraries(email)
+    
+    from ..extensions import tautulli_manager
     watch_data = tautulli_manager.get_user_watch_details(username)
     screen_limit = profile.get('screen_limit', 0)
+    
     notification_settings = {
         "telegram_enabled": config.get("TELEGRAM_ENABLED", False),
         "discord_enabled": config.get("DISCORD_ENABLED", False),
@@ -278,7 +282,6 @@ def user_profile_route(username):
             config = load_or_create_config()
             naive_dt = datetime.fromisoformat(local_datetime_str)
 
-            # Aplica o horário universal se estiver ativado
             if config.get("UNIVERSAL_EXPIRATION_ENABLED"):
                 universal_time_str = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59")
                 try:
@@ -304,16 +307,20 @@ def user_profile_route(username):
         data_manager.set_user_profile(username, profile_to_update)
 
         final_expiration_date_str = profile_to_update.get('expiration_date')
-        if final_expiration_date_str:
-            final_expiration_date = datetime.fromisoformat(final_expiration_date_str)
-            now_local = datetime.now().astimezone(get_localzone())
-            user_info = next((u for u in plex_manager.get_all_plex_users() if u['username'] == username), None)
-            if user_info:
-                is_currently_blocked = data_manager.get_blocked_users(username=username) is not None
-                if now_local > final_expiration_date:
-                    tautulli_manager.manage_block_unblock(user_info['email'], username, 'add', reason='expired')
-                elif is_currently_blocked:
-                    tautulli_manager.manage_block_unblock(user_info['email'], username, 'remove')
+        user_info = next((u for u in plex_manager.get_all_plex_users() if u['username'] == username), None)
+
+        if user_info:
+            if final_expiration_date_str:
+                final_expiration_date = datetime.fromisoformat(final_expiration_date_str)
+                now_local = datetime.now().astimezone(get_localzone())
+                is_currently_blocked = data_manager.get_blocked_user(username=username) is not None
+                
+                if now_local > final_expiration_date and not is_currently_blocked:
+                    plex_manager.block_user(user_info['email'], reason='expired')
+                elif now_local <= final_expiration_date and is_currently_blocked:
+                    plex_manager.unblock_user(user_info['email'])
+            else:
+                plex_manager.unblock_user(user_info['email'])
         
         return jsonify({"success": True, "message": _("Perfil do utilizador atualizado com sucesso.")})
 
@@ -352,7 +359,6 @@ def update_libraries_route(user):
     data = request.json
     return jsonify(plex_manager.update_user_libraries(user['email'], data.get('libraries', [])))
 
-# ROTA ADICIONADA
 @users_api_bp.route('/update-all-libraries', methods=['POST'])
 @login_required
 @admin_required
@@ -377,14 +383,14 @@ def remove_user_route(user):
 @admin_required
 @user_lookup
 def block_user_route(user):
-    return jsonify(tautulli_manager.manage_block_unblock(user['email'], user['username'], 'add', reason='manual'))
+    return jsonify(plex_manager.block_user(user['email'], reason='manual'))
 
 @users_api_bp.route('/unblock', methods=['POST'])
 @login_required
 @admin_required
 @user_lookup
 def unblock_user_route(user):
-    return jsonify(tautulli_manager.manage_block_unblock(user['email'], user['username'], 'remove'))
+    return jsonify(plex_manager.unblock_user(user['email']))
 
 @users_api_bp.route('/update-limit', methods=['POST'])
 @login_required
@@ -392,14 +398,40 @@ def unblock_user_route(user):
 @user_lookup
 def update_limit_route(user):
     data = request.json
-    return jsonify(tautulli_manager.update_screen_limit(user['email'], user['username'], data.get('screens', 0)))
+    screens = data.get('screens', 0)
+    
+    # Atualiza o perfil do utilizador no banco de dados
+    profile = data_manager.get_user_profile(user['username'])
+    profile['screen_limit'] = screens
+    data_manager.set_user_profile(user['username'], profile)
+    
+    # Não é mais necessário chamar o Tautulli, o StreamManager cuidará disso
+    message = _("Limite de %(screens)s tela(s) aplicado.", screens=screens) if screens > 0 else _("Limite removido.")
+    return jsonify({"success": True, "message": message})
+
 
 @users_api_bp.route('/update-all-limits', methods=['POST'])
 @login_required
 @admin_required
 def update_all_limits_route():
+    screens_to_save = request.json.get('screens', -1)
     users = [u for u in plex_manager.get_all_plex_users() if u.get('servers')]
-    return jsonify(tautulli_manager.update_all_users_screen_limit(users, request.json.get('screens', -1)))
+    
+    # O valor -1 é um sinal para remover o limite (definir como 0)
+    final_screen_limit = 0 if screens_to_save < 0 else screens_to_save
+    
+    for user in users:
+        profile = data_manager.get_user_profile(user['username'])
+        profile['screen_limit'] = final_screen_limit
+        data_manager.set_user_profile(user['username'], profile)
+        
+    if final_screen_limit > 0:
+        message = _("Limite de %(screens)s tela(s) aplicado para todos.", screens=final_screen_limit)
+    else:
+        message = _("Limites removidos de todos.")
+        
+    return jsonify({"success": True, "message": message})
+
 
 @users_api_bp.route('/toggle-overseerr', methods=['POST'])
 @login_required
@@ -427,7 +459,6 @@ def get_user_list():
 @login_required
 def get_user_payments_history(username):
     """Endpoint para obter o histórico de pagamentos de um utilizador."""
-    # Apenas o admin ou o próprio utilizador podem ver o histórico
     if not current_user.is_admin() and current_user.username != username:
         return jsonify({"success": False, "message": _("Acesso não autorizado.")}), 403
     
@@ -442,9 +473,11 @@ def get_user_payments_history(username):
 @login_required
 def get_account_devices():
     """Endpoint para obter os dispositivos conectados do utilizador."""
+    from ..extensions import tautulli_manager
     try:
         devices_data = tautulli_manager.get_user_devices(current_user.username)
         return jsonify(devices_data)
     except Exception as e:
         logger.error(f"Erro ao obter dispositivos para {current_user.username}: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Falha ao obter lista de dispositivos."}), 500
+
