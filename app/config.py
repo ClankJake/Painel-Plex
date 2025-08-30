@@ -37,9 +37,7 @@ def load_or_create_config():
             "PLEX_TOKEN": "",
             "TAUTULLI_URL": "",
             "TAUTULLI_API_KEY": "",
-            "BLOCKING_NOTIFIER_ID": 0,
-            "SCREEN_LIMIT_NOTIFIER_ID": 0,
-            "TRIAL_BLOCK_NOTIFIER_ID": 0,
+            "STREAM_CHECK_INTERVAL_SECONDS": 15,
             "DAYS_TO_REMOVE_BLOCKED_USER": 0,
             "EXPIRATION_NOTIFICATION_TIME": "09:00",
             "BLOCK_REMOVAL_TIME": "02:00",
@@ -109,7 +107,11 @@ def load_or_create_config():
             "ACHIEVEMENT_TIME_TRAVELER_GOLD": 7,
             "ACHIEVEMENT_DIRECTOR_FAN_BRONZE": 3,
             "ACHIEVEMENT_DIRECTOR_FAN_SILVER": 5,
-            "ACHIEVEMENT_DIRECTOR_FAN_GOLD": 7
+            "ACHIEVEMENT_DIRECTOR_FAN_GOLD": 7,
+            "TERMINATION_MSG_BLOCKED_MANUAL": "O seu acesso ao servidor foi bloqueado pelo administrador.",
+            "TERMINATION_MSG_BLOCKED_EXPIRED": "A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.",
+            "TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED": "O seu período de teste para {username} terminou. Renove para continuar.",
+            "TERMINATION_MSG_SCREEN_LIMIT": "{username}, você excedeu o seu limite de {limit} tela(s) simultânea(s)."
         }
         save_app_config(default_config)
         return default_config
@@ -133,7 +135,11 @@ def load_or_create_config():
                 config.setdefault("LOG_FILE", os.path.join(CONFIG_DIR, "app.log"))
                 config.setdefault("LOG_MAX_BYTES", 1024 * 1024)
                 config.setdefault("LOG_BACKUP_COUNT", 5)
-                config.setdefault("TRIAL_BLOCK_NOTIFIER_ID", 0)
+                config.setdefault("STREAM_CHECK_INTERVAL_SECONDS", 15)
+                config.setdefault("TERMINATION_MSG_BLOCKED_MANUAL", "O seu acesso ao servidor foi bloqueado pelo administrador.")
+                config.setdefault("TERMINATION_MSG_BLOCKED_EXPIRED", "A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.")
+                config.setdefault("TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED", "O seu período de teste para {username} terminou. Renove para continuar.")
+                config.setdefault("TERMINATION_MSG_SCREEN_LIMIT", "{username}, você excedeu o seu limite de {limit} tela(s) simultânea(s).")
                 config.setdefault("EXPIRATION_NOTIFICATION_TIME", "09:00")
                 config.setdefault("BLOCK_REMOVAL_TIME", "02:00")
                 config.setdefault("UNIVERSAL_EXPIRATION_ENABLED", False)
