@@ -18,7 +18,6 @@ class MyAnonymousUser(AnonymousUserMixin):
         return False
 
 # --- Instancia as extensões (sem inicializar) ---
-# Estas variáveis serão importadas por outras partes da aplicação.
 db = SQLAlchemy()
 migrate = Migrate()
 login_manager = LoginManager()
@@ -31,12 +30,11 @@ babel = Babel()
 scheduler = BackgroundScheduler(daemon=True)
 socketio = SocketIO()
 
-# Os 'managers' dos serviços e outras instâncias são inicializados como None
-# para evitar importações circulares. Eles serão devidamente instanciados
-# dentro da 'application factory' no ficheiro __init__.py.
+# Os 'managers' dos serviços são inicializados como None
 data_manager = None
 plex_manager = None
 tautulli_manager = None
+stream_manager = None 
 notifier_manager = None
 efi_manager = None
 mercado_pago_manager = None
