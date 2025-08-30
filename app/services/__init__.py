@@ -14,6 +14,7 @@ from .mercado_pago_manager import MercadoPagoManager
 from .overseerr_manager import OverseerrManager
 from .link_shortener import LinkShortener
 from .bpix_manager import BpixManager
+from .stream_manager import StreamManager
 
 __all__ = [
     'DataManager',
@@ -23,6 +24,7 @@ __all__ = [
     'EfiManager',
     'MercadoPagoManager',
     'OverseerrManager',
+    'StreamManager',
     'LinkShortener',
     'BpixManager',
 ]
