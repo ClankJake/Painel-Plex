@@ -20,16 +20,32 @@ def get_data_for_socket():
     with app_instance.app_context():
         with app_instance.test_request_context():
             try:
+                # Tenta reconectar se a conexão não estiver estabelecida.
+                if not extensions.plex_manager.conn.plex:
+                    logger.info("Conexão com o Plex não encontrada no socket, tentando reconectar...")
+                    # A flag from_job=True torna o log menos verboso
+                    if not extensions.plex_manager.reload_connections(from_job=True)[0]:
+                        logger.warning("Falha ao reconectar ao Plex a partir do socket. A saltar a busca de dados.")
+                        return None, None # Retorna None para evitar o envio de dados possivelmente incorretos
+
                 # Busca detalhes dos streams ativos e a contagem
                 active_streams_data = extensions.plex_manager.get_active_sessions()
-                active_streams_count = active_streams_data.get('stream_count', 0)
-                active_sessions_details = active_streams_data.get('sessions', [])
+                
+                # Adiciona uma verificação do sucesso da chamada
+                if not active_streams_data.get('success'):
+                    logger.warning("Não foi possível obter streams ativos no socket. A conexão com o Plex pode estar instável.")
+                    # Continua, mas com dados vazios para streams
+                    active_streams_count = 0
+                    active_sessions_details = []
+                else:
+                    active_streams_count = active_streams_data.get('stream_count', 0)
+                    active_sessions_details = active_streams_data.get('sessions', [])
                 
                 # Busca os restantes dados de resumo
                 all_users = extensions.plex_manager.get_all_plex_users()
                 total_users = len(all_users) if all_users else 0
                 
-                blocked_users_list = extensions.data_manager.get_blocked_users()
+                blocked_users_list = extensions.data_manager.get_blocked_users_list()
                 blocked_users = len(blocked_users_list)
                 active_users = total_users - blocked_users
 
@@ -80,3 +96,4 @@ def handle_dashboard_connect():
         extensions.socketio.start_background_task(background_task)
         handle_dashboard_connect.task_started = True
         logger.info("Tarefa de fundo do dashboard iniciada.")
+
