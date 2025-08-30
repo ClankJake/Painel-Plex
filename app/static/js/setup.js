@@ -218,9 +218,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setupData.APP_TITLE = document.getElementById('APP_TITLE').value;
         setupData.TAUTULLI_URL = document.getElementById('tautulli_url').value;
         setupData.TAUTULLI_API_KEY = document.getElementById('tautulli_api_key').value;
-        setupData.BLOCKING_NOTIFIER_ID = document.getElementById('blocking_notifier_id').value || 0;
-        setupData.SCREEN_LIMIT_NOTIFIER_ID = document.getElementById('screen_limit_notifier_id').value || 0;
-        setupData.TRIAL_BLOCK_NOTIFIER_ID = document.getElementById('trial_block_notifier_id').value || 0;
         setupData.OVERSEERR_ENABLED = document.getElementById('overseerr_enabled').checked;
         setupData.OVERSEERR_URL = document.getElementById('overseerr_url').value;
         setupData.OVERSEERR_API_KEY = document.getElementById('overseerr_api_key').value;
@@ -239,16 +236,6 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast(`${i18n.errorGeneric} ${error.message}`, 'error');
             finishButton.disabled = false;
             finishButton.textContent = i18n.finishSetup;
-        }
-    });
-    
-    const helpModal = document.getElementById('helpModal');
-    document.getElementById('showTautulliHelp').addEventListener('click', () => {
-        helpModal.classList.remove('hidden');
-    });
-    helpModal.addEventListener('click', e => {
-        if (e.target.id === 'helpModal' || e.target.id === 'closeHelpModal') {
-            helpModal.classList.add('hidden');
         }
     });
 
@@ -305,32 +292,6 @@ document.addEventListener('DOMContentLoaded', () => {
             url: document.getElementById('overseerr_url').value,
             api_key: document.getElementById('overseerr_api_key').value
         }), 'testConnection', 'overseerr-test-result');
-    });
-
-    document.querySelectorAll('.btn-auto-config').forEach(button => {
-        button.addEventListener('click', (e) => {
-            const target = e.currentTarget;
-            const notifierId = document.getElementById(target.dataset.targetId).value;
-            const tautulliUrl = document.getElementById('tautulli_url').value;
-            const tautulliApiKey = document.getElementById('tautulli_api_key').value;
-
-            if (!notifierId || notifierId === '0') {
-                showToast(i18n.provideNotifierId, 'error');
-                return;
-            }
-            if (!tautulliUrl || !tautulliApiKey) {
-                showToast(i18n.provideTautulliCredentials, 'error');
-                return;
-            }
-            
-            target.dataset.loadingText = i18n.autoConfiguring;
-            handleApiButtonAction(target, urls.autoConfigureTautulli, () => ({
-                notifier_id: notifierId,
-                notifier_type: target.dataset.notifierType,
-                url: tautulliUrl,
-                api_key: tautulliApiKey
-            }), 'autoConfigure', null);
-        });
     });
     
     navigateToStep(0);
