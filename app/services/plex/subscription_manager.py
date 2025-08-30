@@ -103,7 +103,7 @@ class PlexSubscriptionManager:
         self.data_manager.set_user_profile(username, profile)
 
         # Lógica de desbloqueio
-        blocked_user_info = self.data_manager.get_blocked_users(username=username)
+        blocked_user_info = self.data_manager.get_blocked_user(username=username)
         if blocked_user_info:
             logger.info(_("O utilizador '%(username)s' está bloqueado. A tentar desbloquear após a renovação.", username=username))
             plex_user = next((u for u in self.user_manager.get_all_plex_users() if u['username'] == username), None)
@@ -116,4 +116,3 @@ class PlexSubscriptionManager:
                 logger.warning(_("Não foi possível encontrar os detalhes do utilizador Plex para '%(username)s' para o desbloquear.", username=username))
 
         return new_expiration_date
-
