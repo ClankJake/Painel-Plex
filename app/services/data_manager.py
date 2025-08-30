@@ -464,4 +464,3 @@ class DataManager:
         if not row:
             return None
         return {c.name: getattr(row, c.name) for c in row.__table__.columns}
-
