@@ -231,11 +231,11 @@
                                 </div>
                                 <div>
                                     <label for="EFI_CLIENT_ID" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Client ID') }}</label>
-                                    <input type="text" id="EFI_CLIENT_ID" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                    <input type="text" id="EFI_CLIENT_ID" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Insira o Client ID') }}">
                                 </div>
                                 <div>
                                     <label for="EFI_CLIENT_SECRET" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Client Secret') }}</label>
-                                    <input type="password" id="EFI_CLIENT_SECRET" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                    <input type="password" id="EFI_CLIENT_SECRET" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha para alterar') }}">
                                 </div>
                                 <div>
                                     <label for="EFI_CERTIFICATE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Caminho do Certificado (.pem)') }}</label>
@@ -243,7 +243,7 @@
                                 </div>
                                 <div>
                                     <label for="EFI_PIX_KEY" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Sua Chave PIX') }}</label>
-                                    <input type="text" id="EFI_PIX_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                    <input type="text" id="EFI_PIX_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Sua chave PIX') }}">
                                 </div>
                             </div>
                         </div>
@@ -255,7 +255,7 @@
                             <div class="disablable-input space-y-4">
                                 <div>
                                     <label for="MERCADOPAGO_ACCESS_TOKEN" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Access Token do Mercado Pago') }}</label>
-                                    <input type="password" id="MERCADOPAGO_ACCESS_TOKEN" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                    <input type="password" id="MERCADOPAGO_ACCESS_TOKEN" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha para alterar') }}">
                                 </div>
                             </div>
                         </div>
@@ -267,7 +267,7 @@
                             <div class="disablable-input space-y-4">
                                 <div>
                                     <label for="BPIX_AUTH_TOKEN" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Token de Autorização') }}</label>
-                                    <input type="password" id="BPIX_AUTH_TOKEN" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                    <input type="password" id="BPIX_AUTH_TOKEN" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha para alterar') }}">
                                 </div>
                             </div>
                         </div>
@@ -389,7 +389,7 @@
                         </div>
                         <div>
                             <label for="TELEGRAM_CHAT_ID" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID do Chat/Canal de Admin') }}</label>
-                            <input type="text" id="TELEGRAM_CHAT_ID" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            <input type="text" id="TELEGRAM_CHAT_ID" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Opcional') }}">
                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Opcional. ID para onde as notificações GERAIS serão enviadas. As notificações pessoais são enviadas para o ID no perfil do usuário.')}}</p>
                         </div>
                          <div>
@@ -493,36 +493,87 @@
 
         <!-- Aba Comunicações -->
         <div id="tab-comunicacoes" class="tab-content">
-            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-6">
-                <div>
-                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Templates para Avisos em Massa') }}</h3>
-                    <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Defina os modelos base para as mensagens em massa. Use o placeholder {message} onde a mensagem do dashboard deve ser inserida.') }}</p>
+            <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <div class="border-b border-gray-200 dark:border-gray-700 mb-6">
+                    <nav id="comunicacoes-tabs" class="flex space-x-6 overflow-x-auto no-scrollbar">
+                        <button type="button" data-subtab="bulk-messages" class="tab-button active">{{ _('Avisos em Massa') }}</button>
+                        <button type="button" data-subtab="stream-control" class="tab-button">{{ _('Controlo de Streams') }}</button>
+                    </nav>
                 </div>
-                <div id="bulk-notification-templates" class="space-y-4">
-                    <div>
-                        <label for="TELEGRAM_BULK_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Template para Telegram') }}
-                            <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
-                        </label>
-                        <textarea id="TELEGRAM_BULK_MESSAGE_TEMPLATE" rows="4" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: Olá {name}, temos um aviso importante: {message}') }}"></textarea>
+                <div id="comunicacoes-tab-content">
+                    <div id="subtab-bulk-messages" class="sub-tab-content active space-y-6">
+                        <div>
+                            <h3 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Templates para Avisos em Massa') }}</h3>
+                            <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Defina os modelos base para as mensagens em massa. Use o placeholder {message} onde a mensagem do dashboard deve ser inserida.') }}</p>
+                        </div>
+                        <div id="bulk-notification-templates" class="space-y-4">
+                            <div>
+                                <label for="TELEGRAM_BULK_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                    {{ _('Template para Telegram') }}
+                                    <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                                </label>
+                                <textarea id="TELEGRAM_BULK_MESSAGE_TEMPLATE" rows="4" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: Olá {name}, temos um aviso importante: {message}') }}"></textarea>
+                            </div>
+                            <div>
+                                <label for="DISCORD_BULK_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                    {{ _('Template para Discord (JSON)') }}
+                                     <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                                </label>
+                                <textarea id="DISCORD_BULK_MESSAGE_TEMPLATE" rows="6" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono" placeholder='{"content": "<@{discord_user_id}> Olá {name}!", "embeds": [{"title": "Aviso Importante", "description": "{message}"}]}'></textarea>
+                            </div>
+                            <div>
+                                <label for="WEBHOOK_BULK_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                    {{ _('Template para Webhook (JSON)') }}
+                                     <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                                </label>
+                                <textarea id="WEBHOOK_BULK_MESSAGE_TEMPLATE" rows="6" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono" placeholder='{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}'></textarea>
+                            </div>
+                            <!-- Botão de Salvar específico para templates de comunicação -->
+                            <div class="pt-4 flex justify-end">
+                                <button type="button" id="saveBulkTemplatesButton" class="btn bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20">{{ _('Salvar Templates de Comunicação') }}</button>
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <label for="DISCORD_BULK_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Template para Discord (JSON)') }}
-                             <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
-                        </label>
-                        <textarea id="DISCORD_BULK_MESSAGE_TEMPLATE" rows="6" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono" placeholder='{"content": "<@{discord_user_id}> Olá {name}!", "embeds": [{"title": "Aviso Importante", "description": "{message}"}]}'></textarea>
-                    </div>
-                    <div>
-                        <label for="WEBHOOK_BULK_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Template para Webhook (JSON)') }}
-                             <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
-                        </label>
-                        <textarea id="WEBHOOK_BULK_MESSAGE_TEMPLATE" rows="6" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono" placeholder='{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}'></textarea>
-                    </div>
-                    <!-- Botão de Salvar específico para templates de comunicação -->
-                    <div class="pt-4 flex justify-end">
-                        <button type="button" id="saveBulkTemplatesButton" class="btn bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20">{{ _('Salvar Templates de Comunicação') }}</button>
+                    <div id="subtab-stream-control" class="sub-tab-content space-y-6">
+                        <div>
+                            <h3 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Mensagens de Término de Stream') }}</h3>
+                             <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Personalize as mensagens exibidas no Plex quando uma sessão é terminada automaticamente.') }}</p>
+                        </div>
+                        <div class="space-y-4">
+                            <div>
+                                <label for="STREAM_CHECK_INTERVAL_SECONDS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Intervalo de Verificação de Streams (segundos)') }}</label>
+                                <input type="number" id="STREAM_CHECK_INTERVAL_SECONDS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="5">
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Intervalo em segundos para verificar os streams ativos e aplicar os limites. Recomenda-se 15 segundos.')}}</p>
+                            </div>
+                            <div>
+                                <label for="TERMINATION_MSG_BLOCKED_MANUAL" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                    {{ _('Mensagem: Bloqueio Manual') }}
+                                    <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                                </label>
+                                <textarea id="TERMINATION_MSG_BLOCKED_MANUAL" rows="2" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex.: O seu acesso ao servidor foi bloqueado pelo administrador.') }}"></textarea>
+                            </div>
+                            <div>
+                                <label for="TERMINATION_MSG_BLOCKED_EXPIRED" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                    {{ _('Mensagem: Assinatura Expirada') }}
+                                     <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                                </label>
+                                <textarea id="TERMINATION_MSG_BLOCKED_EXPIRED" rows="2" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex.: A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.') }}"></textarea>
+                            </div>
+                            <div>
+                                <label for="TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                    {{ _('Mensagem: Teste Expirado') }}
+                                     <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                                </label>
+                                <textarea id="TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED" rows="2" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex.: O seu período de teste para {username} terminou. Renove para continuar.') }}"></textarea>
+                            </div>
+                            <div>
+                                <label for="TERMINATION_MSG_SCREEN_LIMIT" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                                    {{ _('Mensagem: Limite de Telas Excedido') }}
+                                     <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                                </label>
+                                <textarea id="TERMINATION_MSG_SCREEN_LIMIT" rows="2" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex.: {username}, você excedeu o seu limite de {limit} tela(s) simultânea(s).') }}"></textarea>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -575,7 +626,7 @@
                         </div>
                         <div>
                             <label for="OVERSEERR_API_KEY" class="block text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('Chave da API') }}</label>
-                            <input type="password" id="OVERSEERR_API_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            <input type="password" id="OVERSEERR_API_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha à chave API') }}">
                         </div>
                     </div>
                     <button type="button" id="testOverseerrButton" class="btn bg-blue-600 hover:bg-blue-500 text-white">{{ _('Testar Conexão') }}</button>
@@ -632,6 +683,7 @@
             <strong class="font-mono text-blue-600 dark:text-blue-400">{payment_link}</strong> <span>- {{ _('O link direto para a página de pagamento do utilizador.') }}</span>
             <strong class="font-mono text-blue-600 dark:text-blue-400">{price}</strong> <span>- {{ _('O valor da renovação do plano do utilizador (ex: R$ 10,00).') }}</span>
             <strong class="font-mono text-blue-600 dark:text-blue-400">{plan_name}</strong> <span>- {{ _('O plano que o usuario utiliza.') }}</span>
+            <strong class="font-mono text-blue-600 dark:text-blue-400">{limit}</strong> <span>- {{ _('O limite de telas do utilizador (apenas para mensagens de limite de tela).') }}</span>
             <strong class="font-mono text-red-500 dark:text-red-400">{message}</strong> <span>- {{ _('A mensagem personalizada inserida no dashboard (apenas para templates de avisos em massa).') }}</span>
         </div>
     </div>
