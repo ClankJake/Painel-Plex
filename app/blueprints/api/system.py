@@ -124,12 +124,12 @@ def api_settings():
             'WEBHOOK_AUTHORIZATION_HEADER', 'WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE', 'WEBHOOK_RENEWAL_MESSAGE_TEMPLATE',
             'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_ENABLED', 'TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE',
             'TELEGRAM_RENEWAL_MESSAGE_TEMPLATE', 'DAYS_TO_NOTIFY_EXPIRATION', 'APP_BASE_URL', 
-            'TAUTULLI_URL', 'TAUTULLI_API_KEY', 'BLOCKING_NOTIFIER_ID', 'SCREEN_LIMIT_NOTIFIER_ID',
+            'TAUTULLI_URL', 'TAUTULLI_API_KEY',
             'EFI_CLIENT_ID', 'EFI_CLIENT_SECRET', 'EFI_CERTIFICATE', 'EFI_SANDBOX', 'EFI_PIX_KEY',
             'EFI_USE_MTLS', 'EFI_WEBHOOK_HMAC_SECRET',
             'MERCADOPAGO_ACCESS_TOKEN', 'RENEWAL_PRICE', 'EFI_ENABLED', 'MERCADOPAGO_ENABLED',
             'BPIX_ENABLED', 'BPIX_AUTH_TOKEN',
-            'TRIAL_BLOCK_NOTIFIER_ID', 'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE', 'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE',
+            'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE', 'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE',
             'OVERSEERR_ENABLED', 'OVERSEERR_URL', 'OVERSEERR_API_KEY',
             'CLEANUP_PENDING_PAYMENTS_ENABLED', 'CLEANUP_PENDING_PAYMENTS_DAYS', 'CLEANUP_TIME',
             'ENABLE_LINK_SHORTENER', 'PAYMENT_LINK_GRACE_PERIOD_DAYS',
@@ -145,7 +145,7 @@ def api_settings():
         ]
         numeric_fields = [
             'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION', 
-            'BLOCKING_NOTIFIER_ID', 'SCREEN_LIMIT_NOTIFIER_ID', 'CLEANUP_PENDING_PAYMENTS_DAYS',
+            'CLEANUP_PENDING_PAYMENTS_DAYS',
             'PAYMENT_LINK_GRACE_PERIOD_DAYS',
             'ACHIEVEMENT_MOVIE_MARATHON_BRONZE', 'ACHIEVEMENT_MOVIE_MARATHON_SILVER', 'ACHIEVEMENT_MOVIE_MARATHON_GOLD',
             'ACHIEVEMENT_SERIES_BINGER_BRONZE', 'ACHIEVEMENT_SERIES_BINGER_SILVER', 'ACHIEVEMENT_SERIES_BINGER_GOLD',
@@ -362,27 +362,6 @@ def test_overseerr_connection():
 
     return jsonify(overseerr_manager.test_connection(url, api_key))
 
-@system_api_bp.route('/tautulli/auto-configure', methods=['POST'])
-def auto_configure_tautulli_notifier():
-    if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
-        return jsonify({'success': False, 'message': _('Acesso não autorizado.')}), 403
-    data = request.get_json()
-    notifier_id = data.get('notifier_id')
-    notifier_type = data.get('notifier_type')
-    if not notifier_id or not notifier_type:
-        return jsonify({"success": False, "message": _("ID e tipo do notificador são obrigatórios.")}), 400
-    if not is_configured():
-        tautulli_url = data.get('url')
-        tautulli_api_key = data.get('api_key')
-    else:
-        config = load_or_create_config()
-        tautulli_url = config.get("TAUTULLI_URL")
-        tautulli_api_key = config.get("TAUTULLI_API_KEY")
-    if not tautulli_url or not tautulli_api_key:
-        return jsonify({"success": False, "message": _("URL e Chave API do Tautulli não estão preenchidos.")}), 400
-    result = tautulli_manager.set_notifier_conditions(tautulli_url, tautulli_api_key, notifier_id, notifier_type)
-    return jsonify(result)
-
 @system_api_bp.route('/bulk-notify', methods=['POST'])
 @login_required
 @admin_required
@@ -409,4 +388,3 @@ def bulk_notify():
     thread.start()
 
     return jsonify({"success": True, "message": _("O envio de notificações em massa foi iniciado.")})
-
