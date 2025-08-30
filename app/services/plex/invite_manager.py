@@ -18,11 +18,11 @@ class PlexInviteManager:
     """
     Gere todo o ciclo de vida dos convites de utilizadores.
     """
-    def __init__(self, connection, user_manager, data_manager, tautulli_manager, overseerr_manager, notifier_manager):
+    def __init__(self, connection, user_manager, data_manager, plex_manager, overseerr_manager, notifier_manager):
         self.conn = connection
         self.user_manager = user_manager
         self.data_manager = data_manager
-        self.tautulli_manager = tautulli_manager
+        self.plex_manager = plex_manager
         self.overseerr_manager = overseerr_manager
         self.notifier_manager = notifier_manager
 
@@ -102,7 +102,7 @@ class PlexInviteManager:
             logger.warning(_("A aceitação formal falhou, mas o acesso foi confirmado para %(username)s.", username=plex_user_account.username))
 
         if invitation['screen_limit'] > 0:
-            self.tautulli_manager.update_screen_limit(plex_user_account.email, plex_user_account.username, invitation['screen_limit'])
+            self.plex_manager.update_screen_limit(plex_user_account.username, invitation['screen_limit'])
 
         # Atualiza os dados do convite
         self.data_manager.increment_invitation_use(code, plex_user_account.username)
@@ -189,3 +189,4 @@ class PlexInviteManager:
         except Exception as e:
             logger.error(_("Erro durante a aceitação do convite v2: %(error)s", error=e), exc_info=True)
             return {"success": False, "message": _("Ocorreu um erro de rede ao tentar aceitar o convite.")}
+
