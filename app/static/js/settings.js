@@ -99,6 +99,11 @@ document.addEventListener('DOMContentLoaded', () => {
         'TELEGRAM_BULK_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
         'DISCORD_BULK_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
         'WEBHOOK_BULK_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
+        'STREAM_CHECK_INTERVAL_SECONDS': { type: 'number', default: 15 },
+        'TERMINATION_MSG_BLOCKED_MANUAL': { type: 'textarea', default: '' },
+        'TERMINATION_MSG_BLOCKED_EXPIRED': { type: 'textarea', default: '' },
+        'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED': { type: 'textarea', default: '' },
+        'TERMINATION_MSG_SCREEN_LIMIT': { type: 'textarea', default: '' },
     };
 
     async function loginWithPlex() {
@@ -421,6 +426,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if(notificationTabs && notificationTabContent) {
             handleTabClick(notificationTabs, notificationTabContent, '.sub-tab-content');
         }
+        
+        const comunicacoesTabs = document.getElementById('comunicacoes-tabs');
+        const comunicacoesTabContent = document.getElementById('comunicacoes-tab-content');
+        if(comunicacoesTabs && comunicacoesTabContent) {
+            handleTabClick(comunicacoesTabs, comunicacoesTabContent, '.sub-tab-content');
+        }
 
         if(form) {
             form.addEventListener('submit', async (e) => {
@@ -620,3 +631,4 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
