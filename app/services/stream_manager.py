@@ -178,7 +178,8 @@ class StreamManager:
                         msg_template_key = 'TERMINATION_MSG_BLOCKED_MANUAL'
                         default_msg = "O seu acesso ao servidor foi bloqueado pelo administrador."
 
-                    msg_template = current_app.config.get(msg_template_key, default_msg)
+                    # CORREÇÃO: Usa 'or' para garantir o fallback se o valor guardado for uma string vazia.
+                    msg_template = current_app.config.get(msg_template_key) or default_msg
                     placeholders = self._build_placeholders(username, profile, first_session)
                     reason = msg_template.format(**placeholders)
 
@@ -195,10 +196,11 @@ class StreamManager:
                     
                     sorted_user_sessions = sorted(user_session_list, key=lambda s: s.viewOffset or 0)
                     
+                    # CORREÇÃO: Usa 'or' para garantir o fallback se o valor guardado for uma string vazia.
                     msg_template = current_app.config.get(
-                        'TERMINATION_MSG_SCREEN_LIMIT', 
-                        "Você excedeu o seu limite de {limit} telas simultâneas."
-                    )
+                        'TERMINATION_MSG_SCREEN_LIMIT'
+                    ) or "Você excedeu o seu limite de {limit} telas simultâneas."
+
                     placeholders = self._build_placeholders(username, profile, first_session, context={'limit': screen_limit})
                     reason = msg_template.format(**placeholders)
 
