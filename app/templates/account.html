@@ -110,8 +110,10 @@
         <!-- Navegação por Separadores -->
         <div class="border-b border-gray-200 dark:border-gray-700 mb-8">
             <nav id="account-tabs" class="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
+                {% if not current_user.is_admin() %}
                 <button type="button" data-tab="overview" class="tab-button {% if not current_user.is_admin() %}active{% endif %} py-3 px-1 border-b-2 font-medium text-sm">{{ _('Visão Geral') }}</button>
                 <button type="button" data-tab="payment" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Pagamentos e Assinatura') }}</button>
+                {% endif %}
                 <button type="button" data-tab="security" class="tab-button {% if current_user.is_admin() %}active{% endif %} py-3 px-1 border-b-2 font-medium text-sm">{{ _('Dispositivos Conectados') }}</button>
                 <button type="button" data-tab="history" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Histórico') }}</button>
             </nav>
