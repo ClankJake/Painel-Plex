@@ -18,30 +18,44 @@ def _obfuscate_username(username):
 @login_required
 def get_statistics_data():
     days = request.args.get('days', 7, type=int)
-    plex_users = plex_manager.get_all_plex_users()
     
-    # --- OTIMIZAÇÃO: Busca apenas os perfis necessários em uma única consulta ---
-    plex_usernames = [u['username'] for u in plex_users]
-    all_profiles = data_manager.get_user_profiles_by_username(plex_usernames)
-    # --- FIM DA OTIMIZAÇÃO ---
-    
+    # Obter dados do Tautulli e do Plex
+    plex_users = plex_manager.get_all_plex_users() or []
     plex_users_info = {u['username']: u['thumb'] for u in plex_users}
     tautulli_data = tautulli_manager.get_watch_stats(days=days, plex_users_info=plex_users_info)
-    if tautulli_data.get("success"):
-        processed_stats = []
-        for user_stat in tautulli_data["stats"]:
-            username = user_stat["username"]
-            profile = all_profiles.get(username, {})
-            
-            is_private = profile.get('hide_from_leaderboard', False)
-            user_stat["is_private"] = is_private
-            
-            if not current_user.is_admin() and is_private:
-                user_stat["username"] = _obfuscate_username(username)
-                user_stat["thumb"] = f"https://placehold.co/80x80/1F2937/E5E7EB?text=?"
 
-            processed_stats.append(user_stat)
-        tautulli_data["stats"] = processed_stats
+    if not tautulli_data.get("success"):
+        return jsonify(tautulli_data)
+
+    # Criar uma lista única de todos os utilizadores relevantes (Tautulli + Plex)
+    tautulli_usernames = {user_stat['username'] for user_stat in tautulli_data.get("stats", [])}
+    plex_usernames = {u['username'] for u in plex_users}
+    all_usernames = list(tautulli_usernames.union(plex_usernames))
+
+    # Obter os perfis de privacidade para TODOS os utilizadores relevantes
+    all_user_profiles_raw = data_manager.get_user_profiles_by_username(all_usernames)
+    
+    # Normalizar as chaves para minúsculas para garantir correspondência insensível a maiúsculas/minúsculas
+    all_profiles = {k.lower(): v for k, v in all_user_profiles_raw.items()}
+    
+    # Processar as estatísticas com os perfis de privacidade completos
+    processed_stats = []
+    for user_stat in tautulli_data.get("stats", []):
+        username = user_stat["username"]
+        # Usa a versão em minúsculas para a busca do perfil
+        profile = all_profiles.get(username.lower(), {})
+        
+        is_private = profile.get('hide_from_leaderboard', False)
+        user_stat["is_private"] = is_private
+        user_stat["original_username"] = username # Adiciona o nome original para uso no frontend
+
+        if not current_user.is_admin() and is_private and current_user.username.lower() != username.lower():
+            user_stat["username"] = _obfuscate_username(username)
+            user_stat["thumb"] = f"https://placehold.co/80x80/1F2937/E5E7EB?text=?"
+
+        processed_stats.append(user_stat)
+    
+    tautulli_data["stats"] = processed_stats
     return jsonify(tautulli_data)
 
 @stats_api_bp.route('/user/<username>')
@@ -85,3 +99,4 @@ def get_user_watch_history_route():
 def get_recently_added_route():
     days = request.args.get('days', 7, type=int)
     return jsonify(tautulli_manager.get_recently_added(days=days))
+
