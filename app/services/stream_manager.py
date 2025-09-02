@@ -144,8 +144,14 @@ class StreamManager:
             if not active_usernames:
                 return
 
+            # Busca os dados uma vez
             user_profiles = self.data_manager.get_user_profiles_by_username(list(active_usernames))
             blocked_users_info = self.data_manager.get_blocked_users_dict()
+            
+            # CORREÇÃO: Cria dicionários de pesquisa insensíveis a maiúsculas/minúsculas
+            # para garantir que os perfis e bloqueios sejam encontrados independentemente da caixa do nome de utilizador.
+            profiles_lower = {uname.lower(): p for uname, p in user_profiles.items()}
+            blocked_users_lower = {uname.lower(): b for uname, b in blocked_users_info.items()}
             
             user_sessions = defaultdict(list)
             for session in sessions:
@@ -153,11 +159,13 @@ class StreamManager:
                     user_sessions[session.user.title].append(session)
 
             for username, user_session_list in user_sessions.items():
-                profile = user_profiles.get(username.lower(), {}) # Use lower() for case-insensitive lookup
+                username_lower = username.lower()
+                profile = profiles_lower.get(username_lower, {})
                 first_session = user_session_list[0]
 
-                if username in blocked_users_info:
-                    block_info = blocked_users_info[username]
+                # CORREÇÃO: Usa o dicionário em minúsculas para a verificação de bloqueio
+                if username_lower in blocked_users_lower:
+                    block_info = blocked_users_lower[username_lower]
                     block_reason = block_info.get('block_reason', 'manual')
                     
                     logger.info(f"A terminar streams para o utilizador bloqueado: '{username}' (Motivo: {block_reason}).")
@@ -202,4 +210,3 @@ class StreamManager:
             logger.warning(f"Erro de conexão ao verificar streams (isto pode ser temporário): {e}. A saltar esta verificação.")
         except Exception as e:
             logger.error(f"Erro inesperado ao verificar e impor streams: {e}", exc_info=True)
-
