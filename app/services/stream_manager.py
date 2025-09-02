@@ -4,6 +4,7 @@ from collections import defaultdict
 from flask import current_app, url_for
 from datetime import datetime
 from flask_babel import gettext as _, ngettext
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +22,10 @@ class StreamManager:
     """
     Gere a monitorização e o término de streams diretamente no Plex.
     """
-    def __init__(self, plex_connection, data_manager):
+    def __init__(self, plex_connection, data_manager, user_manager):
         self.conn = plex_connection
         self.data_manager = data_manager
+        self.user_manager = user_manager
 
     def _terminate_session(self, session, reason):
         """
@@ -41,7 +43,6 @@ class StreamManager:
         from app.config import load_or_create_config
         config = load_or_create_config()
 
-        # Placeholders básicos
         placeholders = {
             'username': username,
             'name': profile.get('name') or username,
@@ -52,7 +53,6 @@ class StreamManager:
             'phone_number': profile.get('phone_number', '')
         }
 
-        # Placeholders de data e pagamento
         expiration_date_str = profile.get('expiration_date')
         if expiration_date_str:
             try:
@@ -67,17 +67,14 @@ class StreamManager:
             placeholders['date'] = 'N/A'
             placeholders['days'] = 'N/A'
         
-        # --- CORREÇÃO: Lógica robusta para gerar URL de pagamento ---
         payment_token = profile.get('payment_token')
-        payment_link = '' # Valor padrão
+        payment_link = '' 
 
         if payment_token:
             try:
-                # Tenta gerar a URL da forma ideal, com o contexto da aplicação
                 long_url = url_for('main.payment_page', token=payment_token, _external=True)
                 payment_link = long_url
             except RuntimeError:
-                # Fallback: Se estiver fora de um contexto de requisição, constrói a URL manualmente
                 base_url = config.get("APP_BASE_URL", "").rstrip('/')
                 if base_url:
                     payment_link = f"{base_url}/pay/{payment_token}"
@@ -90,10 +87,7 @@ class StreamManager:
                         "Não foi possível construir a URL de pagamento. 'APP_BASE_URL' não está configurada."
                     )
         placeholders['payment_link'] = payment_link
-        # --- FIM DA CORREÇÃO ---
 
-
-        # Placeholders de plano e preço
         user_screen_limit = profile.get('screen_limit', 0)
         screen_prices = config.get("SCREEN_PRICES", {})
         renewal_price_str = config.get("RENEWAL_PRICE", "0.00")
@@ -114,7 +108,6 @@ class StreamManager:
         placeholders['price'] = formatted_price
         placeholders['plan_name'] = plan_name
 
-        # Adiciona placeholders específicos do contexto (como 'limit')
         if context:
             placeholders.update(context)
 
@@ -147,10 +140,12 @@ class StreamManager:
             if not sessions:
                 return
 
-            blocked_users_info = self.data_manager.get_blocked_users_dict()
-            
             active_usernames = {s.user.title for s in sessions if s.user}
-            user_profiles = self.data_manager.get_user_profiles_by_username(list(active_usernames)) if active_usernames else {}
+            if not active_usernames:
+                return
+
+            user_profiles = self.data_manager.get_user_profiles_by_username(list(active_usernames))
+            blocked_users_info = self.data_manager.get_blocked_users_dict()
             
             user_sessions = defaultdict(list)
             for session in sessions:
@@ -158,10 +153,9 @@ class StreamManager:
                     user_sessions[session.user.title].append(session)
 
             for username, user_session_list in user_sessions.items():
-                profile = user_profiles.get(username, {})
+                profile = user_profiles.get(username.lower(), {}) # Use lower() for case-insensitive lookup
                 first_session = user_session_list[0]
 
-                # Regra 1: Utilizador Bloqueado
                 if username in blocked_users_info:
                     block_info = blocked_users_info[username]
                     block_reason = block_info.get('block_reason', 'manual')
@@ -174,11 +168,10 @@ class StreamManager:
                     elif block_reason == 'trial_expired':
                         msg_template_key = 'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED'
                         default_msg = "O seu período de teste terminou. Renove para continuar."
-                    else:  # 'manual' ou qualquer outro motivo
+                    else:
                         msg_template_key = 'TERMINATION_MSG_BLOCKED_MANUAL'
                         default_msg = "O seu acesso ao servidor foi bloqueado pelo administrador."
 
-                    # CORREÇÃO: Usa 'or' para garantir o fallback se o valor guardado for uma string vazia.
                     msg_template = current_app.config.get(msg_template_key) or default_msg
                     placeholders = self._build_placeholders(username, profile, first_session)
                     reason = msg_template.format(**placeholders)
@@ -187,7 +180,6 @@ class StreamManager:
                         self._terminate_session(session, reason)
                     continue
 
-                # Regra 2: Limite de Telas
                 screen_limit = profile.get('screen_limit', 0)
                 
                 if screen_limit > 0 and len(user_session_list) > screen_limit:
@@ -196,7 +188,6 @@ class StreamManager:
                     
                     sorted_user_sessions = sorted(user_session_list, key=lambda s: s.viewOffset or 0)
                     
-                    # CORREÇÃO: Usa 'or' para garantir o fallback se o valor guardado for uma string vazia.
                     msg_template = current_app.config.get(
                         'TERMINATION_MSG_SCREEN_LIMIT'
                     ) or "Você excedeu o seu limite de {limit} telas simultâneas."
@@ -207,5 +198,8 @@ class StreamManager:
                     for i in range(sessions_to_terminate_count):
                         self._terminate_session(sorted_user_sessions[i], reason)
 
+        except requests.exceptions.ConnectionError as e:
+            logger.warning(f"Erro de conexão ao verificar streams (isto pode ser temporário): {e}. A saltar esta verificação.")
         except Exception as e:
             logger.error(f"Erro inesperado ao verificar e impor streams: {e}", exc_info=True)
+
