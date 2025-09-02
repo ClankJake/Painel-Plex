@@ -178,10 +178,11 @@ def create_app():
     )
     extensions.plex_manager.init_app(app)
     
-    # Inicialização corrigida para evitar dependência circular
+    # CORREÇÃO: Injeta o user_manager no StreamManager para otimização
     extensions.stream_manager = StreamManager(
         plex_connection=extensions.plex_manager.conn,
-        data_manager=extensions.data_manager
+        data_manager=extensions.data_manager,
+        user_manager=extensions.plex_manager.users # Injeção de dependência
     )
     extensions.plex_manager.stream_manager = extensions.stream_manager
     
@@ -285,4 +286,3 @@ def create_app():
     app.register_blueprint(coupons_api_bp, url_prefix='/api/coupons') 
 
     return app
-
