@@ -22,7 +22,11 @@ class PlexManager:
         # Instancia todos os sub-gestores
         self.conn = PlexConnectionManager()
         self.users = PlexUserManager(self.conn, data_manager, tautulli_manager, overseerr_manager)
-        self.invites = PlexInviteManager(self.conn, self.users, data_manager, tautulli_manager, overseerr_manager, notifier_manager)
+        
+        # CORREÇÃO: Passa 'self' (a instância do PlexManager) para o PlexInviteManager
+        # em vez do 'tautulli_manager', que estava a ser passado incorretamente.
+        self.invites = PlexInviteManager(self.conn, self.users, data_manager, self, overseerr_manager, notifier_manager)
+        
         self.subscriptions = PlexSubscriptionManager(data_manager, self.users)
         
         # Injeta a instância do PlexManager (self) no SubscriptionManager para resolver a dependência circular
@@ -73,6 +77,14 @@ class PlexManager:
 
     # --- Métodos de Fachada ---
     
+    # CORREÇÃO: Adiciona o método 'update_screen_limit' que estava em falta.
+    def update_screen_limit(self, username, screens):
+        """Atualiza o limite de telas para um utilizador no banco de dados."""
+        profile = self.data_manager.get_user_profile(username)
+        profile['screen_limit'] = screens
+        self.data_manager.set_user_profile(username, profile)
+        logger.info(f"Limite de telas para '{username}' atualizado para {screens}.")
+
     def block_user(self, email, reason='manual'):
         """
         Bloqueia um utilizador, terminando as suas sessões e atualizando o estado.
