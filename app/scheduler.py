@@ -4,7 +4,7 @@ import logging
 import time
 from datetime import datetime
 from apscheduler.triggers.cron import CronTrigger
-from tzlocal import get_localzone_name
+from tzlocal import get_localzone, get_localzone_name
 
 from .config import load_or_create_config
 
@@ -246,4 +246,5 @@ def setup_scheduler(app):
     if not extensions.scheduler.running:
         extensions.scheduler.start()
         logger.info("Agendador de tarefas iniciado.")
+
 
