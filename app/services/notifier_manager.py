@@ -294,7 +294,7 @@ class NotifierManager:
             request_id = uuid.uuid4()
             
             all_users = plex_manager.get_all_plex_users()
-            blocked_users = [u['username'] for u in data_manager.get_blocked_users()]
+            blocked_users = [u['username'] for u in data_manager.get_blocked_users_list()]
             target_users = [u for u in all_users if u['username'] not in blocked_users]
             
             if contacts_only:
