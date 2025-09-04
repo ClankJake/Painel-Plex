@@ -454,8 +454,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (tabId === 'coupons') {
                     loadCoupons();
+                } else if (tabId === 'reports') {
+                    // Preenche as datas com o mês atual por defeito
+                    const today = new Date();
+                    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+                    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+                    document.getElementById('startDate').value = firstDay;
+                    document.getElementById('endDate').value = lastDay;
                 }
             }
+        });
+    }
+
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+    if (exportCsvBtn) {
+        exportCsvBtn.addEventListener('click', () => {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            if (!startDate || !endDate) {
+                showToast('Por favor, selecione as datas de início e fim.', 'error');
+                return;
+            }
+            const exportUrl = `${urls.exportCsvUrl}?start_date=${startDate}&end_date=${endDate}`;
+            window.open(exportUrl, '_blank');
         });
     }
     
@@ -463,3 +484,4 @@ document.addEventListener('DOMContentLoaded', () => {
     updateMonthLabel();
     loadFinancialData();
 });
+

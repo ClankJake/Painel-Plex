@@ -33,6 +33,7 @@
 <div class="border-b border-gray-200 dark:border-gray-700 mb-6">
     <nav id="financial-tabs" class="flex space-x-6">
         <button type="button" data-tab="summary" class="tab-button active py-3 px-1 border-b-2 font-medium text-sm">{{ _('Resumo') }}</button>
+        <button type="button" data-tab="reports" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Relatórios') }}</button>
         <button type="button" data-tab="coupons" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Cupões') }}</button>
     </nav>
 </div>
@@ -118,6 +119,31 @@
             </div>
         </div>
     </div>
+    
+    <!-- Aba de Relatórios -->
+    <div id="tab-reports" class="tab-content space-y-8">
+        <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Exportar Relatório Financeiro') }}</h3>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('Selecione um intervalo de datas para exportar todas as transações concluídas como um ficheiro CSV.') }}</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                <div>
+                    <label for="startDate" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Data de Início') }}</label>
+                    <input type="date" id="startDate" class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                </div>
+                <div>
+                    <label for="endDate" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Data de Fim') }}</label>
+                    <input type="date" id="endDate" class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button id="exportCsvBtn" class="btn bg-teal-600 hover:bg-teal-500 text-white">
+                    <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                    {{ _('Exportar para CSV') }}
+                </button>
+            </div>
+        </div>
+    </div>
+
 
     <!-- Aba de Cupões -->
     <div id="tab-coupons" class="tab-content space-y-8">
@@ -173,6 +199,7 @@
         type="module"
         src="{{ url_for('static', filename='js/financial.js') }}"
         data-financial-summary-url="{{ url_for('payments_api.get_financial_summary_route') }}"
+        data-export-csv-url="{{ url_for('payments_api.export_financial_csv') }}"
         data-coupons-list-url="{{ url_for('coupons_api.list_coupons') }}"
         data-coupons-create-url="{{ url_for('coupons_api.create_coupon') }}"
         data-coupons-delete-base-url="{{ url_for('coupons_api.delete_coupon', coupon_id=0) }}"

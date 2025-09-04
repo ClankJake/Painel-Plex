@@ -143,6 +143,10 @@ class PlexConnectionManager:
                     }
                 })
             return {"success": True, "sessions": session_details, "stream_count": len(sessions)}
+        # MELHORIA: Captura especificamente o ConnectionError que você está a ver.
+        except ConnectionError as e:
+            logger.warning(_("Erro de conexão temporário ao obter sessões do Plex: %(error)s. A tentar novamente no próximo ciclo.", error=e))
+            return {"success": False, "sessions": [], "stream_count": 0}
         except Exception as e:
             logger.error(_("Erro inesperado ao obter sessões do Plex: %(error)s", error=e), exc_info=True)
             return {"success": False, "sessions": [], "stream_count": 0}

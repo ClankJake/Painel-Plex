@@ -99,4 +99,3 @@ def get_user_watch_history_route():
 def get_recently_added_route():
     days = request.args.get('days', 7, type=int)
     return jsonify(tautulli_manager.get_recently_added(days=days))
-

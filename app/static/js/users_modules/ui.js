@@ -3,7 +3,7 @@
 import * as dom from './dom.js';
 import * as state from './state.js';
 import * as api from './api.js';
-import { i18n } from './config.js';
+import { i18n, urls } from './config.js';
 import { showToast } from '../utils.js';
 import { handleInviteAction, handleUserAction } from './handlers.js';
 import * as modals from './modals.js';
@@ -229,7 +229,7 @@ export async function loadStatus(force = false) {
     }
 }
 
-function updateTabCounts() {
+export function updateTabCounts() {
     dom.countAll.textContent = state.allUsersCache.length;
     dom.countActive.textContent = state.allUsersCache.filter(u => !u.is_blocked && !u.is_on_trial).length;
     dom.countBlocked.textContent = state.allUsersCache.filter(u => u.is_blocked).length;

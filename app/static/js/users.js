@@ -14,6 +14,10 @@ import * as ui from './users_modules/ui.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     
+    // MELHORIA: Limpa o termo de pesquisa guardado sempre que a página é carregada
+    // para evitar que um filtro antigo seja aplicado ao voltar para a página.
+    state.setViewState({ searchTerm: '' });
+
     /**
      * Inicializa todos os manipuladores de eventos para os elementos estáticos da página.
      */
@@ -71,6 +75,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 activeTab.classList.add('active');
             }
         }
+        // CORREÇÃO: Garante que o campo de pesquisa visual reflete o estado guardado no carregamento da página.
+        if (dom.searchInput) {
+            dom.searchInput.value = state.viewState.searchTerm;
+        }
     }
 
     // --- Ponto de Entrada ---
@@ -82,3 +90,4 @@ document.addEventListener('DOMContentLoaded', () => {
     const intervalId = setInterval(() => ui.loadInvites(true), 10000);
     state.setInviteCheckInterval(intervalId);
 });
+

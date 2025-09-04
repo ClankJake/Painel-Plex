@@ -55,6 +55,7 @@ async function handleQuickRenewal(user) {
         confirmClass: 'bg-green-600 text-white',
         onConfirm: async () => {
             try {
+                // Para renovação, não fazemos atualização otimista pois a data de expiração precisa vir do servidor.
                 const result = await api.renewSubscription(user.username, {
                     months: 1,
                     base: 'expiry_date'
@@ -74,7 +75,7 @@ async function handleQuickRenewal(user) {
  * @param {object} user - O objeto do usuário.
  */
 export function handleUserAction(action, user) {
-    // Ações que abrem modais
+    // Ações que abrem modais e não alteram o estado imediatamente
     const modalActions = {
         'manage-profile': () => ui.showUserProfileModal(user),
         'manage-limit': () => ui.showScreenLimitModal(user),
@@ -98,24 +99,70 @@ export function handleUserAction(action, user) {
         return;
     }
 
-    // Ações que requerem confirmação
+    // Ações que alteram o estado e usam atualização otimista
     const confirmationActions = {
-        'remove': { title: i18n.removeUserTitle, message: `${i18n.confirmRemoveUser} <strong>${user.username}</strong>?`, confirmText: i18n.confirmRemoveButton, confirmClass: 'bg-red-600 text-white', apiCall: () => api.removeUser(user.email) },
-        'block': { title: i18n.blockUserTitle, message: `${i18n.confirmBlockUser} <strong>${user.username}</strong>?`, confirmText: i18n.confirmBlockButton, confirmClass: 'bg-red-600 text-white', apiCall: () => api.blockUser(user.email) },
-        'unblock': { title: i18n.unblockUserTitle, message: `${i18n.confirmUnblockUser} <strong>${user.username}</strong>?`, confirmText: i18n.confirmUnblockButton, confirmClass: 'bg-yellow-500 text-black', apiCall: () => api.unblockUser(user.email) }
+        'remove': {
+            title: i18n.removeUserTitle,
+            message: `${i18n.confirmRemoveUser} <strong>${user.username}</strong>?`,
+            confirmText: i18n.confirmRemoveButton,
+            confirmClass: 'bg-red-600 text-white',
+            apiCall: () => api.removeUser(user.email),
+            optimisticAction: () => state.removeUserFromCache(user.username),
+            rollbackAction: (originalUser) => state.addUserToCache(originalUser)
+        },
+        'block': {
+            title: i18n.blockUserTitle,
+            message: `${i18n.confirmBlockUser} <strong>${user.username}</strong>?`,
+            confirmText: i18n.confirmBlockButton,
+            confirmClass: 'bg-red-600 text-white',
+            apiCall: () => api.blockUser(user.email),
+            optimisticAction: () => state.updateUserInCache(user.username, { is_blocked: true }),
+            rollbackAction: (originalUser) => state.replaceUserInCache(originalUser)
+        },
+        'unblock': {
+            title: i18n.unblockUserTitle,
+            message: `${i18n.confirmUnblockUser} <strong>${user.username}</strong>?`,
+            confirmText: i18n.confirmUnblockButton,
+            confirmClass: 'bg-yellow-500 text-black',
+            apiCall: () => api.unblockUser(user.email),
+            optimisticAction: () => state.updateUserInCache(user.username, { is_blocked: false }),
+            rollbackAction: (originalUser) => state.replaceUserInCache(originalUser)
+        }
     };
 
     const config = confirmationActions[action];
     if (config) {
         ui.showConfirmationModal({
-            ...config,
+            title: config.title,
+            message: config.message,
+            confirmText: config.confirmText,
+            confirmClass: config.confirmClass,
             onConfirm: async () => {
+                // 1. Atualização Otimista da UI
+                const originalUserState = config.optimisticAction();
+                ui.renderUserGrid();
+                ui.updateTabCounts(); // Atualiza contadores imediatamente
+
                 try {
+                    // 2. Chamada à API
                     const result = await config.apiCall();
                     showToast(result.message, result.success ? 'success' : 'error');
-                    if (result.success) ui.loadStatus(true);
+
+                    if (!result.success) {
+                        throw new Error(result.message);
+                    }
+                    // 3. Em caso de sucesso, faz uma recarga completa para garantir a consistência dos dados.
+                    // A UI já parece correta para o utilizador.
+                    ui.loadStatus(true);
+
                 } catch (error) {
+                    // 4. Reverte a alteração em caso de falha
                     showToast(error.message, 'error');
+                    if (originalUserState) {
+                        config.rollbackAction(originalUserState);
+                        ui.renderUserGrid();
+                        ui.updateTabCounts(); // Reverte os contadores
+                    }
                 }
             }
         });

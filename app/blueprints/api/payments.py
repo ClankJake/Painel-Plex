@@ -1,8 +1,10 @@
 # app/blueprints/api/payments.py
 
 import logging
+import csv
+from io import StringIO
 from datetime import datetime, date, timezone
-from flask import Blueprint, jsonify, request, url_for, current_app
+from flask import Blueprint, jsonify, request, url_for, current_app, Response
 from flask_login import current_user
 from flask_babel import gettext as _
 from flask_login import login_required
@@ -466,3 +468,71 @@ def delete_payment_route(txid):
     except Exception as e:
         logger.error(f"Erro ao apagar a transação {txid}: {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Falha ao apagar a transação.")}), 500
+
+@payments_api_bp.route('/financial/export-csv')
+@login_required
+@admin_required
+def export_financial_csv():
+    """Endpoint para exportar dados financeiros como um ficheiro CSV."""
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+
+    if not start_date_str or not end_date_str:
+        return jsonify({"success": False, "message": "Datas de início e fim são obrigatórias."}), 400
+
+    try:
+        start_date = f"{start_date_str}T00:00:00"
+        end_date = f"{end_date_str}T23:59:59"
+
+        payments = data_manager.get_payments_for_export(start_date, end_date)
+
+        total_revenue = sum(payment['value'] for payment in payments)
+        total_transactions = len(payments)
+
+        si = StringIO()
+        si.write('\ufeff')
+        cw = csv.writer(si, delimiter=';')
+
+        headers = ['Data', 'Utilizador', 'Descricao', 'Valor (R$)', 'Provedor', 'Cupao', 'TXID']
+        cw.writerow(headers)
+
+        for payment in payments:
+            row = [
+                datetime.fromisoformat(payment['created_at']).strftime('%Y-%m-%d %H:%M:%S'),
+                payment['username'],
+                payment['description'] or f"{payment.get('screens', 'N/A')} Telas",
+                f"{payment['value']:.2f}".replace('.', ','),
+                payment['provider'],
+                payment.get('coupon_code', ''),
+                payment['txid']
+            ]
+            cw.writerow(row)
+
+        cw.writerow([])
+        cw.writerow([])
+        
+        # Título do resumo centralizado
+        cw.writerow(['', '', _('RESUMO DO PERÍODO')])
+        cw.writerow([])
+        
+        # Dados do resumo
+        cw.writerow(['', '', _('Total Arrecadado'), f"{total_revenue:.2f}".replace('.', ',')])
+        cw.writerow(['', '', _('Total de Transações'), total_transactions])
+
+        output = si.getvalue()
+        
+        filename = f"relatorio_financeiro_{start_date_str}_a_{end_date_str}.csv"
+        
+        return Response(
+            output,
+            mimetype="text/csv",
+            headers={
+                "Content-disposition": f"attachment; filename={filename}",
+                "Content-Type": "text/csv; charset=utf-8-sig"
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Erro ao gerar o relatório CSV: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "Ocorreu um erro interno ao gerar o relatório."}), 500
+
