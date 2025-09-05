@@ -61,4 +61,4 @@ EXPOSE ${APP_PORT}
 
 # Comando de Execução: Executa a migração da base de dados e depois inicia o Gunicorn.
 # O Gunicorn agora usa a variável de ambiente $APP_PORT para definir a porta de escuta.
-CMD ["sh", "-c", "flask db upgrade && gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:${APP_PORT} run:app"]
+CMD ["sh", "-c", "flask db upgrade && gunicorn --worker-class eventlet -w 3 --bind 0.0.0.0:${APP_PORT} run:app"]
