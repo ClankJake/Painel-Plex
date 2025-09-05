@@ -256,6 +256,19 @@ class DataManager:
             "upcoming_expirations": upcoming_expirations 
         }
 
+    def get_payments_for_export(self, start_date_iso, end_date_iso):
+        """Busca todas as transações concluídas dentro de um intervalo de datas para exportação."""
+        try:
+            payments = PixPayment.query.filter(
+                PixPayment.status == 'CONCLUIDA',
+                PixPayment.created_at >= start_date_iso,
+                PixPayment.created_at <= end_date_iso
+            ).order_by(PixPayment.created_at.asc()).all()
+            return [self._row_to_dict(p) for p in payments]
+        except Exception as e:
+            logger.error(f"Erro ao buscar pagamentos para exportação: {e}", exc_info=True)
+            return []
+
     # --- Métodos para Perfis de Utilizador ---
     def get_user_profile(self, username):
         profile = UserProfile.query.get(username)
@@ -464,3 +477,4 @@ class DataManager:
         if not row:
             return None
         return {c.name: getattr(row, c.name) for c in row.__table__.columns}
+
