@@ -266,6 +266,7 @@ def create_app():
     from .blueprints.main import main_bp
     from .blueprints.auth import auth_bp
     from .blueprints.redirect import redirect_bp
+    from .blueprints.image_proxy import image_proxy_bp
     from .blueprints.api.system import system_api_bp
     from .blueprints.api.users import users_api_bp
     from .blueprints.api.invites import invites_api_bp
@@ -277,6 +278,7 @@ def create_app():
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(redirect_bp)
+    app.register_blueprint(image_proxy_bp, url_prefix='/image-proxy')
     app.register_blueprint(system_api_bp, url_prefix='/api/system')
     app.register_blueprint(users_api_bp, url_prefix='/api/users')
     app.register_blueprint(invites_api_bp, url_prefix='/api/invites')

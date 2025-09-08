@@ -154,6 +154,23 @@
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A tarefa de limpeza será executada diariamente a esta hora.')}}</p>
                     </div>
                 </div>
+                 <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
+                    <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Limpeza do Cache de Imagens') }}</h4>
+                     <div class="flex items-center">
+                        <input id="IMAGE_CACHE_CLEANUP_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                        <label for="IMAGE_CACHE_CLEANUP_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar limpeza do cache de imagens') }}</label>
+                    </div>
+                    <div>
+                        <label for="IMAGE_CACHE_MAX_AGE_DAYS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Imagens em Cache Após (dias)') }}</label>
+                        <input type="number" id="IMAGE_CACHE_MAX_AGE_DAYS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Isto apaga ficheiros de imagem antigos para poupar espaço em disco.')}}</p>
+                    </div>
+                    <div>
+                        <label for="IMAGE_CACHE_CLEANUP_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Executar a Limpeza do Cache') }}</label>
+                        <input type="time" id="IMAGE_CACHE_CLEANUP_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A tarefa de limpeza do cache de imagens será executada diariamente a esta hora.')}}</p>
+                    </div>
+                </div>
             </div>
         </div>
 

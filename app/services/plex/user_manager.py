@@ -7,7 +7,8 @@ from requests.exceptions import RequestException
 from flask_babel import gettext as _
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
-from flask import current_app
+# NOVO: Importa o url_for para criar os links do proxy
+from flask import current_app, url_for
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +51,17 @@ class PlexUserManager:
 
             server_identifier = self.conn.plex.machineIdentifier
             all_friends = self.conn.account.users()
-            users_with_access = [
-                {'username': user.username, 'email': user.email, 'id': user.id, 'thumb': user.thumb, 'servers': user.servers}
-                for user in all_friends if any(s.machineIdentifier == server_identifier for s in user.servers)
-            ]
+
+            # CORREÇÃO: Usa o proxy de imagem para os avatares dos utilizadores
+            with current_app.app_context():
+                users_with_access = [
+                    {'username': user.username, 
+                     'email': user.email, 
+                     'id': user.id, 
+                     'thumb': url_for('image_proxy.proxy_image', url=user.thumb) if user.thumb else None, 
+                     'servers': user.servers}
+                    for user in all_friends if any(s.machineIdentifier == server_identifier for s in user.servers)
+                ]
             
             logger.debug(_("Encontrados %(friends)d amigos na conta, %(access)d com acesso a este servidor.", friends=len(all_friends), access=len(users_with_access)))
             self._user_cache = users_with_access

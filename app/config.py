@@ -111,7 +111,10 @@ def load_or_create_config():
             "TERMINATION_MSG_BLOCKED_MANUAL": "O seu acesso ao servidor foi bloqueado pelo administrador.",
             "TERMINATION_MSG_BLOCKED_EXPIRED": "A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.",
             "TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED": "O seu período de teste para {username} terminou. Renove para continuar.",
-            "TERMINATION_MSG_SCREEN_LIMIT": "{username}, você excedeu o seu limite de {limit} tela(s) simultânea(s)."
+            "TERMINATION_MSG_SCREEN_LIMIT": "{username}, você excedeu o seu limite de {limit} tela(s) simultânea(s).",
+            "IMAGE_CACHE_CLEANUP_ENABLED": True,
+            "IMAGE_CACHE_MAX_AGE_DAYS": 30,
+            "IMAGE_CACHE_CLEANUP_TIME": "04:00"
         }
         save_app_config(default_config)
         return default_config
@@ -192,7 +195,9 @@ def load_or_create_config():
                 config.setdefault("TELEGRAM_BULK_MESSAGE_TEMPLATE", "Olá {name}, um aviso do servidor: {message}")
                 config.setdefault("DISCORD_BULK_MESSAGE_TEMPLATE", "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Aviso do Servidor\", \"description\": \"{message}\", \"color\": 3447003}]}")
                 config.setdefault("WEBHOOK_BULK_MESSAGE_TEMPLATE", "{\"phone\": \"{phone_number}@s.whatsapp.net\", \"message\": \"{message}\"}")
-
+                config.setdefault("IMAGE_CACHE_CLEANUP_ENABLED", True)
+                config.setdefault("IMAGE_CACHE_MAX_AGE_DAYS", 30)
+                config.setdefault("IMAGE_CACHE_CLEANUP_TIME", "04:00")
 
             log_file_path = config.get("LOG_FILE")
             if log_file_path and not os.path.isabs(log_file_path):

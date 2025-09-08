@@ -132,6 +132,7 @@ def api_settings():
             'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE', 'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE',
             'OVERSEERR_ENABLED', 'OVERSEERR_URL', 'OVERSEERR_API_KEY',
             'CLEANUP_PENDING_PAYMENTS_ENABLED', 'CLEANUP_PENDING_PAYMENTS_DAYS', 'CLEANUP_TIME',
+            'IMAGE_CACHE_CLEANUP_ENABLED', 'IMAGE_CACHE_MAX_AGE_DAYS', 'IMAGE_CACHE_CLEANUP_TIME',
             'ENABLE_LINK_SHORTENER', 'PAYMENT_LINK_GRACE_PERIOD_DAYS',
             'ACHIEVEMENT_MOVIE_MARATHON_BRONZE', 'ACHIEVEMENT_MOVIE_MARATHON_SILVER', 'ACHIEVEMENT_MOVIE_MARATHON_GOLD',
             'ACHIEVEMENT_SERIES_BINGER_BRONZE', 'ACHIEVEMENT_SERIES_BINGER_SILVER', 'ACHIEVEMENT_SERIES_BINGER_GOLD',
@@ -145,7 +146,7 @@ def api_settings():
         ]
         numeric_fields = [
             'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION', 
-            'CLEANUP_PENDING_PAYMENTS_DAYS',
+            'CLEANUP_PENDING_PAYMENTS_DAYS', 'IMAGE_CACHE_MAX_AGE_DAYS',
             'PAYMENT_LINK_GRACE_PERIOD_DAYS',
             'ACHIEVEMENT_MOVIE_MARATHON_BRONZE', 'ACHIEVEMENT_MOVIE_MARATHON_SILVER', 'ACHIEVEMENT_MOVIE_MARATHON_GOLD',
             'ACHIEVEMENT_SERIES_BINGER_BRONZE', 'ACHIEVEMENT_SERIES_BINGER_SILVER', 'ACHIEVEMENT_SERIES_BINGER_GOLD',
@@ -206,6 +207,7 @@ def api_settings():
         reschedule_job('expiration_notification_job', 'EXPIRATION_NOTIFICATION_TIME', old_config, config_to_update)
         reschedule_job('removal_job', 'BLOCK_REMOVAL_TIME', old_config, config_to_update)
         reschedule_job('cleanup_job', 'CLEANUP_TIME', old_config, config_to_update)
+        reschedule_job('cleanup_image_cache_job', 'IMAGE_CACHE_CLEANUP_TIME', old_config, config_to_update)
         reschedule_job('stream_check_job', 'STREAM_CHECK_INTERVAL_SECONDS', old_config, config_to_update, trigger_type='interval')
 
 

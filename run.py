@@ -8,6 +8,12 @@ import logging
 import subprocess
 import sys
 import os
+
+# NOVO: Cria o diretório de cache de imagens antes de tudo, se necessário
+from app.config import CONFIG_DIR
+IMAGE_CACHE_DIR = os.path.join(CONFIG_DIR, 'cache', 'images')
+os.makedirs(IMAGE_CACHE_DIR, exist_ok=True)
+
 from app import create_app, extensions
 from app.config import load_or_create_config
 
@@ -70,3 +76,4 @@ if __name__ == '__main__':
         logging.critical("A aplicação não será iniciada devido a uma falha na migração da base de dados.")
         # Opcional: Adicionar um input para manter a janela do console aberta e ver o erro.
         # input("Pressione Enter para sair...")
+

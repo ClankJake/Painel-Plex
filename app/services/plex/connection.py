@@ -2,7 +2,9 @@
 import logging
 from flask_babel import gettext as _
 from plexapi.server import PlexServer
-from requests.exceptions import ConnectTimeout, ReadTimeout, ConnectionError
+from requests.exceptions import ConnectTimeout, ReadTimeout, ConnectionError, RequestException
+# NOVO: Importa o url_for para criar os links do proxy
+from flask import url_for
 
 # Import absoluto a partir do pacote 'app'
 from app.config import load_or_create_config
@@ -31,7 +33,7 @@ class PlexConnectionManager:
             if not all(k in config and config[k] for k in ["PLEX_URL", "PLEX_TOKEN"]):
                 raise ValueError(_("Configurações do Plex (URL e Token) não encontradas ou estão vazias."))
             
-            self.plex = PlexServer(config["PLEX_URL"], config["PLEX_TOKEN"], timeout=10)
+            self.plex = PlexServer(config["PLEX_URL"], config["PLEX_TOKEN"], timeout=20)
             self.account = self.plex.myPlexAccount()
             
             if not from_job:
@@ -105,10 +107,12 @@ class PlexConnectionManager:
 
                 # Detalhes do Media
                 media = s.media[0] if s.media else None
-                video_codec = getattr(media, "videoCodec", "N/A").upper()
-                audio_codec = getattr(media, "audioCodec", "N/A").upper()
-                container = getattr(media, "container", "N/A").upper()
+                # CORREÇÃO: Trata valores None antes de chamar .upper()
+                video_codec = (getattr(media, "videoCodec", None) or "N/A").upper()
+                audio_codec = (getattr(media, "audioCodec", None) or "N/A").upper()
+                container = (getattr(media, "container", None) or "N/A").upper()
                 video_resolution = getattr(media, "videoResolution", "N/A")
+
 
                 # Título e Subtítulo
                 title = s.title
@@ -119,12 +123,19 @@ class PlexConnectionManager:
 
                 # Arte (Thumbnail)
                 thumb_key = s.grandparentThumb if s.type == 'episode' and hasattr(s, 'grandparentThumb') and s.grandparentThumb else s.thumb
-                thumb_url = self.plex.url(thumb_key, includeToken=True) if thumb_key else None
+                # CORREÇÃO: Usa o proxy de imagem em vez do link direto do Plex
+                thumb_url_direct = self.plex.url(thumb_key, includeToken=True) if thumb_key else None
+                thumb_url = url_for('image_proxy.proxy_image', url=thumb_url_direct) if thumb_url_direct else None
+                
+                # CORREÇÃO: Usa o proxy de imagem para o avatar do utilizador
+                user_thumb_direct = s.user.thumb
+                user_thumb_url = url_for('image_proxy.proxy_image', url=user_thumb_direct) if user_thumb_direct else None
+
 
                 session_details.append({
                     "session_key": s.sessionKey,
                     "user": s.user.title,
-                    "user_thumb": s.user.thumb,
+                    "user_thumb": user_thumb_url,
                     "player": s.player.title,
                     "platform": s.player.platform,
                     "type": s.type,
@@ -143,8 +154,8 @@ class PlexConnectionManager:
                     }
                 })
             return {"success": True, "sessions": session_details, "stream_count": len(sessions)}
-        # MELHORIA: Captura especificamente o ConnectionError que você está a ver.
-        except ConnectionError as e:
+        # MELHORIA: Captura uma gama mais ampla de erros de conexão, incluindo timeouts.
+        except (ConnectionError, ReadTimeout, RequestException) as e:
             logger.warning(_("Erro de conexão temporário ao obter sessões do Plex: %(error)s. A tentar novamente no próximo ciclo.", error=e))
             return {"success": False, "sessions": [], "stream_count": 0}
         except Exception as e:
@@ -163,3 +174,4 @@ class PlexConnectionManager:
         except Exception as e:
             logger.error(_("Não foi possível obter as bibliotecas do servidor Plex: %(error)s", error=e))
             return []
+

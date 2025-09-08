@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 from collections import Counter, defaultdict
 from flask_babel import gettext as _
 from requests.exceptions import RequestException
+# NOVO: Importa o url_for para criar os links do proxy
+from flask import url_for
 
 from app.config import load_or_create_config
 
@@ -212,7 +214,9 @@ class StatsHandler:
                     stats["unique_genres"].update(item.get("genres"))
                 
                 if len(stats["recent"]) < 5:
-                    poster_url = f"{self.api.base_url}/pms_image_proxy?img={item['thumb']}&width=200&height=300&apikey={self.api.api_key}" if item.get('thumb') else ''
+                    # CORREÇÃO: Usa o proxy de imagem em vez do link direto do Tautulli
+                    poster_url_direct = f"{self.api.base_url}/pms_image_proxy?img={item['thumb']}&width=200&height=300&apikey={self.api.api_key}" if item.get('thumb') else ''
+                    poster_url = url_for('image_proxy.proxy_image', url=poster_url_direct) if poster_url_direct else None
                     stats["recent"].append({"type": item.get("media_type"), "title": item.get("title"), "series": item.get("grandparent_title"), "poster_url": poster_url, "play_date": dt.strftime('%d/%m/%Y %H:%M')})
             
             favorite_genre_info = stats["genre_counts"].most_common(1)
@@ -260,7 +264,9 @@ class StatsHandler:
             
             processed_history = []
             for item in history_data:
-                poster_url = f"{self.api.base_url}/pms_image_proxy?img={item['thumb']}&width=100&height=150&apikey={self.api.api_key}" if item.get('thumb') else ''
+                # CORREÇÃO: Usa o proxy de imagem em vez do link direto do Tautulli
+                poster_url_direct = f"{self.api.base_url}/pms_image_proxy?img={item['thumb']}&width=100&height=150&apikey={self.api.api_key}" if item.get('thumb') else ''
+                poster_url = url_for('image_proxy.proxy_image', url=poster_url_direct) if poster_url_direct else None
                 
                 title = item.get('title', 'N/A')
                 subtitle = str(item.get('year', ''))
@@ -314,7 +320,9 @@ class StatsHandler:
                         if item.get('media_type') == 'episode' and item.get('grandparent_thumb'):
                             thumb_key = item.get('grandparent_thumb')
                         
-                        poster_url = f"{self.api.base_url}/pms_image_proxy?img={thumb_key}&width=300&height=450&apikey={self.api.api_key}" if thumb_key else ''
+                        # CORREÇÃO: Usa o proxy de imagem em vez do link direto do Tautulli
+                        poster_url_direct = f"{self.api.base_url}/pms_image_proxy?img={thumb_key}&width=300&height=450&apikey={self.api.api_key}" if thumb_key else ''
+                        poster_url = url_for('image_proxy.proxy_image', url=poster_url_direct) if poster_url_direct else None
                         
                         def safe_int(value, default=0):
                             try:

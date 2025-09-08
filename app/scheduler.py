@@ -2,7 +2,8 @@
 
 import logging
 import time
-from datetime import datetime
+import os
+from datetime import datetime, timedelta
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone, get_localzone_name
 
@@ -197,6 +198,40 @@ def cleanup_job():
             logger.error(f"Erro durante a execução da tarefa de limpeza: {e}", exc_info=True)
         logger.info("Tarefa de limpeza concluída.")
 
+# NOVO: Tarefa para limpar o cache de imagens em disco
+def cleanup_image_cache_job():
+    """Tarefa agendada para apagar imagens antigas do cache em disco."""
+    if not _app:
+        logger.error("A instância da app não foi definida para a tarefa 'cleanup_image_cache_job'. A tarefa foi ignorada.")
+        return
+
+    with _app.app_context():
+        from .config import load_or_create_config
+        from .blueprints.image_proxy import IMAGE_CACHE_DIR
+
+        config = load_or_create_config()
+        if not config.get("IMAGE_CACHE_CLEANUP_ENABLED", False):
+            logger.info("Limpeza do cache de imagens está desativada. A ignorar a tarefa.")
+            return
+        
+        max_age_days = config.get("IMAGE_CACHE_MAX_AGE_DAYS", 30)
+        cutoff_time = time.time() - (max_age_days * 86400)
+        deleted_count = 0
+
+        logger.info(f"A executar a limpeza do cache de imagens. A apagar ficheiros mais antigos que {max_age_days} dias...")
+        try:
+            for filename in os.listdir(IMAGE_CACHE_DIR):
+                filepath = os.path.join(IMAGE_CACHE_DIR, filename)
+                if os.path.isfile(filepath):
+                    if os.path.getmtime(filepath) < cutoff_time:
+                        os.remove(filepath)
+                        deleted_count += 1
+            if deleted_count > 0:
+                logger.info(f"Limpeza do cache de imagens concluída. {deleted_count} ficheiros apagados.")
+        except Exception as e:
+            logger.error(f"Erro durante a limpeza do cache de imagens: {e}", exc_info=True)
+
+
 def setup_scheduler(app):
     """Configura e inicia o agendador com as tarefas recorrentes da aplicação."""
     from . import extensions
@@ -243,8 +278,17 @@ def setup_scheduler(app):
         replace_existing=True
     )
 
+    # NOVO: Adiciona a tarefa de limpeza do cache de imagens
+    if config.get("IMAGE_CACHE_CLEANUP_ENABLED", False):
+        cache_cleanup_time_parts = config.get("IMAGE_CACHE_CLEANUP_TIME", "04:00").split(':')
+        extensions.scheduler.add_job(
+            id='cleanup_image_cache_job', 
+            func=cleanup_image_cache_job,
+            trigger=CronTrigger(hour=int(cache_cleanup_time_parts[0]), minute=int(cache_cleanup_time_parts[1]), timezone=tz),
+            replace_existing=True
+        )
+
     if not extensions.scheduler.running:
         extensions.scheduler.start()
         logger.info("Agendador de tarefas iniciado.")
-
 

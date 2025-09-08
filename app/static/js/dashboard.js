@@ -231,8 +231,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const platform_icon_name = (s.platform || 'default').toLowerCase().replace(/\s+/g, '');
 
                 return `
-                    <div class="bg-white dark:bg-gray-800/80 p-3 sm:p-4 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex items-center gap-3 sm:gap-4 overflow-hidden">
-                        <img src="${s.thumb_url || 'https://placehold.co/150x225/1F2937/E5E7EB?text=?'}" class="w-24 h-36 sm:w-28 sm:h-42 object-cover rounded-md shadow-sm flex-shrink-0" alt="Poster">
+                    <div class="bg-white dark:bg-gray-800/80 p-3 sm:p-4 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex items-start gap-3 sm:gap-4 overflow-hidden">
+                        <div class="w-24 sm:w-28 flex-shrink-0">
+                            <img src="${s.thumb_url || 'https://placehold.co/150x225/1F2937/E5E7EB?text=?'}" class="w-full h-auto aspect-[2/3] object-cover rounded-md shadow-sm" alt="Poster">
+                        </div>
                         <div class="flex-1 min-w-0 w-full space-y-2">
                             <div class="flex justify-between items-start gap-2">
                                 <div>
