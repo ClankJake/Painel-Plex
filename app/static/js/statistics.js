@@ -128,8 +128,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 return `
                     <div class="flex-shrink-0 w-36 group">
-                        <div class="relative">
-                            <img src="${item.poster_url}" alt="Poster" class="w-36 h-52 object-cover rounded-lg shadow-lg transition-transform duration-300 group-hover:scale-105" onerror="this.onerror=null;this.src='https://placehold.co/144x208/1F2937/E5E7EB?text=${i18n.noArt}'">
+                        <div class="relative group-hover:scale-105 group-hover:drop-shadow-[0_5px_15px_rgba(250,204,21,0.4)] transition-transform duration-300">
+                            <img src="${item.poster_url}" alt="Poster" class="w-36 h-52 object-cover rounded-lg" onerror="this.onerror=null;this.src='https://placehold.co/144x208/1F2937/E5E7EB?text=${i18n.noArt}'">
                             <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 rounded-b-lg">
                                 <p class="text-white text-xs font-semibold truncate">${i18n.added} ${addedAgo}</p>
                             </div>
@@ -330,7 +330,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (details.recent && details.recent.length > 0) {
                 recentHtml = details.recent.map(item => `
                     <div class="text-center flex-shrink-0 w-32 group" title="${item.type === 'movie' ? item.title : `${item.series} - ${item.title}`}\n${i18n.viewedOn} ${item.play_date}">
-                        <img src="${item.poster_url}" alt="Poster" class="w-32 h-48 object-cover rounded-lg shadow-lg group-hover:shadow-yellow-400/20 transition-all duration-300 group-hover:scale-105" onerror="this.onerror=null;this.src='https://placehold.co/200x300/1F2937/E5E7EB?text=${i18n.noArt}'">
+                        <div class="relative group-hover:scale-105 group-hover:drop-shadow-[0_5px_15px_rgba(250,204,21,0.4)] transition-transform duration-300">
+                            <img src="${item.poster_url}" alt="Poster" class="w-32 h-48 object-cover rounded-lg" onerror="this.onerror=null;this.src='https://placehold.co/200x300/1F2937/E5E7EB?text=${i18n.noArt}'">
+                        </div>
                         <p class="text-xs text-gray-600 dark:text-gray-300 mt-2 truncate">${item.type === 'movie' ? item.title : item.series}</p>
                     </div>
                 `).join('');
@@ -590,3 +592,4 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- INICIALIZAÇÃO ---
     mainFetch(daysFilter.value);
 });
+
