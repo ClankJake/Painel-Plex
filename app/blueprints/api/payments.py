@@ -477,6 +477,15 @@ def export_financial_csv():
     start_date_str = request.args.get('start_date')
     end_date_str = request.args.get('end_date')
 
+    # MELHORIA DE SEGURANÇA: Valida o formato das datas
+    try:
+        if start_date_str:
+            datetime.fromisoformat(start_date_str)
+        if end_date_str:
+            datetime.fromisoformat(end_date_str)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "Formato de data inválido. Use AAAA-MM-DD."}), 400
+
     if not start_date_str or not end_date_str:
         return jsonify({"success": False, "message": "Datas de início e fim são obrigatórias."}), 400
 
@@ -535,4 +544,3 @@ def export_financial_csv():
     except Exception as e:
         logger.error(f"Erro ao gerar o relatório CSV: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Ocorreu um erro interno ao gerar o relatório."}), 500
-

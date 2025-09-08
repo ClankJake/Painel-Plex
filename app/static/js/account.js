@@ -1,5 +1,12 @@
 import { fetchAPI, showToast, createModal } from './utils.js';
 
+// MELHORIA DE SEGURANÇA: Função para sanitizar entradas de texto no frontend
+function sanitizeHTML(str) {
+    const temp = document.createElement('div');
+    temp.textContent = str;
+    return temp.innerHTML;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     // --- ELEMENTOS E DADOS GLOBAIS ---
     const loadingIndicator = document.getElementById('loadingIndicator');
@@ -150,7 +157,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             searchInput.addEventListener('input', (e) => {
                 clearTimeout(historySearchTimeout);
                 historySearchTimeout = setTimeout(() => {
-                    fetchAndRenderHistory(1, e.target.value);
+                    // MELHORIA DE SEGURANÇA: Sanitiza a entrada do utilizador no frontend
+                    const searchTerm = sanitizeHTML(e.target.value);
+                    fetchAndRenderHistory(1, searchTerm);
                 }, 500); // Debounce de 500ms
             });
         }

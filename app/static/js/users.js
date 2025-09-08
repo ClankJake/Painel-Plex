@@ -12,6 +12,14 @@ import * as dom from './users_modules/dom.js';
 import * as state from './users_modules/state.js';
 import * as ui from './users_modules/ui.js';
 
+// MELHORIA DE SEGURANÇA: Função para sanitizar entradas de texto no frontend
+function sanitizeHTML(str) {
+    const temp = document.createElement('div');
+    temp.textContent = str;
+    return temp.innerHTML;
+}
+
+
 document.addEventListener('DOMContentLoaded', () => {
     
     // MELHORIA: Limpa o termo de pesquisa guardado sempre que a página é carregada
@@ -33,7 +41,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (dom.searchInput) {
             dom.searchInput.addEventListener('input', (e) => {
-                state.setViewState({ searchTerm: e.target.value });
+                // MELHORIA DE SEGURANÇA: Sanitiza a entrada antes de a usar para filtrar
+                const searchTerm = sanitizeHTML(e.target.value);
+                state.setViewState({ searchTerm: searchTerm });
                 ui.renderUserGrid();
             });
         }
@@ -90,4 +100,3 @@ document.addEventListener('DOMContentLoaded', () => {
     const intervalId = setInterval(() => ui.loadInvites(true), 10000);
     state.setInviteCheckInterval(intervalId);
 });
-

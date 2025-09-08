@@ -285,11 +285,22 @@ class NotifierManager:
             context={}
         )
 
-    def send_bulk_notification(self, app, message, contacts_only=False):
-        """Envia uma notificação em massa para os utilizadores selecionados."""
-        with app.app_context():
-            from ..extensions import data_manager, plex_manager
+    def process_bulk_notification_task(self, task_obj):
+        """
+        Executa uma tarefa de notificação em massa. Esta função é chamada pelo agendador.
+        """
+        from ..extensions import plex_manager, data_manager
+        
+        task_id = task_obj.id
+        try:
+            # 1. Marcar a tarefa como 'a correr'
+            data_manager.update_task(task_id, {'status': 'running', 'started_at': datetime.utcnow()})
             
+            # 2. Obter o payload e executar a lógica
+            payload = json.loads(task_obj.payload)
+            message = payload['message']
+            contacts_only = payload.get('contacts_only', False)
+
             config = load_or_create_config()
             request_id = uuid.uuid4()
             
@@ -298,7 +309,7 @@ class NotifierManager:
             target_users = [u for u in all_users if u['username'] not in blocked_users]
             
             if contacts_only:
-                logger.info(f"[ID: {request_id}] A filtrar utilizadores para enviar apenas para aqueles com contacto registado para um agente ATIVO.")
+                logger.info(f"[Task ID: {task_id}] A filtrar utilizadores para enviar apenas para aqueles com contacto registado.")
                 users_with_contacts = []
                 telegram_enabled = config.get("TELEGRAM_ENABLED", False)
                 discord_enabled = config.get("DISCORD_ENABLED", False)
@@ -306,55 +317,44 @@ class NotifierManager:
 
                 for user in target_users:
                     profile = data_manager.get_user_profile(user['username'])
-                    has_contact_for_active_notifier = (
-                        (telegram_enabled and profile.get('telegram_user')) or 
-                        (discord_enabled and profile.get('discord_user_id')) or 
-                        (webhook_enabled and profile.get('phone_number'))
-                    )
-                    if has_contact_for_active_notifier:
+                    if (telegram_enabled and profile.get('telegram_user')) or \
+                       (discord_enabled and profile.get('discord_user_id')) or \
+                       (webhook_enabled and profile.get('phone_number')):
                         users_with_contacts.append(user)
                 
                 original_count = len(target_users)
                 target_users = users_with_contacts
-                logger.info(f"[ID: {request_id}] Filtro aplicado. De {original_count} utilizadores ativos, {len(target_users)} têm contacto e serão notificados.")
+                logger.info(f"[Task ID: {task_id}] Filtro aplicado. De {original_count} utilizadores, {len(target_users)} serão notificados.")
 
             total_users = len(target_users)
-            logger.info(f"[ID: {request_id}] A iniciar envio em massa para {total_users} utilizadores.")
+            data_manager.update_task(task_id, {'progress_total': total_users})
+            logger.info(f"[Task ID: {task_id}] A iniciar envio em massa para {total_users} utilizadores.")
             if self.socketio:
-                self.socketio.emit('bulk_notification_start', {'total': total_users}, namespace='/dashboard')
+                self.socketio.emit('bulk_notification_start', {'total': total_users, 'task_id': task_id}, namespace='/dashboard')
 
-            telegram_message_template = config.get("TELEGRAM_BULK_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get("TELEGRAM_BULK_MESSAGE_TEMPLATE")
-            discord_message_template = config.get("DISCORD_BULK_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get("DISCORD_BULK_MESSAGE_TEMPLATE")
-            webhook_message_template = config.get("WEBHOOK_BULK_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get("WEBHOOK_BULK_MESSAGE_TEMPLATE")
+            telegram_template = config.get("TELEGRAM_BULK_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get("TELEGRAM_BULK_MESSAGE_TEMPLATE")
+            discord_template = config.get("DISCORD_BULK_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get("DISCORD_BULK_MESSAGE_TEMPLATE")
+            webhook_template = config.get("WEBHOOK_BULK_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get("WEBHOOK_BULK_MESSAGE_TEMPLATE")
 
             for i, user in enumerate(target_users):
                 username = user.get('username')
                 user_profile = data_manager.get_user_profile(username)
                 
-                placeholders = {
-                    'username': username,
-                    'name': user_profile.get('name') or username,
-                    'email': user.get('email'),
-                    'greeting': get_greeting(),
-                    'telegram_user': user_profile.get('telegram_user', ''),
-                    'discord_user_id': user_profile.get('discord_user_id', ''),
-                    'phone_number': user_profile.get('phone_number', ''),
-                    'message': message 
-                }
+                placeholders = { 'message': message, **self._build_placeholders('bulk', user, user_profile, {}) }
 
-                if config.get("TELEGRAM_ENABLED") and telegram_message_template:
+                if config.get("TELEGRAM_ENABLED") and telegram_template:
                     telegram_user_id = user_profile.get('telegram_user')
                     if telegram_user_id:
-                        full_message = telegram_message_template.format(**placeholders)
+                        full_message = telegram_template.format(**placeholders)
                         self._send_telegram_notification(full_message, telegram_user_id, request_id)
                 
                 # CORREÇÃO: Lógica de substituição segura para JSON
-                if config.get("DISCORD_ENABLED") and discord_message_template:
+                if config.get("DISCORD_ENABLED") and discord_template:
                     discord_user_id = user_profile.get('discord_user_id')
                     if discord_user_id:
                         try:
                             escaped_message = json.dumps(message)[1:-1]
-                            processed_template = discord_message_template.replace('{message}', escaped_message)
+                            processed_template = discord_template.replace('{message}', escaped_message)
                             for key, value in placeholders.items():
                                 if key != 'message':
                                     processed_template = processed_template.replace(f"{{{key}}}", str(value))
@@ -365,12 +365,12 @@ class NotifierManager:
                             logger.error(f"[ID: {request_id}] Falha ao processar a mensagem do Discord para {username}: {e}")
                 
                 # CORREÇÃO: Lógica de substituição segura para JSON
-                if config.get("WEBHOOK_ENABLED") and webhook_message_template:
+                if config.get("WEBHOOK_ENABLED") and webhook_template:
                     phone_number = user_profile.get('phone_number')
                     if phone_number:
                         try:
                             escaped_message = json.dumps(message)[1:-1]
-                            processed_template = webhook_message_template.replace('{message}', escaped_message)
+                            processed_template = webhook_template.replace('{message}', escaped_message)
                             for key, value in placeholders.items():
                                 if key != 'message':
                                     processed_template = processed_template.replace(f"{{{key}}}", str(value))
@@ -380,11 +380,72 @@ class NotifierManager:
                         except Exception as e:
                             logger.error(f"[ID: {request_id}] Falha ao processar a mensagem do Webhook para {username}: {e}")
 
+                # 3. Atualizar progresso
+                data_manager.update_task(task_id, {'progress_current': i + 1})
                 if self.socketio:
-                    self.socketio.emit('bulk_notification_progress', {'current': i + 1, 'total': total_users}, namespace='/dashboard')
+                    self.socketio.emit('bulk_notification_progress', {'current': i + 1, 'total': total_users, 'task_id': task_id}, namespace='/dashboard')
                 
                 time.sleep(2) 
 
-            logger.info(f"[ID: {request_id}] Envio em massa concluído.")
+            # 4. Marcar a tarefa como concluída
+            success_message = f"Envio em massa concluído para {total_users} utilizadores."
+            data_manager.update_task(task_id, {'status': 'success', 'result': success_message, 'completed_at': datetime.utcnow()})
+            logger.info(f"[Task ID: {task_id}] {success_message}")
             if self.socketio:
-                self.socketio.emit('bulk_notification_end', {'total': total_users}, namespace='/dashboard')
+                self.socketio.emit('bulk_notification_end', {'total': total_users, 'task_id': task_id}, namespace='/dashboard')
+
+        except Exception as e:
+            error_message = f"Falha na tarefa de notificação em massa: {e}"
+            logger.error(f"[Task ID: {task_id}] {error_message}", exc_info=True)
+            data_manager.update_task(task_id, {'status': 'failed', 'result': error_message, 'completed_at': datetime.utcnow()})
+            if self.socketio:
+                self.socketio.emit('bulk_notification_error', {'message': error_message, 'task_id': task_id}, namespace='/dashboard')
+    
+    def _build_placeholders(self, event_type, user, user_profile, context):
+        """Constrói um dicionário de placeholders para as mensagens."""
+        config = load_or_create_config()
+        
+        user_screen_limit = user_profile.get('screen_limit', 0)
+        screen_prices = config.get("SCREEN_PRICES", {})
+        renewal_price_str = config.get("RENEWAL_PRICE", "0.00") 
+
+        if str(user_screen_limit) in screen_prices:
+            renewal_price_str = screen_prices[str(user_screen_limit)]
+        
+        try:
+            price_value = float(renewal_price_str.replace(',', '.'))
+            formatted_price = f"R$ {price_value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except (ValueError, TypeError):
+            formatted_price = "N/A"
+
+        if user_screen_limit > 0:
+            plan_name = ngettext('%(num)d Tela', '%(num)d Telas', user_screen_limit) % {'num': user_screen_limit}
+        else:
+            plan_name = _("Plano Padrão")
+
+        payment_link = "#"
+        if event_type != 'renewal' and user_profile.get('payment_token'):
+            long_url = url_for('main.payment_page', token=user_profile['payment_token'], _external=True)
+            if config.get("ENABLE_LINK_SHORTENER") and self.link_shortener:
+                try:
+                    payment_link = self.link_shortener.create_short_link(long_url)
+                except Exception:
+                    payment_link = long_url
+            else:
+                payment_link = long_url
+
+        placeholders = {
+            'username': user.get('username'),
+            'name': user_profile.get('name') or user.get('username'),
+            'email': user.get('email'),
+            'greeting': get_greeting(),
+            'telegram_user': user_profile.get('telegram_user', ''),
+            'discord_user_id': user_profile.get('discord_user_id', ''),
+            'phone_number': user_profile.get('phone_number', ''),
+            'payment_link': payment_link,
+            'price': formatted_price,
+            'plan_name': plan_name
+        }
+        placeholders.update(context)
+        return placeholders
+

@@ -1,6 +1,7 @@
 # app/blueprints/api/stats.py
 
 import logging
+import bleach
 from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 from flask_babel import gettext as _
@@ -81,8 +82,11 @@ def get_user_watch_history_route():
     try:
         page = request.args.get('page', 1, type=int)
         length = request.args.get('length', 15, type=int)
-        search = request.args.get('search', '', type=str)
         
+        # MELHORIA DE SEGURANÇA: Sanitiza o termo de pesquisa para prevenir XSS.
+        raw_search = request.args.get('search', '', type=str)
+        search = bleach.clean(raw_search, strip=True)
+
         history_data = tautulli_manager.get_user_watch_history(
             username=current_user.username,
             page=page,

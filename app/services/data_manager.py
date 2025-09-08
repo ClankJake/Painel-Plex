@@ -5,7 +5,7 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from ..extensions import db
-from ..models import Invitation, BlockedUser, UserProfile, PixPayment, Notification, UnlockedAchievement, ShortLink, Coupon, CouponUsage
+from ..models import Invitation, BlockedUser, UserProfile, PixPayment, Notification, UnlockedAchievement, ShortLink, Coupon, CouponUsage, Task
 from sqlalchemy import func, extract, not_
 from tzlocal import get_localzone
 from flask_babel import gettext as _, ngettext
@@ -17,6 +17,41 @@ class DataManager:
     
     def __init__(self):
         pass
+
+    # --- MÉTODOS DE TAREFAS ---
+    def create_task(self, name, payload):
+        """Cria uma nova tarefa na base de dados."""
+        try:
+            task = Task(name=name, payload=json.dumps(payload))
+            db.session.add(task)
+            db.session.commit()
+            logger.info(f"Tarefa '{name}' criada com ID: {task.id}")
+            return self._row_to_dict(task)
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Erro ao criar tarefa '{name}': {e}")
+            raise
+
+    def get_next_pending_task(self, name):
+        """Busca a próxima tarefa pendente de um tipo específico."""
+        # Usa 'with_for_update' para bloquear a linha e evitar que múltiplos workers a peguem ao mesmo tempo.
+        task = Task.query.filter_by(name=name, status='pending').order_by(Task.created_at).with_for_update().first()
+        return task
+
+    def update_task(self, task_id, updates):
+        """Atualiza os campos de uma tarefa."""
+        try:
+            task = Task.query.get(task_id)
+            if task:
+                for key, value in updates.items():
+                    if hasattr(task, key):
+                        setattr(task, key, value)
+                db.session.commit()
+                return self._row_to_dict(task)
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Erro ao atualizar a tarefa {task_id}: {e}")
+        return None
 
     # --- MÉTODOS DE CUPÕES ---
     def create_coupon(self, details):
@@ -477,4 +512,3 @@ class DataManager:
         if not row:
             return None
         return {c.name: getattr(row, c.name) for c in row.__table__.columns}
-

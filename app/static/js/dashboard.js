@@ -416,7 +416,6 @@ document.addEventListener('DOMContentLoaded', () => {
             setStatus('disconnected', i18n.disconnected);
         });
 
-        // Listen for bulk notification progress
         const progressContainer = document.getElementById('bulk-progress-container');
         const progressBar = document.getElementById('bulk-progress-bar');
         const progressText = document.getElementById('bulk-progress-text');
@@ -427,6 +426,8 @@ document.addEventListener('DOMContentLoaded', () => {
             sendBulkNotificationBtn.disabled = true;
             sendBulkNotificationBtn.textContent = i18n.sendingBulkNotification;
             progressBar.style.width = '0%';
+            progressBar.classList.remove('bg-red-600');
+            progressBar.classList.add('bg-blue-600');
             progressPercent.textContent = '0%';
             progressText.textContent = i18n.bulkSendProgress.replace('{current}', 0).replace('{total}', data.total);
         });
@@ -450,6 +451,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('bulk_message').value = '';
                 if (contactsOnlyCheckbox) contactsOnlyCheckbox.checked = false;
             }, 3000);
+        });
+        
+        socket.on('bulk_notification_error', (data) => {
+            showToast(`${i18n.bulkSendError}: ${data.message}`, 'error');
+            progressText.textContent = i18n.bulkSendError;
+            progressBar.classList.remove('bg-blue-600');
+            progressBar.classList.add('bg-red-600');
+            setTimeout(() => {
+                 sendBulkNotificationBtn.disabled = false;
+                sendBulkNotificationBtn.innerHTML = `<svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086L2.279 16.76a.75.75 0 00.95.826l16-5.333a.75.75 0 000-1.418l-16-5.333z" /></svg> ${i18n.sendToAllActive}`;
+                progressContainer.classList.add('hidden');
+            }, 5000);
         });
     }
 

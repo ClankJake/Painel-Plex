@@ -2,6 +2,7 @@
 from .extensions import db
 from flask_login import UserMixin
 import json
+import uuid
 from datetime import datetime
 
 # O seu modelo User existente
@@ -36,6 +37,20 @@ class User(UserMixin):
         return json.dumps(self.to_dict())
 
 # --- NOVOS MODELOS E ATUALIZAÇÕES ---
+
+class Task(db.Model):
+    """Modelo para armazenar tarefas de fundo persistentes."""
+    __tablename__ = 'tasks'
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = db.Column(db.String, nullable=False, index=True) # Ex: 'bulk_notification'
+    payload = db.Column(db.Text, nullable=True) # Parâmetros da tarefa em formato JSON
+    status = db.Column(db.String, default='pending', nullable=False, index=True) # pending, running, success, failed
+    progress_current = db.Column(db.Integer, default=0)
+    progress_total = db.Column(db.Integer, default=0)
+    result = db.Column(db.Text, nullable=True) # Mensagem de sucesso ou de erro
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
 
 class Coupon(db.Model):
     __tablename__ = 'coupons'

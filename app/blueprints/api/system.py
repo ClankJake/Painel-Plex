@@ -1,7 +1,6 @@
 # app/blueprints/api/system.py
 
 import logging
-import threading
 from flask import Blueprint, jsonify, request, current_app, session, url_for
 from flask_login import login_user, current_user
 from plexapi.myplex import MyPlexAccount
@@ -9,7 +8,7 @@ from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 
-from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, notifier_manager
+from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager
 from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
 from ..auth import admin_required, login_required
@@ -384,9 +383,8 @@ def bulk_notify():
     if not is_any_notifier_enabled:
         return jsonify({"success": False, "message": _("Nenhum agente de notificação (Telegram, Discord, etc.) está ativado nas configurações.")}), 400
 
-    app = current_app._get_current_object()
-    thread = threading.Thread(target=notifier_manager.send_bulk_notification, args=(app, message, contacts_only))
-    thread.daemon = True
-    thread.start()
+    # MELHORIA DE ROBUSTEZ: Cria uma tarefa persistente na base de dados em vez de uma thread
+    task_payload = {'message': message, 'contacts_only': contacts_only}
+    task = data_manager.create_task('bulk_notification', task_payload)
 
-    return jsonify({"success": True, "message": _("O envio de notificações em massa foi iniciado.")})
+    return jsonify({"success": True, "message": _("A tarefa de envio de notificações em massa foi agendada e será iniciada em breve."), "task_id": task['id']})

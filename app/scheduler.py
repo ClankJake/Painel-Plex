@@ -49,6 +49,25 @@ def _execute_with_retry(action, description):
     logger.error(f"Todas as {MAX_RETRIES} tentativas falharam para '{description}'. A tarefa irá desistir.")
     return False # Falha
 
+def task_processor_job():
+    """Tarefa periódica para procurar e executar tarefas pendentes da base de dados."""
+    if not _app:
+        logger.error("A instância da app não foi definida para a tarefa 'task_processor_job'. A tarefa foi ignorada.")
+        return
+
+    with _app.test_request_context():
+        from . import extensions
+        
+        # Procura por uma tarefa de notificação em massa pendente
+        task_obj = extensions.data_manager.get_next_pending_task('bulk_notification')
+        
+        if task_obj:
+            logger.info(f"Tarefa pendente '{task_obj.name}' (ID: {task_obj.id}) encontrada. A iniciar processamento.")
+            extensions.notifier_manager.process_bulk_notification_task(task_obj)
+        else:
+            logger.debug("Nenhuma tarefa pendente encontrada pelo processador de tarefas.")
+
+
 def stream_check_job():
     """Tarefa agendada para verificar e impor os limites de stream."""
     if not _app:
@@ -251,7 +270,9 @@ def setup_scheduler(app):
         func=stream_check_job,
         trigger='interval', 
         seconds=config.get("STREAM_CHECK_INTERVAL_SECONDS", 15),
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True
     )
     
     exp_time_parts = config.get("EXPIRATION_NOTIFICATION_TIME", "09:00").split(':')
@@ -288,7 +309,15 @@ def setup_scheduler(app):
             replace_existing=True
         )
 
+    # NOVO: Adiciona o processador de tarefas da base de dados
+    extensions.scheduler.add_job(
+        id='task_processor_job', 
+        func=task_processor_job,
+        trigger='interval', 
+        seconds=20, # Verifica a cada 20 segundos por novas tarefas
+        replace_existing=True
+    )
+
     if not extensions.scheduler.running:
         extensions.scheduler.start()
         logger.info("Agendador de tarefas iniciado.")
-
