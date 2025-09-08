@@ -21,3 +21,4 @@ cryptography==41.0.7
 gunicorn
 pydantic
 cachelib
+bleach==6.1.0
