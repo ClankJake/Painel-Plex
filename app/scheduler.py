@@ -272,7 +272,8 @@ def setup_scheduler(app):
         seconds=config.get("STREAM_CHECK_INTERVAL_SECONDS", 15),
         replace_existing=True,
         max_instances=1,
-        coalesce=True
+        coalesce=True,
+        misfire_grace_time=20
     )
     
     exp_time_parts = config.get("EXPIRATION_NOTIFICATION_TIME", "09:00").split(':')
@@ -315,7 +316,10 @@ def setup_scheduler(app):
         func=task_processor_job,
         trigger='interval', 
         seconds=20, # Verifica a cada 20 segundos por novas tarefas
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=60
     )
 
     if not extensions.scheduler.running:
