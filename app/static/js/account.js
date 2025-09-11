@@ -356,7 +356,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         let result = null;
 
         try {
-            result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
+            const result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
             
             if (result && result.success && result.free_renewal) {
                 showToast(result.message, 'success');
@@ -569,8 +569,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             { name: 'Portugal', code: '+351' },
             { name: 'Angola', code: '+244' },
             { name: 'Moçambique', code: '+258' },
-            { name: 'EUA', code: '+1' },
+            { name: 'Cabo Verde', code: '+238' },
+            { name: 'Guiné-Bissau', code: '+245' },
+            { name: 'São Tomé e Príncipe', code: '+239' },
+            { name: 'Timor-Leste', code: '+670' },
+            { name: 'EUA/Canadá', code: '+1' },
             { name: 'Reino Unido', code: '+44' },
+            { name: 'Espanha', code: '+34' },
+            { name: 'França', code: '+33' },
+            { name: 'Alemanha', code: '+49' },
+            { name: 'Itália', code: '+39' },
+            { name: 'Japão', code: '+81' }
         ];
 
         select.innerHTML = countries.map(c => `<option value="${c.code}">${c.name} (${c.code})</option>`).join('');
@@ -649,15 +658,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                     document.getElementById('profileName').value = data.profile_details.name || '';
                     document.getElementById('profileTelegram').value = data.profile_details.telegram_user || '';
                     document.getElementById('profileDiscord').value = data.profile_details.discord_user_id || '';
-
+                    
+                    // CORREÇÃO INICIA AQUI
                     const fullPhone = data.profile_details.phone_number || '';
-                    const match = fullPhone.match(/^(\+\d+)(\d+)$/);
-                    if (match) {
-                        document.getElementById('countryCode').value = match[1];
-                        document.getElementById('profilePhone').value = match[2];
-                    } else {
-                        document.getElementById('profilePhone').value = fullPhone.replace(/\D/g, '');
+                    const countryCodeSelect = document.getElementById('countryCode');
+                    const phoneInput = document.getElementById('profilePhone');
+                    let countryCodeFound = false;
+
+                    const options = Array.from(countryCodeSelect.options);
+                    options.sort((a, b) => b.value.length - a.value.length);
+
+                    for (const option of options) {
+                        if (fullPhone.startsWith(option.value)) {
+                            countryCodeSelect.value = option.value;
+                            phoneInput.value = fullPhone.substring(option.value.length);
+                            countryCodeFound = true;
+                            break;
+                        }
                     }
+
+                    if (!countryCodeFound) {
+                        phoneInput.value = fullPhone.replace(/\D/g, '');
+                        if (countryCodeSelect.querySelector('option[value="+55"]')) {
+                            countryCodeSelect.value = '+55';
+                        }
+                    }
+                    // CORREÇÃO TERMINA AQUI
                 }
                 if (data.notification_settings) {
                     if (data.notification_settings.telegram_enabled) document.getElementById('telegram-field-container').classList.remove('hidden');
