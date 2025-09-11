@@ -1,12 +1,12 @@
 # app/services/plex/connection.py
 import logging
+import base64
+from urllib.parse import urlparse
 from flask_babel import gettext as _
 from plexapi.server import PlexServer
 from requests.exceptions import ConnectTimeout, ReadTimeout, ConnectionError, RequestException
-# NOVO: Importa o url_for para criar os links do proxy
 from flask import url_for
 
-# Import absoluto a partir do pacote 'app'
 from app.config import load_or_create_config
 
 logger = logging.getLogger(__name__)
@@ -72,20 +72,17 @@ class PlexConnectionManager:
             sessions = self.plex.sessions()
             session_details = []
             for s in sessions:
-                # Cálculo de progresso mais robusto
                 progress = 0
                 view_offset = getattr(s, 'viewOffset', 0)
                 duration = getattr(s, 'duration', 0)
                 if view_offset and duration and duration > 0:
                     progress = (view_offset / duration) * 100
 
-                # Estado da Reprodução
                 state = "stopped"
                 if s.players:
                     player_state = getattr(s.players[0], "state", "stopped")
                     state = {"paused": "paused", "playing": "playing", "buffering": "buffering"}.get(player_state, "stopped")
 
-                # Detalhes de Transcodificação (forma segura)
                 is_transcoding = False
                 video_decision = "Direct Play"
                 audio_decision = "Direct Play"
@@ -95,66 +92,53 @@ class PlexConnectionManager:
                     _video_decision = getattr(transcode_session, 'videoDecision', 'copy')
                     _audio_decision = getattr(transcode_session, 'audioDecision', 'copy')
                     
-                    if _video_decision == "transcode":
-                        is_transcoding = True
-                        video_decision = "Transcode"
-                    
-                    if _audio_decision == "transcode":
-                        is_transcoding = True
-                        audio_decision = "Transcode"
+                    if _video_decision == "transcode": is_transcoding = True; video_decision = "Transcode"
+                    if _audio_decision == "transcode": is_transcoding = True; audio_decision = "Transcode"
 
                 stream_type = "Transcode" if is_transcoding else "Direct Play"
-
-                # Detalhes do Media
                 media = s.media[0] if s.media else None
-                # CORREÇÃO: Trata valores None antes de chamar .upper()
                 video_codec = (getattr(media, "videoCodec", None) or "N/A").upper()
                 audio_codec = (getattr(media, "audioCodec", None) or "N/A").upper()
                 container = (getattr(media, "container", None) or "N/A").upper()
                 video_resolution = getattr(media, "videoResolution", "N/A")
 
-
-                # Título e Subtítulo
                 title = s.title
                 subtitle = str(s.year) if hasattr(s, 'year') and s.year else ''
                 if s.type == 'episode':
                     title = s.grandparentTitle
                     subtitle = f"S{s.parentIndex:02d} · E{s.index:02d} - {s.title}"
 
-                # Arte (Thumbnail)
+                # Arte (Thumbnail) - Geração de URL Segura
                 thumb_key = s.grandparentThumb if s.type == 'episode' and hasattr(s, 'grandparentThumb') and s.grandparentThumb else s.thumb
-                # CORREÇÃO: Usa o proxy de imagem em vez do link direto do Plex
-                thumb_url_direct = self.plex.url(thumb_key, includeToken=True) if thumb_key else None
-                thumb_url = url_for('image_proxy.proxy_image', url=thumb_url_direct) if thumb_url_direct else None
+                thumb_url = None
+                if thumb_key:
+                    payload_str = f"plex:{thumb_key}"
+                    b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                    thumb_url = url_for('image.proxy_image', source=b64_payload)
                 
-                # CORREÇÃO: Usa o proxy de imagem para o avatar do utilizador
-                user_thumb_direct = s.user.thumb
-                user_thumb_url = url_for('image_proxy.proxy_image', url=user_thumb_direct) if user_thumb_direct else None
-
+                # Arte do utilizador - Geração de URL Segura
+                user_thumb_path = s.user.thumb
+                user_thumb_url = None
+                if user_thumb_path:
+                    parsed_thumb = urlparse(user_thumb_path)
+                    path_with_query = parsed_thumb.path
+                    if parsed_thumb.query: path_with_query += "?" + parsed_thumb.query
+                    
+                    payload_str = f"plex_account:{path_with_query}"
+                    b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                    user_thumb_url = url_for('image.proxy_image', source=b64_payload)
 
                 session_details.append({
-                    "session_key": s.sessionKey,
-                    "user": s.user.title,
-                    "user_thumb": user_thumb_url,
-                    "player": s.player.title,
-                    "platform": s.player.platform,
-                    "type": s.type,
-                    "title": title,
-                    "subtitle": subtitle,
-                    "progress": round(progress, 2),
-                    "view_offset": view_offset,
-                    "duration": duration,
-                    "thumb_url": thumb_url,
-                    "state": state,
+                    "session_key": s.sessionKey, "user": s.user.title, "user_thumb": user_thumb_url,
+                    "player": s.player.title, "platform": s.player.platform, "type": s.type,
+                    "title": title, "subtitle": subtitle, "progress": round(progress, 2),
+                    "view_offset": view_offset, "duration": duration, "thumb_url": thumb_url, "state": state,
                     "stream_details": {
                         "video": f"{video_decision} ({video_codec} {video_resolution}p)",
-                        "audio": f"{audio_decision} ({audio_codec})",
-                        "stream": stream_type,
-                        "container": container
+                        "audio": f"{audio_decision} ({audio_codec})", "stream": stream_type, "container": container
                     }
                 })
             return {"success": True, "sessions": session_details, "stream_count": len(sessions)}
-        # MELHORIA: Captura uma gama mais ampla de erros de conexão, incluindo timeouts.
         except (ConnectionError, ReadTimeout, RequestException) as e:
             logger.warning(_("Erro de conexão temporário ao obter sessões do Plex: %(error)s. A tentar novamente no próximo ciclo.", error=e))
             return {"success": False, "sessions": [], "stream_count": 0}
@@ -162,16 +146,10 @@ class PlexConnectionManager:
             logger.error(_("Erro inesperado ao obter sessões do Plex: %(error)s", error=e), exc_info=True)
             return {"success": False, "sessions": [], "stream_count": 0}
 
-
     def get_libraries(self):
-        """
-        Obtém uma lista de todas as bibliotecas do servidor Plex.
-        """
-        if not self.plex:
-            return []
+        if not self.plex: return []
         try:
             return [{'title': s.title, 'key': s.key} for s in self.plex.library.sections()]
         except Exception as e:
             logger.error(_("Não foi possível obter as bibliotecas do servidor Plex: %(error)s", error=e))
             return []
-

@@ -1,14 +1,15 @@
 # app/services/plex/user_manager.py
 import logging
 import json
+import base64
 from datetime import datetime, timedelta
 from plexapi.exceptions import NotFound
 from requests.exceptions import RequestException
 from flask_babel import gettext as _
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
-# NOVO: Importa o url_for para criar os links do proxy
 from flask import current_app, url_for
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -52,16 +53,30 @@ class PlexUserManager:
             server_identifier = self.conn.plex.machineIdentifier
             all_friends = self.conn.account.users()
 
-            # CORREÇÃO: Usa o proxy de imagem para os avatares dos utilizadores
             with current_app.app_context():
-                users_with_access = [
-                    {'username': user.username, 
-                     'email': user.email, 
-                     'id': user.id, 
-                     'thumb': url_for('image_proxy.proxy_image', url=user.thumb) if user.thumb else None, 
-                     'servers': user.servers}
-                    for user in all_friends if any(s.machineIdentifier == server_identifier for s in user.servers)
-                ]
+                users_with_access = []
+                for user in all_friends:
+                    if any(s.machineIdentifier == server_identifier for s in user.servers):
+                        user_thumb_url = None
+                        if user.thumb:
+                            try:
+                                parsed_thumb = urlparse(user.thumb)
+                                path_with_query = parsed_thumb.path
+                                if parsed_thumb.query: path_with_query += "?" + parsed_thumb.query
+                                
+                                payload_str = f"plex_account:{path_with_query}"
+                                b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                                user_thumb_url = url_for('image.proxy_image', source=b64_payload)
+                            except Exception as e:
+                                logger.error(f"Falha ao processar a URL do avatar para o utilizador {user.username}: {e}")
+
+                        users_with_access.append({
+                            'username': user.username, 
+                            'email': user.email, 
+                            'id': user.id, 
+                            'thumb': user_thumb_url, 
+                            'servers': user.servers
+                        })
             
             logger.debug(_("Encontrados %(friends)d amigos na conta, %(access)d com acesso a este servidor.", friends=len(all_friends), access=len(users_with_access)))
             self._user_cache = users_with_access
@@ -283,4 +298,3 @@ class PlexUserManager:
             return {"success": True, "message": message}
         else:
             return {"success": False, "message": result.get("message", _("Erro desconhecido."))}
-

@@ -1,10 +1,10 @@
 # app/services/tautulli/stats_handler.py
 import logging
+import base64
 from datetime import datetime, timedelta, timezone
 from collections import Counter, defaultdict
 from flask_babel import gettext as _
 from requests.exceptions import RequestException
-# NOVO: Importa o url_for para criar os links do proxy
 from flask import url_for
 
 from app.config import load_or_create_config
@@ -19,14 +19,7 @@ class StatsHandler:
         self.data_manager = data_manager
 
     def _calculate_achievements(self, stats, days, username, current_user):
-        """
-        Calcula as conquistas de um utilizador. Esta função atribui e guarda as conquistas
-        assim que os critérios são cumpridos, mas só notifica o utilizador se ele
-        estiver a visualizar o seu próprio perfil.
-        """
-        if not self.data_manager:
-            return []
-
+        if not self.data_manager: return []
         config = load_or_create_config()
         
         achievement_definitions = {
@@ -73,7 +66,6 @@ class StatsHandler:
             }
         }
         
-        # 1. Verificar quais conquistas são cumpridas com as estatísticas atuais
         unlocked_in_db = self.data_manager.get_unlocked_achievements(username)
         newly_unlocked = []
 
@@ -96,21 +88,15 @@ class StatsHandler:
                         "icon": definition["icon"]
                     })
         
-        # 2. Guardar novas conquistas na base de dados, independentemente de quem está a ver
         if newly_unlocked:
             self.data_manager.add_unlocked_achievements(username, newly_unlocked)
-            
-            # 3. Notificar o utilizador APENAS se ele estiver a ver o seu próprio perfil
             if current_user and current_user.username == username:
                 for ach in newly_unlocked:
                     self.data_manager.create_notification(
                         message=_("Nova conquista desbloqueada: %(title)s (%(level)s)!", username=username, title=ach['title'], level=ach['level']),
-                        category='success',
-                        link=f"/statistics",
-                        username=username
+                        category='success', link=f"/statistics", username=username
                     )
 
-        # 4. Retornar a lista completa de conquistas da base de dados (agora atualizada)
         final_achievements = []
         all_unlocked_ever = self.data_manager.get_unlocked_achievements(username)
         for ach_id in all_unlocked_ever:
@@ -119,32 +105,26 @@ class StatsHandler:
                 if base_key in achievement_definitions:
                     definition = achievement_definitions[base_key]
                     final_achievements.append({
-                        "id": ach_id,
-                        "title": definition["title"],
-                        "description": definition["levels"][level]["description"],
-                        "icon": definition["icon"],
-                        "level": level
+                        "id": ach_id, "title": definition["title"], "description": definition["levels"][level]["description"],
+                        "icon": definition["icon"], "level": level
                     })
             except ValueError:
-                logger.warning(f"ID de conquista mal formado encontrado na base de dados: '{ach_id}' para o utilizador '{username}'.")
+                logger.warning(f"ID de conquista mal formado encontrado: '{ach_id}' para '{username}'.")
 
         return final_achievements
 
     def get_watch_stats(self, days=7, plex_users_info=None):
-        """Obtém as estatísticas de visualização para todos os utilizadores."""
         try:
             after_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
             history_response = self.api.get_history(after=after_date)
-            
             history_data = history_response.get('data', [])
             
-            user_stats = {}
+            user_stats = defaultdict(lambda: {"plays": 0, "total_duration": 0})
             for item in history_data:
                 username = item.get("user")
-                if not username: continue
-                user_stats.setdefault(username, {"plays": 0, "total_duration": 0})
-                user_stats[username]["plays"] += 1
-                user_stats[username]["total_duration"] += item.get("duration", 0)
+                if username:
+                    user_stats[username]["plays"] += 1
+                    user_stats[username]["total_duration"] += item.get("duration", 0)
             
             formatted_stats = [{
                 'username': user, 'plays': details['plays'], 'total_duration': details['total_duration'],
@@ -160,50 +140,33 @@ class StatsHandler:
             return {"success": False, "message": _("Erro inesperado ao processar estatísticas: %(error)s", error=e)}
 
     def get_user_watch_details(self, username, days=7, current_user=None):
-        """Obtém detalhes de visualização para um único utilizador."""
         try:
             after_date_str = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
             history_response = self.api.get_history(after=after_date_str, user=username)
-
             history = history_response.get('data', [])
             
-            stats = {
-                "movie_count": 0, "episode_count": 0,
-                "total_movie_duration": 0, "total_episode_duration": 0,
-                "genre_counts": Counter(), "recent": [],
-                "weekly_activity_python": [0]*7,
-                "weekly_activity_js": [0]*7,
-                "top_movies": Counter(), "top_shows": Counter(),
-                "late_night_plays": 0,
-                "unique_genres": set(), "unique_days": set(),
-                "max_movie_duration": 0, "unique_platforms": set(),
-                "director_counts": Counter(), "unique_decades": set()
-            }
-            
+            stats = defaultdict(lambda: 0)
+            stats.update({"genre_counts": Counter(), "recent": [], "weekly_activity_python": [0]*7, "weekly_activity_js": [0]*7,
+                          "top_movies": Counter(), "top_shows": Counter(), "unique_genres": set(), "unique_days": set(),
+                          "unique_platforms": set(), "director_counts": Counter(), "unique_decades": set()})
+
             for item in history:
                 dt = datetime.fromtimestamp(item.get('date'))
                 stats["weekly_activity_python"][dt.weekday()] += item.get('duration', 0)
                 stats["weekly_activity_js"][(dt.weekday() + 1) % 7] += item.get('duration', 0)
                 stats["unique_days"].add(dt.date())
                 
-                if item.get("platform"):
-                    stats["unique_platforms"].add(item.get("platform"))
-
-                if 0 <= dt.hour < 4:
-                    stats["late_night_plays"] += 1
+                if item.get("platform"): stats["unique_platforms"].add(item.get("platform"))
+                if 0 <= dt.hour < 4: stats["late_night_plays"] += 1
                 
                 if item.get("media_type") == 'movie':
                     stats["movie_count"] += 1
                     duration = item.get('duration', 0)
                     stats["total_movie_duration"] += duration
                     stats["top_movies"][item.get("title")] += 1
-                    if duration > stats["max_movie_duration"]:
-                        stats["max_movie_duration"] = duration
-                    if item.get("directors"):
-                        stats["director_counts"].update(item.get("directors"))
-                    if item.get("year"):
-                        stats["unique_decades"].add(f"{item.get('year') // 10}0s")
-
+                    if duration > stats["max_movie_duration"]: stats["max_movie_duration"] = duration
+                    if item.get("directors"): stats["director_counts"].update(item.get("directors"))
+                    if item.get("year"): stats["unique_decades"].add(f"{item.get('year') // 10}0s")
                 elif item.get("media_type") == 'episode':
                     stats["episode_count"] += 1
                     stats["total_episode_duration"] += item.get('duration', 0)
@@ -214,9 +177,12 @@ class StatsHandler:
                     stats["unique_genres"].update(item.get("genres"))
                 
                 if len(stats["recent"]) < 5:
-                    # CORREÇÃO: Usa o proxy de imagem em vez do link direto do Tautulli
-                    poster_url_direct = f"{self.api.base_url}/pms_image_proxy?img={item['thumb']}&width=200&height=300&apikey={self.api.api_key}" if item.get('thumb') else ''
-                    poster_url = url_for('image_proxy.proxy_image', url=poster_url_direct) if poster_url_direct else None
+                    poster_url = None
+                    if item.get('thumb'):
+                        tautulli_path = f"/pms_image_proxy?img={item['thumb']}&width=200&height=300"
+                        payload_str = f"tautulli:{tautulli_path}"
+                        b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                        poster_url = url_for('image.proxy_image', source=b64_payload)
                     stats["recent"].append({"type": item.get("media_type"), "title": item.get("title"), "series": item.get("grandparent_title"), "poster_url": poster_url, "play_date": dt.strftime('%d/%m/%Y %H:%M')})
             
             favorite_genre_info = stats["genre_counts"].most_common(1)
@@ -227,21 +193,7 @@ class StatsHandler:
             stats["favorite_director_count"] = favorite_director_info[0][1] if favorite_director_info else 0
 
             achievements = self._calculate_achievements(stats, days, username, current_user)
-
-            details_to_return = {
-                "movie_count": stats["movie_count"],
-                "episode_count": stats["episode_count"],
-                "total_movie_duration": stats["total_movie_duration"],
-                "total_episode_duration": stats["total_episode_duration"],
-                "recent": stats["recent"],
-                "weekly_activity": stats["weekly_activity_js"],
-                "favorite_genre": stats["favorite_genre"],
-                "top_movies": [{'title': title, 'plays': plays} for title, plays in stats["top_movies"].most_common(3)],
-                "top_shows": [{'title': title, 'plays': plays} for title, plays in stats["top_shows"].most_common(3)],
-                "achievements": achievements
-            }
-
-            return {"success": True, "details": details_to_return}
+            return {"success": True, "details": { "movie_count": stats["movie_count"], "episode_count": stats["episode_count"], "total_movie_duration": stats["total_movie_duration"], "total_episode_duration": stats["total_episode_duration"], "recent": stats["recent"], "weekly_activity": stats["weekly_activity_js"], "favorite_genre": stats["favorite_genre"], "top_movies": [{'title': title, 'plays': plays} for title, plays in stats["top_movies"].most_common(3)], "top_shows": [{'title': title, 'plays': plays} for title, plays in stats["top_shows"].most_common(3)], "achievements": achievements}}
         except RequestException as e:
             return {"success": False, "message": _("Erro de conexão com o Tautulli: %(error)s", error=e)}
         except Exception as e:
@@ -249,67 +201,40 @@ class StatsHandler:
             return {"success": False, "message": _("Erro inesperado: %(error)s", error=e)}
     
     def get_user_watch_history(self, username, page=1, length=25, search=""):
-        """Obtém o histórico de visualização paginado para um utilizador."""
         try:
             start_index = (page - 1) * length
-            history_response = self.api.get_history(
-                user=username, 
-                length=length, 
-                start=start_index,
-                search=search
-            )
-            
+            history_response = self.api.get_history(user=username, length=length, start=start_index, search=search)
             history_data = history_response.get('data', [])
             total_count = history_response.get('recordsFiltered', 0)
             
             processed_history = []
             for item in history_data:
-                # CORREÇÃO: Usa o proxy de imagem em vez do link direto do Tautulli
-                poster_url_direct = f"{self.api.base_url}/pms_image_proxy?img={item['thumb']}&width=100&height=150&apikey={self.api.api_key}" if item.get('thumb') else ''
-                poster_url = url_for('image_proxy.proxy_image', url=poster_url_direct) if poster_url_direct else None
-                
+                poster_url = None
+                if item.get('thumb'):
+                    tautulli_path = f"/pms_image_proxy?img={item['thumb']}&width=100&height=150"
+                    payload_str = f"tautulli:{tautulli_path}"
+                    b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                    poster_url = url_for('image.proxy_image', source=b64_payload)
+
                 title = item.get('title', 'N/A')
                 subtitle = str(item.get('year', ''))
                 if item.get('media_type') == 'episode':
                     title = item.get('grandparent_title', title)
                     subtitle = f"S{item.get('parent_media_index', 0):02d} · E{item.get('media_index', 0):02d} - {item.get('title', '')}"
 
-                processed_history.append({
-                    "date": datetime.fromtimestamp(item.get('date')).strftime('%d/%m/%Y %H:%M'),
-                    "poster_url": poster_url,
-                    "title": title,
-                    "subtitle": subtitle,
-                    "duration": item.get('duration', 0),
-                    "percent_complete": item.get('percent_complete', 0),
-                    "player": item.get('player', 'N/A'),
-                    "platform": item.get('platform', 'N/A')
-                })
-
-            return {
-                "success": True,
-                "history": processed_history,
-                "pagination": {
-                    "total_records": total_count,
-                    "current_page": page,
-                    "total_pages": (total_count + length - 1) // length,
-                    "page_size": length
-                }
-            }
+                processed_history.append({ "date": datetime.fromtimestamp(item.get('date')).strftime('%d/%m/%Y %H:%M'), "poster_url": poster_url, "title": title, "subtitle": subtitle, "duration": item.get('duration', 0), "percent_complete": item.get('percent_complete', 0), "player": item.get('player', 'N/A'), "platform": item.get('platform', 'N/A')})
+            return {"success": True, "history": processed_history, "pagination": {"total_records": total_count, "current_page": page, "total_pages": (total_count + length - 1) // length, "page_size": length}}
         except RequestException as e:
             return {"success": False, "message": _("Erro de conexão com o Tautulli: %(error)s", error=e)}
         except Exception as e:
-            logger.error(_("Erro inesperado ao processar histórico do utilizador: %(error)s", error=e), exc_info=True)
+            logger.error(_("Erro inesperado ao processar histórico: %(error)s", error=e), exc_info=True)
             return {"success": False, "message": _("Erro inesperado: %(error)s", error=e)}
             
     def get_recently_added(self, days=7):
-        """Obtém os itens adicionados recentemente do Tautulli e filtra por data."""
         try:
             response = self.api.get_recently_added(count=250)
-            
             all_media = response.get('recently_added', [])
-            
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            
             filtered_media = []
             for item in all_media:
                 added_at_ts = item.get('added_at')
@@ -317,66 +242,43 @@ class StatsHandler:
                     added_at = datetime.fromtimestamp(int(added_at_ts), tz=timezone.utc)
                     if added_at >= cutoff_date:
                         thumb_key = item.get('thumb')
-                        if item.get('media_type') == 'episode' and item.get('grandparent_thumb'):
-                            thumb_key = item.get('grandparent_thumb')
+                        if item.get('media_type') == 'episode' and item.get('grandparent_thumb'): thumb_key = item.get('grandparent_thumb')
                         
-                        # CORREÇÃO: Usa o proxy de imagem em vez do link direto do Tautulli
-                        poster_url_direct = f"{self.api.base_url}/pms_image_proxy?img={thumb_key}&width=300&height=450&apikey={self.api.api_key}" if thumb_key else ''
-                        poster_url = url_for('image_proxy.proxy_image', url=poster_url_direct) if poster_url_direct else None
+                        poster_url = None
+                        if thumb_key:
+                            tautulli_path = f"/pms_image_proxy?img={thumb_key}&width=300&height=450"
+                            payload_str = f"tautulli:{tautulli_path}"
+                            b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                            poster_url = url_for('image.proxy_image', source=b64_payload)
                         
                         def safe_int(value, default=0):
-                            try:
-                                return int(float(value)) if value else default
-                            except (ValueError, TypeError):
-                                return default
+                            try: return int(float(value)) if value else default
+                            except (ValueError, TypeError): return default
 
-                        filtered_media.append({
-                            'title': item.get('title'),
-                            'year': item.get('year'),
-                            'poster_url': poster_url,
-                            'added_at': added_at.isoformat(),
-                            'media_type': item.get('media_type'),
-                            'grandparent_title': item.get('grandparent_title'),
-                            'parent_title': item.get('parent_title'),
-                            'media_index': safe_int(item.get('media_index')),
-                            'parent_media_index': safe_int(item.get('parent_media_index'))
-                        })
-
+                        filtered_media.append({ 'title': item.get('title'), 'year': item.get('year'), 'poster_url': poster_url, 'added_at': added_at.isoformat(), 'media_type': item.get('media_type'), 'grandparent_title': item.get('grandparent_title'), 'parent_title': item.get('parent_title'), 'media_index': safe_int(item.get('media_index')), 'parent_media_index': safe_int(item.get('parent_media_index'))})
             return {"success": True, "media": filtered_media}
-
         except RequestException as e:
             return {"success": False, "message": _("Erro de conexão com o Tautulli: %(error)s", error=str(e))}
         except Exception as e:
-            logger.error(_("Erro inesperado ao buscar itens adicionados recentemente: %(error)s", error=str(e)), exc_info=True)
+            logger.error(_("Erro inesperado ao buscar itens: %(error)s", error=str(e)), exc_info=True)
             return {"success": False, "message": str(e)}
 
     def get_user_devices(self, username):
-        """Obtém os dispositivos utilizados por um utilizador a partir do seu histórico."""
         try:
             history_response = self.api.get_history(user=username, length=500)
             history = history_response.get('data', [])
-
-            if not history:
-                return {"success": True, "devices": []}
+            if not history: return {"success": True, "devices": []}
 
             devices = defaultdict(lambda: {'platform': '', 'last_seen': 0})
             for item in history:
                 device_key = f"{item.get('player', 'Desconhecido')}|{item.get('platform', 'Desconhecida')}"
-                
                 if item.get('date') > devices[device_key]['last_seen']:
                     devices[device_key]['player'] = item.get('player', 'Desconhecido')
                     devices[device_key]['platform'] = item.get('platform', 'Desconhecida')
                     devices[device_key]['last_seen'] = item.get('date')
-
-            formatted_devices = sorted(
-                list(devices.values()),
-                key=lambda x: x['last_seen'],
-                reverse=True
-            )
-
-            return {"success": True, "devices": formatted_devices}
+            return {"success": True, "devices": sorted(list(devices.values()), key=lambda x: x['last_seen'], reverse=True)}
         except RequestException as e:
             return {"success": False, "message": _("Erro de conexão com o Tautulli: %(error)s", error=e)}
         except Exception as e:
-            logger.error(_("Erro inesperado ao processar dispositivos do utilizador: %(error)s", error=e), exc_info=True)
+            logger.error(_("Erro inesperado ao processar dispositivos: %(error)s", error=e), exc_info=True)
             return {"success": False, "message": _("Erro inesperado: %(error)s", error=e)}

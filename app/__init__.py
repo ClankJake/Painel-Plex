@@ -16,7 +16,7 @@ from .config import load_or_create_config, is_configured
 from .scheduler import setup_scheduler
 from . import models
 from . import sockets
-from . import scheduler # Adiciona esta importação
+from . import scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -130,10 +130,7 @@ def create_app():
 
     setup_logging(app, app.config.get('LOG_LEVEL', 'INFO'))
 
-    # --- MELHORIA DE LOG: Reduz a verbosidade do agendador ---
-    # Altera o nível de log do APScheduler para WARNING para evitar spam de mensagens de rotina.
     logging.getLogger('apscheduler').setLevel(logging.WARNING)
-    # --- FIM DA MELHORIA ---
 
     extensions.db.init_app(app)
     extensions.migrate.init_app(app, extensions.db)
@@ -178,15 +175,13 @@ def create_app():
     )
     extensions.plex_manager.init_app(app)
     
-    # CORREÇÃO: Injeta o user_manager no StreamManager para otimização
     extensions.stream_manager = StreamManager(
         plex_connection=extensions.plex_manager.conn,
         data_manager=extensions.data_manager,
-        user_manager=extensions.plex_manager.users # Injeção de dependência
+        user_manager=extensions.plex_manager.users
     )
     extensions.plex_manager.stream_manager = extensions.stream_manager
     
-    # Passa a instância da aplicação para o módulo do agendador
     scheduler.set_app_for_jobs(app)
 
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
@@ -235,7 +230,8 @@ def create_app():
             'set_language', 'main.claim_invite_page', 'serve_manifest', 'serve_sw',
             'main.payment_page', 'users_api.get_public_user_profile_by_token', 'payments_api.get_payment_options',
             'payments_api.create_charge_route', 'payments_api.get_payment_status',
-            'redirect.redirect_to_url'
+            'redirect.redirect_to_url',
+            'image.proxy_image' # Adiciona o novo endpoint à lista de exceções
         }
         if request.endpoint in exempt_endpoints or request.path.startswith('/socket.io'):
             return
@@ -266,7 +262,7 @@ def create_app():
     from .blueprints.main import main_bp
     from .blueprints.auth import auth_bp
     from .blueprints.redirect import redirect_bp
-    from .blueprints.image_proxy import image_proxy_bp
+    from .blueprints.image import image_bp
     from .blueprints.api.system import system_api_bp
     from .blueprints.api.users import users_api_bp
     from .blueprints.api.invites import invites_api_bp
@@ -278,7 +274,7 @@ def create_app():
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(redirect_bp)
-    app.register_blueprint(image_proxy_bp, url_prefix='/image-proxy')
+    app.register_blueprint(image_bp, url_prefix='/image')
     app.register_blueprint(system_api_bp, url_prefix='/api/system')
     app.register_blueprint(users_api_bp, url_prefix='/api/users')
     app.register_blueprint(invites_api_bp, url_prefix='/api/invites')
