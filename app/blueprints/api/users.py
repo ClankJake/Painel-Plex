@@ -10,7 +10,7 @@ from tzlocal import get_localzone
 from apscheduler.jobstores.base import JobLookupError
 from pydantic import ValidationError
 
-from ...extensions import plex_manager, data_manager, tautulli_manager
+from ...extensions import plex_manager, data_manager, tautulli_manager, overseerr_manager
 from ...config import load_or_create_config
 from ..auth import admin_required, login_required
 from .decorators import user_lookup, validate_json
@@ -155,7 +155,8 @@ def get_account_details():
             "name": profile.get("name"),
             "telegram_user": profile.get("telegram_user"),
             "discord_user_id": profile.get("discord_user_id"),
-            "phone_number": profile.get("phone_number")
+            "phone_number": profile.get("phone_number"),
+            "overseerr_access": profile.get("overseerr_access", False)
         }
     }
     return jsonify(details)
@@ -188,6 +189,28 @@ def update_privacy_settings():
     data_manager.set_user_profile(username, profile)
     logger.info(f"Utilizador '{username}' atualizou a sua preferência de privacidade para: {'Oculto' if hide_setting else 'Visível'}")
     return jsonify({"success": True, "message": _("Configuração de privacidade atualizada com sucesso.")})
+
+@users_api_bp.route('/account/requests')
+@login_required
+def get_account_requests():
+    """Endpoint para o utilizador logado obter os seus pedidos do Overseerr."""
+    # Sanitize filter input
+    filter_status = request.args.get('filter', 'all', type=str)
+    allowed_filters = ['all', 'approved', 'available', 'pending', 'processing', 'declined']
+    if filter_status not in allowed_filters:
+        filter_status = 'all'
+
+    try:
+        if not overseerr_manager.enabled:
+            return jsonify({"success": True, "requests": [], "overseerr_disabled": True})
+            
+        email = current_user.email
+        requests_data = overseerr_manager.get_user_requests(email, limit=20, filter=filter_status)
+        return jsonify(requests_data)
+    except Exception as e:
+        logger.error(f"Erro ao obter pedidos do Overseerr para {current_user.username}: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "Falha ao obter pedidos do Overseerr."}), 500
+
 
 @users_api_bp.route('/renew/<username>', methods=['POST'])
 @login_required
@@ -482,3 +505,4 @@ def get_account_devices():
     except Exception as e:
         logger.error(f"Erro ao obter dispositivos para {current_user.username}: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Falha ao obter lista de dispositivos."}), 500
+
