@@ -39,13 +39,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     let pollingIntervalId = null;
     let validatedCouponCode = null;
     let historySearchTimeout = null;
+    let currentRequestFilter = 'all';
 
     // --- LÓGICA DE NAVEGAÇÃO POR SEPARADORES ---
     function initializeTabs() {
         const tabContainer = document.getElementById('account-tabs');
         const contentContainer = document.getElementById('account-tab-content');
+        const requestsTabButton = tabContainer.querySelector('[data-tab="requests"]');
 
         if (!tabContainer || !contentContainer) return;
+
+        // Mostra a aba de pedidos se o utilizador tiver acesso
+        if (currentUser && !currentUser.is_admin && currentUser.profile_details.overseerr_access) {
+            requestsTabButton.classList.remove('hidden');
+        }
 
         // Oculta abas que não se aplicam ao utilizador atual
         if (!currentUser || currentUser.is_admin) {
@@ -71,6 +78,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             if (tabId === 'history') {
                 fetchAndRenderHistory();
+            } else if (tabId === 'requests') {
+                fetchAndRenderRequests();
             }
         });
     }
@@ -164,6 +173,79 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
     }
+
+    // --- LÓGICA DE PEDIDOS (OVERSEERR) ---
+    async function fetchAndRenderRequests() {
+        const container = document.getElementById('requests-container');
+        if (!container) return;
+
+        container.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.loadingRequests}</p>`;
+
+        try {
+            const data = await fetchAPI(`${urls.getAccountRequestsUrl}?filter=${currentRequestFilter}`);
+            if (data.success) {
+                renderRequests(data.requests);
+            } else if (data.overseerr_disabled) {
+                container.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.overseerrDisabled}</p>`;
+                document.getElementById('request-filters').style.display = 'none';
+            } else {
+                throw new Error(data.message);
+            }
+        } catch (error) {
+            container.innerHTML = `<p class="text-center text-red-500 dark:text-red-400">${error.message}</p>`;
+        }
+    }
+
+    function renderRequests(requests) {
+        const container = document.getElementById('requests-container');
+        if (requests.length === 0) {
+            container.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.noRequestsFound}</p>`;
+            return;
+        }
+
+        const statusColorMap = {
+            green: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+            yellow: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
+            blue: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+            red: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
+            teal: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300',
+            gray: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
+        };
+
+        container.innerHTML = requests.map(req => {
+            const requestedDate = new Date(req.requested_at).toLocaleDateString('pt-BR');
+            return `
+                <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg flex items-center space-x-4">
+                    <img src="${req.poster_url || 'https://placehold.co/64x96/1F2937/E5E7EB?text=?'}" alt="Poster" class="w-16 h-24 object-cover rounded-md flex-shrink-0">
+                    <div class="flex-grow">
+                        <h4 class="font-bold text-gray-900 dark:text-white">${req.title} (${req.year})</h4>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">${i18n.requestedOn} ${requestedDate}</p>
+                    </div>
+                    <div class="flex-shrink-0">
+                        <span class="px-3 py-1 text-xs font-medium rounded-full ${statusColorMap[req.status_color] || statusColorMap.gray}">
+                            ${req.status_text}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function initializeRequestFilters() {
+        const filterContainer = document.getElementById('request-filters');
+        if (filterContainer) {
+            filterContainer.addEventListener('click', (e) => {
+                const button = e.target.closest('button');
+                if (button && button.dataset.filter) {
+                    filterContainer.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+                    currentRequestFilter = button.dataset.filter;
+                    fetchAndRenderRequests();
+                }
+            });
+        }
+    }
+
 
     // --- LÓGICA DE PAGAMENTO ---
 
@@ -588,7 +670,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function main() {
         try {
             const data = await fetchAPI(urls.getAccountDetailsUrl);
-            currentUser = { username: data.username, is_admin: data.role === 'admin' };
+            currentUser = { 
+                username: data.username, 
+                is_admin: data.role === 'admin',
+                profile_details: data.profile_details
+            };
             
             const paymentOptions = await fetchAPI(urls.getPaymentOptionsUrl);
             if(paymentOptions.success && paymentSection) {
@@ -708,6 +794,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             initializeTabs();
             initializeHistorySearch();
+            initializeRequestFilters();
 
         } catch (error) {
             if (loadingIndicator) loadingIndicator.style.display = 'none';
