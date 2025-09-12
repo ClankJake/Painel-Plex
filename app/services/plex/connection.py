@@ -83,9 +83,11 @@ class PlexConnectionManager:
                     player_state = getattr(s.players[0], "state", "stopped")
                     state = {"paused": "paused", "playing": "playing", "buffering": "buffering"}.get(player_state, "stopped")
 
+                # Detalhes da transcodificação
                 is_transcoding = False
                 video_decision = "Direct Play"
                 audio_decision = "Direct Play"
+                transcode_speed = None
                 
                 transcode_session = getattr(s, "transcodeSession", None)
                 if transcode_session:
@@ -94,6 +96,14 @@ class PlexConnectionManager:
                     
                     if _video_decision == "transcode": is_transcoding = True; video_decision = "Transcode"
                     if _audio_decision == "transcode": is_transcoding = True; audio_decision = "Transcode"
+
+                    if is_transcoding:
+                        speed = getattr(transcode_session, "speed", None)
+                        if speed is not None:
+                            try:
+                                transcode_speed = f"{float(speed):.1f}"
+                            except (ValueError, TypeError):
+                                pass
 
                 stream_type = "Transcode" if is_transcoding else "Direct Play"
                 media = s.media[0] if s.media else None
@@ -134,8 +144,15 @@ class PlexConnectionManager:
                     "title": title, "subtitle": subtitle, "progress": round(progress, 2),
                     "view_offset": view_offset, "duration": duration, "thumb_url": thumb_url, "state": state,
                     "stream_details": {
-                        "video": f"{video_decision} ({video_codec} {video_resolution}p)",
-                        "audio": f"{audio_decision} ({audio_codec})", "stream": stream_type, "container": container
+                        "video_decision": video_decision,
+                        "audio_decision": audio_decision,
+                        "video_codec": video_codec,
+                        "audio_codec": audio_codec,
+                        "video_resolution": video_resolution,
+                        "stream": stream_type,
+                        "container": container,
+                        "is_transcoding": is_transcoding,
+                        "transcode_speed": transcode_speed
                     }
                 })
             return {"success": True, "sessions": session_details, "stream_count": len(sessions)}
