@@ -197,123 +197,154 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     }
 
+    function getStreamCardInnerHtml(s) {
+        let stateIcon = '';
+        let iconColorClass = '';
+
+        if (s.state === 'paused') {
+            iconColorClass = 'text-yellow-500';
+            stateIcon = `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M9 8h2v8H9zm4 0h2v8h-2z"></path></svg>`;
+        } else if (s.state === 'buffering') {
+            iconColorClass = 'text-blue-500';
+            stateIcon = `<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+        } else { // playing
+            iconColorClass = 'text-green-500';
+            stateIcon = `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>`;
+        }
+
+        const platform_icon_name = (s.platform || 'default').toLowerCase().replace(/\s+/g, '');
+
+        const sd = s.stream_details;
+        let streamText = sd.is_transcoding ? `Transcode` : 'Direct Play';
+        if (sd.is_transcoding && sd.transcode_speed) {
+            streamText += ` (${sd.transcode_speed}x)`;
+        }
+        const videoText = `${sd.video_decision} (${sd.video_codec} ${sd.video_resolution}p)`;
+        const audioText = `${sd.audio_decision} (${sd.audio_codec})`;
+        const streamDetailsHtml = `
+            <div class="space-y-1 text-xs text-gray-500 dark:text-gray-400">
+                <p title="${s.player}"><strong>Dispositivo:</strong> <span class="truncate">${s.player}</span></p>
+                <p title="${streamText} (${sd.container})"><strong>Stream:</strong> <span class="truncate">${streamText} (${sd.container})</span></p>
+                <p title="${videoText}"><strong>Video:</strong> <span class="truncate">${videoText}</span></p>
+                <p title="${audioText}"><strong>Audio:</strong> <span class="truncate">${audioText}</span></p>
+            </div>
+        `;
+
+        return `
+            <div class="w-24 sm:w-28 flex-shrink-0">
+                <img src="${s.thumb_url || 'https://placehold.co/150x225/1F2937/E5E7EB?text=?'}" class="w-full h-auto aspect-[2/3] object-cover rounded-md shadow-sm" alt="Poster">
+            </div>
+            <div class="flex-1 min-w-0 w-full space-y-2">
+                <div class="flex justify-between items-start gap-2">
+                    <div class="flex-1 min-w-0">
+                        <h4 class="font-bold text-base sm:text-lg text-gray-900 dark:text-white truncate" title="${s.title}">${s.title}</h4>
+                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate" title="${s.subtitle}">${s.subtitle}</p>
+                    </div>
+                    <div class="platform-icon platform-${platform_icon_name} flex-shrink-0" title="${s.platform}"></div>
+                </div>
+                
+                ${streamDetailsHtml}
+
+                <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 pt-1">
+                    <img src="${s.user_thumb || 'https://placehold.co/24x24/1F2937/E5E7EB?text=?'}" class="w-6 h-6 rounded-full">
+                    <span class="font-semibold truncate">${s.user}</span>
+                    <div class="ml-auto flex items-center gap-1">
+                        <span id="time-${s.session_key}" class="text-xs font-mono whitespace-nowrap">${formatTime(s.view_offset)}/${formatTime(s.duration)}</span>
+                        <span id="state-icon-${s.session_key}" class="${iconColorClass}">${stateIcon}</span>
+                    </div>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                    <div id="progress-${s.session_key}" class="bg-yellow-400 h-1.5 rounded-full" style="width: ${s.progress}%"></div>
+                </div>
+            </div>
+        `;
+    }
+
     function renderActiveStreamsDashboard(sessions) {
         const section = document.getElementById('active-streams-section');
         const container = document.getElementById('activeStreamsContainer');
         if (!section || !container) return;
-
+    
         const newSessionKeys = new Set(sessions.map(s => s.session_key));
-        
-        for (const key in activeTimers) {
+    
+        // 1. Remove cartões de sessões que não existem mais
+        container.querySelectorAll('.stream-card').forEach(card => {
+            const key = card.dataset.sessionKey;
             if (!newSessionKeys.has(key)) {
-                clearInterval(activeTimers[key].interval);
+                card.remove();
+                clearInterval(activeTimers[key]?.interval);
                 delete activeTimers[key];
             }
-        }
-
+        });
+    
         if (sessions && sessions.length > 0) {
             section.classList.remove('hidden');
-            container.innerHTML = sessions.map(s => {
-                let stateIcon = '';
-                let iconColorClass = '';
-
-                if (s.state === 'paused') {
-                    iconColorClass = 'text-yellow-500';
-                    stateIcon = `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M9 8h2v8H9zm4 0h2v8h-2z"></path></svg>`;
-                } else if (s.state === 'buffering') {
-                    iconColorClass = 'text-blue-500';
-                    stateIcon = `<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
-                } else { // playing
-                    iconColorClass = 'text-green-500';
-                    stateIcon = `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>`;
+    
+            // 2. Adiciona ou atualiza os cartões de sessão
+            sessions.forEach(s => {
+                let card = container.querySelector(`[data-session-key="${s.session_key}"]`);
+                if (!card) {
+                    card = document.createElement('div');
+                    card.dataset.sessionKey = s.session_key;
+                    card.className = 'stream-card bg-white dark:bg-gray-800/80 p-3 sm:p-4 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex items-start gap-3 sm:gap-4 overflow-hidden';
+                    container.appendChild(card);
                 }
-
-                const platform_icon_name = (s.platform || 'default').toLowerCase().replace(/\s+/g, '');
-
-                return `
-                    <div class="bg-white dark:bg-gray-800/80 p-3 sm:p-4 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex items-start gap-3 sm:gap-4 overflow-hidden">
-                        <div class="w-24 sm:w-28 flex-shrink-0">
-                            <img src="${s.thumb_url || 'https://placehold.co/150x225/1F2937/E5E7EB?text=?'}" class="w-full h-auto aspect-[2/3] object-cover rounded-md shadow-sm" alt="Poster">
-                        </div>
-                        <div class="flex-1 min-w-0 w-full space-y-2">
-                            <div class="flex justify-between items-start gap-2">
-                                <div>
-                                    <h4 class="font-bold text-base sm:text-lg text-gray-900 dark:text-white" title="${s.title}">${s.title}</h4>
-                                    <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400" title="${s.subtitle}">${s.subtitle}</p>
-                                </div>
-                                <div class="platform-icon platform-${platform_icon_name}" title="${s.platform}"></div>
-                            </div>
-                            
-                            <div class="hidden md:block space-y-1 text-xs text-gray-500 dark:text-gray-400">
-                                <p><strong>Dispositivo:</strong> ${s.player}</p>
-                                <p><strong>Stream:</strong> ${s.stream_details.stream} (${s.stream_details.container})</p>
-                                <p><strong>Video:</strong> ${s.stream_details.video}</p>
-                                <p><strong>Audio:</strong> ${s.stream_details.audio}</p>
-                            </div>
-
-                            <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 pt-1">
-                                <img src="${s.user_thumb || 'https://placehold.co/24x24/1F2937/E5E7EB?text=?'}" class="w-6 h-6 rounded-full">
-                                <span class="font-semibold truncate">${s.user}</span>
-                                <div class="ml-auto flex items-center gap-1">
-                                    <span id="time-${s.session_key}" class="text-xs font-mono whitespace-nowrap">${formatTime(s.view_offset)}/${formatTime(s.duration)}</span>
-                                    <span class="${iconColorClass}">${stateIcon}</span>
-                                </div>
-                            </div>
-                            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                                <div id="progress-${s.session_key}" class="bg-yellow-400 h-1.5 rounded-full" style="width: ${s.progress}%"></div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+                card.innerHTML = getStreamCardInnerHtml(s);
+            });
         } else {
             section.classList.add('hidden');
             container.innerHTML = '';
         }
-
+    
+        // 3. Gerencia os timers para a animação suave
         sessions.forEach(s => {
             const timer = activeTimers[s.session_key];
-
+    
             if (timer) {
+                // Sincroniza com os dados do servidor
                 timer.view_offset = s.view_offset;
                 timer.duration = s.duration;
-                
+                timer.last_updated = Date.now();
+    
                 if (s.state !== 'playing' && timer.interval) {
                     clearInterval(timer.interval);
                     timer.interval = null;
-                }
-                else if (s.state === 'playing' && !timer.interval) {
-                    timer.interval = setInterval(() => {
-                        const currentTimer = activeTimers[s.session_key];
-                        if (!currentTimer) return;
-                        currentTimer.view_offset += 1000;
-                        const timeEl = document.getElementById(`time-${s.session_key}`);
-                        const progressEl = document.getElementById(`progress-${s.session_key}`);
-                        if (timeEl) timeEl.textContent = `${formatTime(currentTimer.view_offset)}/${formatTime(currentTimer.duration)}`;
-                        if (progressEl && currentTimer.duration > 0) progressEl.style.width = `${Math.min(100, (currentTimer.view_offset / currentTimer.duration) * 100)}%`;
-                    }, 1000);
+                } else if (s.state === 'playing' && !timer.interval) {
+                    timer.interval = createTimerInterval(s.session_key);
                 }
                 timer.state = s.state;
             } else {
+                // Cria um novo timer
                 activeTimers[s.session_key] = {
                     view_offset: s.view_offset,
                     duration: s.duration,
                     state: s.state,
-                    interval: null
+                    last_updated: Date.now(),
+                    interval: s.state === 'playing' ? createTimerInterval(s.session_key) : null
                 };
-                if (s.state === 'playing') {
-                    activeTimers[s.session_key].interval = setInterval(() => {
-                        const currentTimer = activeTimers[s.session_key];
-                        if (!currentTimer) return;
-                        currentTimer.view_offset += 1000;
-                        const timeEl = document.getElementById(`time-${s.session_key}`);
-                        const progressEl = document.getElementById(`progress-${s.session_key}`);
-                        if (timeEl) timeEl.textContent = `${formatTime(currentTimer.view_offset)}/${formatTime(currentTimer.duration)}`;
-                        if (progressEl && currentTimer.duration > 0) progressEl.style.width = `${Math.min(100, (currentTimer.view_offset / currentTimer.duration) * 100)}%`;
-                    }, 1000);
-                }
             }
         });
+    }
+
+    function createTimerInterval(sessionKey) {
+        return setInterval(() => {
+            const timer = activeTimers[sessionKey];
+            if (!timer) {
+                clearInterval(this);
+                return;
+            };
+            
+            const elapsedSinceUpdate = Date.now() - timer.last_updated;
+            const current_offset = timer.view_offset + elapsedSinceUpdate;
+            
+            const timeEl = document.getElementById(`time-${sessionKey}`);
+            const progressEl = document.getElementById(`progress-${sessionKey}`);
+            
+            if (timeEl) timeEl.textContent = `${formatTime(current_offset)}/${formatTime(timer.duration)}`;
+            if (progressEl && timer.duration > 0) {
+                progressEl.style.width = `${Math.min(100, (current_offset / timer.duration) * 100)}%`;
+            }
+        }, 1000);
     }
 
     async function loadDashboardData() {
@@ -389,7 +420,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         socket.on('dashboard_update', (data) => {
-            console.log('Atualização de resumo recebida:', data);
             if (data.summary) {
                 renderSummaryCards(data.summary);
                 renderCharts(data.summary);
@@ -397,7 +427,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         socket.on('active_streams_update', (data) => {
-            console.log('Atualização de streams em tempo real recebida.');
             renderActiveStreamsDashboard(data.sessions);
         });
 
@@ -518,3 +547,4 @@ document.addEventListener('DOMContentLoaded', () => {
     loadDashboardData();
     setupWebSocket();
 });
+
