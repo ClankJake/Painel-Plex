@@ -226,7 +226,7 @@ def cleanup_image_cache_job():
 
     with _app.app_context():
         from .config import load_or_create_config
-        from .blueprints.image_proxy import IMAGE_CACHE_DIR
+        from .blueprints.image import IMAGE_CACHE_DIR
 
         config = load_or_create_config()
         if not config.get("IMAGE_CACHE_CLEANUP_ENABLED", False):
@@ -325,3 +325,4 @@ def setup_scheduler(app):
     if not extensions.scheduler.running:
         extensions.scheduler.start()
         logger.info("Agendador de tarefas iniciado.")
+
