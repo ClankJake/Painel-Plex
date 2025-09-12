@@ -52,6 +52,9 @@
     .platform-wp { background-color: #68217a; background-image: url(/static/images/platforms/windows.svg); }
     .platform-xbmc { background-color: #3b4872; background-image: url(/static/images/platforms/kodi.svg); }
     .platform-xbox { background-color: #107c10; background-image: url(/static/images/platforms/xbox.svg); }
+    .filter-btn.active {
+        @apply bg-yellow-500 text-white dark:bg-yellow-600;
+    }
 </style>
 {% endblock %}
 
@@ -113,6 +116,7 @@
                 {% if not current_user.is_admin() %}
                 <button type="button" data-tab="overview" class="tab-button {% if not current_user.is_admin() %}active{% endif %} py-3 px-1 border-b-2 font-medium text-sm">{{ _('Visão Geral') }}</button>
                 <button type="button" data-tab="payment" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Pagamentos e Assinatura') }}</button>
+                <button type="button" data-tab="requests" class="tab-button hidden py-3 px-1 border-b-2 font-medium text-sm">{{ _('Meus Pedidos') }}</button>
                 {% endif %}
                 <button type="button" data-tab="security" class="tab-button {% if current_user.is_admin() %}active{% endif %} py-3 px-1 border-b-2 font-medium text-sm">{{ _('Dispositivos Conectados') }}</button>
                 <button type="button" data-tab="history" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Histórico') }}</button>
@@ -187,6 +191,25 @@
                 </div>
             </div>
 
+            <!-- Separador Meus Pedidos -->
+            <div id="tab-requests" class="tab-content space-y-8">
+                <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Seus Pedidos Recentes') }}</h3>
+                        <div id="request-filters" class="flex flex-wrap gap-2">
+                            <button class="filter-btn active" data-filter="all">{{ _('Todos') }}</button>
+                            <button class="filter-btn" data-filter="available">{{ _('Disponível') }}</button>
+                            <button class="filter-btn" data-filter="processing">{{ _('Processando') }}</button>
+                            <button class="filter-btn" data-filter="pending">{{ _('Pendente') }}</button>
+                            <!-- <button class="filter-btn" data-filter="failed">{{ _('Recusado') }}</button> -->
+                        </div>
+                    </div>
+                    <div id="requests-container" class="space-y-3">
+                        <!-- Conteúdo será injetado pelo JS -->
+                    </div>
+                </div>
+            </div>
+
             <!-- Separador Segurança -->
             <div id="tab-security" class="tab-content {% if current_user.is_admin() %}active{% endif %} space-y-8">
                 <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
@@ -228,6 +251,7 @@
         type="module" 
         src="{{ url_for('static', filename='js/account.js') }}"
         data-get-account-details-url="{{ url_for('users_api.get_account_details') }}"
+        data-get-account-requests-url="{{ url_for('users_api.get_account_requests') }}"
         data-update-account-profile-url="{{ url_for('users_api.update_account_profile') }}"
         data-get-account-devices-url="{{ url_for('users_api.get_account_devices') }}"
         data-update-privacy-url="{{ url_for('users_api.update_privacy_settings') }}"
@@ -284,13 +308,18 @@
         data-i18n-save-details="{{ _('Salvar Detalhes') }}"
         data-i18n-coupon-applied-success="{{ _('Cupom aplicado com sucesso!') }}"
         data-i18n-no-history-found="{{ _('Nenhum item encontrado no seu histórico.') }}"
-        data-i18n-loading-history="{{ _('A carregar histórico...') }}"
+        data-i18n-loading-history="{{ _('Carregando histórico...') }}"
         data-i18n-previous="{{ _('Anterior') }}"
         data-i18n-next="{{ _('Próxima') }}"
         data-i18n-page-of="{{ _('Página {currentPage} de {totalPages}') }}"
         data-i18n-progress="{{ _('Progresso') }}"
         data-i18n-player="{{ _('Dispositivo') }}"
         data-i18n-title="{{ _('Título') }}"
+        data-i18n-loading-requests="{{ _('Carregando os seus pedidos...') }}"
+        data-i18n-no-requests-found="{{ _('Nenhum pedido encontrado com este filtro.') }}"
+        data-i18n-requested-on="{{ _('Pedido em') }}"
+        data-i18n-overseerr-disabled="{{ _('A funcionalidade de pedidos não está ativada pelo administrador.') }}"
         >
 </script>
 {% endblock %}
+
