@@ -332,21 +332,61 @@ def user_profile_route(username):
 
         data_manager.set_user_profile(username, profile_to_update)
 
-        final_expiration_date_str = profile_to_update.get('expiration_date')
+        # --- CORREÇÃO: REAVALIA E IMPÕE O ESTADO CORRETO DO UTILIZADOR ---
+        final_profile = data_manager.get_user_profile(username)
         user_info = next((u for u in plex_manager.get_all_plex_users() if u['username'] == username), None)
 
         if user_info:
-            if final_expiration_date_str:
-                final_expiration_date = datetime.fromisoformat(final_expiration_date_str)
-                now_local = datetime.now().astimezone(get_localzone())
-                is_currently_blocked = data_manager.get_blocked_user(username=username) is not None
-                
-                if now_local > final_expiration_date and not is_currently_blocked:
-                    plex_manager.block_user(user_info['email'], reason='expired')
-                elif now_local <= final_expiration_date and is_currently_blocked:
-                    plex_manager.unblock_user(user_info['email'])
+            is_currently_blocked = data_manager.get_blocked_user(username=username) is not None
+            now_utc = datetime.now(timezone.utc)
+            now_local = datetime.now().astimezone(get_localzone())
+
+            # Caso 1: Utilizador tem uma data de subscrição
+            exp_date_str = final_profile.get('expiration_date')
+            if exp_date_str:
+                try:
+                    exp_date = datetime.fromisoformat(exp_date_str)
+                    
+                    # Desbloqueia se a subscrição for válida e futura
+                    if exp_date > now_local:
+                        if is_currently_blocked:
+                            logger.info(f"'{username}' tem uma nova subscrição válida. A desbloquear o utilizador.")
+                            plex_manager.unblock_user(user_info['email'])
+                    # Bloqueia se a subscrição estiver no passado
+                    else:
+                        if not is_currently_blocked:
+                            logger.info(f"'{username}' tem uma subscrição expirada. A bloquear o utilizador.")
+                            plex_manager.block_user(user_info['email'], reason='expired')
+                except (ValueError, TypeError):
+                    logger.error(f"Data de expiração inválida para '{username}' ao reavaliar o estado: {exp_date_str}")
+            
+            # Caso 2: Utilizador NÃO tem data de subscrição
             else:
-                plex_manager.unblock_user(user_info['email'])
+                trial_end_str = final_profile.get('trial_end_date')
+                # Subcaso 2a: Verifica se tem um teste expirado
+                if trial_end_str:
+                    try:
+                        trial_end_date = datetime.fromisoformat(trial_end_str)
+                        if trial_end_date < now_utc:
+                            if not is_currently_blocked:
+                                logger.info(f"'{username}' não tem subscrição e o seu período de teste expirou. A bloquear o utilizador.")
+                                plex_manager.block_user(user_info['email'], reason='trial_expired')
+                        # Se o teste ainda estiver ativo, ele não deve ser bloqueado
+                        else:
+                            if is_currently_blocked:
+                                logger.info(f"'{username}' está num período de teste ativo. A desbloquear o utilizador.")
+                                plex_manager.unblock_user(user_info['email'])
+                    except (ValueError, TypeError):
+                         logger.error(f"Data de teste inválida para '{username}' ao reavaliar o estado: {trial_end_str}")
+                
+                # Subcaso 2b: Sem subscrição e sem info de teste -> acesso indefinido
+                else:
+                    block_info = data_manager.get_blocked_user(username=username)
+                    if block_info and block_info.get('block_reason') in ['trial_expired', 'expired']:
+                         logger.info(f"'{username}' está bloqueado devido à expiração. Mantendo o bloqueio pois nenhuma nova data de vencimento foi fornecida.")
+                    elif is_currently_blocked:
+                        logger.info(f"'{username}' recebeu acesso indefinido. A desbloquear o utilizador.")
+                        plex_manager.unblock_user(user_info['email'])
         
         return jsonify({"success": True, "message": _("Perfil do utilizador atualizado com sucesso.")})
 
@@ -505,4 +545,3 @@ def get_account_devices():
     except Exception as e:
         logger.error(f"Erro ao obter dispositivos para {current_user.username}: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Falha ao obter lista de dispositivos."}), 500
-
