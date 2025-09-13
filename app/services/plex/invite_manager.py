@@ -111,7 +111,9 @@ class PlexInviteManager:
 
         profile_data = {'screen_limit': invitation['screen_limit'], 'allow_downloads': invitation.get('allow_downloads', False), 'libraries': json.dumps(invitation.get('libraries', []))}
         
+        is_trial = False
         if invitation.get("trial_duration_minutes", 0) > 0:
+            is_trial = True
             trial_end_utc = datetime.now(timezone.utc) + timedelta(minutes=invitation["trial_duration_minutes"])
             naive_run_date = trial_end_utc.astimezone(scheduler.timezone).replace(tzinfo=None)
             job_id = f"trial_end_{plex_user_account.username}"
@@ -123,7 +125,26 @@ class PlexInviteManager:
             profile_data['overseerr_access'] = True
 
         self.data_manager.set_user_profile(plex_user_account.username, profile_data)
-        return {"success": True, "message": _("Convite resgatado e acesso concedido! Bem-vindo, %(username)s.", username=plex_user_account.username)}
+        
+        # Recupera o perfil recém-criado para obter o token de pagamento
+        new_profile = self.data_manager.get_user_profile(plex_user_account.username)
+
+        config = load_or_create_config()
+        overseerr_url = config.get("OVERSEERR_URL", "").rstrip('/')
+        expiration_date = profile_data.get("trial_end_date") or profile_data.get("expiration_date")
+
+        return {
+            "success": True, 
+            "message": _("Convite resgatado e acesso concedido! Bem-vindo, %(username)s.", username=plex_user_account.username),
+            "user_data": {
+                "username": plex_user_account.username,
+                "expiration_date": expiration_date,
+                "is_trial": is_trial,
+                "payment_token": new_profile.get('payment_token'),
+                "overseerr_access": profile_data.get('overseerr_access', False),
+                "overseerr_url": overseerr_url if overseerr_url and profile_data.get('overseerr_access', False) else None
+            }
+        }
 
     def list_invitations(self):
         return self.data_manager.get_all_pending_invitations()
