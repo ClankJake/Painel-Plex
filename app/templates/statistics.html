@@ -152,14 +152,6 @@
             <!-- Conteúdo será preenchido por JS -->
         </div>
 
-        <!-- NOVA SEÇÃO DE CONQUISTAS -->
-        <div id="achievements-section" class="hidden bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Suas Conquistas') }}</h3>
-            <div id="achievements-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                <!-- Selos serão injetados aqui pelo JS -->
-            </div>
-        </div>
-
         <!-- Ranking Geral -->
         <div id="leaderboard-section" class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
             <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Sua Posição no Ranking') }}</h3>
@@ -223,7 +215,8 @@
         data-i18n-total-plays="{{ _('Total de Reproduções') }}"
         data-i18n-active-users="{{ _('Utilizadores Ativos') }}"
         data-i18n-period-champion="{{ _('Campeão do Período') }}"
-        data-i18n-achievements="{{ _('Conquistas') }}"
+        data-i18n-my-achievements="{{ _('Minha(s) Conquista(s)') }}"
+        data-i18n-user-achievements="{{ _('Conquista(s) de {username}') }}"
         data-i18n-loading-newly-added="{{ _('Carregando novidades...') }}"
         data-i18n-no-newly-added="{{ _('Nenhum item adicionado recentemente no período selecionado.') }}"
         data-i18n-added="{{ _('Adicionado') }}"
@@ -236,3 +229,4 @@
         >
 </script>
 {% endblock %}
+
