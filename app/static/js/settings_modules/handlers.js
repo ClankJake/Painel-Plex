@@ -94,10 +94,16 @@ async function handleSaveBulkTemplates() {
 
 async function handleTestConnection(button, endpoint, payloadBuilder) {
     if (!button) return;
+
     button.disabled = true;
     button.textContent = i18n.testing;
+
     try {
-        const result = await api.testTautulli(payloadBuilder());
+        const apiFunction = api[endpoint];
+        if (typeof apiFunction !== 'function') {
+            throw new Error(`Função da API desconhecida: ${endpoint}`);
+        }
+        const result = await apiFunction(payloadBuilder());
         showToast(result.message, result.success ? 'success' : 'error');
     } catch (error) {
         showToast(error.message || i18n.unknownError, 'error');
