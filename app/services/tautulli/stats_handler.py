@@ -149,6 +149,8 @@ class StatsHandler:
             stats.update({"genre_counts": Counter(), "recent": [], "weekly_activity_python": [0]*7, "weekly_activity_js": [0]*7,
                           "top_movies": Counter(), "top_shows": Counter(), "unique_genres": set(), "unique_days": set(),
                           "unique_platforms": set(), "director_counts": Counter(), "unique_decades": set()})
+            
+            series_genre_cache = {}
 
             for item in history:
                 dt = datetime.fromtimestamp(item.get('date'))
@@ -159,6 +161,33 @@ class StatsHandler:
                 if item.get("platform"): stats["unique_platforms"].add(item.get("platform"))
                 if 0 <= dt.hour < 4: stats["late_night_plays"] += 1
                 
+                item_genres = item.get("genres")
+                if not item_genres and item.get("media_type") == 'episode':
+                    grandparent_rating_key = item.get('grandparent_rating_key')
+                    if grandparent_rating_key:
+                        logger.debug(f"Episódio '{item.get('title')}' não tem géneros. A procurar géneros para a série com a chave: {grandparent_rating_key}")
+                        if grandparent_rating_key in series_genre_cache:
+                            item_genres = series_genre_cache[grandparent_rating_key]
+                            if item_genres:
+                                logger.debug(f"Géneros encontrados na cache para a chave {grandparent_rating_key}: {item_genres}")
+                        else:
+                            try:
+                                metadata = self.api.get_metadata(grandparent_rating_key)
+                                logger.debug(f"Resposta da API get_metadata para a chave {grandparent_rating_key}: {metadata}")
+                                if metadata and metadata.get('genres'):
+                                    item_genres = metadata['genres']
+                                    series_genre_cache[grandparent_rating_key] = item_genres
+                                    logger.info(f"Géneros obtidos da API para a série '{metadata.get('title')}': {item_genres}")
+                                else:
+                                    series_genre_cache[grandparent_rating_key] = []
+                            except RequestException as e:
+                                logger.warning(f"Não foi possível obter os metadados para a chave da série {grandparent_rating_key}: {e}")
+                                series_genre_cache[grandparent_rating_key] = []
+                
+                if item_genres and isinstance(item_genres, list):
+                    stats["genre_counts"].update(item_genres)
+                    stats["unique_genres"].update(item_genres)
+
                 if item.get("media_type") == 'movie':
                     stats["movie_count"] += 1
                     duration = item.get('duration', 0)
@@ -172,10 +201,6 @@ class StatsHandler:
                     stats["total_episode_duration"] += item.get('duration', 0)
                     stats["top_shows"][item.get("grandparent_title")] += 1
                 
-                if item.get("genres"):
-                    stats["genre_counts"].update(item.get("genres"))
-                    stats["unique_genres"].update(item.get("genres"))
-                
                 if len(stats["recent"]) < 5:
                     poster_url = None
                     if item.get('thumb'):
@@ -185,9 +210,10 @@ class StatsHandler:
                         poster_url = url_for('image.proxy_image', source=b64_payload)
                     stats["recent"].append({"type": item.get("media_type"), "title": item.get("title"), "series": item.get("grandparent_title"), "poster_url": poster_url, "play_date": dt.strftime('%d/%m/%Y %H:%M')})
             
+            logger.debug(f"Contagem final de géneros para o utilizador '{username}': {stats['genre_counts']}")
             favorite_genre_info = stats["genre_counts"].most_common(1)
             stats["favorite_genre"] = favorite_genre_info[0][0] if favorite_genre_info else _('N/D')
-            stats["favorite_genre_count"] = favorite_genre_info[0][1] if favorite_genre_info else 0
+            logger.info(f"Género favorito para o utilizador '{username}': {stats['favorite_genre']}")
 
             favorite_director_info = stats["director_counts"].most_common(1)
             stats["favorite_director_count"] = favorite_director_info[0][1] if favorite_director_info else 0
@@ -282,3 +308,4 @@ class StatsHandler:
         except Exception as e:
             logger.error(_("Erro inesperado ao processar dispositivos: %(error)s", error=e), exc_info=True)
             return {"success": False, "message": _("Erro inesperado: %(error)s", error=e)}
+
