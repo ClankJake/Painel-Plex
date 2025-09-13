@@ -87,7 +87,7 @@ class PlexConnectionManager:
                 is_transcoding = False
                 video_decision = "Direct Play"
                 audio_decision = "Direct Play"
-                transcode_speed = None
+                transcode_progress = None
                 
                 transcode_session = getattr(s, "transcodeSession", None)
                 if transcode_session:
@@ -98,10 +98,10 @@ class PlexConnectionManager:
                     if _audio_decision == "transcode": is_transcoding = True; audio_decision = "Transcode"
 
                     if is_transcoding:
-                        speed = getattr(transcode_session, "speed", None)
-                        if speed is not None:
+                        t_progress = getattr(transcode_session, "progress", None)
+                        if t_progress is not None:
                             try:
-                                transcode_speed = f"{float(speed):.1f}"
+                                transcode_progress = int(t_progress)
                             except (ValueError, TypeError):
                                 pass
 
@@ -110,7 +110,17 @@ class PlexConnectionManager:
                 video_codec = (getattr(media, "videoCodec", None) or "N/A").upper()
                 audio_codec = (getattr(media, "audioCodec", None) or "N/A").upper()
                 container = (getattr(media, "container", None) or "N/A").upper()
-                video_resolution = getattr(media, "videoResolution", "N/A")
+                
+                # Normaliza a resolução de vídeo
+                video_resolution_raw = getattr(media, "videoResolution", "N/A")
+                video_resolution = video_resolution_raw
+                try:
+                    # Adiciona 'p' se for uma resolução puramente numérica (ex: '1080' -> '1080p')
+                    int_res = int(video_resolution_raw)
+                    video_resolution = f"{int_res}p"
+                except (ValueError, TypeError):
+                    # Mantém como está se for 'SD', '4k', etc.
+                    pass
 
                 title = s.title
                 subtitle = str(s.year) if hasattr(s, 'year') and s.year else ''
@@ -152,7 +162,7 @@ class PlexConnectionManager:
                         "stream": stream_type,
                         "container": container,
                         "is_transcoding": is_transcoding,
-                        "transcode_speed": transcode_speed
+                        "transcode_progress": transcode_progress
                     }
                 })
             return {"success": True, "sessions": session_details, "stream_count": len(sessions)}
@@ -170,3 +180,4 @@ class PlexConnectionManager:
         except Exception as e:
             logger.error(_("Não foi possível obter as bibliotecas do servidor Plex: %(error)s", error=e))
             return []
+
