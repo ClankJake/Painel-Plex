@@ -216,10 +216,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const sd = s.stream_details;
         let streamText = sd.is_transcoding ? `Transcode` : 'Direct Play';
-        if (sd.is_transcoding && sd.transcode_speed) {
-            streamText += ` (${sd.transcode_speed}x)`;
+        if (sd.is_transcoding && typeof sd.transcode_progress === 'number') {
+            streamText += ` (${sd.transcode_progress}%)`;
         }
-        const videoText = `${sd.video_decision} (${sd.video_codec} ${sd.video_resolution}p)`;
+        const videoText = `${sd.video_decision} (${sd.video_codec} ${sd.video_resolution})`;
         const audioText = `${sd.audio_decision} (${sd.audio_codec})`;
         const streamDetailsHtml = `
             <div class="space-y-1 text-xs text-gray-500 dark:text-gray-400">
