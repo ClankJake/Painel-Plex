@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const i18n = {};
     for (const key in scriptTag.dataset) {
         if (key.startsWith('i18n')) {
-            const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
+            const i18nKey = key.charAt(4).toLowerCase() + key.slice(5).replace(/-(\w)/g, (_, letter) => letter.toUpperCase());
             i18n[i18nKey] = scriptTag.dataset[key];
         } else if (key.endsWith('Url')) {
              const urlKey = key.replace(/Url$/, '');
@@ -52,12 +52,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function createStatCard(icon, label, value, colorClass) {
+        const valueClass = value.length > 12 ? 'text-xl' : 'text-2xl';
         return `
             <div class="p-4 rounded-xl flex items-center gap-4 transition-all duration-300 ${colorClass}">
                 <div class="p-3 bg-white/20 rounded-lg">${icon}</div>
-                <div>
+                <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium opacity-80">${label}</p>
-                    <p class="text-2xl font-bold">${value}</p>
+                    <p class="${valueClass} font-bold truncate" title="${value}">${value}</p>
                 </div>
             </div>
         `;
@@ -199,7 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ].filter(item => item.user && item.user.username);
     
         podiumContainer.innerHTML = podiumData.map(item => `
-            <div class="flex flex-col items-center transition-transform duration-300 ease-in-out hover:scale-105 w-1/3 max-w-[220px] cursor-pointer ${item.order}" data-username="${item.user.username}">
+            <div class="flex flex-col items-center transition-transform duration-300 ease-in-out hover:scale-105 w-1/3 max-w-[220px] cursor-pointer ${item.order}" data-username="${item.user.original_username}">
                 <img src="${item.user.thumb || 'https://placehold.co/80x80/1F2937/E5E7EB?text=?'}" class="w-20 h-20 rounded-full border-4 border-white dark:border-gray-800 -mb-10 z-10" alt="Avatar">
                 <div class="w-full rounded-t-lg flex flex-col justify-end items-center p-2 pb-4 text-white shadow-lg" style="height: ${item.height}; background: ${item.gradient};">
                     <div class="pt-10 text-center">
@@ -230,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const rank = startIndex + index + 1;
             const row = document.createElement('tr');
             row.className = 'hover:bg-gray-100 dark:hover:bg-gray-700/50 cursor-pointer';
-            row.dataset.username = user.username;
+            row.dataset.username = user.original_username;
             row.innerHTML = `
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 dark:text-gray-400">${rank}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
@@ -305,27 +306,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const url = urls.userStats.replace('__USERNAME__', username);
             const data = await fetchAPI(`${url}?days=${days}`);
             const details = data.details;
+            const isOwnerViewing = username === currentUser.username;
+            const isAdminViewing = currentUser.role === 'admin';
             
-            // Apenas renderiza conquistas na página principal se for o utilizador atual.
-            if (username === currentUser.username) {
-                const achievementsSection = document.getElementById('achievements-section');
-                const achievementsContainer = document.getElementById('achievements-container');
-                if (achievementsSection && achievementsContainer && details.achievements) {
-                    if (details.achievements.length > 0) {
-                        achievementsContainer.innerHTML = details.achievements.map(ach => `
-                            <div class="achievement-badge unlocked-${ach.level}">
-                                <span class="icon">${ach.icon}</span>
-                                <span class="title">${ach.title}</span>
-                                <div class="tooltip">${ach.description}</div>
-                            </div>
-                        `).join('');
-                        achievementsSection.classList.remove('hidden');
-                    } else {
-                        achievementsSection.classList.add('hidden');
-                    }
-                }
-            }
-
             let recentHtml = `<p class="text-gray-500 dark:text-gray-400 text-center w-full">${i18n.noRecentActivity}</p>`;
             if (details.recent && details.recent.length > 0) {
                 recentHtml = details.recent.map(item => `
@@ -340,9 +323,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             let achievementsHtmlForContainer = '';
             if (details.achievements && details.achievements.length > 0) {
+                const achievementsTitle = isOwnerViewing
+                    ? i18n.myAchievements
+                    : i18n.userAchievements.replace('{username}', `<strong>${username}</strong>`);
+
                 achievementsHtmlForContainer = `
                     <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
-                        <h4 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">${i18n.achievements}</h4>
+                        <h4 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">${achievementsTitle}</h4>
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                             ${details.achievements.map(ach => `
                                 <div class="achievement-badge unlocked-${ach.level}">
@@ -357,18 +344,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const totalDuration = (details.total_movie_duration || 0) + (details.total_episode_duration || 0);
-            const activityData = JSON.stringify(details.weekly_activity.map(s => (s / 3600).toFixed(2)));
             const contentTypeData = JSON.stringify([details.movie_count || 0, details.episode_count || 0]);
 
-            containerElement.innerHTML = `
-                <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-6">
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        ${createStatCard('🎬', i18n.movies, (details.movie_count || 0).toLocaleString(), 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200')}
-                        ${createStatCard('📺', i18n.episodes, (details.episode_count || 0).toLocaleString(), 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200')}
-                        ${createStatCard('⏱️', i18n.totalTime, formatDuration(totalDuration), 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200')}
-                        ${createStatCard('🎭', i18n.favoriteGenre, details.favorite_genre || i18n.notAvailable, 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200')}
-                    </div>
-
+            let chartsAndRecentHtml = '';
+            if (isOwnerViewing || isAdminViewing) {
+                const activityData = JSON.stringify(details.weekly_activity.map(s => (s / 3600).toFixed(2)));
+                chartsAndRecentHtml = `
                     <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                         <div class="lg:col-span-3">
                             <h4 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100 text-center">${i18n.activityByWeekday}</h4>
@@ -379,17 +360,36 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="w-full h-80 p-2 flex items-center justify-center"><canvas id="contentTypeChart" data-content-type='${contentTypeData}'></canvas></div>
                         </div>
                     </div>
-                    
                     <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
                         <h4 class="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100">${i18n.mostRecentItems}</h4>
                         <div class="flex space-x-4 overflow-x-auto py-2 horizontal-scroll">${recentHtml}</div>
                     </div>
+                `;
+            } else {
+                 chartsAndRecentHtml = `
+                 <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
+                    <h4 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100 text-center">${i18n.consumedContent}</h4>
+                    <div class="w-full h-80 p-2 flex items-center justify-center"><canvas id="contentTypeChart" data-content-type='${contentTypeData}'></canvas></div>
+                 </div>`;
+            }
+
+            containerElement.innerHTML = `
+                <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        ${createStatCard('🎬', i18n.movies, (details.movie_count || 0).toLocaleString(), 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200')}
+                        ${createStatCard('📺', i18n.episodes, (details.episode_count || 0).toLocaleString(), 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200')}
+                        ${createStatCard('⏱️', i18n.totalTime, formatDuration(totalDuration), 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200')}
+                        ${createStatCard('🎭', i18n.favoriteGenre, details.favorite_genre || i18n.notAvailable, 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200')}
+                    </div>
+                    ${chartsAndRecentHtml}
                     ${achievementsHtmlForContainer}
                 </div>
             `;
             // Renderiza os gráficos dentro do container que foi passado.
-            renderUserActivityChart(containerElement);
             renderUserContentTypeChart(containerElement);
+            if(isOwnerViewing || isAdminViewing) {
+                renderUserActivityChart(containerElement);
+            }
 
         } catch (error) {
             containerElement.innerHTML = `<p class="text-center text-red-500 dark:text-red-400">${i18n.userAnalysisError} ${error.message}</p>`;
@@ -526,10 +526,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     leaderboardList.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.noOneWatched}</p>`;
                 } else {
                     leaderboardList.innerHTML = allUsersData.map((user, index) => {
-                        const isCurrentUser = user.username === currentUser.username;
+                        const isCurrentUser = user.original_username === currentUser.username;
                         const isPrivate = user.is_private && !isCurrentUser && !currentUser.is_admin;
                         
-                        const clickableAttrs = isPrivate ? '' : `data-username="${user.username}"`;
+                        const clickableAttrs = isPrivate ? '' : `data-username="${user.original_username}"`;
                         const cursorClass = isPrivate ? 'cursor-default' : 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50';
                         const highlightClass = isCurrentUser ? 'bg-yellow-100 dark:bg-yellow-500/20 ring-2 ring-yellow-500' : cursorClass;
                         
