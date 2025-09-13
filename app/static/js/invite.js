@@ -48,19 +48,63 @@ function createAppCard(title, href, svgPath) {
     `;
 }
 
-function showSuccessAndApps(welcomeMessage) {
+function showImprovedOnboarding(welcomeMessage, userData) {
     const desktopIcon = `<path d="M21 13H3a1 1 0 01-1-1V4a1 1 0 011-1h18a1 1 0 011 1v8a1 1 0 01-1 1zm-1-2V5H4v6h16z"></path><path d="M12 15H3.21a1 1 0 00-.97 1.24l1.39 4A1 1 0 004.59 21h14.82a1 1 0 00.97-.76l1.39-4A1 1 0 0020.79 15H12z"></path>`;
     const mobileIcon = `<path d="M17 2H7a3 3 0 00-3 3v14a3 3 0 003 3h10a3 3 0 003-3V5a3 3 0 00-3-3zm-1 16H8a1 1 0 010-2h8a1 1 0 010 2zm1-4H6V6a1 1 0 011-1h10a1 1 0 011 1v8z"></path>`;
     const tvIcon = `<path d="M21 16H3a1 1 0 010-2h18a1 1 0 010 2zM20 3H4a3 3 0 00-3 3v6a3 3 0 003 3h16a3 3 0 003-3V6a3 3 0 00-3-3zm1 9a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1h16a1 1 0 011 1v6z"></path>`;
     
+    let expirationHtml = '';
+    const isTrial = userData.is_trial;
+
+    if (userData.expiration_date) {
+        const date = new Date(userData.expiration_date);
+        const formattedDate = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const formattedTime = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+        if (isTrial) {
+            expirationHtml = `
+            <div class="mt-4 p-3 bg-yellow-100 dark:bg-yellow-500/20 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-200 text-sm text-left rounded-r-lg">
+                <p><strong>${i18n.attention}</strong> ${i18n.welcomeUserTrial.replace('{date}', `<strong>${formattedDate}</strong>`).replace('{time}', `<strong>${formattedTime}</strong>`)}</p>
+            </div>`;
+        } else {
+            expirationHtml = `<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">${i18n.accessValidUntil.replace('{date}', `<strong>${formattedDate}</strong>`)}</p>`;
+        }
+    }
+
+    let overseerrStep = '';
+    if (userData.overseerr_access && userData.overseerr_url) {
+        const overseerrLink = `<a href="${userData.overseerr_url}" target="_blank" rel="noopener noreferrer" class="text-yellow-500 hover:underline font-semibold">${i18n.step3LinkOverseerr}</a>`;
+        overseerrStep = `<li>${i18n.step3Overseerr.replace('{link}', overseerrLink)}</li>`;
+    }
+    
+    let paymentButtonHtml = '';
+    if(isTrial && userData.payment_token) {
+        const paymentUrl = `/pay/${userData.payment_token}`;
+        paymentButtonHtml = `
+            <div class="mt-8">
+                 <a href="${paymentUrl}" class="inline-flex items-center justify-center px-4 py-3 rounded-lg font-bold transition-transform duration-200 ease-in-out border border-transparent bg-green-600 text-white hover:bg-green-500 hover:-translate-y-0.5">${i18n.renewNow}</a>
+            </div>
+        `;
+    }
+
+    const welcomeTitle = i18n.welcomeUser.replace('{username}', `<strong>${userData.username}</strong>`);
+
     mainContainer.innerHTML = `
         <svg class="w-16 h-16 text-green-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
         <h1 class="text-3xl font-bold text-green-500 mt-4">${i18n.success}</h1>
-        <p class="mt-2 text-lg text-gray-600 dark:text-gray-300">${welcomeMessage}</p>
+        <div class="mt-2 text-lg text-gray-600 dark:text-gray-300">${welcomeTitle}</div>
+        ${expirationHtml}
+        ${paymentButtonHtml}
 
         <div class="mt-8 text-left border-t border-gray-200 dark:border-gray-700/50 pt-6">
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2 text-center">${i18n.enjoyAnywhere}</h2>
-            <p class="text-center text-gray-600 dark:text-gray-400 mb-6">${i18n.downloadPlex}</p>
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 text-center">${i18n.nextSteps}</h2>
+             <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-400 step-list">
+                <li>${i18n.step1Onboarding}</li>
+                ${overseerrStep}
+            </ol>
+        </div>
+
+        <div class="mt-8 text-left">
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-center">
                 ${createAppCard('Desktop', 'https://www.plex.tv/pt-br/media-server-downloads/#plex-app', desktopIcon)}
                 ${createAppCard('Android', 'https://play.google.com/store/apps/details?id=com.plexapp.android', mobileIcon)}
@@ -76,6 +120,7 @@ function showSuccessAndApps(welcomeMessage) {
     `;
 }
 
+
 // --- LÓGICA DE AUTENTICAÇÃO E CONVITE ---
 
 async function claimInvite(plexToken) {
@@ -88,7 +133,7 @@ async function claimInvite(plexToken) {
         });
         const result = await response.json();
         if (result.success) {
-            showSuccessAndApps(result.message);
+            showImprovedOnboarding(result.message, result.user_data);
         } else {
             showMessage(i18n.error, result.message, true);
         }
@@ -175,7 +220,6 @@ async function validateInvite() {
                 <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-400 step-list">
                     <li>${i18n.step1Text} <a href="https://www.plex.tv/pt-br/sign-up/" target="_blank" rel="noopener noreferrer" class="text-yellow-500 hover:underline font-semibold">${i18n.step1Link}</a>${i18n.step1End}</li>
                     <li>${i18n.step2}</li>
-                    <li>${i18n.step3}</li>
                 </ol>
             </div>
             <div id="expiration-container"></div>
