@@ -85,6 +85,11 @@ class TautulliApiClient:
         params.update(kwargs)
         return self._make_request(params)
 
+    def get_metadata(self, rating_key):
+        """Busca os metadados de um item específico."""
+        params = {"cmd": "get_metadata", "rating_key": rating_key}
+        return self._make_request(params)
+
     @staticmethod
     def test_connection(url, api_key):
         """Testa uma conexão com as credenciais fornecidas."""
