@@ -8,37 +8,26 @@ from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone, get_localzone_name
 
 from .config import load_or_create_config
+from .locks import single_instance_job
 
 logger = logging.getLogger(__name__)
 
 # --- OTIMIZAÇÃO: Constantes para o mecanismo de retry ---
-MAX_RETRIES = 3  # Número máximo de tentativas para uma operação crítica
-RETRY_DELAY = 10 # Segundos de espera entre as tentativas
+MAX_RETRIES = 3
+RETRY_DELAY = 10 
 
-# Variavel global para guardar a instância da app, que será definida em __init__.py
+# Variavel global para guardar a instância da app
 _app = None
 
 def set_app_for_jobs(app):
-    """
-    Guarda a instância da app para ser usada pelas tarefas agendadas.
-    Isto evita a necessidade de recriar a aplicação a cada execução de tarefa.
-    """
     global _app
     _app = app
 
-# --- OTIMIZAÇÃO: Função auxiliar para executar ações com tentativas ---
 def _execute_with_retry(action, description):
-    """
-    Tenta executar uma ação várias vezes em caso de falha.
-
-    :param action: A função (lambda ou nome de função) a ser executada.
-    :param description: Uma descrição da ação para fins de log.
-    :return: True se a ação for bem-sucedida, False caso contrário.
-    """
     for attempt in range(MAX_RETRIES):
         try:
             action()
-            return True  # Sucesso
+            return True
         except Exception as e:
             logger.warning(
                 f"Tentativa {attempt + 1}/{MAX_RETRIES} falhou para '{description}'. Erro: {e}. "
@@ -47,8 +36,9 @@ def _execute_with_retry(action, description):
             if attempt < MAX_RETRIES - 1:
                 time.sleep(RETRY_DELAY)
     logger.error(f"Todas as {MAX_RETRIES} tentativas falharam para '{description}'. A tarefa irá desistir.")
-    return False # Falha
+    return False
 
+@single_instance_job('task_processor_job')
 def task_processor_job():
     """Tarefa periódica para procurar e executar tarefas pendentes da base de dados."""
     if not _app:
@@ -58,7 +48,6 @@ def task_processor_job():
     with _app.test_request_context():
         from . import extensions
         
-        # Procura por uma tarefa de notificação em massa pendente
         task_obj = extensions.data_manager.get_next_pending_task('bulk_notification')
         
         if task_obj:
@@ -67,25 +56,24 @@ def task_processor_job():
         else:
             logger.debug("Nenhuma tarefa pendente encontrada pelo processador de tarefas.")
 
-
+@single_instance_job('stream_check_job')
 def stream_check_job():
     """Tarefa agendada para verificar e impor os limites de stream."""
     if not _app:
         logger.error("A instância da app não foi definida para a tarefa 'stream_check_job'. A tarefa foi ignorada.")
         return
     
-    # --- CORREÇÃO: Usa test_request_context para permitir a geração de URLs ---
     with _app.test_request_context():
         from . import extensions
         extensions.stream_manager.check_and_enforce_streams()
 
+@single_instance_job('expiration_notification_job')
 def expiration_notification_job():
     """Tarefa agendada para enviar notificações de vencimento."""
     if not _app:
         logger.error("A instância da app não foi definida para a tarefa 'expiration_notification_job'. A tarefa foi ignorada.")
         return
 
-    # --- CORREÇÃO: Usa test_request_context para permitir a geração de URLs ---
     with _app.test_request_context():
         from . import extensions
         logger.info("A executar a tarefa de notificação de vencimentos...")
@@ -117,7 +105,6 @@ def end_trial_job(username):
         logger.error("A instância da app não foi definida para a tarefa 'end_trial_job'. A tarefa foi ignorada.")
         return
 
-    # --- CORREÇÃO: Usa test_request_context para permitir a geração de URLs ---
     with _app.test_request_context():
         from . import extensions
         logger.info(f"Fim do período de teste para '{username}'. A acionar o bloqueio.")
@@ -149,7 +136,6 @@ def end_subscription_job(username):
         logger.error("A instância da app não foi definida para a tarefa 'end_subscription_job'. A tarefa foi ignorada.")
         return
 
-    # --- CORREÇÃO: Usa test_request_context para permitir a geração de URLs ---
     with _app.test_request_context():
         from . import extensions
         logger.info(f"Fim da subscrição para '{username}'. A acionar o bloqueio.")
@@ -169,13 +155,13 @@ def end_subscription_job(username):
             logger.warning(f"Utilizador '{username}' não encontrado na lista do Plex durante a tarefa de fim de subscrição.")
 
 
+@single_instance_job('removal_job')
 def removal_job():
     """Tarefa agendada para remover os que estão bloqueados há muito tempo."""
     if not _app:
         logger.error("A instância da app não foi definida para a tarefa 'removal_job'. A tarefa foi ignorada.")
         return
 
-    # --- CORREÇÃO: Usa test_request_context para permitir a geração de URLs ---
     with _app.test_request_context():
         from . import extensions
         logger.info("A executar a tarefa de remoção de utilizadores bloqueados...")
@@ -198,13 +184,13 @@ def removal_job():
         
         logger.info("Tarefa de remoção concluída.")
 
+@single_instance_job('cleanup_job')
 def cleanup_job():
     """Tarefa agendada para limpar dados antigos da aplicação."""
     if not _app:
         logger.error("A instância da app não foi definida para a tarefa 'cleanup_job'. A tarefa foi ignorada.")
         return
 
-    # --- CORREÇÃO: Usa test_request_context para permitir a geração de URLs ---
     with _app.test_request_context():
         from . import extensions
         logger.info("A executar a tarefa de limpeza de dados antigos...")
@@ -217,7 +203,7 @@ def cleanup_job():
             logger.error(f"Erro durante a execução da tarefa de limpeza: {e}", exc_info=True)
         logger.info("Tarefa de limpeza concluída.")
 
-# NOVO: Tarefa para limpar o cache de imagens em disco
+@single_instance_job('cleanup_image_cache_job')
 def cleanup_image_cache_job():
     """Tarefa agendada para apagar imagens antigas do cache em disco."""
     if not _app:
@@ -273,7 +259,7 @@ def setup_scheduler(app):
         replace_existing=True,
         max_instances=1,
         coalesce=True,
-        misfire_grace_time=20
+        misfire_grace_time=90
     )
     
     exp_time_parts = config.get("EXPIRATION_NOTIFICATION_TIME", "09:00").split(':')
@@ -300,7 +286,7 @@ def setup_scheduler(app):
         replace_existing=True
     )
 
-    # NOVO: Adiciona a tarefa de limpeza do cache de imagens
+    # Adiciona a tarefa de limpeza do cache de imagens
     if config.get("IMAGE_CACHE_CLEANUP_ENABLED", False):
         cache_cleanup_time_parts = config.get("IMAGE_CACHE_CLEANUP_TIME", "04:00").split(':')
         extensions.scheduler.add_job(
@@ -310,19 +296,20 @@ def setup_scheduler(app):
             replace_existing=True
         )
 
-    # NOVO: Adiciona o processador de tarefas da base de dados
+    # Adiciona o processador de tarefas da base de dados
     extensions.scheduler.add_job(
         id='task_processor_job', 
         func=task_processor_job,
         trigger='interval', 
-        seconds=20, # Verifica a cada 20 segundos por novas tarefas
+        seconds=20, 
         replace_existing=True,
         max_instances=1,
         coalesce=True,
-        misfire_grace_time=60
+        misfire_grace_time=120
     )
 
     if not extensions.scheduler.running:
         extensions.scheduler.start()
-        logger.info("Agendador de tarefas iniciado.")
+        # MELHORIA: Adiciona o PID do worker ao log para maior clareza.
+        logger.info(f"Agendador de tarefas iniciado no worker com PID: {os.getpid()}.")
 
