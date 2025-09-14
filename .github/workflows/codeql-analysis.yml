@@ -1,0 +1,56 @@
+# Workflow do GitHub Actions para análise de segurança com CodeQL
+# Este ficheiro deve ser colocado em: .github/workflows/codeql-analysis.yml
+
+name: "Análise de Segurança com CodeQL"
+
+on:
+  # Executa em pushes para as branches principais para análise contínua
+  push:
+    branches: [ "main", "stable" ]
+  
+  # Executa em pull requests direcionados às branches principais para prevenir
+  # a introdução de novas vulnerabilidades
+  pull_request:
+    branches: [ "main", "stable" ]
+    
+  # Executa semanalmente (às 02:30 de Segunda-feira UTC) para uma análise aprofundada
+  schedule:
+    - cron: '30 2 * * 1'
+
+# Permissões necessárias para que a action possa ler o código e escrever os resultados
+# no separador de segurança do repositório.
+permissions:
+  contents: read          # Permite fazer o checkout do código
+  security-events: write  # Permite reportar vulnerabilidades encontradas
+
+jobs:
+  analyze:
+    name: Análise CodeQL
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Analisa ambas as linguagens principais do seu projeto
+        language: [ 'python', 'javascript' ]
+
+    steps:
+    - name: Checkout do repositório
+      uses: actions/checkout@v4
+
+    # Passo 1: Inicializa a ferramenta CodeQL, especificando as linguagens a analisar.
+    - name: Inicializar CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+        
+    # Passo 2: O Autobuild tenta detetar automaticamente as dependências do projeto
+    # para uma análise mais precisa. Funciona bem para Python com `requirements.txt`
+    # e para JavaScript com `package.json`.
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+
+    # Passo 3: Executa a análise do CodeQL no código. Os resultados serão enviados
+    # para o separador "Security" -> "Code scanning alerts" do seu repositório.
+    - name: Executar Análise CodeQL
+      uses: github/codeql-action/analyze@v3
