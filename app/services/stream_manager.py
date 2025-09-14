@@ -32,10 +32,18 @@ class StreamManager:
         Envia um comando de término de sessão com um motivo personalizado.
         """
         try:
-            reason_str = str(reason)
-            logger.info(f"A enviar comando de término para a sessão {session.sessionKey} para o utilizador '{session.user.title}' com o motivo: '{reason_str}'")
-            session.stop(reason=reason_str)
+            # CORREÇÃO: Verifica se a sessão interna (que contém o ID) existe.
+            # Algumas sessões "fantasma" podem não ter este objeto, causando o erro.
+            if hasattr(session, 'session') and session.session:
+                reason_str = str(reason)
+                logger.info(f"A enviar comando de término para a sessão {session.sessionKey} para o utilizador '{session.user.title}' com o motivo: '{reason_str}'")
+                session.stop(reason=reason_str)
+            else:
+                logger.warning(
+                    f"A sessão {session.sessionKey} para o utilizador '{session.user.title}' não pôde ser terminada porque não tem um ID de sessão válido (provavelmente já está terminada). A ignorar."
+                )
         except Exception as e:
+            # Captura genérica para qualquer outro erro inesperado da plexapi
             logger.error(f"Falha ao enviar comando de término para a sessão {session.sessionKey}: {e}", exc_info=True)
 
     def _build_placeholders(self, username, profile, session, context=None):
