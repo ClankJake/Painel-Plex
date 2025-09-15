@@ -1,8 +1,12 @@
 # Importa o socket nativo primeiro para contornar problemas de DNS com eventlet
 import socket
-import eventlet
-# É crucial aplicar o monkey-patch antes de importar qualquer outra coisa
-eventlet.monkey_patch()
+import platform
+
+# Aplica o monkey-patch apenas se não estiver no Windows,
+# onde causa conflitos com o FileSystemCache.
+if platform.system() != "Windows":
+    import eventlet
+    eventlet.monkey_patch()
 
 import logging
 import subprocess
@@ -68,12 +72,21 @@ if __name__ == '__main__':
         host = config.get('APP_HOST', '0.0.0.0')
         port = config.get('APP_PORT', 5000)
 
-        logging.info(f"A iniciar o servidor com Socket.IO em http://{host}:{port}")
+        logging.info(f"A iniciar o servidor em http://{host}:{port}")
         
-        # Executa a aplicação usando o servidor do Socket.IO com eventlet
-        extensions.socketio.run(app, host=host, port=port)
+        # Usa o servidor de desenvolvimento padrão no Windows para evitar o conflito com eventlet
+        if platform.system() == "Windows":
+            logging.warning("A executar em modo de desenvolvimento no Windows. O monkey-patch do eventlet foi ignorado.")
+            # CORREÇÃO: Removido o 'debug=True' para evitar que os logs apareçam no console.
+            extensions.socketio.run(app, host=host, port=port)
+        else:
+            # Para outros sistemas (Linux, etc.), continua a usar a configuração de produção com Gunicorn
+            logging.info("A executar em modo de produção com Gunicorn e Eventlet.")
+            # O Gunicorn é iniciado através do comando no Dockerfile, 
+            # portanto, ao executar 'python run.py' diretamente num ambiente Linux,
+            # usamos o socketio.run para consistência.
+            extensions.socketio.run(app, host=host, port=port)
+
     else:
         logging.critical("A aplicação não será iniciada devido a uma falha na migração da base de dados.")
-        # Opcional: Adicionar um input para manter a janela do console aberta e ver o erro.
-        # input("Pressione Enter para sair...")
 
