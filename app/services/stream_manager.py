@@ -215,9 +215,14 @@ class StreamManager:
                     # --- MELHORIA: LOG DE AUDITORIA ---
                     # Antes de terminar, regista a tentativa de acesso.
                     for session in user_session_list:
+                        # CORREÇÃO: Constrói o título completo para episódios
+                        media_title = session.title
+                        if getattr(session, 'type', None) == 'episode' and hasattr(session, 'grandparentTitle'):
+                            media_title = f"{session.grandparentTitle} - {session.title}"
+                        
                         self.data_manager.log_stream_termination(
                             username=username,
-                            media_title=session.title,
+                            media_title=media_title,
                             platform=session.player.platform if session.player else 'Desconhecido',
                             reason=f'blocked_{block_reason}'
                         )
@@ -263,9 +268,14 @@ class StreamManager:
                     for i in range(sessions_to_terminate_count):
                         session_to_terminate = sorted_user_sessions[i]
                         # --- MELHORIA: LOG DE AUDITORIA ---
+                        # CORREÇÃO: Constrói o título completo para episódios
+                        media_title = session_to_terminate.title
+                        if getattr(session_to_terminate, 'type', None) == 'episode' and hasattr(session_to_terminate, 'grandparentTitle'):
+                            media_title = f"{session_to_terminate.grandparentTitle} - {session_to_terminate.title}"
+
                         self.data_manager.log_stream_termination(
                             username=username,
-                            media_title=session_to_terminate.title,
+                            media_title=media_title,
                             platform=session_to_terminate.player.platform if session_to_terminate.player else 'Desconhecido',
                             reason='limit_exceeded'
                         )
@@ -276,4 +286,3 @@ class StreamManager:
             logger.warning(f"Erro de conexão ao verificar streams (isto pode ser temporário): {e}. A saltar esta verificação.")
         except Exception as e:
             logger.error(f"Erro inesperado ao verificar e impor streams: {e}", exc_info=True)
-
