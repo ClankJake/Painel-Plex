@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 from flask import current_app, url_for
 from urllib.parse import urlparse
+from app.extensions import cache
 
 logger = logging.getLogger(__name__)
 
@@ -298,3 +299,4 @@ class PlexUserManager:
             return {"success": True, "message": message}
         else:
             return {"success": False, "message": result.get("message", _("Erro desconhecido."))}
+
