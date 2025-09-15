@@ -96,4 +96,3 @@ def handle_dashboard_connect():
         extensions.socketio.start_background_task(background_task)
         handle_dashboard_connect.task_started = True
         logger.info("Tarefa de fundo do dashboard iniciada.")
-
