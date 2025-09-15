@@ -5,7 +5,10 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from ..extensions import db
-from ..models import Invitation, BlockedUser, UserProfile, PixPayment, Notification, UnlockedAchievement, ShortLink, Coupon, CouponUsage, Task
+from ..models import (
+    Invitation, BlockedUser, UserProfile, PixPayment, Notification, 
+    UnlockedAchievement, ShortLink, Coupon, CouponUsage, Task, StreamTerminationLog
+)
 from sqlalchemy import func, extract, not_
 from tzlocal import get_localzone
 from flask_babel import gettext as _, ngettext
@@ -197,6 +200,35 @@ class DataManager:
             logger.error(f"Falha ao apagar todas as notificaçõess para '{username}': {e}")
             db.session.rollback()
             return 0
+
+    # --- NOVOS MÉTODOS DE AUDITORIA ---
+    def log_stream_termination(self, username, media_title, platform, reason):
+        """Regista uma sessão de stream terminada automaticamente."""
+        try:
+            log_entry = StreamTerminationLog(
+                username=username,
+                media_title=media_title,
+                platform=platform,
+                reason=reason,
+                timestamp=datetime.utcnow()
+            )
+            db.session.add(log_entry)
+            db.session.commit()
+            logger.info(f"Término de stream registado para '{username}' a tentar assistir '{media_title}' (Motivo: {reason}).")
+            
+            # Emite o novo log via SocketIO para o dashboard em tempo real
+            from .. import extensions
+            if extensions.socketio:
+                extensions.socketio.emit('new_termination_log', self._row_to_dict(log_entry), namespace='/dashboard')
+        except Exception as e:
+            logger.error(f"Erro ao registar o término de stream para '{username}': {e}")
+            db.session.rollback()
+
+    def get_stream_termination_logs(self, limit=20):
+        """Busca os logs mais recentes de términos de stream."""
+        logs = StreamTerminationLog.query.order_by(StreamTerminationLog.timestamp.desc()).limit(limit).all()
+        return [self._row_to_dict(log) for log in logs]
+
 
     # --- MÉTODOS FINANCEIROS ---
     def get_financial_summary(self, year, month, renewal_days=7):
@@ -512,3 +544,4 @@ class DataManager:
         if not row:
             return None
         return {c.name: getattr(row, c.name) for c in row.__table__.columns}
+

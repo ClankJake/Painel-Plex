@@ -158,47 +158,70 @@ class StreamManager:
             if not sessions:
                 return
 
-            # CORREÇÃO DEFINITIVA: Mapeia IDs de utilizador para nomes de utilizador únicos.
-            # Isto resolve o problema de 'user.name' em falta e a ambiguidade de 'user.title'.
             all_users = self.user_manager.get_all_plex_users() or []
-            if not all_users:
-                logger.warning("Não foi possível obter a lista de utilizadores do Plex. A verificação de streams pode ser imprecisa.")
-                id_to_username_map = {}
-            else:
-                id_to_username_map = {user['id']: user['username'] for user in all_users}
+            
+            # Obter a conta do administrador/proprietário a partir da conexão ativa.
+            admin_account = self.conn.account
+            admin_user_id = getattr(admin_account, 'id', None)
 
-            user_sessions = defaultdict(list)
+            # Criar um mapa de ID para nome de utilizador que INCLUI o administrador.
+            id_to_username_map = {user['id']: user['username'] for user in all_users}
+            if admin_user_id and admin_account.username:
+                id_to_username_map[admin_user_id] = admin_account.username
+
+            # --- MELHORIA PRINCIPAL: Agrupar sessões por ID de utilizador em vez de nome ---
+            user_sessions_by_id = defaultdict(list)
             for session in sessions:
-                if session.user and hasattr(session.user, 'id'):
-                    # Obtém o nome de utilizador fiável a partir do ID
-                    username = id_to_username_map.get(session.user.id)
-                    if username:
-                        user_sessions[username].append(session)
-                    else:
-                        logger.warning(f"Sessão encontrada para o ID de utilizador '{session.user.id}' ('{session.user.title}'), mas este utilizador não foi encontrado na lista de amigos do servidor. A ignorar a sessão.")
-                elif session.user:
-                    # Fallback para o caso de não haver ID (muito improvável)
-                    logger.warning(f"Sessão encontrada sem um 'user.id'. A usar 'user.title' como fallback: {session.user.title}")
-                    user_sessions[session.user.title].append(session)
+                user_id = getattr(session.user, 'id', None)
+                if user_id:
+                    user_sessions_by_id[user_id].append(session)
+                elif session.user: # Fallback improvável
+                    logger.warning(f"Sessão encontrada sem um 'user.id'. A usar 'user.title' como fallback para agrupamento: {session.user.title}")
+                    # Este caso é menos robusto, mas mantido como fallback
+                    username_fallback = session.user.title
+                    user_id_fallback = next((uid for uid, uname in id_to_username_map.items() if uname == username_fallback), None)
+                    if user_id_fallback:
+                        user_sessions_by_id[user_id_fallback].append(session)
 
-            if not user_sessions:
+            if not user_sessions_by_id:
                 return
             
-            active_usernames = list(user_sessions.keys())
-
-            # Busca os dados uma vez para todos os utilizadores ativos
+            # Busca os perfis para todos os utilizadores ativos
+            active_usernames = [id_to_username_map[uid] for uid in user_sessions_by_id.keys() if uid in id_to_username_map]
             user_profiles = self.data_manager.get_user_profiles_by_username(active_usernames)
             blocked_users_info = self.data_manager.get_blocked_users_dict()
+            
+            # Itera sobre os IDs de utilizador em vez de nomes
+            for user_id, user_session_list in user_sessions_by_id.items():
+                # Ignora a aplicação de regras para o administrador do servidor.
+                if admin_user_id and user_id == admin_user_id:
+                    logger.debug(f"A ignorar a aplicação de regras para o administrador do servidor (ID: {user_id}).")
+                    continue
+                
+                # Obtém o nome de utilizador a partir do mapa
+                username = id_to_username_map.get(user_id)
+                if not username:
+                    logger.warning(f"Sessão encontrada para o ID de utilizador '{user_id}', mas não foi possível encontrar um nome de utilizador correspondente. A ignorar a sessão.")
+                    continue
 
-            for username, user_session_list in user_sessions.items():
-                # Agora 'username' é sempre o nome de utilizador único e correto
                 profile = user_profiles.get(username, {})
                 first_session = user_session_list[0]
 
-                # A verificação de bloqueio agora usa o nome de utilizador único
+                # A verificação de bloqueio agora usa o nome de utilizador, que é obtido de forma fiável a partir do ID
                 if username in blocked_users_info:
                     block_info = blocked_users_info[username]
                     block_reason = block_info.get('block_reason', 'manual')
+                    
+                    # --- MELHORIA: LOG DE AUDITORIA ---
+                    # Antes de terminar, regista a tentativa de acesso.
+                    for session in user_session_list:
+                        self.data_manager.log_stream_termination(
+                            username=username,
+                            media_title=session.title,
+                            platform=session.player.platform if session.player else 'Desconhecido',
+                            reason=f'blocked_{block_reason}'
+                        )
+                    # --- FIM DA MELHORIA ---
                     
                     logger.info(f"A terminar streams para o utilizador bloqueado: '{username}' (Motivo: {block_reason}).")
                     
@@ -224,9 +247,10 @@ class StreamManager:
                 
                 if screen_limit > 0 and len(user_session_list) > screen_limit:
                     sessions_to_terminate_count = len(user_session_list) - screen_limit
-                    logger.info(f"O utilizador '{username}' excedeu o limite de {screen_limit} tela(s). A terminar {sessions_to_terminate_count} sessão(ões) mais recente(s).")
+                    logger.info(f"O utilizador '{username}' excedeu o limite de {screen_limit} tela(s). A terminar {sessions_to_terminate_count} sessão(ões) mais antiga(s).")
                     
-                    sorted_user_sessions = sorted(user_session_list, key=lambda s: s.viewOffset or 0)
+                    # CORREÇÃO: Ordena as sessões, as mais antigas (com maior tempo de visualização) primeiro para serem terminadas
+                    sorted_user_sessions = sorted(user_session_list, key=lambda s: s.viewOffset or 0, reverse=True)
                     
                     msg_template = current_app.config.get(
                         'TERMINATION_MSG_SCREEN_LIMIT'
@@ -235,8 +259,18 @@ class StreamManager:
                     placeholders = self._build_placeholders(username, profile, first_session, context={'limit': screen_limit})
                     reason = msg_template.format(**placeholders)
 
+                    # Termina as sessões mais antigas
                     for i in range(sessions_to_terminate_count):
-                        self._terminate_session(sorted_user_sessions[i], reason)
+                        session_to_terminate = sorted_user_sessions[i]
+                        # --- MELHORIA: LOG DE AUDITORIA ---
+                        self.data_manager.log_stream_termination(
+                            username=username,
+                            media_title=session_to_terminate.title,
+                            platform=session_to_terminate.player.platform if session_to_terminate.player else 'Desconhecido',
+                            reason='limit_exceeded'
+                        )
+                        # --- FIM DA MELHORIA ---
+                        self._terminate_session(session_to_terminate, reason)
 
         except requests.exceptions.ConnectionError as e:
             logger.warning(f"Erro de conexão ao verificar streams (isto pode ser temporário): {e}. A saltar esta verificação.")
