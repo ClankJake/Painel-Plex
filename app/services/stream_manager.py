@@ -128,8 +128,16 @@ class StreamManager:
             logger.warning(f"Não foi possível bloquear as sessões de '{username}': Conexão com o Plex não disponível.")
             return
         try:
+            all_users = self.user_manager.get_all_plex_users() or []
+            user_id_map = {u['username']: u['id'] for u in all_users}
+            target_user_id = user_id_map.get(username)
+
+            if not target_user_id:
+                logger.warning(f"Não foi possível encontrar o ID do utilizador '{username}' para bloquear a sua sessão.")
+                return
+
             for session in self.conn.plex.sessions():
-                if session.user.title == username:
+                if session.user and session.user.id == target_user_id:
                     self._terminate_session(session, reason)
         except Exception as e:
             logger.error(f"Erro ao bloquear as sessões de '{username}': {e}", exc_info=True)
@@ -150,32 +158,46 @@ class StreamManager:
             if not sessions:
                 return
 
-            active_usernames = {s.user.title for s in sessions if s.user}
-            if not active_usernames:
-                return
+            # CORREÇÃO DEFINITIVA: Mapeia IDs de utilizador para nomes de utilizador únicos.
+            # Isto resolve o problema de 'user.name' em falta e a ambiguidade de 'user.title'.
+            all_users = self.user_manager.get_all_plex_users() or []
+            if not all_users:
+                logger.warning("Não foi possível obter a lista de utilizadores do Plex. A verificação de streams pode ser imprecisa.")
+                id_to_username_map = {}
+            else:
+                id_to_username_map = {user['id']: user['username'] for user in all_users}
 
-            # Busca os dados uma vez
-            user_profiles = self.data_manager.get_user_profiles_by_username(list(active_usernames))
-            blocked_users_info = self.data_manager.get_blocked_users_dict()
-            
-            # CORREÇÃO: Cria dicionários de pesquisa insensíveis a maiúsculas/minúsculas
-            # para garantir que os perfis e bloqueios sejam encontrados independentemente da caixa do nome de utilizador.
-            profiles_lower = {uname.lower(): p for uname, p in user_profiles.items()}
-            blocked_users_lower = {uname.lower(): b for uname, b in blocked_users_info.items()}
-            
             user_sessions = defaultdict(list)
             for session in sessions:
-                if session.user:
+                if session.user and hasattr(session.user, 'id'):
+                    # Obtém o nome de utilizador fiável a partir do ID
+                    username = id_to_username_map.get(session.user.id)
+                    if username:
+                        user_sessions[username].append(session)
+                    else:
+                        logger.warning(f"Sessão encontrada para o ID de utilizador '{session.user.id}' ('{session.user.title}'), mas este utilizador não foi encontrado na lista de amigos do servidor. A ignorar a sessão.")
+                elif session.user:
+                    # Fallback para o caso de não haver ID (muito improvável)
+                    logger.warning(f"Sessão encontrada sem um 'user.id'. A usar 'user.title' como fallback: {session.user.title}")
                     user_sessions[session.user.title].append(session)
 
+            if not user_sessions:
+                return
+            
+            active_usernames = list(user_sessions.keys())
+
+            # Busca os dados uma vez para todos os utilizadores ativos
+            user_profiles = self.data_manager.get_user_profiles_by_username(active_usernames)
+            blocked_users_info = self.data_manager.get_blocked_users_dict()
+
             for username, user_session_list in user_sessions.items():
-                username_lower = username.lower()
-                profile = profiles_lower.get(username_lower, {})
+                # Agora 'username' é sempre o nome de utilizador único e correto
+                profile = user_profiles.get(username, {})
                 first_session = user_session_list[0]
 
-                # CORREÇÃO: Usa o dicionário em minúsculas para a verificação de bloqueio
-                if username_lower in blocked_users_lower:
-                    block_info = blocked_users_lower[username_lower]
+                # A verificação de bloqueio agora usa o nome de utilizador único
+                if username in blocked_users_info:
+                    block_info = blocked_users_info[username]
                     block_reason = block_info.get('block_reason', 'manual')
                     
                     logger.info(f"A terminar streams para o utilizador bloqueado: '{username}' (Motivo: {block_reason}).")
@@ -220,3 +242,4 @@ class StreamManager:
             logger.warning(f"Erro de conexão ao verificar streams (isto pode ser temporário): {e}. A saltar esta verificação.")
         except Exception as e:
             logger.error(f"Erro inesperado ao verificar e impor streams: {e}", exc_info=True)
+
