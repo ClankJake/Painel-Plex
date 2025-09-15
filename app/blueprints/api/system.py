@@ -109,6 +109,18 @@ def get_system_health():
     }
     return jsonify({"success": True, "health": health_status})
 
+@system_api_bp.route('/termination-logs')
+@login_required
+@admin_required
+def get_termination_logs():
+    """NOVO: Endpoint para obter os logs de términos de sessões."""
+    try:
+        logs = data_manager.get_stream_termination_logs(limit=20)
+        return jsonify({"success": True, "logs": logs})
+    except Exception as e:
+        logger.error(f"Erro ao obter logs de término: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "Falha ao obter logs."}), 500
+
 @system_api_bp.route('/settings', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -388,3 +400,4 @@ def bulk_notify():
     task = data_manager.create_task('bulk_notification', task_payload)
 
     return jsonify({"success": True, "message": _("A tarefa de envio de notificações em massa foi agendada e será iniciada em breve."), "task_id": task['id']})
+
