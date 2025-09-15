@@ -1,6 +1,9 @@
 # app/services/plex/connection.py
 import logging
 import base64
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from urllib.parse import urlparse
 from flask_babel import gettext as _
 from plexapi.server import PlexServer
@@ -19,6 +22,20 @@ class PlexConnectionManager:
         self.plex = None
         self.account = None
 
+    def _create_resilient_session(self):
+        """Cria uma sessão de requests com uma estratégia de retentativa automática."""
+        session = requests.Session()
+        retry_strategy = Retry(
+            total=3,  # Número total de retentativas
+            backoff_factor=1,  # Fator de espera entre tentativas (ex: 1s, 2s, 4s)
+            status_forcelist=[429, 500, 502, 503, 504],  # Códigos HTTP que devem acionar uma retentativa
+            allowed_methods=["HEAD", "GET", "OPTIONS"] # Métodos HTTP para os quais a retentativa se aplica
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        return session
+
     def reload(self, from_job=False):
         """
         Recarrega a configuração e tenta conectar-se ao servidor Plex.
@@ -29,12 +46,19 @@ class PlexConnectionManager:
             logger.debug("A estabelecer conexão com o Plex para tarefa agendada...")
 
         config = load_or_create_config()
+        
+        # Cria a sessão com retentativas
+        resilient_session = self._create_resilient_session()
+
         try:
             if not all(k in config and config[k] for k in ["PLEX_URL", "PLEX_TOKEN"]):
                 raise ValueError(_("Configurações do Plex (URL e Token) não encontradas ou estão vazias."))
             
-            self.plex = PlexServer(config["PLEX_URL"], config["PLEX_TOKEN"], timeout=20)
+            # Utiliza a sessão com retentativas para inicializar o PlexServer e a MyPlexAccount
+            self.plex = PlexServer(config["PLEX_URL"], config["PLEX_TOKEN"], session=resilient_session, timeout=20)
             self.account = self.plex.myPlexAccount()
+            # Garante que a conta também usa a sessão resiliente
+            self.account._session = resilient_session
             
             if not from_job:
                 logger.info(_("Conexão com o Plex recarregada com sucesso."))
