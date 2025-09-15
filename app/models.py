@@ -156,3 +156,14 @@ class UnlockedAchievement(db.Model):
     unlocked_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (db.UniqueConstraint('username', 'achievement_id', name='_username_achievement_uc'),)
+
+class StreamTerminationLog(db.Model):
+    """NOVO: Modelo para registar sessões terminadas automaticamente."""
+    __tablename__ = 'stream_termination_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String, nullable=False, index=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    media_title = db.Column(db.String, nullable=False)
+    platform = db.Column(db.String, nullable=True)
+    reason = db.Column(db.String, nullable=False) # Ex: 'blocked_expired', 'limit_exceeded'
+
