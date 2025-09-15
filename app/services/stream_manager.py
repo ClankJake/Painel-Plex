@@ -30,21 +30,22 @@ class StreamManager:
     def _terminate_session(self, session, reason):
         """
         Envia um comando de término de sessão com um motivo personalizado.
+        Este método foi atualizado para ser mais robusto, utilizando o sessionKey diretamente,
+        o que funciona de forma fiável tanto para Direct Play como para Transcode.
         """
         try:
-            # CORREÇÃO: Verifica se a sessão interna (que contém o ID) existe.
-            # Algumas sessões "fantasma" podem não ter este objeto, causando o erro.
-            if hasattr(session, 'session') and session.session:
+            session_key = getattr(session, 'sessionKey', None)
+            if session_key:
                 reason_str = str(reason)
-                logger.info(f"A enviar comando de término para a sessão {session.sessionKey} para o utilizador '{session.user.title}' com o motivo: '{reason_str}'")
+                logger.info(f"A enviar comando de término para a sessão {session_key} para o utilizador '{session.user.title}' com o motivo: '{reason_str}'")
                 session.stop(reason=reason_str)
             else:
                 logger.warning(
-                    f"A sessão {session.sessionKey} para o utilizador '{session.user.title}' não pôde ser terminada porque não tem um ID de sessão válido (provavelmente já está terminada). A ignorar."
+                    f"A sessão para o utilizador '{session.user.title}' ({session.title}) não pôde ser terminada porque não foi encontrado um 'sessionKey'. A ignorar."
                 )
         except Exception as e:
-            # Captura genérica para qualquer outro erro inesperado da plexapi
-            logger.error(f"Falha ao enviar comando de término para a sessão {session.sessionKey}: {e}", exc_info=True)
+            logger.error(f"Falha ao enviar comando de término para a sessão do utilizador '{session.user.title}': {e}", exc_info=True)
+
 
     def _build_placeholders(self, username, profile, session, context=None):
         """Constrói um dicionário de placeholders para as mensagens."""
@@ -138,6 +139,7 @@ class StreamManager:
         """
         Verifica todas as sessões ativas e impõe as regras de bloqueio e limite de telas.
         """
+        logger.debug("A executar a verificação de streams agendada...")
         if not self.conn.plex:
             if not self.conn.reload(from_job=True)[0]:
                 logger.debug("StreamManager: Conexão com o Plex não disponível. A saltar a verificação de streams.")
