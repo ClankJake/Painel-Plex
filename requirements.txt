@@ -2,6 +2,7 @@ Flask
 Flask-Login
 Flask-SQLAlchemy
 Flask-Migrate
+Flask-Caching
 alembic
 Werkzeug
 plexapi
