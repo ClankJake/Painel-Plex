@@ -7,8 +7,6 @@ from flask import current_app, url_for
 from flask_babel import gettext as _
 from requests.exceptions import ConnectTimeout, ReadTimeout, ConnectionError, RequestException
 
-
-# Imports dos novos gestores modulares
 from .plex.connection import PlexConnectionManager
 from .plex.user_manager import PlexUserManager
 from .plex.invite_manager import PlexInviteManager
