@@ -177,7 +177,7 @@ class StatsHandler:
                                 if metadata and metadata.get('genres'):
                                     item_genres = metadata['genres']
                                     series_genre_cache[grandparent_rating_key] = item_genres
-                                    logger.info(f"Géneros obtidos da API para a série '{metadata.get('title')}': {item_genres}")
+                                    logger.debug(f"Géneros obtidos da API para a série '{metadata.get('title')}': {item_genres}")
                                 else:
                                     series_genre_cache[grandparent_rating_key] = []
                             except RequestException as e:
