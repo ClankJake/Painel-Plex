@@ -7,6 +7,7 @@ from plexapi.myplex import MyPlexAccount
 from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
+from datetime import datetime
 
 from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager
 from ...config import load_or_create_config, save_app_config, is_configured
@@ -116,6 +117,10 @@ def get_termination_logs():
     """NOVO: Endpoint para obter os logs de términos de sessões."""
     try:
         logs = data_manager.get_stream_termination_logs(limit=20)
+        # CORREÇÃO: Formata o timestamp para um formato ISO 8601 consistente
+        for log in logs:
+            if isinstance(log.get('timestamp'), datetime):
+                log['timestamp'] = log['timestamp'].strftime('%Y-%m-%dT%H:%M:%S')
         return jsonify({"success": True, "logs": logs})
     except Exception as e:
         logger.error(f"Erro ao obter logs de término: {e}", exc_info=True)
@@ -400,4 +405,3 @@ def bulk_notify():
     task = data_manager.create_task('bulk_notification', task_payload)
 
     return jsonify({"success": True, "message": _("A tarefa de envio de notificações em massa foi agendada e será iniciada em breve."), "task_id": task['id']})
-
