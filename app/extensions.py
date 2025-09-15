@@ -6,6 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_socketio import SocketIO
+from flask_caching import Cache
 
 # --- Classe Personalizada para Utilizadores Anónimos ---
 class MyAnonymousUser(AnonymousUserMixin):
@@ -29,6 +30,8 @@ login_manager.login_message_category = "info"
 babel = Babel()
 scheduler = BackgroundScheduler(daemon=True)
 socketio = SocketIO()
+# Adiciona a instância do cache
+cache = Cache()
 
 # Os 'managers' dos serviços são inicializados como None
 data_manager = None
