@@ -1,8 +1,12 @@
 # app/services/plex_manager.py
 
 import logging
-from flask import current_app
+import base64
+from urllib.parse import urlparse
+from flask import current_app, url_for
 from flask_babel import gettext as _
+from requests.exceptions import ConnectTimeout, ReadTimeout, ConnectionError, RequestException
+
 
 # Imports dos novos gestores modulares
 from .plex.connection import PlexConnectionManager
@@ -100,7 +104,101 @@ class PlexManager:
         return self.users.unblock_user(email)
 
     def get_active_sessions(self):
-        return self.conn.get_active_sessions()
+        """
+        Busca as sessões de reprodução ativas no servidor Plex, retornando detalhes aprimorados.
+        Este método é otimizado para evitar erros de lookup de utilizador quando um "Nome Completo" é definido no Plex.
+        """
+        if not self.conn.plex:
+            logger.warning(_("Não é possível obter sessões ativas. A conexão com o Plex não foi estabelecida."))
+            return {"success": False, "sessions": [], "stream_count": 0}
+        
+        try:
+            # 1. Obter uma lista fiável de todos os utilizadores e criar um mapa de ID -> thumb
+            all_users = self.users.get_all_plex_users() or []
+            user_thumb_map = {user['id']: user['thumb'] for user in all_users}
+
+            sessions = self.conn.plex.sessions()
+            session_details = []
+            for s in sessions:
+                progress = 0
+                view_offset = getattr(s, 'viewOffset', 0)
+                duration = getattr(s, 'duration', 0)
+                if view_offset and duration and duration > 0:
+                    progress = (view_offset / duration) * 100
+
+                state = "stopped"
+                if s.players:
+                    player_state = getattr(s.players[0], "state", "stopped")
+                    state = {"paused": "paused", "playing": "playing", "buffering": "buffering"}.get(player_state, "stopped")
+
+                is_transcoding = False
+                video_decision = "Direct Play"
+                audio_decision = "Direct Play"
+                transcode_progress = None
+                
+                transcode_session = getattr(s, "transcodeSession", None)
+                if transcode_session:
+                    _video_decision = getattr(transcode_session, 'videoDecision', 'copy')
+                    _audio_decision = getattr(transcode_session, 'audioDecision', 'copy')
+                    
+                    if _video_decision == "transcode": is_transcoding = True; video_decision = "Transcode"
+                    if _audio_decision == "transcode": is_transcoding = True; audio_decision = "Transcode"
+
+                    if is_transcoding:
+                        t_progress = getattr(transcode_session, "progress", None)
+                        if t_progress is not None:
+                            try: transcode_progress = int(t_progress)
+                            except (ValueError, TypeError): pass
+
+                stream_type = "Transcode" if is_transcoding else "Direct Play"
+                media = s.media[0] if s.media else None
+                video_codec = (getattr(media, "videoCodec", None) or "N/A").upper()
+                audio_codec = (getattr(media, "audioCodec", None) or "N/A").upper()
+                container = (getattr(media, "container", None) or "N/A").upper()
+                
+                video_resolution_raw = getattr(media, "videoResolution", "N/A")
+                video_resolution = video_resolution_raw
+                try:
+                    int_res = int(video_resolution_raw)
+                    video_resolution = f"{int_res}p"
+                except (ValueError, TypeError): pass
+
+                title = s.title
+                subtitle = str(s.year) if hasattr(s, 'year') and s.year else ''
+                if s.type == 'episode':
+                    title = s.grandparentTitle
+                    subtitle = f"S{s.parentIndex:02d} · E{s.index:02d} - {s.title}"
+
+                thumb_key = s.grandparentThumb if s.type == 'episode' and hasattr(s, 'grandparentThumb') and s.grandparentThumb else s.thumb
+                thumb_url = None
+                if thumb_key:
+                    payload_str = f"plex:{thumb_key}"
+                    b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                    thumb_url = url_for('image.proxy_image', source=b64_payload)
+                
+                # CORREÇÃO: Utiliza o mapa pré-carregado para obter o avatar do utilizador
+                user_thumb_url = user_thumb_map.get(s.user.id)
+
+                session_details.append({
+                    "session_key": s.sessionKey, "user": s.user.title, "user_thumb": user_thumb_url,
+                    "player": s.player.title, "platform": s.player.platform, "type": s.type,
+                    "title": title, "subtitle": subtitle, "progress": round(progress, 2),
+                    "view_offset": view_offset, "duration": duration, "thumb_url": thumb_url, "state": state,
+                    "stream_details": {
+                        "video_decision": video_decision, "audio_decision": audio_decision,
+                        "video_codec": video_codec, "audio_codec": audio_codec,
+                        "video_resolution": video_resolution, "stream": stream_type,
+                        "container": container, "is_transcoding": is_transcoding,
+                        "transcode_progress": transcode_progress
+                    }
+                })
+            return {"success": True, "sessions": session_details, "stream_count": len(sessions)}
+        except (ConnectionError, ReadTimeout, RequestException) as e:
+            logger.warning(_("Erro de conexão temporário ao obter sessões do Plex: %(error)s. A tentar novamente no próximo ciclo.", error=e))
+            return {"success": False, "sessions": [], "stream_count": 0}
+        except Exception as e:
+            logger.error(_("Erro inesperado ao obter sessões do Plex: %(error)s", error=e), exc_info=True)
+            return {"success": False, "sessions": [], "stream_count": 0}
 
     def get_libraries(self):
         return self.conn.get_libraries()
