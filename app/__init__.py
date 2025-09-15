@@ -102,7 +102,10 @@ def create_app():
     config_dir_path = os.path.join(app.root_path, '..', 'config')
     db_path = os.path.join(config_dir_path, 'app_data.db')
     log_file_path = os.path.join(config_dir_path, 'app.log')
+    cache_dir_path = os.path.join(config_dir_path, 'cache') # Caminho para a pasta de cache
 
+    # CORREÇÃO: Adiciona o parâmetro timeout ao URI da base de dados.
+    # Isto instrui o SQLAlchemy a esperar até 20 segundos se a base de dados estiver bloqueada.
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=20'
     app.config['LOG_FILE'] = log_file_path
     
@@ -113,13 +116,19 @@ def create_app():
     base_url_for_cookie = app.config.get('APP_BASE_URL', '')
     app.config['SESSION_COOKIE_SECURE'] = base_url_for_cookie.startswith('https://')
     
+    # CORREÇÃO: Move a configuração do timeout para as opções do engine, que é a forma preferida pelo SQLAlchemy.
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         "connect_args": {
-            "check_same_thread": False,
+            "timeout": 20,
         }
     }
     
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+    # Configuração do Cache
+    app.config['CACHE_TYPE'] = 'FileSystemCache'
+    app.config['CACHE_DIR'] = cache_dir_path
+    app.config['CACHE_DEFAULT_TIMEOUT'] = 300 # 5 minutos por padrão
 
     base_url = app.config.get('APP_BASE_URL')
     if base_url:
@@ -132,10 +141,19 @@ def create_app():
 
     logging.getLogger('apscheduler').setLevel(logging.WARNING)
 
+    # Inicialização das extensões
     extensions.db.init_app(app)
     extensions.migrate.init_app(app, extensions.db)
     extensions.login_manager.init_app(app)
     extensions.babel.init_app(app, locale_selector=get_user_locale)
+    extensions.cache.init_app(app) # Inicializa o cache
+
+    # Workaround para um possível bug de inicialização do Flask-Caching em alguns ambientes.
+    # Garante que a extensão esteja acessível da maneira que os decoradores esperam internamente.
+    if 'cache' not in app.extensions:
+        app.extensions['cache'] = app.extensions.get('caching')
+        if app.extensions['cache']:
+            logger.debug("Workaround do Flask-Caching aplicado com sucesso.")
     
     extensions.socketio.init_app(app, async_mode='eventlet')
     sockets.app_instance = app
@@ -284,3 +302,4 @@ def create_app():
     app.register_blueprint(coupons_api_bp, url_prefix='/api/coupons') 
 
     return app
+
