@@ -15,7 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
         summary: scriptTag.dataset.summaryUrl,
         health: scriptTag.dataset.healthUrl,
         bulkNotify: scriptTag.dataset.bulkNotifyUrl,
-        activeStreams: scriptTag.dataset.activeStreamsUrl
+        activeStreams: scriptTag.dataset.activeStreamsUrl,
+        auditLogs: scriptTag.dataset.auditLogsUrl
     };
     const i18n = {};
     for (const key in scriptTag.dataset) {
@@ -28,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let monthlyRevenueChart = null;
     let userStatusChart = null;
     let activeTimers = {}; // Para controlar os temporizadores de progresso
+    let timeAgoInterval = null;
 
     // --- FUNÇÕES AUXILIARES ---
     function getChartColors() {
@@ -59,6 +61,24 @@ document.addEventListener('DOMContentLoaded', () => {
             return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         }
         return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+    
+    function formatTimeAgo(date) {
+        const now = new Date();
+        const seconds = Math.floor((now - date) / 1000);
+
+        let interval = seconds / 31536000;
+        if (interval > 1) return `${Math.floor(interval)}a atrás`;
+        interval = seconds / 2592000;
+        if (interval > 1) return `${Math.floor(interval)}m atrás`;
+        interval = seconds / 86400;
+        if (interval > 1) return `${Math.floor(interval)}d atrás`;
+        interval = seconds / 3600;
+        if (interval > 1) return `${Math.floor(interval)}h atrás`;
+        interval = seconds / 60;
+        if (interval > 1) return `${Math.floor(interval)}min atrás`;
+        if (seconds < 5) return `agora mesmo`;
+        return `${Math.floor(seconds)}s atrás`;
     }
     
     // --- LÓGICA DE RENDERIZAÇÃO ---
@@ -347,6 +367,91 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
     }
 
+    // --- FUNÇÕES DE LOG DE AUDITORIA COM CORREÇÕES ---
+    function updateLogTimestamps() {
+        document.querySelectorAll('.log-time-ago').forEach(el => {
+            const timestamp = el.dataset.timestamp;
+            if (timestamp) {
+                const date = new Date(timestamp + 'Z');
+                el.textContent = formatTimeAgo(date);
+            }
+        });
+    }
+
+    function getReasonText(reason) {
+        switch (reason) {
+            case 'limit_exceeded':
+                return i18n.reasonLimitExceeded;
+            case 'blocked_manual':
+                return i18n.reasonBlockedManual;
+            case 'blocked_expired':
+                return i18n.reasonBlockedExpired;
+            case 'blocked_trial_expired':
+                return i18n.reasonBlockedTrialExpired;
+            default:
+                if (reason && reason.startsWith('blocked')) {
+                    return i18n.reasonBlocked;
+                }
+                return reason || 'Desconhecido';
+        }
+    }
+
+    function createTerminationLogRow(log) {
+        const timeAgo = formatTimeAgo(new Date(log.timestamp + 'Z')); 
+        const isBlocked = log.reason.startsWith('blocked');
+        const icon = isBlocked
+            ? `<svg class="w-5 h-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm-2.5 8V5.5a2.5 2.5 0 115 0V9h-5z" clip-rule="evenodd" /></svg>`
+            : `<svg class="w-5 h-5 text-orange-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v11.5A2.25 2.25 0 004.25 18h11.5A2.25 2.25 0 0018 15.75V4.25A2.25 2.25 0 0015.75 2H4.25zM6.5 6a.75.75 0 000 1.5h7a.75.75 0 000-1.5h-7zM6 10.25a.75.75 0 01.75-.75h7a.75.75 0 010 1.5h-7A.75.75 0 016 10.25zM7.25 14a.75.75 0 000 1.5h3a.75.75 0 000-1.5h-3z" clip-rule="evenodd" /></svg>`;
+        const iconBg = isBlocked ? 'bg-red-100 dark:bg-red-900/50' : 'bg-orange-100 dark:bg-orange-900/50';
+        const reasonText = getReasonText(log.reason);
+
+        return `
+        <div class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 animate-fade-in">
+            <div class="flex items-center gap-3 min-w-0">
+                <span class="p-2 ${iconBg} rounded-full flex-shrink-0">${icon}</span>
+                <div class="min-w-0">
+                    <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                        <strong>${log.username}</strong> - ${reasonText}
+                    </p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
+                       ${log.media_title} em ${log.platform} - <span class="log-time-ago" data-timestamp="${log.timestamp}">${timeAgo}</span>
+                    </p>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    function renderTerminationLogs(logs) {
+        const container = document.getElementById('auditLogContainer');
+        if (!container) return;
+        if (!logs || logs.length === 0) {
+            container.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${i18n.noTerminatedSessions}</p>`;
+            return;
+        }
+        container.innerHTML = logs.map(log => createTerminationLogRow(log)).join('');
+        
+        if (timeAgoInterval) clearInterval(timeAgoInterval);
+        timeAgoInterval = setInterval(updateLogTimestamps, 30000);
+    }
+
+    function prependTerminationLog(log) {
+        const container = document.getElementById('auditLogContainer');
+        if (!container) return;
+        
+        const placeholder = container.querySelector('p');
+        if (placeholder) {
+            placeholder.remove();
+        }
+        
+        const newRowHtml = createTerminationLogRow(log);
+        container.insertAdjacentHTML('afterbegin', newRowHtml);
+        
+        while (container.children.length > 20) {
+            container.lastElementChild.remove();
+        }
+    }
+
+
     async function loadDashboardData() {
         loadingIndicator.style.display = 'block';
         dashboardContainer.classList.add('hidden');
@@ -356,8 +461,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const summaryPromise = fetchAPI(`${urls.summary}?force=true`);
             const healthPromise = fetchAPI(urls.health);
             const streamsPromise = fetchAPI(urls.activeStreams);
+            const auditPromise = fetchAPI(urls.auditLogs);
 
-            const [summaryData, healthData, streamsData] = await Promise.all([summaryPromise, healthPromise, streamsPromise]);
+            const [summaryData, healthData, streamsData, auditData] = await Promise.all([summaryPromise, healthPromise, streamsPromise, auditPromise]);
 
             if (summaryData.success) {
                 renderSummaryCards(summaryData.summary);
@@ -372,6 +478,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (streamsData.success) {
                 renderActiveStreamsDashboard(streamsData.sessions);
+            }
+            
+            if (auditData.success) {
+                renderTerminationLogs(auditData.logs);
             }
 
             dashboardContainer.classList.remove('hidden');
@@ -428,6 +538,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         socket.on('active_streams_update', (data) => {
             renderActiveStreamsDashboard(data.sessions);
+        });
+
+        socket.on('new_termination_log', (log) => {
+            prependTerminationLog(log);
         });
 
         socket.on('disconnect', () => {
