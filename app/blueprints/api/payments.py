@@ -9,6 +9,7 @@ from flask_login import current_user
 from flask_babel import gettext as _
 from flask_login import login_required
 from functools import wraps
+from threading import Lock
 
 from ...extensions import plex_manager, tautulli_manager, data_manager, efi_manager, mercado_pago_manager, bpix_manager
 from ...config import load_or_create_config
@@ -18,16 +19,17 @@ from ...models import UserProfile
 logger = logging.getLogger(__name__)
 payments_api_bp = Blueprint('payments_api', __name__)
 
+# Adiciona um lock de threading para a lógica de processamento de pagamento
+# como uma camada extra de proteção contra condições de corrida.
+payment_processing_lock = Lock()
+
 def efi_webhook_security(f):
     """Decorator para proteger o endpoint do webhook da Efí."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # 1. Verificar o Endereço IP
         EFI_IP = '34.193.116.226'
         
-        # Obtém o IP real, considerando proxies como Nginx ou Cloudflare.
         if 'X-Forwarded-For' in request.headers:
-            # 'X-Forwarded-For' pode ser uma lista de IPs. O primeiro é o do cliente original.
             remote_ip = request.headers.getlist("X-Forwarded-For")[0].rpartition(' ')[-1]
         else:
             remote_ip = request.remote_addr or 'UNKNOWN'
@@ -36,7 +38,6 @@ def efi_webhook_security(f):
             logger.warning(f"Webhook da Efí bloqueado: IP de origem '{remote_ip}' não corresponde ao IP esperado '{EFI_IP}'.")
             return jsonify(status="error", message="IP not allowed"), 403
 
-        # 2. Verificar o HMAC se o mTLS estiver desativado
         config = load_or_create_config()
         use_mtls = config.get("EFI_USE_MTLS", True)
 
@@ -57,60 +58,60 @@ def _process_successful_payment(txid):
     realizando todas as ações necessárias. Esta função é à prova de falhas
     e pode ser chamada tanto pelo polling da web quanto por webhooks.
     """
-    try:
-        logger.info(f"Processando pagamento confirmado para o TXID: {txid}")
-        payment = data_manager.get_pix_payment(txid)
-        
-        if not payment:
-            logger.warning(f"Pagamento com TXID {txid} não encontrado na base de dados. Ignorando.")
-            return
-        
-        if payment.get('status') == 'CONCLUIDA':
-            logger.warning(f"Pagamento {txid} já está com o estado 'CONCLUIDA'. Ignorando processamento duplicado.")
-            return
+    with payment_processing_lock: # Garante que apenas um thread processe um pagamento de cada vez
+        with current_app.app_context():
+            try:
+                # CORREÇÃO: Utiliza o novo método que bloqueia a linha da DB para evitar processamento duplicado
+                payment = data_manager.get_and_lock_pix_payment(txid)
+                
+                if not payment:
+                    logger.warning(f"Pagamento com TXID {txid} não encontrado na base de dados. Ignorando.")
+                    data_manager.db.session.rollback() # Liberta o lock implícito se não encontrou nada
+                    return
+                
+                if payment.get('status') == 'CONCLUIDA':
+                    logger.warning(f"Pagamento {txid} já está com o estado 'CONCLUIDA'. Ignorando processamento duplicado.")
+                    data_manager.db.session.commit() # Confirma a transação de leitura, libertando o lock
+                    return
 
-        data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
-        
-        username = payment['username']
-        # Força a atualização da lista de usuários do Plex para garantir que usuários recém-adicionados sejam encontrados.
-        user = next((u for u in plex_manager.get_all_plex_users(force_refresh=True) if u['username'] == username), None)
-        
-        if user:
-            screens_to_set = payment.get('screens')
-            new_expiration_date = plex_manager.renew_subscription(username, 1, 'expiry_date')
-            
-            # CORREÇÃO: A lógica de limite de telas foi movida do Tautulli para o DataManager.
-            # Apenas guardamos o limite no perfil do utilizador. O StreamManager irá tratar da aplicação.
-            if screens_to_set is not None and screens_to_set >= 0:
-                logger.info(f"Atualizando limite de telas para '{username}' para {screens_to_set}.")
-                profile = data_manager.get_user_profile(username)
-                profile['screen_limit'] = screens_to_set
-                data_manager.set_user_profile(username, profile)
-            
-            profile = data_manager.get_user_profile(username)
-            plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
-            
-            # Garante que o contexto da aplicação está disponível para gerar o link da notificação.
-            with current_app.app_context():
-                user_page_link = url_for('main.users_page', _external=False)
-                data_manager.create_notification(
-                    message=f"Pagamento de {username} (R$ {payment['value']:.2f}) confirmado.", 
-                    category='success', 
-                    link=user_page_link
-                )
-            
-            logger.info(f"Subscrição para '{username}' renovada com sucesso. Novo vencimento: {new_expiration_date.strftime('%d/%m/%Y')}")
-            
-            # Após confirmar o pagamento, registar o uso do cupão pelo utilizador
-            if payment and payment.get('coupon_code'):
-                data_manager.record_coupon_usage(payment['coupon_code'], payment['username'])
+                data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
+                # O commit final irá acontecer no fim do bloco 'try'
 
-        else:
-            logger.warning(f"Utilizador '{username}' do pagamento {txid} não encontrado no Plex para renovação. O pagamento foi marcado como concluído, mas a renovação falhou.")
-    except Exception as e:
-        logger.error(f"Ocorreu um erro crítico ao processar o pagamento para o TXID {txid}: {e}", exc_info=True)
+                username = payment['username']
+                user = next((u for u in plex_manager.get_all_plex_users(force_refresh=True) if u['username'] == username), None)
+                
+                if user:
+                    screens_to_set = payment.get('screens')
+                    new_expiration_date = plex_manager.renew_subscription(username, 1, 'expiry_date')
+                    
+                    if screens_to_set is not None and screens_to_set >= 0:
+                        profile = data_manager.get_user_profile(username)
+                        profile['screen_limit'] = screens_to_set
+                        data_manager.set_user_profile(username, profile)
+                    
+                    profile = data_manager.get_user_profile(username)
+                    plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
+                    
+                    user_page_link = url_for('main.users_page', _external=False)
+                    data_manager.create_notification(
+                        message=f"Pagamento de {username} (R$ {payment['value']:.2f}) confirmado.", 
+                        category='success', 
+                        link=user_page_link
+                    )
+                    
+                    logger.info(f"Subscrição para '{username}' renovada com sucesso. Novo vencimento: {new_expiration_date.strftime('%d/%m/%Y')}")
+                    
+                    if payment.get('coupon_code'):
+                        data_manager.record_coupon_usage(payment['coupon_code'], payment['username'])
+                else:
+                    logger.warning(f"Utilizador '{username}' do pagamento {txid} não encontrado no Plex. A renovação falhou.")
 
+                data_manager.db.session.commit() # Confirma todas as alterações e liberta o lock
+            except Exception as e:
+                logger.error(f"Ocorreu um erro crítico ao processar o pagamento para o TXID {txid}: {e}", exc_info=True)
+                data_manager.db.session.rollback() # Reverte as alterações e liberta o lock em caso de erro
 
+# O restante do ficheiro permanece igual...
 @payments_api_bp.route('/options')
 def get_payment_options():
     token = request.args.get('token')
@@ -477,7 +478,6 @@ def export_financial_csv():
     start_date_str = request.args.get('start_date')
     end_date_str = request.args.get('end_date')
 
-    # MELHORIA DE SEGURANÇA: Valida o formato das datas
     try:
         if start_date_str:
             datetime.fromisoformat(start_date_str)
@@ -520,11 +520,9 @@ def export_financial_csv():
         cw.writerow([])
         cw.writerow([])
         
-        # Título do resumo centralizado
         cw.writerow(['', '', _('RESUMO DO PERÍODO')])
         cw.writerow([])
         
-        # Dados do resumo
         cw.writerow(['', '', _('Total Arrecadado'), f"{total_revenue:.2f}".replace('.', ',')])
         cw.writerow(['', '', _('Total de Transações'), total_transactions])
 
