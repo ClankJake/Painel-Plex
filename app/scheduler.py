@@ -3,7 +3,7 @@
 import logging
 import time
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, date
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone, get_localzone_name
 
@@ -12,11 +12,9 @@ from .locks import single_instance_job
 
 logger = logging.getLogger(__name__)
 
-# --- OTIMIZAÇÃO: Constantes para o mecanismo de retry ---
 MAX_RETRIES = 3
 RETRY_DELAY = 10 
 
-# Variavel global para guardar a instância da app
 _app = None
 
 def set_app_for_jobs(app):
@@ -83,18 +81,14 @@ def expiration_notification_job():
                 logger.error("Não foi possível obter a lista de utilizadores do Plex para a tarefa de notificação.")
                 return
 
-            users_to_notify = extensions.plex_manager.get_users_to_notify()
-            local_tz = get_localzone()
-
-            for username in users_to_notify:
+            # CORREÇÃO: Busca utilizadores na janela de notificação, sem verificar o estado do envio.
+            users_to_check = extensions.plex_manager.get_users_within_notification_window()
+            
+            for username in users_to_check:
                 user_info = next((u for u in all_users if u['username'] == username), None)
                 if user_info:
-                    profile = extensions.data_manager.get_user_profile(username)
-                    expiration_date_str = profile.get('expiration_date')
-                    if expiration_date_str:
-                        expiration_date = datetime.fromisoformat(expiration_date_str).date()
-                        days_left = (expiration_date - datetime.now(local_tz).date()).days
-                        extensions.plex_manager.notifier_manager.send_expiration_notification(user_info, days_left, profile)
+                    # CORREÇÃO: Delega a lógica de verificação e envio para uma função atómica por utilizador
+                    extensions.plex_manager.send_expiration_notification_if_needed(user_info)
         except Exception as e:
             logger.error(f"Erro durante a execução da tarefa de notificação de vencimentos: {e}", exc_info=True)
         logger.info("Tarefa de notificação de vencimentos concluída.")
@@ -250,7 +244,6 @@ def setup_scheduler(app):
     
     tz = extensions.scheduler.timezone
 
-    # Adiciona a tarefa de verificação de streams do StreamManager
     extensions.scheduler.add_job(
         id='stream_check_job', 
         func=stream_check_job,
@@ -286,7 +279,6 @@ def setup_scheduler(app):
         replace_existing=True
     )
 
-    # Adiciona a tarefa de limpeza do cache de imagens
     if config.get("IMAGE_CACHE_CLEANUP_ENABLED", False):
         cache_cleanup_time_parts = config.get("IMAGE_CACHE_CLEANUP_TIME", "04:00").split(':')
         extensions.scheduler.add_job(
@@ -296,7 +288,6 @@ def setup_scheduler(app):
             replace_existing=True
         )
 
-    # Adiciona o processador de tarefas da base de dados
     extensions.scheduler.add_job(
         id='task_processor_job', 
         func=task_processor_job,
@@ -310,6 +301,4 @@ def setup_scheduler(app):
 
     if not extensions.scheduler.running:
         extensions.scheduler.start()
-        # MELHORIA: Adiciona o PID do worker ao log para maior clareza.
         logger.info(f"Agendador de tarefas iniciado no worker com PID: {os.getpid()}.")
-

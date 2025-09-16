@@ -10,6 +10,9 @@ from flask_babel import get_locale, gettext as _
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from urllib.parse import urlparse
 from tzlocal import get_localzone_name
+# MELHORIA DE ROBUSTEZ: Importa o event listener do SQLAlchemy
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 
 from . import extensions
 from .config import load_or_create_config, is_configured
@@ -19,6 +22,19 @@ from . import sockets
 from . import scheduler
 
 logger = logging.getLogger(__name__)
+
+# MELHORIA DE ROBUSTEZ: Define uma função para ser executada em cada nova conexão com a DB
+# Esta função ativa o modo Write-Ahead Logging (WAL) que permite leituras e escritas simultâneas,
+# reduzindo drasticamente os erros de "database is locked".
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Ativa o modo WAL para o SQLite para melhorar a concorrência."""
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA busy_timeout = 5000;") # Espera até 5 segundos se a DB estiver bloqueada
+        logger.debug("Modo WAL do SQLite ativado para a nova conexão.")
+    finally:
+        cursor.close()
 
 @extensions.login_manager.user_loader
 def load_user(user_id):
@@ -104,9 +120,8 @@ def create_app():
     log_file_path = os.path.join(config_dir_path, 'app.log')
     cache_dir_path = os.path.join(config_dir_path, 'cache') # Caminho para a pasta de cache
 
-    # CORREÇÃO: Adiciona o parâmetro timeout ao URI da base de dados.
-    # Isto instrui o SQLAlchemy a esperar até 20 segundos se a base de dados estiver bloqueada.
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=20'
+    # MELHORIA DE ROBUSTEZ: Aumenta o timeout padrão diretamente no URI de conexão.
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=30'
     app.config['LOG_FILE'] = log_file_path
     
     app.config['SECRET_KEY'] = app.config.get('SECRET_KEY')
@@ -116,10 +131,9 @@ def create_app():
     base_url_for_cookie = app.config.get('APP_BASE_URL', '')
     app.config['SESSION_COOKIE_SECURE'] = base_url_for_cookie.startswith('https://')
     
-    # CORREÇÃO: Move a configuração do timeout para as opções do engine, que é a forma preferida pelo SQLAlchemy.
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         "connect_args": {
-            "timeout": 20,
+            "timeout": 30,
         }
     }
     
@@ -143,13 +157,16 @@ def create_app():
 
     # Inicialização das extensões
     extensions.db.init_app(app)
+    # MELHORIA DE ROBUSTEZ: Adiciona o event listener ao engine do SQLAlchemy
+    # para ativar o modo WAL em todas as conexões.
+    with app.app_context():
+        event.listen(extensions.db.engine, 'connect', set_sqlite_pragma)
+
     extensions.migrate.init_app(app, extensions.db)
     extensions.login_manager.init_app(app)
     extensions.babel.init_app(app, locale_selector=get_user_locale)
     extensions.cache.init_app(app) # Inicializa o cache
 
-    # Workaround para um possível bug de inicialização do Flask-Caching em alguns ambientes.
-    # Garante que a extensão esteja acessível da maneira que os decoradores esperam internamente.
     if 'cache' not in app.extensions:
         app.extensions['cache'] = app.extensions.get('caching')
         if app.extensions['cache']:
@@ -249,7 +266,7 @@ def create_app():
             'main.payment_page', 'users_api.get_public_user_profile_by_token', 'payments_api.get_payment_options',
             'payments_api.create_charge_route', 'payments_api.get_payment_status',
             'redirect.redirect_to_url',
-            'image.proxy_image' # Adiciona o novo endpoint à lista de exceções
+            'image.proxy_image'
         }
         if request.endpoint in exempt_endpoints or request.path.startswith('/socket.io'):
             return
@@ -302,4 +319,3 @@ def create_app():
     app.register_blueprint(coupons_api_bp, url_prefix='/api/coupons') 
 
     return app
-
