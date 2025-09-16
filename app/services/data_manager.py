@@ -37,7 +37,6 @@ class DataManager:
 
     def get_next_pending_task(self, name):
         """Busca a próxima tarefa pendente de um tipo específico."""
-        # Usa 'with_for_update' para bloquear a linha e evitar que múltiplos workers a peguem ao mesmo tempo.
         task = Task.query.filter_by(name=name, status='pending').order_by(Task.created_at).with_for_update().first()
         return task
 
@@ -99,9 +98,7 @@ class DataManager:
         user_profile = UserProfile.query.get(username)
         if coupon and user_profile:
             try:
-                # Incrementa a contagem global
                 coupon.use_count += 1
-                # Regista o uso individual
                 new_usage = CouponUsage(user_username=username, coupon_id=coupon.id)
                 db.session.add(new_usage)
                 db.session.commit()
@@ -109,7 +106,6 @@ class DataManager:
                 return True
             except Exception as e:
                 db.session.rollback()
-                # Evita erro de constraint duplicada caso a lógica seja chamada mais de uma vez
                 if 'UNIQUE constraint failed' in str(e):
                     logger.warning(f"Tentativa de registar uso duplicado do cupão '{code}' para '{username}'. Ignorando.")
                     return True
@@ -154,7 +150,7 @@ class DataManager:
                 message=message,
                 category=category,
                 link=link,
-                username=username, # Pode ser None para notificações de admin
+                username=username, 
                 timestamp=datetime.utcnow()
             )
             db.session.add(notification)
@@ -201,7 +197,21 @@ class DataManager:
             db.session.rollback()
             return 0
 
-    # --- NOVOS MÉTODOS DE AUDITORIA ---
+    def update_user_notification_timestamp(self, username):
+        """Atualiza o timestamp da última notificação enviada para um utilizador."""
+        try:
+            profile = UserProfile.query.get(username)
+            if profile:
+                profile.last_notification_sent = datetime.now(timezone.utc).isoformat()
+                db.session.commit()
+                logger.debug(f"Timestamp de última notificação atualizado para '{username}'.")
+                return True
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Erro ao atualizar o timestamp de notificação para '{username}': {e}")
+        return False
+
+    # --- MÉTODOS DE AUDITORIA ---
     def log_stream_termination(self, username, media_title, platform, reason):
         """Regista uma sessão de stream terminada automaticamente."""
         try:
@@ -216,7 +226,6 @@ class DataManager:
             db.session.commit()
             logger.info(f"Término de stream registado para '{username}' a tentar assistir '{media_title}' (Motivo: {reason}).")
             
-            # Emite o novo log via SocketIO para o dashboard em tempo real
             from .. import extensions
             if extensions.socketio:
                 extensions.socketio.emit('new_termination_log', self._row_to_dict(log_entry), namespace='/dashboard')
@@ -233,11 +242,8 @@ class DataManager:
     # --- MÉTODOS FINANCEIROS ---
     def get_financial_summary(self, year, month, renewal_days=7):
         """
-        Obtém um resumo financeiro para um determinado mês e ano, com consultas otimizadas.
+        Obtém um resumo financeiro para um determinado mês e ano.
         """
-        # --- OTIMIZAÇÃO: Consultas agregadas diretamente na base de dados ---
-
-        # 1. Busca o total de receita e o número de vendas com uma única consulta.
         summary_query = db.session.query(
             func.sum(PixPayment.value),
             func.count(PixPayment.txid)
@@ -249,7 +255,6 @@ class DataManager:
         total_revenue = summary_query[0] or 0.0
         sales_count = summary_query[1] or 0
 
-        # 2. Agrega a receita por dia.
         daily_revenue_query = db.session.query(
             extract('day', PixPayment.created_at).label('day'),
             func.sum(PixPayment.value).label('total')
@@ -260,8 +265,6 @@ class DataManager:
         ).group_by('day').all()
         daily_revenue_dict = {day: total for day, total in daily_revenue_query}
 
-        # 3. Agrega a receita por semana (específico para SQLite com strftime).
-        # Para outros bancos de dados, pode ser necessário usar funções diferentes.
         weekly_revenue_query = db.session.query(
             func.strftime('%W', PixPayment.created_at).label('week_num'),
             func.sum(PixPayment.value).label('total')
@@ -270,19 +273,14 @@ class DataManager:
             extract('month', PixPayment.created_at) == month,
             PixPayment.status == 'CONCLUIDA'
         ).group_by('week_num').order_by('week_num').all()
-        # Converte o número da semana do ano para uma chave relativa ao mês (Semana 1, Semana 2, etc.)
         weekly_revenue_dict = {f"Semana {i+1}": total for i, (week_num, total) in enumerate(weekly_revenue_query)}
 
-        # 4. Busca as transações mais recentes (já era uma consulta otimizada).
         recent_transactions = PixPayment.query.filter(
             extract('year', PixPayment.created_at) == year,
             extract('month', PixPayment.created_at) == month,
             PixPayment.status == 'CONCLUIDA'
         ).order_by(PixPayment.created_at.desc()).limit(10).all()
 
-        # --- FIM DA OTIMIZAÇÃO ---
-
-        # A consulta de renovações futuras permanece, pois é em outra tabela.
         today = datetime.now(get_localzone()).date()
         end_date = today + timedelta(days=renewal_days)
         today_str = today.isoformat()
@@ -389,6 +387,19 @@ class DataManager:
         return {p.username: self._row_to_dict(p) for p in profiles}
 
     # --- Métodos de Pagamento PIX ---
+    def get_and_lock_pix_payment(self, txid):
+        """
+        Busca um registo de pagamento pelo TXID e bloqueia a linha para evitar
+        processamento duplicado em ambientes com múltiplos workers.
+        Esta função deve ser chamada dentro de uma transação.
+        """
+        try:
+            payment = db.session.query(PixPayment).filter_by(txid=txid).with_for_update().first()
+            return self._row_to_dict(payment)
+        except Exception as e:
+            logger.error(f"Erro ao buscar e bloquear o pagamento com TXID '{txid}': {e}")
+            raise
+
     def create_pix_payment(self, txid, username, value, provider, screens, external_reference, coupon_code=None):
         payment = PixPayment.query.get(txid)
         if not payment:
@@ -412,8 +423,8 @@ class DataManager:
         payment = PixPayment.query.get(txid)
         if payment:
             payment.status = status
-            db.session.commit()
-
+            # O commit será feito pelo chamador (_process_successful_payment)
+    
     def add_manual_payment(self, username, value, description, payment_date_str):
         txid = f"manual_{secrets.token_hex(12)}"
         payment = PixPayment(txid=txid, username=username, value=float(value), status='CONCLUIDA', provider='Manual', description=description, created_at=payment_date_str, screens=0, external_reference=None)
@@ -447,7 +458,6 @@ class DataManager:
 
     # --- Métodos de Limpeza de Dados ---
     def delete_old_pending_payments(self, days_old):
-
         if not isinstance(days_old, int) or days_old <= 0:
             logger.warning("A limpeza de pagamentos pendentes foi ignorada devido a um número de dias inválido.")
             return 0
@@ -544,4 +554,3 @@ class DataManager:
         if not row:
             return None
         return {c.name: getattr(row, c.name) for c in row.__table__.columns}
-
