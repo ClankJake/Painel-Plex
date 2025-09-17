@@ -14,27 +14,18 @@ export const fetchStatus = (force = false) => fetchAPI(`${urls.apiStatus}?force=
 export const listInvites = () => fetchAPI(urls.apiInvitesList);
 export const deleteInvite = (code) => fetchAPI(urls.apiInvitesDelete, 'POST', { code });
 export const createInvite = (payload) => fetchAPI(urls.apiInvitesCreate, 'POST', payload);
-export const updateUserLimit = (email, screens) => fetchAPI(urls.apiUsersUpdateLimit, 'POST', { email, screens });
-export const renewSubscription = (username, payload) => fetchAPI(urls.apiUsersRenewBase.replace('__USERNAME__', username), 'POST', payload);
-export const fetchUserProfile = (username) => fetchAPI(urls.apiUsersProfileBase.replace('__USERNAME__', username));
-export const updateUserProfile = (username, payload) => fetchAPI(urls.apiUsersProfileSetBase.replace('__USERNAME__', username), 'POST', payload);
-export const notifyUser = (username) => fetchAPI(urls.apiUsersNotifyBase.replace('__USERNAME__', username), 'POST');
-export const fetchUserLibraries = (email) => fetchAPI(urls.apiUsersLibrariesBase.replace('__EMAIL__', email));
-export const updateUserLibraries = (email, libraries) => fetchAPI(urls.apiUsersUpdateLibraries, 'POST', { email, libraries });
-export const removeUser = (email) => fetchAPI(urls.apiUsersRemove, 'POST', { email });
-export const blockUser = (email) => fetchAPI(urls.apiUsersBlock, 'POST', { email });
-export const unblockUser = (email) => fetchAPI(urls.apiUsersUnblock, 'POST', { email });
-export const toggleOverseerr = (email, access) => fetchAPI(urls.apiUsersToggleOverseerr, 'POST', { email, access });
+export const updateUserLimit = (plexUserId, screens) => fetchAPI(urls.apiUsersUpdateLimit, 'POST', { plex_user_id: plexUserId, screens });
+export const renewSubscription = (plexUserId, payload) => fetchAPI(urls.apiUsersRenewBase.replace('0', plexUserId), 'POST', payload);
+export const fetchUserProfile = (plexUserId) => fetchAPI(urls.apiUsersProfileBase.replace('0', plexUserId));
+export const updateUserProfile = (plexUserId, payload) => fetchAPI(urls.apiUsersProfileSetBase.replace('0', plexUserId), 'POST', payload);
+export const notifyUser = (plexUserId) => fetchAPI(urls.apiUsersNotifyBase.replace('0', plexUserId), 'POST');
+export const fetchUserLibraries = (plexUserId) => fetchAPI(urls.apiUsersLibrariesBase.replace('0', plexUserId));
+export const updateUserLibraries = (plexUserId, libraries) => fetchAPI(urls.apiUsersUpdateLibraries, 'POST', { plex_user_id: plexUserId, libraries });
+export const removeUser = (plexUserId) => fetchAPI(urls.apiUsersRemove, 'POST', { plex_user_id: plexUserId });
+export const blockUser = (plexUserId) => fetchAPI(urls.apiUsersBlock, 'POST', { plex_user_id: plexUserId });
+export const unblockUser = (plexUserId) => fetchAPI(urls.apiUsersUnblock, 'POST', { plex_user_id: plexUserId });
+export const toggleOverseerr = (plexUserId, access) => fetchAPI(urls.apiUsersToggleOverseerr, 'POST', { plex_user_id: plexUserId, access });
 export const updateAllLimits = (screens) => fetchAPI(urls.apiUsersUpdateAllLimits, 'POST', { screens });
-export const fetchPaymentHistory = (username) => fetchAPI(urls.apiUsersPaymentsBase.replace('__USERNAME__', username));
+export const fetchPaymentHistory = (plexUserId) => fetchAPI(urls.apiUsersPaymentsBase.replace('0', plexUserId));
+export const updateAllLibraries = (libraries) => fetchAPI(urls.apiUsersUpdateAllLibraries, 'POST', { libraries });
 
-/**
- * Atualiza as bibliotecas para todos os utilizadores.
- * CORREÇÃO: Adiciona um fallback para a URL, caso ela não seja fornecida pelo template HTML.
- * @param {string[]} libraries - A lista de títulos de bibliotecas.
- * @returns {Promise<any>}
- */
-export const updateAllLibraries = (libraries) => {
-    const endpoint = urls.apiUsersUpdateAllLibraries || '/api/users/update-all-libraries';
-    return fetchAPI(endpoint, 'POST', { libraries });
-};

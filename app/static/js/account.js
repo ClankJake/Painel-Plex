@@ -590,7 +590,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             ${payments.map(p => {
                                 const couponHtml = p.coupon_code 
-                                    ? `<span class="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300" title="Cupom: ${p.coupon_code}">🏷️</span>` 
+                                    ? `<span class="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300" title="Cupom: ${p.coupon_code}">??</span>` 
                                     : '';
                                 return `
                                     <tr>
@@ -779,7 +779,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('saveContactDetails').addEventListener('click', handleSaveContactDetails);
             }
 
-            const paymentHistory = await fetchAPI(urls.getPaymentHistoryUrl.replace('__USERNAME__', data.username));
+            // CORREÇÃO AQUI: Remove o .replace() que já não é necessário
+            const paymentHistory = await fetchAPI(urls.getPaymentHistoryUrl);
             if (paymentHistory.success) {
                 renderPaymentHistory(paymentHistory.payments);
             }

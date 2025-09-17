@@ -156,7 +156,7 @@ export function showBulkActionsModal() {
     modal.querySelector('#modalCancel').onclick = () => modal.classList.add('hidden');
     modal.querySelector('#bulkUpdateLibs').onclick = () => {
         modal.classList.add('hidden');
-        showLibraryManagementModal(null); // Pass null for bulk update
+        showLibraryManagementModal(null);
     };
     modal.querySelector('#bulkUpdateLimits').onclick = () => {
         modal.classList.add('hidden');
@@ -206,7 +206,7 @@ export function showScreenLimitModal(user) {
         button.onclick = async () => {
             const screens = parseInt(button.dataset.screens);
             try {
-                const result = await api.updateUserLimit(user.email, screens);
+                const result = await api.updateUserLimit(user.id, screens);
                 showToast(result.message, result.success ? 'success' : 'error');
                 if (result.success) {
                     document.dispatchEvent(new CustomEvent('data-refresh-requested'));
@@ -236,7 +236,7 @@ export async function showLibraryManagementModal(user = null) {
     let userLibraries = [];
     if (!isBulkUpdate) {
         try {
-            const userLibsResponse = await api.fetchUserLibraries(user.email);
+            const userLibsResponse = await api.fetchUserLibraries(user.id);
             if (userLibsResponse && userLibsResponse.success && Array.isArray(userLibsResponse.libraries)) {
                 userLibraries = userLibsResponse.libraries;
             } else {
@@ -254,7 +254,7 @@ export async function showLibraryManagementModal(user = null) {
 
     saveButton.onclick = async () => {
         const selectedLibraries = Array.from(modalLibsContainer.querySelectorAll('input:checked')).map(input => input.value);
-        const apiCall = isBulkUpdate ? api.updateAllLibraries(selectedLibraries) : api.updateUserLibraries(user.email, selectedLibraries);
+        const apiCall = isBulkUpdate ? api.updateAllLibraries(selectedLibraries) : api.updateUserLibraries(user.id, selectedLibraries);
         try {
             const result = await apiCall;
             showToast(result.message, result.success ? 'success' : 'error');
@@ -306,7 +306,7 @@ export async function showUserProfileModal(user) {
     const expirationTimeInput = modal.querySelector('#profileExpirationTime');
     const universalTimeNotice = modal.querySelector('#universal-time-notice');
 
-    api.fetchUserProfile(user.username).then(data => {
+    api.fetchUserProfile(user.id).then(data => {
         if(data.success) {
             if (data.profile) {
                 modal.querySelector('#profileName').value = data.profile.name || '';
@@ -353,7 +353,7 @@ export async function showUserProfileModal(user) {
             expiration_datetime_local: localDateTimeString 
         };
         try {
-            const result = await api.updateUserProfile(user.username, profileData);
+            const result = await api.updateUserProfile(user.id, profileData);
             showToast(result.message, result.success ? 'success' : 'error');
             if (result.success) { modal.classList.add('hidden'); document.dispatchEvent(new CustomEvent('data-refresh-requested')); }
         } catch (error) {
@@ -363,7 +363,7 @@ export async function showUserProfileModal(user) {
     
     modal.querySelector('#profileOverseerrAccess').onchange = async (e) => {
         try {
-            const result = await api.toggleOverseerr(user.email, e.target.checked);
+            const result = await api.toggleOverseerr(user.id, e.target.checked);
             showToast(result.message, result.success ? 'success' : 'error');
         } catch (error) {
             showToast(error.message, 'error');
@@ -373,7 +373,7 @@ export async function showUserProfileModal(user) {
     sendNotificationButton.onclick = async () => {
         sendNotificationButton.disabled = true;
         try {
-            const result = await api.notifyUser(user.username);
+            const result = await api.notifyUser(user.id);
             showToast(result.message, result.success ? 'success' : 'error');
         } catch (error) {
             showToast(error.message, 'error');
@@ -390,7 +390,7 @@ export async function showUserProfileModal(user) {
         if (timeInput && timeInput.value && !timeInput.disabled) payload.expiration_time = timeInput.value;
 
         try {
-            const result = await api.renewSubscription(user.username, payload);
+            const result = await api.renewSubscription(user.id, payload);
             showToast(result.message, result.success ? 'success' : 'error');
             if (result.success) { modal.classList.add('hidden'); document.dispatchEvent(new CustomEvent('data-refresh-requested')); }
         } catch (error) {
@@ -418,7 +418,7 @@ export async function showPaymentHistoryModal(user) {
 
     const container = modal.querySelector('#paymentHistoryContainer');
     try {
-        const result = await api.fetchPaymentHistory(user.username);
+        const result = await api.fetchPaymentHistory(user.id);
         if (result.success && result.payments.length > 0) {
             container.innerHTML = `
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
