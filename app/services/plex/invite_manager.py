@@ -52,7 +52,7 @@ class PlexInviteManager:
             "overseerr_access": kwargs.get('overseerr_access', False),
             "max_uses": max_uses,
             "use_count": 0,
-            "claimed_by_users": [] # Inicia como uma lista vazia
+            "claimed_by_users": [] 
         }
 
         self.data_manager.add_invitation(code, invitation_details)
@@ -62,7 +62,6 @@ class PlexInviteManager:
         invitation = self.data_manager.get_invitation(code)
         if not invitation: return None, _("Convite não encontrado.")
         
-        # Verifica se o convite já foi totalmente utilizado
         if invitation.get('use_count', 0) >= invitation.get('max_uses', 1):
             return None, _("Este convite já atingiu o seu limite máximo de utilizações.")
 
@@ -79,7 +78,6 @@ class PlexInviteManager:
         if not invitation:
             return {"success": False, "message": message}
         
-        # Verifica se este utilizador específico já resgatou este convite
         claimed_users = invitation.get('claimed_by_users', [])
         if plex_user_account.username in claimed_users:
             return {"success": False, "message": _("Você já resgatou este convite anteriormente.")}
@@ -90,44 +88,44 @@ class PlexInviteManager:
         if invite_result.get("already_exists"):
             return {"success": False, "message": _("Você já tem acesso a este servidor.")}
 
-        logger.info(_("Convite para '%(username)s' enviado. A verificar o estado do acesso...", username=plex_user_account.username))
         time.sleep(3)
 
         accept_result = self._accept_invite_v2(plex_user_account)
         if not accept_result.get("success"):
             all_current_users = self.user_manager.get_all_plex_users(force_refresh=True)
-            if not any(u['username'] == plex_user_account.username for u in all_current_users):
-                logger.error(_("Falha final na aceitação do convite para %(username)s: %(message)s", username=plex_user_account.username, message=accept_result.get('message')))
+            if not any(u['id'] == plex_user_account.id for u in all_current_users):
                 return {"success": False, "message": accept_result.get('message')}
-            logger.warning(_("A aceitação formal falhou, mas o acesso foi confirmado para %(username)s.", username=plex_user_account.username))
 
         if invitation['screen_limit'] > 0:
-            self.plex_manager.update_screen_limit(plex_user_account.username, invitation['screen_limit'])
+            self.plex_manager.update_screen_limit(plex_user_account.id, invitation['screen_limit'])
 
-        # Atualiza os dados do convite
         self.data_manager.increment_invitation_use(code, plex_user_account.username)
         self.user_manager.invalidate_user_cache()
         self.data_manager.create_notification(message=f"'{plex_user_account.username}' resgatou um convite.", category='success', link=url_for('main.users_page'))
 
-        profile_data = {'screen_limit': invitation['screen_limit'], 'allow_downloads': invitation.get('allow_downloads', False), 'libraries': json.dumps(invitation.get('libraries', []))}
+        profile_data = {
+            'username': plex_user_account.username,
+            'screen_limit': invitation['screen_limit'], 
+            'allow_downloads': invitation.get('allow_downloads', False), 
+            'libraries': json.dumps(invitation.get('libraries', []))
+        }
         
         is_trial = False
         if invitation.get("trial_duration_minutes", 0) > 0:
             is_trial = True
             trial_end_utc = datetime.now(timezone.utc) + timedelta(minutes=invitation["trial_duration_minutes"])
             naive_run_date = trial_end_utc.astimezone(scheduler.timezone).replace(tzinfo=None)
-            job_id = f"trial_end_{plex_user_account.username}"
-            scheduler.add_job(id=job_id, func=end_trial_job, args=[plex_user_account.username], trigger='date', run_date=naive_run_date, replace_existing=True)
+            job_id = f"trial_end_{plex_user_account.id}"
+            scheduler.add_job(id=job_id, func=end_trial_job, args=[plex_user_account.id], trigger='date', run_date=naive_run_date, replace_existing=True)
             profile_data.update({"trial_end_date": trial_end_utc.isoformat(), "trial_job_id": job_id})
 
         if invitation.get('overseerr_access'):
             self.overseerr_manager.import_from_plex({"id": plex_user_account.id, "email": plex_user_account.email, "username": plex_user_account.username})
             profile_data['overseerr_access'] = True
 
-        self.data_manager.set_user_profile(plex_user_account.username, profile_data)
+        self.data_manager.set_user_profile(plex_user_account.id, profile_data)
         
-        # Recupera o perfil recém-criado para obter o token de pagamento
-        new_profile = self.data_manager.get_user_profile(plex_user_account.username)
+        new_profile = self.data_manager.get_user_profile_by_id(plex_user_account.id)
 
         config = load_or_create_config()
         overseerr_url = config.get("OVERSEERR_URL", "").rstrip('/')
@@ -156,7 +154,6 @@ class PlexInviteManager:
     def _invite_user_to_plex(self, identifier, library_titles):
         if not self.conn.plex:
             return {"success": False, "message": _("O Plex não está configurado.")}
-        
         try:
             try:
                 user_account = self.conn.account.user(identifier)
@@ -164,14 +161,11 @@ class PlexInviteManager:
                      return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso.")}
             except NotFound:
                 pass 
-
             libraries_to_share = [s for s in self.conn.plex.library.sections() if s.title in library_titles]
             if not libraries_to_share:
                 return {"success": False, "message": _("Nenhuma biblioteca válida encontrada para partilhar.")}
-
             self.conn.account.inviteFriend(user=identifier, server=self.conn.plex, sections=libraries_to_share)
             return {"success": True, "message": _("Convite enviado com sucesso para %(identifier)s!", identifier=identifier)}
-        
         except BadRequest as e:
             if 'user is already a friend' in str(e).lower() or "already sharing" in str(e).lower():
                 return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso.")}
@@ -181,7 +175,6 @@ class PlexInviteManager:
 
     def _accept_invite_v2(self, user_account: MyPlexAccount):
         owner_identifier = self.conn.account.username
-        logger.info(_("A iniciar aceitação de convite v2 para '%(user)s' do proprietário do servidor '%(owner)s'.", user=user_account.username, owner=owner_identifier))
         session = requests.Session()
         config = load_or_create_config()
         params = {
@@ -194,20 +187,15 @@ class PlexInviteManager:
             resp = session.get("https://clients.plex.tv/api/v2/shared_servers/invites/received/pending", params=params, headers={"Accept": "application/json"}, timeout=20)
             resp.raise_for_status()
             invites = resp.json()
-
             def _matches(inv):
                 o = inv.get("owner", {})
                 return owner_identifier in (o.get("username"), o.get("email"), o.get("title"))
-            
             invite = next((i for i in invites if _matches(i)), None)
             if not invite or not invite.get("sharedServers"):
                 return {"success": False, "message": _("Nenhum convite pendente deste servidor foi encontrado.")}
-
             invite_id = invite["sharedServers"][0]["id"]
             resp = session.post(f"https://clients.plex.tv/api/v2/shared_servers/{invite_id}/accept", params=params, headers={"Accept": "application/json"}, timeout=20)
             resp.raise_for_status()
             return {"success": True}
         except Exception as e:
-            logger.error(_("Erro durante a aceitação do convite v2: %(error)s", error=e), exc_info=True)
             return {"success": False, "message": _("Ocorreu um erro de rede ao tentar aceitar o convite.")}
-

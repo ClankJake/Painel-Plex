@@ -257,7 +257,7 @@
         data-update-privacy-url="{{ url_for('users_api.update_privacy_settings') }}"
         data-get-payment-options-url="{{ url_for('payments_api.get_payment_options') }}"
         data-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
-        data-get-payment-history-url="{{ url_for('users_api.get_user_payments_history', username='__USERNAME__') }}"
+        data-get-payment-history-url="{{ url_for('users_api.get_user_payments_history', plex_user_id=current_user.id) }}"
         data-get-watch-history-url="{{ url_for('stats_api.get_user_watch_history_route') }}"
         data-validate-coupon-url="{{ url_for('payments_api.validate_coupon_route') }}"
         data-login-url="{{ url_for('auth.login') }}"

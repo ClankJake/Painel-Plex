@@ -3,9 +3,9 @@
 import logging
 import time
 import os
-from datetime import datetime, date
+from datetime import datetime
 from apscheduler.triggers.cron import CronTrigger
-from tzlocal import get_localzone, get_localzone_name
+from tzlocal import get_localzone_name
 
 from .config import load_or_create_config
 from .locks import single_instance_job
@@ -38,195 +38,122 @@ def _execute_with_retry(action, description):
 
 @single_instance_job('task_processor_job')
 def task_processor_job():
-    """Tarefa periódica para procurar e executar tarefas pendentes da base de dados."""
-    if not _app:
-        logger.error("A instância da app não foi definida para a tarefa 'task_processor_job'. A tarefa foi ignorada.")
-        return
-
+    if not _app: return
     with _app.test_request_context():
         from . import extensions
-        
         task_obj = extensions.data_manager.get_next_pending_task('bulk_notification')
-        
         if task_obj:
-            logger.info(f"Tarefa pendente '{task_obj.name}' (ID: {task_obj.id}) encontrada. A iniciar processamento.")
             extensions.notifier_manager.process_bulk_notification_task(task_obj)
-        else:
-            logger.debug("Nenhuma tarefa pendente encontrada pelo processador de tarefas.")
 
 @single_instance_job('stream_check_job')
 def stream_check_job():
-    """Tarefa agendada para verificar e impor os limites de stream."""
-    if not _app:
-        logger.error("A instância da app não foi definida para a tarefa 'stream_check_job'. A tarefa foi ignorada.")
-        return
-    
+    if not _app: return
     with _app.test_request_context():
         from . import extensions
         extensions.stream_manager.check_and_enforce_streams()
 
 @single_instance_job('expiration_notification_job')
 def expiration_notification_job():
-    """Tarefa agendada para enviar notificações de vencimento."""
-    if not _app:
-        logger.error("A instância da app não foi definida para a tarefa 'expiration_notification_job'. A tarefa foi ignorada.")
-        return
-
+    if not _app: return
     with _app.test_request_context():
         from . import extensions
-        logger.info("A executar a tarefa de notificação de vencimentos...")
-        try:
-            all_users = extensions.plex_manager.get_all_plex_users()
-            if all_users is None:
-                logger.error("Não foi possível obter a lista de utilizadores do Plex para a tarefa de notificação.")
-                return
+        users_to_check = extensions.plex_manager.get_users_within_notification_window()
+        for plex_user_id in users_to_check:
+            user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+            if user_info:
+                extensions.plex_manager.send_expiration_notification_if_needed(user_info)
 
-            # CORREÇÃO: Busca utilizadores na janela de notificação, sem verificar o estado do envio.
-            users_to_check = extensions.plex_manager.get_users_within_notification_window()
-            
-            for username in users_to_check:
-                user_info = next((u for u in all_users if u['username'] == username), None)
-                if user_info:
-                    # CORREÇÃO: Delega a lógica de verificação e envio para uma função atómica por utilizador
-                    extensions.plex_manager.send_expiration_notification_if_needed(user_info)
-        except Exception as e:
-            logger.error(f"Erro durante a execução da tarefa de notificação de vencimentos: {e}", exc_info=True)
-        logger.info("Tarefa de notificação de vencimentos concluída.")
-
-def end_trial_job(username):
-    """Tarefa individual acionada no fim exato do período de teste de um utilizador."""
-    if not _app:
-        logger.error("A instância da app não foi definida para a tarefa 'end_trial_job'. A tarefa foi ignorada.")
-        return
-
+def end_trial_job(plex_user_id):
+    if not _app: return
     with _app.test_request_context():
         from . import extensions
-        logger.info(f"Fim do período de teste para '{username}'. A acionar o bloqueio.")
         
-        all_users = extensions.plex_manager.get_all_plex_users()
-        if all_users is None:
-            logger.error(f"Não foi possível obter a lista de utilizadores do Plex para a tarefa de fim de teste de '{username}'.")
-            return
-
-        user_info = next((u for u in all_users if u['username'] == username), None)
+        user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+        user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
+        
+        logger.info(f"Fim do período de teste para '{user_identifier}'. A acionar o bloqueio.")
+        
         if user_info:
             success = _execute_with_retry(
-                action=lambda: extensions.plex_manager.block_user(user_info['email'], reason='trial_expired'),
-                description=f"bloquear utilizador por fim de teste '{username}'"
+                action=lambda: extensions.plex_manager.block_user(plex_user_id, reason='trial_expired'),
+                description=f"bloquear utilizador por fim de teste '{user_identifier}'"
             )
             
             if success:
-                profile = extensions.data_manager.get_user_profile(username)
+                profile = extensions.data_manager.get_user_profile(plex_user_id)
                 if profile:
-                    extensions.plex_manager.notifier_manager.send_trial_end_notification(user_info, profile)
+                    extensions.notifier_manager.send_trial_end_notification(user_info, profile)
                     profile['trial_job_id'] = None
-                    extensions.data_manager.set_user_profile(username, profile)
+                    extensions.data_manager.set_user_profile(plex_user_id, profile)
         else:
-            logger.warning(f"Utilizador '{username}' não encontrado na lista do Plex durante a tarefa de fim de teste.")
+            logger.warning(f"Utilizador com ID '{plex_user_id}' não encontrado durante a tarefa de fim de teste.")
 
-def end_subscription_job(username):
+
+def end_subscription_job(plex_user_id):
     """Tarefa individual acionada no fim exato da subscrição de um utilizador."""
     if not _app:
-        logger.error("A instância da app não foi definida para a tarefa 'end_subscription_job'. A tarefa foi ignorada.")
+        logger.error(f"A instância da app não foi definida para a tarefa 'end_subscription_job' (ID: {plex_user_id}). A tarefa foi ignorada.")
         return
 
     with _app.test_request_context():
         from . import extensions
-        logger.info(f"Fim da subscrição para '{username}'. A acionar o bloqueio.")
         
-        all_users = extensions.plex_manager.get_all_plex_users()
-        if all_users is None:
-            logger.error(f"Não foi possível obter a lista de utilizadores do Plex para a tarefa de bloqueio de '{username}'.")
-            return
+        user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+        user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
 
-        user_info = next((u for u in all_users if u['username'] == username), None)
+        logger.info(f"Fim da subscrição para '{user_identifier}'. A acionar o bloqueio.")
+        
         if user_info:
             _execute_with_retry(
-                action=lambda: extensions.plex_manager.block_user(user_info['email'], reason='expired'),
-                description=f"bloquear utilizador por subscrição expirada '{username}'"
+                action=lambda: extensions.plex_manager.block_user(plex_user_id, reason='expired'),
+                description=f"bloquear utilizador por subscrição expirada '{user_identifier}'"
             )
         else:
-            logger.warning(f"Utilizador '{username}' não encontrado na lista do Plex durante a tarefa de fim de subscrição.")
-
+            logger.warning(f"Utilizador com ID '{plex_user_id}' não encontrado durante a tarefa de fim de subscrição.")
 
 @single_instance_job('removal_job')
 def removal_job():
-    """Tarefa agendada para remover os que estão bloqueados há muito tempo."""
-    if not _app:
-        logger.error("A instância da app não foi definida para a tarefa 'removal_job'. A tarefa foi ignorada.")
-        return
-
+    if not _app: return
     with _app.test_request_context():
         from . import extensions
-        logger.info("A executar a tarefa de remoção de utilizadores bloqueados...")
-        
-        all_users = extensions.plex_manager.get_all_plex_users(force_refresh=True)
-        if all_users is None:
-            logger.error("Não foi possível obter a lista de utilizadores do Plex para a tarefa de remoção.")
-            return
-        
         users_to_remove = extensions.plex_manager.get_users_to_remove()
-        for username in users_to_remove:
-            user_info = next((u for u in all_users if u['username'] == username), None)
-            if user_info:
-                _execute_with_retry(
-                    action=lambda: extensions.plex_manager.remove_user(user_info['email']),
-                    description=f"remover utilizador bloqueado '{username}'"
-                )
-            else:
-                extensions.data_manager.remove_blocked_user(username)
-        
-        logger.info("Tarefa de remoção concluída.")
+        for plex_user_id in users_to_remove:
+            user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+            user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
+            _execute_with_retry(
+                action=lambda: extensions.plex_manager.remove_user(plex_user_id),
+                description=f"remover utilizador bloqueado '{user_identifier}'"
+            )
 
 @single_instance_job('cleanup_job')
 def cleanup_job():
-    """Tarefa agendada para limpar dados antigos da aplicação."""
-    if not _app:
-        logger.error("A instância da app não foi definida para a tarefa 'cleanup_job'. A tarefa foi ignorada.")
-        return
-
+    if not _app: return
     with _app.test_request_context():
         from . import extensions
-        logger.info("A executar a tarefa de limpeza de dados antigos...")
-        try:
-            config = load_or_create_config()
-            if config.get("CLEANUP_PENDING_PAYMENTS_ENABLED", False):
-                days = config.get("CLEANUP_PENDING_PAYMENTS_DAYS", 3)
-                extensions.data_manager.delete_old_pending_payments(days)
-        except Exception as e:
-            logger.error(f"Erro durante a execução da tarefa de limpeza: {e}", exc_info=True)
-        logger.info("Tarefa de limpeza concluída.")
+        config = load_or_create_config()
+        if config.get("CLEANUP_PENDING_PAYMENTS_ENABLED", False):
+            days = config.get("CLEANUP_PENDING_PAYMENTS_DAYS", 3)
+            extensions.data_manager.delete_old_pending_payments(days)
 
 @single_instance_job('cleanup_image_cache_job')
 def cleanup_image_cache_job():
-    """Tarefa agendada para apagar imagens antigas do cache em disco."""
-    if not _app:
-        logger.error("A instância da app não foi definida para a tarefa 'cleanup_image_cache_job'. A tarefa foi ignorada.")
-        return
-
+    if not _app: return
     with _app.app_context():
         from .config import load_or_create_config
         from .blueprints.image import IMAGE_CACHE_DIR
 
         config = load_or_create_config()
-        if not config.get("IMAGE_CACHE_CLEANUP_ENABLED", False):
-            logger.info("Limpeza do cache de imagens está desativada. A ignorar a tarefa.")
-            return
+        if not config.get("IMAGE_CACHE_CLEANUP_ENABLED", False): return
         
         max_age_days = config.get("IMAGE_CACHE_MAX_AGE_DAYS", 30)
         cutoff_time = time.time() - (max_age_days * 86400)
-        deleted_count = 0
-
-        logger.info(f"A executar a limpeza do cache de imagens. A apagar ficheiros mais antigos que {max_age_days} dias...")
+        
         try:
+            if not os.path.exists(IMAGE_CACHE_DIR): return
             for filename in os.listdir(IMAGE_CACHE_DIR):
                 filepath = os.path.join(IMAGE_CACHE_DIR, filename)
-                if os.path.isfile(filepath):
-                    if os.path.getmtime(filepath) < cutoff_time:
-                        os.remove(filepath)
-                        deleted_count += 1
-            if deleted_count > 0:
-                logger.info(f"Limpeza do cache de imagens concluída. {deleted_count} ficheiros apagados.")
+                if os.path.isfile(filepath) and os.path.getmtime(filepath) < cutoff_time:
+                    os.remove(filepath)
         except Exception as e:
             logger.error(f"Erro durante a limpeza do cache de imagens: {e}", exc_info=True)
 
@@ -236,45 +163,34 @@ def setup_scheduler(app):
     from . import extensions
     config = load_or_create_config()
     
-    tz_str = 'UTC'
-    try:
-        tz_str = get_localzone_name()
-    except Exception:
-        logger.warning("Não foi possível detetar o fuso horário local. A usar UTC como padrão para o agendador.")
+    try: tz_str = get_localzone_name()
+    except Exception: tz_str = 'UTC'
     
     tz = extensions.scheduler.timezone
 
     extensions.scheduler.add_job(
-        id='stream_check_job', 
-        func=stream_check_job,
-        trigger='interval', 
-        seconds=config.get("STREAM_CHECK_INTERVAL_SECONDS", 15),
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=90
+        id='stream_check_job', func=stream_check_job,
+        trigger='interval', seconds=config.get("STREAM_CHECK_INTERVAL_SECONDS", 15),
+        replace_existing=True, max_instances=1, coalesce=True, misfire_grace_time=90
     )
     
     exp_time_parts = config.get("EXPIRATION_NOTIFICATION_TIME", "09:00").split(':')
     extensions.scheduler.add_job(
-        id='expiration_notification_job', 
-        func=expiration_notification_job,
+        id='expiration_notification_job', func=expiration_notification_job,
         trigger=CronTrigger(hour=int(exp_time_parts[0]), minute=int(exp_time_parts[1]), timezone=tz),
         replace_existing=True
     )
 
     block_time_parts = config.get("BLOCK_REMOVAL_TIME", "02:00").split(':')
     extensions.scheduler.add_job(
-        id='removal_job', 
-        func=removal_job,
+        id='removal_job', func=removal_job,
         trigger=CronTrigger(hour=int(block_time_parts[0]), minute=int(block_time_parts[1]), timezone=tz),
         replace_existing=True
     )
 
     cleanup_time_parts = config.get("CLEANUP_TIME", "03:00").split(':')
     extensions.scheduler.add_job(
-        id='cleanup_job', 
-        func=cleanup_job,
+        id='cleanup_job', func=cleanup_job,
         trigger=CronTrigger(hour=int(cleanup_time_parts[0]), minute=int(cleanup_time_parts[1]), timezone=tz),
         replace_existing=True
     )
@@ -282,23 +198,18 @@ def setup_scheduler(app):
     if config.get("IMAGE_CACHE_CLEANUP_ENABLED", False):
         cache_cleanup_time_parts = config.get("IMAGE_CACHE_CLEANUP_TIME", "04:00").split(':')
         extensions.scheduler.add_job(
-            id='cleanup_image_cache_job', 
-            func=cleanup_image_cache_job,
+            id='cleanup_image_cache_job', func=cleanup_image_cache_job,
             trigger=CronTrigger(hour=int(cache_cleanup_time_parts[0]), minute=int(cache_cleanup_time_parts[1]), timezone=tz),
             replace_existing=True
         )
 
     extensions.scheduler.add_job(
-        id='task_processor_job', 
-        func=task_processor_job,
-        trigger='interval', 
-        seconds=20, 
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=120
+        id='task_processor_job', func=task_processor_job,
+        trigger='interval', seconds=20, replace_existing=True,
+        max_instances=1, coalesce=True, misfire_grace_time=120
     )
 
     if not extensions.scheduler.running:
         extensions.scheduler.start()
-        logger.info(f"Agendador de tarefas iniciado no worker com PID: {os.getpid()}.")
+        logger.info(f"Agendador de tarefas iniciado com PID: {os.getpid()}.")
+

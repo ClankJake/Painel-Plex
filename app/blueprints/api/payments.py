@@ -24,92 +24,60 @@ payments_api_bp = Blueprint('payments_api', __name__)
 payment_processing_lock = Lock()
 
 def efi_webhook_security(f):
-    """Decorator para proteger o endpoint do webhook da Efí."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         EFI_IP = '34.193.116.226'
-        
-        if 'X-Forwarded-For' in request.headers:
-            remote_ip = request.headers.getlist("X-Forwarded-For")[0].rpartition(' ')[-1]
-        else:
-            remote_ip = request.remote_addr or 'UNKNOWN'
-
+        remote_ip = request.headers.getlist("X-Forwarded-For")[0].rpartition(' ')[-1] if 'X-Forwarded-For' in request.headers else request.remote_addr or 'UNKNOWN'
         if remote_ip != EFI_IP:
             logger.warning(f"Webhook da Efí bloqueado: IP de origem '{remote_ip}' não corresponde ao IP esperado '{EFI_IP}'.")
             return jsonify(status="error", message="IP not allowed"), 403
-
         config = load_or_create_config()
-        use_mtls = config.get("EFI_USE_MTLS", True)
-
-        if not use_mtls:
+        if not config.get("EFI_USE_MTLS", True):
             hmac_secret = config.get("EFI_WEBHOOK_HMAC_SECRET")
             received_hmac = request.args.get('hmac')
-
             if not hmac_secret or not received_hmac or hmac_secret != received_hmac:
                 logger.warning("Webhook da Efí bloqueado: HMAC inválido ou ausente.")
                 return jsonify(status="error", message="Invalid HMAC"), 403
-        
         return f(*args, **kwargs)
     return decorated_function
 
 def _process_successful_payment(txid):
-    """
-    Processa um pagamento bem-sucedido, renovando a assinatura do usuário e
-    realizando todas as ações necessárias. Esta função é à prova de falhas
-    e pode ser chamada tanto pelo polling da web quanto por webhooks.
-    """
-    with payment_processing_lock: # Garante que apenas um thread processe um pagamento de cada vez
+    with payment_processing_lock:
         with current_app.app_context():
             try:
-                # CORREÇÃO: Utiliza o novo método que bloqueia a linha da DB para evitar processamento duplicado
                 payment = data_manager.get_and_lock_pix_payment(txid)
-                
                 if not payment:
-                    logger.warning(f"Pagamento com TXID {txid} não encontrado na base de dados. Ignorando.")
-                    data_manager.db.session.rollback() # Liberta o lock implícito se não encontrou nada
+                    logger.warning(f"Pagamento com TXID {txid} não encontrado. Ignorando.")
+                    data_manager.db.session.rollback()
                     return
-                
                 if payment.get('status') == 'CONCLUIDA':
-                    logger.warning(f"Pagamento {txid} já está com o estado 'CONCLUIDA'. Ignorando processamento duplicado.")
-                    data_manager.db.session.commit() # Confirma a transação de leitura, libertando o lock
+                    logger.warning(f"Pagamento {txid} já está 'CONCLUIDA'. Ignorando processamento duplicado.")
+                    data_manager.db.session.commit()
                     return
-
                 data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
-                # O commit final irá acontecer no fim do bloco 'try'
-
-                username = payment['username']
-                user = next((u for u in plex_manager.get_all_plex_users(force_refresh=True) if u['username'] == username), None)
-                
+                plex_user_id = payment['user_plex_id']
+                user = plex_manager.get_user_by_id(plex_user_id)
                 if user:
                     screens_to_set = payment.get('screens')
-                    new_expiration_date = plex_manager.renew_subscription(username, 1, 'expiry_date')
-                    
+                    new_expiration_date = plex_manager.renew_subscription(plex_user_id, 1, 'expiry_date')
                     if screens_to_set is not None and screens_to_set >= 0:
-                        profile = data_manager.get_user_profile(username)
+                        profile = data_manager.get_user_profile(plex_user_id)
                         profile['screen_limit'] = screens_to_set
-                        data_manager.set_user_profile(username, profile)
-                    
-                    profile = data_manager.get_user_profile(username)
+                        data_manager.set_user_profile(plex_user_id, profile)
+                    profile = data_manager.get_user_profile(plex_user_id)
                     plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
-                    
-                    user_page_link = url_for('main.users_page', _external=False)
                     data_manager.create_notification(
-                        message=f"Pagamento de {username} (R$ {payment['value']:.2f}) confirmado.", 
-                        category='success', 
-                        link=user_page_link
+                        message=f"Pagamento de {user['username']} (R$ {payment['value']:.2f}) confirmado.", 
+                        category='success', link=url_for('main.users_page')
                     )
-                    
-                    logger.info(f"Subscrição para '{username}' renovada com sucesso. Novo vencimento: {new_expiration_date.strftime('%d/%m/%Y')}")
-                    
                     if payment.get('coupon_code'):
-                        data_manager.record_coupon_usage(payment['coupon_code'], payment['username'])
+                        data_manager.record_coupon_usage(payment['coupon_code'], plex_user_id)
                 else:
-                    logger.warning(f"Utilizador '{username}' do pagamento {txid} não encontrado no Plex. A renovação falhou.")
-
-                data_manager.db.session.commit() # Confirma todas as alterações e liberta o lock
+                    logger.warning(f"Utilizador do pagamento {txid} (ID: {plex_user_id}) não encontrado no Plex. A renovação falhou.")
+                data_manager.db.session.commit()
             except Exception as e:
-                logger.error(f"Ocorreu um erro crítico ao processar o pagamento para o TXID {txid}: {e}", exc_info=True)
-                data_manager.db.session.rollback() # Reverte as alterações e liberta o lock em caso de erro
+                logger.error(f"Erro crítico ao processar o pagamento para o TXID {txid}: {e}", exc_info=True)
+                data_manager.db.session.rollback()
 
 # O restante do ficheiro permanece igual...
 @payments_api_bp.route('/options')
@@ -230,78 +198,56 @@ def create_charge_route():
     screens_str = data.get('screens')
     coupon_code = data.get('coupon_code')
     
-    username = data.get('username') or (current_user.username if current_user.is_authenticated else None)
-    if not username:
-        return jsonify({"success": False, "message": _("Usuário não especificado para a cobrança.")}), 400
+    plex_user_id = data.get('plex_user_id')
+    username = data.get('username')
+    if not (plex_user_id and username):
+        if current_user.is_authenticated:
+            plex_user_id = current_user.id
+            username = current_user.username
+        else:
+            return jsonify({"success": False, "message": _("Usuário não especificado para a cobrança.")}), 400
 
     if not provider and not coupon_code:
         return jsonify({"success": False, "message": _("Dados insuficientes para gerar cobrança.")}), 400
 
     config = load_or_create_config()
-    profile = data_manager.get_user_profile(username)
+    profile = data_manager.get_user_profile(plex_user_id)
     
-    plex_user = next((u for u in plex_manager.get_all_plex_users() if u['username'] == username), None)
+    plex_user = plex_manager.get_user_by_id(plex_user_id)
     if not plex_user:
         return jsonify({"success": False, "message": _("Usuário não encontrado no Plex.")}), 404
 
-    price_str = None
-    if str(screens_str) in config.get("SCREEN_PRICES", {}):
-        price_str = config.get("SCREEN_PRICES")[str(screens_str)]
-    elif str(screens_str) == "0":
-        price_str = config.get("RENEWAL_PRICE")
-
+    price_str = config.get("SCREEN_PRICES", {}).get(str(screens_str)) or config.get("RENEWAL_PRICE")
     if not price_str or float(price_str) <= 0:
         return jsonify({"success": False, "message": _("Opção de plano inválida ou sem preço definido.")}), 400
         
     final_price = float(price_str)
-
     if coupon_code:
-        if data_manager.has_user_used_coupon(username, coupon_code):
+        if data_manager.has_user_used_coupon(plex_user_id, coupon_code):
              return jsonify({"success": False, "message": "Você já usou esse cupom."}), 403
-        
         coupon = data_manager.get_coupon_by_code(coupon_code)
         if coupon and coupon['is_active'] and coupon['use_count'] < coupon['max_uses'] and (not coupon['expires_at'] or datetime.utcnow() < coupon['expires_at']):
-            if coupon['discount_type'] == 'percentage':
-                final_price *= (1 - coupon['value'] / 100)
-            elif coupon['discount_type'] == 'fixed':
-                final_price -= coupon['value']
-            final_price = max(0, final_price)
+            final_price = final_price * (1 - coupon['value'] / 100) if coupon['discount_type'] == 'percentage' else max(0, final_price - coupon['value'])
         else:
             return jsonify({"success": False, "message": "O cupão fornecido já não é válido."}), 400
 
     if coupon_code and final_price <= 0:
         try:
-            logger.info(f"A processar renovação gratuita para '{username}' com o cupão '{coupon_code}'.")
-            plex_manager.renew_subscription(username, 1, 'expiry_date')
-            data_manager.record_coupon_usage(coupon_code, username)
-            data_manager.add_manual_payment(
-                username=username,
-                value=0.00,
-                description=f"Renovação via Cupão 100% ({coupon_code})",
-                payment_date_str=datetime.now().isoformat()
-            )
-            return jsonify({
-                "success": True,
-                "free_renewal": True,
-                "message": _("Assinatura gratuita ativada com sucesso!")
-            })
+            plex_manager.renew_subscription(plex_user_id, 1, 'expiry_date')
+            data_manager.record_coupon_usage(coupon_code, plex_user_id)
+            data_manager.add_manual_payment(plex_user_id=plex_user_id, username=username, value=0.00, description=f"Renovação via Cupão 100% ({coupon_code})", payment_date_str=datetime.now().isoformat())
+            return jsonify({"success": True, "free_renewal": True, "message": _("Assinatura gratuita ativada com sucesso!")})
         except Exception as e:
-            logger.error(f"Erro ao processar renovação gratuita para '{username}': {e}", exc_info=True)
             return jsonify({"success": False, "message": "Ocorreu um erro ao ativar a sua assinatura gratuita."}), 500
 
-    price = final_price
-    screens = int(screens_str)
-    user_info = {"username": username, "name": profile.get('name', username), "email": plex_user.get('email')}
+    price, screens = final_price, int(screens_str)
+    user_info = {"plex_user_id": plex_user_id, "username": username, "name": profile.get('name', username), "email": plex_user.get('email')}
     
     result = {"success": False, "message": _("O provedor %(provider)s não está habilitado.", provider=provider)}
     if provider == 'EFI' and config.get('EFI_ENABLED'):
         result = efi_manager.create_pix_charge(user_info, price, screens)
-        if result.get('success'):
-            data_manager.create_pix_payment(result['txid'], username, price, 'EFI', screens, None, coupon_code)
     elif provider == 'MERCADOPAGO' and config.get('MERCADOPAGO_ENABLED'):
         result = mercado_pago_manager.create_pix_payment(user_info, price, screens)
-        if result.get('success'):
-            data_manager.create_pix_payment(result['payment_id'], username, price, 'MERCADOPAGO', screens, result.get('external_reference'), coupon_code)
     elif provider == 'BPIX' and config.get('BPIX_ENABLED'):
         result = bpix_manager.create_pix_charge(user_info, price, screens)
         
@@ -442,15 +388,18 @@ def get_financial_summary_route():
 @admin_required
 def add_manual_payment_route():
     data = request.json
-    username = data.get('username')
+    plex_user_id = data.get('plex_user_id')
     value = data.get('value')
     description = data.get('description')
     payment_date = data.get('payment_date')
-    if not all([username, value, description, payment_date]):
+    if not all([plex_user_id, value, description, payment_date]):
         return jsonify({"success": False, "message": _("Todos os campos são obrigatórios.")}), 400
     try:
+        user = plex_manager.get_user_by_id(plex_user_id)
+        if not user:
+            return jsonify({"success": False, "message": "Utilizador não encontrado."}), 404
         payment_datetime_str = f"{payment_date}T{datetime.now().strftime('%H:%M:%S')}"
-        payment = data_manager.add_manual_payment(username, value, description, payment_datetime_str)
+        payment = data_manager.add_manual_payment(plex_user_id, user['username'], value, description, payment_datetime_str)
         return jsonify({"success": True, "message": _("Pagamento manual registado com sucesso."), "payment": payment})
     except Exception as e:
         logger.error(f"Erro ao adicionar pagamento manual: {e}", exc_info=True)

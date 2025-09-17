@@ -10,40 +10,33 @@ from ...extensions import plex_manager
 
 logger = logging.getLogger(__name__)
 
-def user_lookup(f):
-    """Decorator para encontrar um utilizador por email ou username e injetá-lo na rota."""
+def user_lookup_by_id(f):
+    """Decorator para encontrar um utilizador pelo seu ID do Plex e injetá-lo na rota."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        identifier = kwargs.get('username') or kwargs.get('email')
-        if not identifier:
-             identifier = request.json.get('email')
+        plex_user_id = kwargs.get('plex_user_id') or request.json.get('plex_user_id')
 
-        if not identifier:
-            logger.warning("Nenhum identificador (username/email) fornecido no pedido.")
-            return jsonify({"success": False, "message": _("Email ou username não fornecido.")}), 400
+        if not plex_user_id:
+            logger.warning("Nenhum ID de utilizador do Plex fornecido no pedido.")
+            return jsonify({"success": False, "message": _("ID do utilizador não fornecido.")}), 400
         
-        logger.info(f"A procurar utilizador com o identificador: {identifier}")
-        
-        all_users = plex_manager.get_all_plex_users()
-        if all_users is None:
-            return jsonify({"success": False, "message": _("Não foi possível conectar ao servidor Plex para encontrar o utilizador.")}), 503
+        try:
+            plex_user_id = int(plex_user_id)
+        except (ValueError, TypeError):
+            return jsonify({"success": False, "message": _("ID do utilizador inválido.")}), 400
 
-        user = next((u for u in all_users if u['username'] == identifier or u['email'] == identifier), None)
+        user = plex_manager.get_user_by_id(plex_user_id)
         
         if not user:
-            logger.warning(f"Utilizador '{identifier}' não encontrado na lista de utilizadores do Plex.")
+            logger.warning(f"Utilizador com ID '{plex_user_id}' não encontrado.")
             return jsonify({"success": False, "message": _("Usuário não encontrado.")}), 404
         
-        logger.info(f"Utilizador '{identifier}' encontrado: {user['username']} ({user['email']})")
-        
-        # Limpa os kwargs para não serem passados duplicados para a rota
-        if 'username' in kwargs:
-             del kwargs['username']
-        if 'email' in kwargs:
-            del kwargs['email']
+        if 'plex_user_id' in kwargs:
+             del kwargs['plex_user_id']
 
         return f(user=user, *args, **kwargs)
     return decorated_function
+
 
 def validate_json(schema):
     """
@@ -61,7 +54,6 @@ def validate_json(schema):
                 kwargs['validated_data'] = validated_data
                 return f(*args, **kwargs)
             except ValidationError as e:
-                # Formata os erros de validação para uma resposta clara
                 errors = {err['loc'][0]: err['msg'] for err in e.errors()}
                 logger.warning(f"Falha na validação da API para o endpoint '{request.path}': {errors}")
                 return jsonify({
@@ -71,3 +63,4 @@ def validate_json(schema):
                 }), 400
         return wrapper
     return decorator
+

@@ -101,18 +101,18 @@
         data-url-api-invites-list="{{ url_for('invites_api.list_invites_route') }}"
         data-url-api-invites-delete="{{ url_for('invites_api.delete_invite_route') }}"
         data-url-api-users-update-limit="{{ url_for('users_api.update_limit_route') }}"
-        data-url-api-users-renew-base="{{ url_for('users_api.renew_user_subscription_route', username='__USERNAME__') }}"
-        data-url-api-users-profile-base="{{ url_for('users_api.user_profile_route', username='__USERNAME__') }}"
-        data-url-api-users-profile-set-base="{{ url_for('users_api.user_profile_route', username='__USERNAME__') }}"
-        data-url-api-users-notify-base="{{ url_for('users_api.notify_user_route', username='__USERNAME__') }}"
-        data-url-api-users-libraries-base="{{ url_for('users_api.get_user_libraries_route', email='__EMAIL__') }}"
+        data-url-api-users-renew-base="{{ url_for('users_api.renew_user_subscription_route', plex_user_id=0) }}"
+        data-url-api-users-profile-base="{{ url_for('users_api.user_profile_route', plex_user_id=0) }}"
+        data-url-api-users-profile-set-base="{{ url_for('users_api.user_profile_route', plex_user_id=0) }}"
+        data-url-api-users-notify-base="{{ url_for('users_api.notify_user_route', plex_user_id=0) }}"
+        data-url-api-users-libraries-base="{{ url_for('users_api.get_user_libraries_route', plex_user_id=0) }}"
         data-url-api-users-update-libraries="{{ url_for('users_api.update_libraries_route') }}"
         data-url-api-users-remove="{{ url_for('users_api.remove_user_route') }}"
         data-url-api-users-block="{{ url_for('users_api.block_user_route') }}"
         data-url-api-users-unblock="{{ url_for('users_api.unblock_user_route') }}"
         data-url-api-users-toggle-overseerr="{{ url_for('users_api.toggle_overseerr_access_route') }}"
         data-url-api-users-update-all-limits="{{ url_for('users_api.update_all_limits_route') }}"
-        data-url-api-users-payments-base="{{ url_for('users_api.get_user_payments_history', username='__USERNAME__') }}"
+        data-url-api-users-payments-base="{{ url_for('users_api.get_user_payments_history', plex_user_id=0) }}"
         data-url-base-invite-page="/invite/"
         data-i18n-error="{{ _('Erro') }}"
         data-i18n-loading-invites="{{ _('Carregando convites...') }}"
@@ -230,3 +230,4 @@
 >
 </script>
 {% endblock %}
+

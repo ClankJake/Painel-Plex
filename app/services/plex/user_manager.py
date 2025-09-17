@@ -1,4 +1,5 @@
 # app/services/plex/user_manager.py
+
 import logging
 import json
 import base64
@@ -10,7 +11,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 from flask import current_app, url_for
 from urllib.parse import urlparse
-from app.extensions import cache
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +26,20 @@ class PlexUserManager:
         self._user_cache = None
         self._user_cache_time = None
         self._cache_ttl = timedelta(seconds=300)
-        self.stream_manager = None # Será injetado pelo PlexManager
+        self.stream_manager = None
 
     def invalidate_user_cache(self):
         """Invalida a cache de utilizadores."""
         self._user_cache = None
         self._user_cache_time = None
         logger.info(_("Cache de utilizadores do Plex invalidado."))
+
+    def get_user_by_id(self, plex_user_id):
+        """Busca um único utilizador pelo seu ID do Plex, utilizando a cache."""
+        all_users = self.get_all_plex_users()
+        if all_users is None:
+            return None
+        return next((u for u in all_users if u['id'] == plex_user_id), None)
 
     def get_all_plex_users(self, force_refresh=False):
         """
@@ -43,10 +50,8 @@ class PlexUserManager:
 
         now = datetime.now()
         if not force_refresh and self._user_cache and self._user_cache_time and (now - self._user_cache_time < self._cache_ttl):
-            logger.debug(_("A devolver a lista de utilizadores do servidor a partir da cache."))
             return self._user_cache
 
-        logger.debug(_("A obter e filtrar a lista de utilizadores da API do Plex (cache expirada ou forçada)."))
         try:
             if force_refresh:
                 self.conn.account.reload()
@@ -67,7 +72,7 @@ class PlexUserManager:
                                 
                                 payload_str = f"plex_account:{path_with_query}"
                                 b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                                user_thumb_url = url_for('image.proxy_image', source=b64_payload)
+                                user_thumb_url = url_for('image.proxy_image', source=b64_payload, _external=True)
                             except Exception as e:
                                 logger.error(f"Falha ao processar a URL do avatar para o utilizador {user.username}: {e}")
 
@@ -76,10 +81,9 @@ class PlexUserManager:
                             'email': user.email, 
                             'id': user.id, 
                             'thumb': user_thumb_url, 
-                            'servers': user.servers
+                            'servers': [s.name for s in user.servers]
                         })
             
-            logger.debug(_("Encontrados %(friends)d amigos na conta, %(access)d com acesso a este servidor.", friends=len(all_friends), access=len(users_with_access)))
             self._user_cache = users_with_access
             self._user_cache_time = now
             return users_with_access
@@ -92,27 +96,30 @@ class PlexUserManager:
             self.invalidate_user_cache()
             return None
 
-    def get_user_libraries(self, email):
-        """
-        Obtém as bibliotecas a que um utilizador específico tem acesso.
-        """
+    def get_user_libraries(self, plex_user_id):
+        user = self.get_user_by_id(plex_user_id)
+        if not user:
+            return {"success": False, "message": _("Utilizador não encontrado.")}
+        
+        email = user['email']
+        username = user['username']
+
         if not self.conn.account:
             return {"success": False, "message": _("A conta Plex não está configurada.")}
         try:
-            user = self.conn.account.user(email)
-            username = user.username
-            profile = self.data_manager.get_user_profile(username)
+            plex_user_obj = self.conn.account.user(email)
+            profile = self.data_manager.get_user_profile(plex_user_id)
             if profile and profile.get('libraries'):
                 try:
                     return {"success": True, "libraries": json.loads(profile['libraries'])}
                 except (json.JSONDecodeError, TypeError):
-                    logger.warning(_("Não foi possível descodificar as bibliotecas em cache para '%(username)s'. A obter do Plex.", username=username))
+                    pass
 
-            server_resource = next((s for s in user.servers if s.machineIdentifier == self.conn.plex.machineIdentifier), None)
+            server_resource = next((s for s in plex_user_obj.servers if s.machineIdentifier == self.conn.plex.machineIdentifier), None)
             library_titles = [sec.title for sec in server_resource.sections()] if server_resource else []
             
             profile['libraries'] = json.dumps(library_titles)
-            self.data_manager.set_user_profile(username, profile)
+            self.data_manager.set_user_profile(plex_user_id, profile)
             return {"success": True, "libraries": library_titles}
         except NotFound:
             return {"success": False, "message": _("Utilizador com o email %(email)s não encontrado na sua conta Plex.", email=email)}
@@ -120,181 +127,135 @@ class PlexUserManager:
             logger.error(_("Erro ao obter bibliotecas para %(email)s: %(error)s", email=email, error=e), exc_info=True)
             return {"success": False, "message": _("Ocorreu um erro inesperado: %(error)s", error=e)}
 
-    def update_user_libraries(self, email, library_titles):
-        """
-        Atualiza as bibliotecas para um utilizador específico.
-        """
+    def update_user_libraries(self, plex_user_id, library_titles):
+        user = self.get_user_by_id(plex_user_id)
+        if not user:
+            return {"success": False, "message": _("Utilizador não encontrado.")}
+        
         if not self.conn.account:
             return {"success": False, "message": _("A conta Plex não está configurada.")}
         try:
-            user_to_update = self.conn.account.user(email)
-            username = user_to_update.username
+            user_to_update = self.conn.account.user(user['email'])
             libraries_to_share = [s for s in self.conn.plex.library.sections() if s.title in library_titles]
             
             self.conn.account.updateFriend(user=user_to_update, server=self.conn.plex, sections=libraries_to_share)
             
-            profile = self.data_manager.get_user_profile(username)
+            profile = self.data_manager.get_user_profile(plex_user_id)
             profile['libraries'] = json.dumps(library_titles)
-            self.data_manager.set_user_profile(username, profile)
-            return {"success": True, "message": _("Bibliotecas de %(username)s atualizadas com sucesso.", username=username)}
+            self.data_manager.set_user_profile(plex_user_id, profile)
+            return {"success": True, "message": _("Bibliotecas de %(username)s atualizadas com sucesso.", username=user['username'])}
         except Exception as e:
-            logger.error(_("Erro ao atualizar bibliotecas para %(email)s: %(error)s", email=email, error=e), exc_info=True)
+            logger.error(_("Erro ao atualizar bibliotecas para %(email)s: %(error)s", email=user['email'], error=e), exc_info=True)
             return {"success": False, "message": str(e)}
 
     def update_all_users_libraries(self, library_titles):
         """
-        Atualiza as bibliotecas para TODOS os utilizadores com acesso ao servidor, usando threads para otimização.
+        Atualiza as bibliotecas para TODOS os utilizadores com acesso ao servidor.
         """
-        if not self.conn.account:
-            return {"success": False, "message": _("A conta Plex não está configurada.")}
-        
         all_users = self.get_all_plex_users()
         if not all_users:
             return {"success": False, "message": _("Não foi possível obter a lista de utilizadores do Plex.")}
 
-        libraries_to_share = [s for s in self.conn.plex.library.sections() if s.title in library_titles]
-        
-        success_count = 0
-        error_count = 0
-        lock = Lock()
-        app = current_app._get_current_object()
+        for user_data in all_users:
+            self.update_user_libraries(user_data['id'], library_titles)
 
-        def _update_single_user(user_data, app_context):
-            nonlocal success_count, error_count
-            with app_context.app_context():
-                try:
-                    user_to_update = self.conn.account.user(user_data['email'])
-                    self.conn.account.updateFriend(user=user_to_update, server=self.conn.plex, sections=libraries_to_share)
-                    
-                    profile = self.data_manager.get_user_profile(user_data['username'])
-                    profile['libraries'] = json.dumps(library_titles)
-                    self.data_manager.set_user_profile(user_data['username'], profile)
-                    
-                    with lock:
-                        success_count += 1
-                    logger.info(f"Bibliotecas de {user_data['username']} atualizadas com sucesso (em massa).")
-                except Exception as e:
-                    with lock:
-                        error_count += 1
-                    logger.error(f"Erro ao atualizar bibliotecas para {user_data['username']} (em massa): {e}")
+        return {"success": True, "message": _("Bibliotecas atualizadas para todos os utilizadores.")}
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(_update_single_user, user, app) for user in all_users]
-            for future in as_completed(futures):
-                future.result()
+    def block_user(self, plex_user_id, reason='manual'):
+        user_to_block = self.get_user_by_id(plex_user_id)
+        if not user_to_block:
+            return {"success": False, "message": _("Utilizador não encontrado.")}
 
-        message = _("Bibliotecas atualizadas para %(success)d utilizadores. Falha em %(errors)d.", success=success_count, errors=error_count)
-        return {"success": error_count == 0, "message": message}
-
-    def block_user(self, email, reason='manual'):
-        """
-        Bloqueia um utilizador, terminando as suas sessões e atualizando o estado na base de dados.
-        """
         if not self.conn.account:
             return {"success": False, "message": _("A conta Plex não está configurada.")}
 
         try:
-            user_to_block = self.conn.account.user(email)
-            username = user_to_block.username
-            
-            self.data_manager.add_blocked_user(username, reason=reason)
+            username = user_to_block['username']
+            self.data_manager.add_blocked_user(plex_user_id, username, reason=reason)
 
             if self.stream_manager:
-                reason_message = "O seu acesso ao servidor foi bloqueado pelo administrador."
+                # Lógica para obter a mensagem de bloqueio
                 if reason == 'expired':
                     reason_message = "A sua subscrição expirou. Por favor, renove para continuar."
                 elif reason == 'trial_expired':
                     reason_message = "O seu período de teste terminou. Renove para continuar."
-                
-                self.stream_manager.block_user_sessions(username, reason=reason_message)
+                else:
+                    reason_message = "O seu acesso ao servidor foi bloqueado pelo administrador."
+                self.stream_manager.block_user_sessions(plex_user_id, reason=reason_message)
             
             return {"success": True, "message": _("Utilizador %(username)s bloqueado com sucesso.", username=username)}
-        except NotFound:
-            return {"success": False, "message": _("Utilizador com o email %(email)s não encontrado.", email=email)}
         except Exception as e:
-            logger.error(_("Erro ao bloquear o utilizador %(email)s: %(error)s", email=email, error=e), exc_info=True)
+            logger.error(_("Erro ao bloquear o utilizador %(username)s: %(error)s", username=user_to_block['username'], error=e), exc_info=True)
             return {"success": False, "message": str(e)}
 
-    def unblock_user(self, email):
-        """
-        Desbloqueia um utilizador, removendo-o da base de dados de bloqueio.
-        """
-        if not self.conn.account:
-            return {"success": False, "message": _("A conta Plex não está configurada.")}
+    def unblock_user(self, plex_user_id):
+        user_to_unblock = self.get_user_by_id(plex_user_id)
+        if not user_to_unblock:
+            return {"success": False, "message": _("Utilizador não encontrado.")}
+
         try:
-            user_to_unblock = self.conn.account.user(email)
-            username = user_to_unblock.username
-            
-            self.data_manager.remove_blocked_user(username)
-            
-            return {"success": True, "message": _("Utilizador %(username)s desbloqueado com sucesso.", username=username)}
-        except NotFound:
-            return {"success": False, "message": _("Utilizador com o email %(email)s não encontrado.", email=email)}
+            self.data_manager.remove_blocked_user(plex_user_id)
+            return {"success": True, "message": _("Utilizador %(username)s desbloqueado com sucesso.", username=user_to_unblock['username'])}
         except Exception as e:
-            logger.error(_("Erro ao desbloquear o utilizador %(email)s: %(error)s", email=email, error=e), exc_info=True)
+            logger.error(_("Erro ao desbloquear o utilizador %(username)s: %(error)s", username=user_to_unblock['username'], error=e), exc_info=True)
             return {"success": False, "message": str(e)}
 
-    def remove_user(self, email):
-        """
-        Remove completamente um utilizador do Plex, Tautulli e da base de dados local.
-        """
+    def remove_user(self, plex_user_id):
+        user_to_remove = self.get_user_by_id(plex_user_id)
+        if not user_to_remove:
+            return {"success": False, "message": _("Utilizador não encontrado.")}
+
         if not self.conn.account:
             return {"success": False, "message": _("O Plex não está configurado.")}
         try:
             from app.extensions import scheduler
             
-            user_to_remove = self.conn.account.user(email)
-            username = user_to_remove.username
-            profile = self.data_manager.get_user_profile(username)
+            email = user_to_remove['email']
+            username = user_to_remove['username']
+            profile = self.data_manager.get_user_profile(plex_user_id)
 
-            # 1. Termina as sessões ativas
             if self.stream_manager:
-                self.stream_manager.block_user_sessions(username, "A sua conta está a ser removida do servidor.")
+                self.stream_manager.block_user_sessions(plex_user_id, "A sua conta está a ser removida do servidor.")
             
-            # 2. Remove tarefas agendadas associadas
             if profile.get('trial_job_id'):
                 try: scheduler.remove_job(profile['trial_job_id'])
-                except Exception as e: logger.warning(_("Não foi possível remover a tarefa de teste agendada '%(job_id)s': %(error)s", job_id=profile['trial_job_id'], error=e))
+                except Exception as e: logger.warning(f"Não foi possível remover a tarefa de teste agendada: {e}")
             if profile.get('expiration_job_id'):
                  try: scheduler.remove_job(profile['expiration_job_id'])
-                 except Exception as e: logger.warning(_("Não foi possível remover a tarefa de expiração agendada '%(job_id)s': %(error)s", job_id=profile['expiration_job_id'], error=e))
+                 except Exception as e: logger.warning(f"Não foi possível remover a tarefa de expiração agendada: {e}")
 
-            # 3. Remove o acesso ao Overseerr
             if profile.get('overseerr_access'):
                 self.overseerr_manager.remove_user(email)
 
-            # 4. Remove a partilha do Plex
-            self.conn.account.removeFriend(user_to_remove)
+            plex_user_obj = self.conn.account.user(email)
+            self.conn.account.removeFriend(plex_user_obj)
             
-            # 5. Limpa os dados locais
             self.invalidate_user_cache()
-            self.data_manager.remove_blocked_user(username)
-            self.data_manager.delete_user_profile(username)
+            self.data_manager.remove_blocked_user(plex_user_id)
+            self.data_manager.delete_user_profile(plex_user_id)
 
-            return {"success": True, "message": _("Utilizador %(username)s removido com sucesso de todos os serviços.", username=username)}
+            return {"success": True, "message": _("Utilizador %(username)s removido com sucesso.", username=username)}
         except NotFound:
             return {"success": False, "message": _("Utilizador com o email %(email)s não encontrado.", email=email)}
         except Exception as e:
             logger.error(_("Erro ao remover o utilizador %(email)s: %(error)s", email=email, error=e), exc_info=True)
             return {"success": False, "message": str(e)}
 
-    def toggle_overseerr_access(self, email, username, access: bool):
-        """
-        Concede ou revoga o acesso de um utilizador ao Overseerr.
-        """
-        profile = self.data_manager.get_user_profile(username)
+    def toggle_overseerr_access(self, plex_user_id, access: bool):
+        user_info = self.get_user_by_id(plex_user_id)
+        if not user_info:
+            return {"success": False, "message": _("Utilizador não encontrado no Plex.")}
+
+        profile = self.data_manager.get_user_profile(plex_user_id)
         
         if access:
-            user_info = next((u for u in self.get_all_plex_users() if u['username'] == username), None)
-            if not user_info:
-                return {"success": False, "message": _("Utilizador não encontrado no Plex.")}
             result = self.overseerr_manager.import_from_plex(user_info)
         else:
-            result = self.overseerr_manager.remove_user(email)
+            result = self.overseerr_manager.remove_user(user_info['email'])
         
         if result.get("success"):
             profile['overseerr_access'] = access
-            self.data_manager.set_user_profile(username, profile)
+            self.data_manager.set_user_profile(plex_user_id, profile)
             message = _("Acesso ao Overseerr concedido.") if access else _("Acesso ao Overseerr removido.")
             return {"success": True, "message": message}
         else:
