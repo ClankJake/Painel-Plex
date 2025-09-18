@@ -196,6 +196,31 @@ class DataManager:
         logs = StreamTerminationLog.query.order_by(StreamTerminationLog.timestamp.desc()).limit(limit).all()
         return [self._row_to_dict(log) for log in logs]
 
+    def delete_stream_termination_log(self, log_id):
+        """Apaga um único log de término pelo seu ID."""
+        try:
+            log_entry = StreamTerminationLog.query.get(log_id)
+            if log_entry:
+                db.session.delete(log_entry)
+                db.session.commit()
+                return True
+            return False
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Erro ao apagar o log de término {log_id}: {e}", exc_info=True)
+            raise
+
+    def clear_all_stream_termination_logs(self):
+        """Apaga todos os logs de término da tabela."""
+        try:
+            num_rows_deleted = db.session.query(StreamTerminationLog).delete()
+            db.session.commit()
+            return num_rows_deleted
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Erro ao limpar todos os logs de término: {e}", exc_info=True)
+            raise
+
     # --- MÉTODOS FINANCEIROS ---
     def get_financial_summary(self, year, month, renewal_days=7):
         summary_query = db.session.query(func.sum(PixPayment.value), func.count(PixPayment.txid)).filter(

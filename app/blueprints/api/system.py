@@ -126,6 +126,32 @@ def get_termination_logs():
         logger.error(f"Erro ao obter logs de término: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Falha ao obter logs."}), 500
 
+@system_api_bp.route('/termination-logs/<int:log_id>', methods=['DELETE'])
+@login_required
+@admin_required
+def delete_termination_log(log_id):
+    """Endpoint para apagar um log de término específico."""
+    try:
+        if data_manager.delete_stream_termination_log(log_id):
+            return jsonify({"success": True, "message": _("Log apagado com sucesso.")})
+        else:
+            return jsonify({"success": False, "message": _("Log não encontrado.")}), 404
+    except Exception as e:
+        logger.error(f"Erro ao apagar o log de término {log_id}: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "Falha ao apagar o log."}), 500
+
+@system_api_bp.route('/termination-logs/clear-all', methods=['POST'])
+@login_required
+@admin_required
+def clear_all_termination_logs():
+    """Endpoint para limpar todos os logs de término."""
+    try:
+        deleted_count = data_manager.clear_all_stream_termination_logs()
+        return jsonify({"success": True, "message": _("%(count)d logs foram apagados com sucesso.", count=deleted_count)})
+    except Exception as e:
+        logger.error(f"Erro ao limpar todos os logs de término: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "Falha ao limpar os logs."}), 500
+
 @system_api_bp.route('/settings', methods=['GET', 'POST'])
 @login_required
 @admin_required

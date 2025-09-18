@@ -32,14 +32,19 @@ class StreamManager:
         Envia um comando de término de sessão com um motivo personalizado.
         """
         try:
+            # CORREÇÃO: Adicionada uma verificação para garantir que o objeto de sessão interno
+            # (session.session) não é None antes de tentar terminar o stream.
+            # Isto previne um AttributeError quando um stream está a ser inicializado.
             session_key = getattr(session, 'sessionKey', None)
-            if session_key:
+            internal_session_obj = getattr(session, 'session', None)
+
+            if session_key and internal_session_obj:
                 reason_str = str(reason)
                 logger.info(f"A enviar comando de término para a sessão {session_key} para o utilizador '{session.user.title}' com o motivo: '{reason_str}'")
                 session.stop(reason=reason_str)
             else:
                 logger.warning(
-                    f"A sessão para o utilizador '{session.user.title}' ({session.title}) não pôde ser terminada porque não foi encontrado um 'sessionKey'."
+                    f"A sessão para o utilizador '{session.user.title}' ({session.title}) não pôde ser terminada porque não foi encontrado um 'sessionKey' ou o objeto de sessão interno estava em falta (provavelmente um stream a inicializar)."
                 )
         except Exception as e:
             logger.error(f"Falha ao enviar comando de término para a sessão do utilizador '{session.user.title}': {e}", exc_info=True)
@@ -198,4 +203,3 @@ class StreamManager:
             logger.warning(f"Erro de conexão ao verificar streams (isto pode ser temporário): {e}. A saltar esta verificação.")
         except Exception as e:
             logger.error(f"Erro inesperado ao verificar e impor streams: {e}", exc_info=True)
-

@@ -56,12 +56,24 @@ def _process_successful_payment(txid):
                 plex_user_id = payment['user_plex_id']
                 user = plex_manager.get_user_by_id(plex_user_id)
                 if user:
+                    config = load_or_create_config()
                     screens_to_set = payment.get('screens')
-                    new_expiration_date = plex_manager.renew_subscription(plex_user_id, 1, 'expiry_date')
+
+                    # CORREÇÃO: Verifica se um horário universal de vencimento está ativo
+                    # e passa-o para a função de renovação para manter a consistência.
+                    expiration_time = None
+                    if config.get("UNIVERSAL_EXPIRATION_ENABLED"):
+                        expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59")
+                    
+                    new_expiration_date = plex_manager.renew_subscription(
+                        plex_user_id, 1, 'expiry_date', expiration_time_str=expiration_time
+                    )
+                    
                     if screens_to_set is not None and screens_to_set >= 0:
                         profile = data_manager.get_user_profile(plex_user_id)
                         profile['screen_limit'] = screens_to_set
                         data_manager.set_user_profile(plex_user_id, profile)
+
                     profile = data_manager.get_user_profile(plex_user_id)
                     plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
                     data_manager.create_notification(
@@ -499,4 +511,3 @@ def export_financial_csv():
     except Exception as e:
         logger.error(f"Erro ao gerar o relatório CSV: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Ocorreu um erro interno ao gerar o relatório."}), 500
-

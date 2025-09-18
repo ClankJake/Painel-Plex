@@ -128,9 +128,12 @@
         </div>
 
         <!-- Card de Log de Sessões Terminadas -->
-        <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Log de Sessões Terminadas') }}</h3>
-            <div id="auditLogContainer" class="space-y-3 max-h-[450px] overflow-y-auto pr-2">
+        <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Log de Sessões Terminadas') }}</h3>
+                <button id="clear-all-logs-btn" class="text-xs text-red-600 dark:text-red-400 hover:underline font-semibold" disabled>{{ _('Limpar Tudo') }}</button>
+            </div>
+            <div id="auditLogContainer" class="space-y-3 max-h-[450px] overflow-y-auto pr-2 flex-grow">
                 <!-- Conteúdo será injetado pelo JS -->
             </div>
         </div>
@@ -168,6 +171,8 @@
         data-bulk-notify-url="{{ url_for('system_api.bulk_notify') }}"
         data-active-streams-url="{{ url_for('system_api.get_active_streams') }}"
         data-audit-logs-url="{{ url_for('system_api.get_termination_logs') }}"
+        data-delete-log-base-url="{{ url_for('system_api.delete_termination_log', log_id=0) }}"
+        data-clear-all-logs-url="{{ url_for('system_api.clear_all_termination_logs') }}"
         data-i18n-active-streams="{{ _('Streams Ativos') }}"
         data-i18n-total-users="{{ _('Utilizadores Totais') }}"
         data-i18n-monthly-revenue="{{ _('Receita do Mês') }}"
@@ -209,6 +214,11 @@
         data-i18n-reason-blocked-manual="{{ _('Bloqueado (Administrador)') }}"
         data-i18n-reason-blocked-expired="{{ _('Bloqueado (Vencimento)') }}"
         data-i18n-reason-blocked-trial-expired="{{ _('Bloqueado (Teste Expirado)') }}"
+        data-i18n-confirm-clear-logs-title="{{ _('Confirmar Limpeza de Logs') }}"
+        data-i18n-confirm-clear-logs-message="{{ _('Tem a certeza de que deseja apagar TODOS os logs de término? Esta ação não pode ser desfeita.') }}"
+        data-i18n-confirm-clear-logs-button="{{ _('Sim, Limpar Tudo') }}"
+        data-i18n-confirm-delete-log-title="{{ _('Confirmar Exclusão') }}"
+        data-i18n-confirm-delete-log-message="{{ _('Tem a certeza de que deseja apagar este log?') }}"
+        data-i18n-confirm-delete-log-button="{{ _('Sim, Apagar') }}"
 ></script>
 {% endblock %}
-
