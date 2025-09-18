@@ -683,6 +683,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             const expiration = data.expiration_info;
             
+            // --- CORREÇÃO INICIA AQUI ---
             // Lógica do Banner de Status
             if (data.is_blocked) {
                 switch (data.block_reason) {
@@ -708,6 +709,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                  statusBanner.innerHTML = `<div class="bg-yellow-100 dark:bg-yellow-500/20 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiringAccess}</h3><p>${expiringMessage}</p></div>`;
             }
+            // --- CORREÇÃO TERMINA AQUI ---
             
             if (statusBanner && statusBanner.innerHTML) {
                 statusBanner.classList.remove('hidden');
@@ -745,7 +747,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     document.getElementById('profileTelegram').value = data.profile_details.telegram_user || '';
                     document.getElementById('profileDiscord').value = data.profile_details.discord_user_id || '';
                     
-                    // CORREÇÃO INICIA AQUI
                     const fullPhone = data.profile_details.phone_number || '';
                     const countryCodeSelect = document.getElementById('countryCode');
                     const phoneInput = document.getElementById('profilePhone');
@@ -769,7 +770,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                             countryCodeSelect.value = '+55';
                         }
                     }
-                    // CORREÇÃO TERMINA AQUI
                 }
                 if (data.notification_settings) {
                     if (data.notification_settings.telegram_enabled) document.getElementById('telegram-field-container').classList.remove('hidden');
@@ -779,7 +779,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('saveContactDetails').addEventListener('click', handleSaveContactDetails);
             }
 
-            // CORREÇÃO AQUI: Remove o .replace() que já não é necessário
             const paymentHistory = await fetchAPI(urls.getPaymentHistoryUrl);
             if (paymentHistory.success) {
                 renderPaymentHistory(paymentHistory.payments);

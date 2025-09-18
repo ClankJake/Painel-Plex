@@ -74,7 +74,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
 
         document.getElementById('initiatePixButton').addEventListener('click', () => {
-            initiatePixPayment({ username, screens, coupon_code: validatedCouponCode }, providers);
+            const payload = {
+                token: token,
+                username: username,
+                screens: screens,
+                coupon_code: validatedCouponCode
+            };
+            initiatePixPayment(payload, providers);
         });
 
         document.getElementById('applyCouponBtn').addEventListener('click', async () => {
@@ -84,7 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!code) return;
 
             try {
-                const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens });
+                const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens, username: username });
                 if (result.success) {
                     statusDiv.innerHTML = `<span class="text-green-500">${result.message}</span>`;
                     document.getElementById('price-display').innerHTML = `<s class="text-gray-400 text-lg">${result.original_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</s> ${result.discounted_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
@@ -115,7 +121,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function initiatePixPayment(payload, providers) {
         const activeProviders = Object.keys(providers).filter(p => providers[p]).map(p => p.toUpperCase());
 
-        // Se o preço for zero (devido a um cupão), gera o PIX diretamente sem mostrar o modal.
         const pixButtonText = document.getElementById('initiatePixButton').textContent;
         if (pixButtonText === i18n.activateFreeSubscription) {
             await generatePix(payload);
@@ -140,7 +145,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (providers.includes('MERCADOPAGO')) {
             buttonsHtml += `<button data-provider="MERCADOPAGO" class="btn bg-blue-600 hover:bg-blue-500 text-white w-full mt-2">${i18n.payWithMp}</button>`;
         }
-        // CORREÇÃO: Adiciona o botão para BPIX se estiver habilitado
         if (providers.includes('BPIX')) {
             buttonsHtml += `<button data-provider="BPIX" class="btn bg-purple-600 hover:bg-purple-500 text-white w-full mt-2">${i18n.payWithBpix || 'Pagar com BPIX'}</button>`;
         }
@@ -165,11 +169,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const originalText = button.textContent;
         button.disabled = true;
         button.textContent = i18n.wait;
+        let result = null;
 
         try {
-            const result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
-
-            // Se for uma renovação gratuita via cupão, o backend já processou tudo.
+            result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
+            
             if (result && result.success && result.free_renewal) {
                 showToast(result.message, 'success');
                 setTimeout(() => window.location.reload(), 3000);
@@ -188,9 +192,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             showToast(error.message, 'error');
         } finally {
-            // Não restaura o botão se a renovação gratuita foi bem-sucedida
-            const pixButtonText = document.getElementById('initiatePixButton').textContent;
-            if (pixButtonText !== i18n.activateFreeSubscription) {
+            if (!(result && result.success && result.free_renewal)) {
                 button.disabled = false;
                 button.textContent = originalText;
             }
@@ -237,8 +239,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 paymentSection.innerHTML = `<p class="text-yellow-500">${paymentOptions.message || i18n.noPlanPrice}</p>`;
             }
-
-            document.getElementById('user-thumb').src = profileData.profile.thumb || 'https://placehold.co/96x96/1F2937/E5E7EB?text=?';
+            
+            // --- CORREÇÃO INICIA AQUI ---
+            const thumbUrl = profileData.profile.thumb;
+            const thumbElement = document.getElementById('user-thumb');
+            if (thumbUrl) {
+                // Se o URL já for absoluto, usa-o diretamente.
+                // Se for relativo (começa com '/'), constrói o URL completo com a origem da página atual.
+                if (thumbUrl.startsWith('http')) {
+                    thumbElement.src = thumbUrl;
+                } else if (thumbUrl.startsWith('/')) {
+                    thumbElement.src = `${window.location.origin}${thumbUrl}`;
+                } else {
+                    // Fallback para um URL relativo que pode funcionar em alguns casos.
+                    thumbElement.src = thumbUrl;
+                }
+            } else {
+                thumbElement.src = 'https://placehold.co/96x96/1F2937/E5E7EB?text=?';
+            }
+            // --- CORREÇÃO TERMINA AQUI ---
+            
             document.getElementById('user-username').textContent = profileData.profile.username;
 
             const expirationElem = document.getElementById('user-expiration');
@@ -267,3 +287,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     main();
 });
+

@@ -5,7 +5,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const scriptTag = document.getElementById('statistics-script');
     const currentUser = JSON.parse(scriptTag.dataset.currentUser);
     
-    // Objeto para armazenar todos os URLs e textos traduzidos (i18n)
     const urls = {};
     const i18n = {};
     for (const key in scriptTag.dataset) {
@@ -64,14 +63,6 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     }
 
-    async function fetchAPI(url) {
-        const response = await fetch(url);
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || i18n.loadingFailed);
-        if (!data.success) throw new Error(data.message);
-        return data;
-    }
-
     // --- LÓGICA DE RENDERIZAÇÃO ---
     
     function formatTimeAgo(dateString) {
@@ -112,19 +103,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 let subtitle = item.year || '';
 
                 if (item.media_type === 'episode') {
-                    title = item.grandparent_title || item.title; // Use series name as main title
-                    // Check if season and episode numbers are valid (not 0)
+                    title = item.grandparent_title || item.title;
                     if (item.parent_media_index > 0 && item.media_index > 0) {
                         const seasonNum = String(item.parent_media_index).padStart(2, '0');
                         const episodeNum = String(item.media_index).padStart(2, '0');
                         subtitle = `S${seasonNum} · E${episodeNum}`;
                     } else {
-                        // Fallback to the episode's own title if numbers are missing
                         subtitle = item.title;
                     }
                 } else if (item.media_type === 'season') {
-                    title = item.parent_title || item.title; // Use series name as main title
-                    subtitle = item.title; // Subtitle is "Season X"
+                    title = item.parent_title || item.title;
+                    subtitle = item.title;
                 }
 
                 return `
@@ -173,12 +162,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalDuration = stats.reduce((sum, user) => sum + user.total_duration, 0);
         const totalPlays = stats.reduce((sum, user) => sum + user.plays, 0);
         const activeUsers = new Set(stats.map(user => user.username)).size;
+        const championUsername = stats.length > 0 ? stats[0].username : 'N/A';
 
         summaryContainer.innerHTML = `
             ${createStatCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>', i18n.totalTimeWatched, formatDuration(totalDuration), 'bg-blue-500 text-white')}
             ${createStatCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>', i18n.totalPlays, totalPlays.toLocaleString(), 'bg-green-500 text-white')}
             ${createStatCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>', i18n.activeUsers, activeUsers, 'bg-purple-500 text-white')}
-            ${createStatCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>', i18n.periodChampion, stats.length > 0 ? stats[0].username : 'N/A', 'bg-yellow-500 text-white')}
+            ${createStatCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>', i18n.periodChampion, championUsername, 'bg-yellow-500 text-white')}
         `;
     }
 
@@ -194,13 +184,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const [first, second, third] = stats;
     
         const podiumData = [
-            { user: second, rank: 2, order: 'order-1', height: '120px', gradient: 'linear-gradient(to top, #C0C0C0, #A9A9A9)', medal: '🥈' },
-            { user: first,  rank: 1, order: 'order-2', height: '150px', gradient: 'linear-gradient(to top, #FFD700, #FFA500)', medal: '🥇' },
-            { user: third,  rank: 3, order: 'order-3', height: '90px',  gradient: 'linear-gradient(to top, #CD7F32, #A0522D)', medal: '🥉' },
+            { user: second, rank: 2, order: 'order-1', height: '120px', gradient: 'linear-gradient(to top, #C0C0C0, #A9A9A9)', medal: '?' },
+            { user: first,  rank: 1, order: 'order-2', height: '150px', gradient: 'linear-gradient(to top, #FFD700, #FFA500)', medal: '?' },
+            { user: third,  rank: 3, order: 'order-3', height: '90px',  gradient: 'linear-gradient(to top, #CD7F32, #A0522D)', medal: '?' },
         ].filter(item => item.user && item.user.username);
     
         podiumContainer.innerHTML = podiumData.map(item => `
-            <div class="flex flex-col items-center transition-transform duration-300 ease-in-out hover:scale-105 w-1/3 max-w-[220px] cursor-pointer ${item.order}" data-username="${item.user.original_username}">
+            <div class="flex flex-col items-center transition-transform duration-300 ease-in-out hover:scale-105 w-1/3 max-w-[220px] cursor-pointer ${item.order}" data-user-id="${item.user.user_id}" data-username="${item.user.original_username}">
                 <img src="${item.user.thumb || 'https://placehold.co/80x80/1F2937/E5E7EB?text=?'}" class="w-20 h-20 rounded-full border-4 border-white dark:border-gray-800 -mb-10 z-10" alt="Avatar">
                 <div class="w-full rounded-t-lg flex flex-col justify-end items-center p-2 pb-4 text-white shadow-lg" style="height: ${item.height}; background: ${item.gradient};">
                     <div class="pt-10 text-center">
@@ -231,6 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const rank = startIndex + index + 1;
             const row = document.createElement('tr');
             row.className = 'hover:bg-gray-100 dark:hover:bg-gray-700/50 cursor-pointer';
+            row.dataset.userId = user.user_id;
             row.dataset.username = user.original_username;
             row.innerHTML = `
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 dark:text-gray-400">${rank}</td>
@@ -301,12 +292,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    async function renderUserAnalysis(username, days, containerElement) {
+    async function renderUserAnalysis(userId, username, days, containerElement) {
         try {
-            const url = urls.userStats.replace('__USERNAME__', username);
+            const url = urls.userStats.replace('0', userId);
             const data = await fetchAPI(`${url}?days=${days}`);
-            const details = data.details;
-            const isOwnerViewing = username === currentUser.username;
+            
+            // CORREÇÃO: Adiciona uma verificação para garantir que 'details' existe
+            const details = data.details || {};
+            
+            const isOwnerViewing = userId === currentUser.id;
             const isAdminViewing = currentUser.role === 'admin';
             
             let recentHtml = `<p class="text-gray-500 dark:text-gray-400 text-center w-full">${i18n.noRecentActivity}</p>`;
@@ -348,7 +342,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let chartsAndRecentHtml = '';
             if (isOwnerViewing || isAdminViewing) {
-                const activityData = JSON.stringify(details.weekly_activity.map(s => (s / 3600).toFixed(2)));
+                const weeklyActivity = details.weekly_activity || [];
+                const activityData = JSON.stringify(weeklyActivity.map(s => (s / 3600).toFixed(2)));
                 chartsAndRecentHtml = `
                     <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                         <div class="lg:col-span-3">
@@ -376,16 +371,16 @@ document.addEventListener('DOMContentLoaded', () => {
             containerElement.innerHTML = `
                 <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-6">
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        ${createStatCard('🎬', i18n.movies, (details.movie_count || 0).toLocaleString(), 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200')}
-                        ${createStatCard('📺', i18n.episodes, (details.episode_count || 0).toLocaleString(), 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200')}
-                        ${createStatCard('⏱️', i18n.totalTime, formatDuration(totalDuration), 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200')}
-                        ${createStatCard('🎭', i18n.favoriteGenre, details.favorite_genre || i18n.notAvailable, 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200')}
+                        ${createStatCard('?', i18n.movies, (details.movie_count || 0).toLocaleString(), 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200')}
+                        ${createStatCard('?', i18n.episodes, (details.episode_count || 0).toLocaleString(), 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200')}
+                        ${createStatCard('??', i18n.totalTime, formatDuration(totalDuration), 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200')}
+                        ${createStatCard('?', i18n.favoriteGenre, details.favorite_genre || i18n.notAvailable, 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200')}
                     </div>
                     ${chartsAndRecentHtml}
                     ${achievementsHtmlForContainer}
                 </div>
             `;
-            // Renderiza os gráficos dentro do container que foi passado.
+
             renderUserContentTypeChart(containerElement);
             if(isOwnerViewing || isAdminViewing) {
                 renderUserActivityChart(containerElement);
@@ -399,7 +394,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderUserActivityChart(containerElement) {
         const canvas = containerElement.querySelector('#activityBarChart');
         if (!canvas) return;
-        // Destroi qualquer instância de gráfico anterior neste canvas específico.
         if (canvas.chart) {
             canvas.chart.destroy();
         }
@@ -424,7 +418,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 scales: { y: { beginAtZero: true, title: { display: true, text: i18n.hoursWatched, color: colors.textColor }, ticks: { color: colors.textColor }, grid: { color: colors.gridColor } }, x: { ticks: { color: colors.textColor }, grid: { display: false } } } 
             }
         });
-        // Armazena a nova instância no próprio elemento canvas para referência futura.
         canvas.chart = chartInstance;
     }
 
@@ -455,7 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- LÓGICA DE BUSCA E CONTROLO ---
 
-    async function showUserDetailsModal(username, days) {
+    async function showUserDetailsModal(userId, username, days) {
         const modal = document.getElementById('userDetailsModal');
         if (!modal) return;
         modal.innerHTML = `<div class="modal-content !w-full !max-w-4xl transform transition-all"><div id="modalBody" class="modal-body dark:bg-gray-800 bg-white p-4 sm:p-6 rounded-lg"><div class="text-center py-20"><svg class="animate-spin h-8 w-8 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><p class="mt-2">${i18n.analyzingHistory}</p></div></div></div>`;
@@ -466,7 +459,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const titleHtml = `<h3 class="text-2xl font-bold text-yellow-400 mb-4">${i18n.analysisOf} ${username}</h3>`;
         
         const analysisContainer = document.createElement('div');
-        await renderUserAnalysis(username, days, analysisContainer);
+        await renderUserAnalysis(userId, username, days, analysisContainer);
         
         modalBody.innerHTML = `<div class="relative">${closeButtonHtml}${titleHtml}</div>`;
         modalBody.appendChild(analysisContainer);
@@ -477,14 +470,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function closeModal() {
         const modal = document.getElementById('userDetailsModal');
         if (modal) {
-            // Apenas destrói os gráficos que estão DENTRO do modal.
             modal.querySelectorAll('canvas').forEach(canvas => {
                 if (canvas.chart) {
                     canvas.chart.destroy();
                 }
             });
             modal.classList.add('hidden');
-            modal.innerHTML = ''; // Limpa o conteúdo para a próxima abertura.
+            modal.innerHTML = '';
         }
     }
 
@@ -494,17 +486,8 @@ document.addEventListener('DOMContentLoaded', () => {
         errorContainer.classList.add('hidden');
         
         try {
-            const dataPromise = fetchAPI(`${urls.stats}?days=${days}`);
-
-            if (currentUser.role !== 'admin') {
-                const newlyAddedPromise = fetchAPI(`${urls.recentlyAdded}?days=${days}`);
-                const [data, newlyAddedData] = await Promise.all([dataPromise, newlyAddedPromise]);
-                allUsersData = data.stats;
-                if (newlyAddedData.success) renderNewlyAdded(newlyAddedData.media);
-            } else {
-                const data = await dataPromise;
-                allUsersData = data.stats;
-            }
+            const data = await fetchAPI(`${urls.stats}?days=${days}`);
+            allUsersData = data.stats;
 
             if (currentUser.role === 'admin') {
                 const otherUsersSection = document.getElementById('otherUsersSection');
@@ -518,18 +501,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 renderMainChart(allUsersData);
             } else {
+                const newlyAddedData = await fetchAPI(`${urls.recentlyAdded}?days=${days}`);
+                if (newlyAddedData.success) {
+                    renderNewlyAdded(newlyAddedData.media);
+                }
+
                 const personalAnalysisContainer = document.getElementById('personal-analysis');
-                await renderUserAnalysis(currentUser.username, days, personalAnalysisContainer);
+                await renderUserAnalysis(currentUser.id, currentUser.username, days, personalAnalysisContainer);
 
                 const leaderboardList = document.getElementById('leaderboard-list');
                 if (allUsersData.length === 0) {
                     leaderboardList.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.noOneWatched}</p>`;
                 } else {
                     leaderboardList.innerHTML = allUsersData.map((user, index) => {
-                        const isCurrentUser = user.original_username === currentUser.username;
+                        const isCurrentUser = user.user_id === currentUser.id;
                         const isPrivate = user.is_private && !isCurrentUser && !currentUser.is_admin;
                         
-                        const clickableAttrs = isPrivate ? '' : `data-username="${user.original_username}"`;
+                        const clickableAttrs = isPrivate ? '' : `data-user-id="${user.user_id}" data-username="${user.original_username}"`;
                         const cursorClass = isPrivate ? 'cursor-default' : 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50';
                         const highlightClass = isCurrentUser ? 'bg-yellow-100 dark:bg-yellow-500/20 ring-2 ring-yellow-500' : cursorClass;
                         
@@ -559,9 +547,9 @@ document.addEventListener('DOMContentLoaded', () => {
     daysFilter.addEventListener('change', () => mainFetch(daysFilter.value));
 
     document.body.addEventListener('click', (e) => { 
-        const clickable = e.target.closest('[data-username]'); 
-        if (clickable) {
-            showUserDetailsModal(clickable.dataset.username, daysFilter.value); 
+        const clickable = e.target.closest('[data-user-id]'); 
+        if (clickable && clickable.dataset.username) {
+            showUserDetailsModal(parseInt(clickable.dataset.userId), clickable.dataset.username, daysFilter.value); 
         } 
     });
     
@@ -581,7 +569,6 @@ document.addEventListener('DOMContentLoaded', () => {
             mainBarChart.options.scales.y.title.color = colors.textColor;
             mainBarChart.update();
         }
-        // Recarrega os gráficos
         const personalAnalysisContainer = document.getElementById('personal-analysis');
         if(personalAnalysisContainer && personalAnalysisContainer.innerHTML !== ''){
             renderUserActivityChart(personalAnalysisContainer);
