@@ -3,7 +3,8 @@
 import logging
 import time
 import os
-from datetime import datetime
+import json
+from datetime import datetime, timezone
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 
@@ -38,11 +39,18 @@ def _execute_with_retry(action, description):
 
 @single_instance_job('task_processor_job')
 def task_processor_job():
+    """
+    Processador de tarefas em segundo plano.
+    CORREÇÃO: Esta tarefa agora lida apenas com notificações em massa.
+    O processamento de pagamentos foi movido para uma thread dedicada.
+    """
     if not _app: return
     with _app.test_request_context():
         from . import extensions
+        
         task_obj = extensions.data_manager.get_next_pending_task('bulk_notification')
         if task_obj:
+            extensions.data_manager.update_task(task_obj.id, {'status': 'running', 'started_at': datetime.now(timezone.utc)})
             extensions.notifier_manager.process_bulk_notification_task(task_obj)
 
 @single_instance_job('stream_check_job')

@@ -10,7 +10,6 @@ from flask_babel import get_locale, gettext as _
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from urllib.parse import urlparse
 from tzlocal import get_localzone_name
-# MELHORIA DE ROBUSTEZ: Importa o event listener do SQLAlchemy
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 
@@ -23,9 +22,6 @@ from . import scheduler
 
 logger = logging.getLogger(__name__)
 
-# MELHORIA DE ROBUSTEZ: Define uma função para ser executada em cada nova conexão com a DB
-# Esta função ativa o modo Write-Ahead Logging (WAL) que permite leituras e escritas simultâneas,
-# reduzindo drasticamente os erros de "database is locked".
 def set_sqlite_pragma(dbapi_connection, connection_record):
     """Ativa o modo WAL para o SQLite para melhorar a concorrência."""
     cursor = dbapi_connection.cursor()
@@ -117,10 +113,11 @@ def create_app():
 
     config_dir_path = os.path.join(app.root_path, '..', 'config')
     db_path = os.path.join(config_dir_path, 'app_data.db')
+    # CORREÇÃO: Define um ficheiro de base de dados separado para o agendador.
+    scheduler_db_path = os.path.join(config_dir_path, 'scheduler_jobs.db')
     log_file_path = os.path.join(config_dir_path, 'app.log')
-    cache_dir_path = os.path.join(config_dir_path, 'cache') # Caminho para a pasta de cache
+    cache_dir_path = os.path.join(config_dir_path, 'cache')
 
-    # MELHORIA DE ROBUSTEZ: Aumenta o timeout padrão diretamente no URI de conexão.
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=30'
     app.config['LOG_FILE'] = log_file_path
     
@@ -139,10 +136,9 @@ def create_app():
     
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    # Configuração do Cache
     app.config['CACHE_TYPE'] = 'FileSystemCache'
     app.config['CACHE_DIR'] = cache_dir_path
-    app.config['CACHE_DEFAULT_TIMEOUT'] = 300 # 5 minutos por padrão
+    app.config['CACHE_DEFAULT_TIMEOUT'] = 300
 
     base_url = app.config.get('APP_BASE_URL')
     if base_url:
@@ -155,17 +151,14 @@ def create_app():
 
     logging.getLogger('apscheduler').setLevel(logging.WARNING)
 
-    # Inicialização das extensões
     extensions.db.init_app(app)
-    # MELHORIA DE ROBUSTEZ: Adiciona o event listener ao engine do SQLAlchemy
-    # para ativar o modo WAL em todas as conexões.
     with app.app_context():
         event.listen(extensions.db.engine, 'connect', set_sqlite_pragma)
 
     extensions.migrate.init_app(app, extensions.db)
     extensions.login_manager.init_app(app)
     extensions.babel.init_app(app, locale_selector=get_user_locale)
-    extensions.cache.init_app(app) # Inicializa o cache
+    extensions.cache.init_app(app)
 
     if 'cache' not in app.extensions:
         app.extensions['cache'] = app.extensions.get('caching')
@@ -176,9 +169,11 @@ def create_app():
     sockets.app_instance = app
 
     if not extensions.scheduler.running:
+        # CORREÇÃO: Aponta o jobstore do agendador para o seu próprio ficheiro de base de dados.
         jobstores = {
-            'default': SQLAlchemyJobStore(url=app.config['SQLALCHEMY_DATABASE_URI'])
+            'default': SQLAlchemyJobStore(url=f'sqlite:///{scheduler_db_path}?timeout=30')
         }
+        logger.info(f"O jobstore do agendador está a usar a base de dados separada: {scheduler_db_path}")
         try:
             local_tz_name = get_localzone_name()
         except Exception:
