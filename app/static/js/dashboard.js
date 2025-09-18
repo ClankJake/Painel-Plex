@@ -9,20 +9,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const realtimeStatus = document.getElementById('realtime-status');
     const sendBulkNotificationBtn = document.getElementById('send-bulk-notification-btn');
     const contactsOnlyCheckbox = document.getElementById('contacts_only_checkbox');
+    const clearAllLogsBtn = document.getElementById('clear-all-logs-btn');
 
     const scriptTag = document.getElementById('dashboard-script');
-    const urls = {
-        summary: scriptTag.dataset.summaryUrl,
-        health: scriptTag.dataset.healthUrl,
-        bulkNotify: scriptTag.dataset.bulkNotifyUrl,
-        activeStreams: scriptTag.dataset.activeStreamsUrl,
-        auditLogs: scriptTag.dataset.auditLogsUrl
-    };
+    const urls = {};
     const i18n = {};
-    for (const key in scriptTag.dataset) {
-        if (key.startsWith('i18n')) {
-            const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
-            i18n[i18nKey] = scriptTag.dataset[key];
+
+    // CORREÇÃO: Popula os objetos urls e i18n a partir dos data-attributes do script tag.
+    if (scriptTag) {
+        for (const key in scriptTag.dataset) {
+            if (key.startsWith('i18n')) {
+                const i18nKey = key.charAt(4).toLowerCase() + key.slice(5).replace(/-(\w)/g, (_, letter) => letter.toUpperCase());
+                i18n[i18nKey] = scriptTag.dataset[key];
+            } else {
+                // Converte kebab-case para camelCase para as chaves do objeto urls.
+                // Ex: data-summary-url se torna summaryUrl
+                const urlKey = key.replace(/-(\w)/g, (_, letter) => letter.toUpperCase());
+                urls[urlKey] = scriptTag.dataset[key];
+            }
         }
     }
 
@@ -406,7 +410,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const reasonText = getReasonText(log.reason);
 
         return `
-        <div class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 animate-fade-in">
+        <div class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 animate-fade-in group" data-log-id="${log.id}">
             <div class="flex items-center gap-3 min-w-0">
                 <span class="p-2 ${iconBg} rounded-full flex-shrink-0">${icon}</span>
                 <div class="min-w-0">
@@ -418,6 +422,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     </p>
                 </div>
             </div>
+            <button data-action="delete" title="${'Apagar Log'}" class="delete-log-btn p-1 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+            </button>
         </div>`;
     }
 
@@ -426,9 +433,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!container) return;
         if (!logs || logs.length === 0) {
             container.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${i18n.noTerminatedSessions}</p>`;
+            if (clearAllLogsBtn) clearAllLogsBtn.disabled = true;
             return;
         }
         container.innerHTML = logs.map(log => createTerminationLogRow(log)).join('');
+        if (clearAllLogsBtn) clearAllLogsBtn.disabled = false;
         
         if (timeAgoInterval) clearInterval(timeAgoInterval);
         timeAgoInterval = setInterval(updateLogTimestamps, 30000);
@@ -449,8 +458,41 @@ document.addEventListener('DOMContentLoaded', () => {
         while (container.children.length > 20) {
             container.lastElementChild.remove();
         }
+        if (clearAllLogsBtn) clearAllLogsBtn.disabled = false;
     }
 
+    async function handleDeleteLog(logId) {
+        try {
+            const url = urls.deleteLogBaseUrl.replace('0', logId);
+            const result = await fetchAPI(url, 'DELETE');
+            showToast(result.message, result.success ? 'success' : 'error');
+            if (result.success) {
+                const logElement = document.querySelector(`[data-log-id="${logId}"]`);
+                logElement.style.opacity = '0';
+                setTimeout(() => {
+                    logElement.remove();
+                    const container = document.getElementById('auditLogContainer');
+                    if (container.children.length === 0) {
+                        renderTerminationLogs([]);
+                    }
+                }, 300);
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function handleClearAllLogs() {
+        try {
+            const result = await fetchAPI(urls.clearAllLogsUrl, 'POST');
+            showToast(result.message, result.success ? 'success' : 'error');
+            if (result.success) {
+                renderTerminationLogs([]);
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
 
     async function loadDashboardData() {
         loadingIndicator.style.display = 'block';
@@ -458,10 +500,10 @@ document.addEventListener('DOMContentLoaded', () => {
         errorContainer.classList.add('hidden');
 
         try {
-            const summaryPromise = fetchAPI(`${urls.summary}?force=true`);
-            const healthPromise = fetchAPI(urls.health);
-            const streamsPromise = fetchAPI(urls.activeStreams);
-            const auditPromise = fetchAPI(urls.auditLogs);
+            const summaryPromise = fetchAPI(`${urls.summaryUrl}?force=true`);
+            const healthPromise = fetchAPI(urls.healthUrl);
+            const streamsPromise = fetchAPI(urls.activeStreamsUrl);
+            const auditPromise = fetchAPI(urls.auditLogsUrl);
 
             const [summaryData, healthData, streamsData, auditData] = await Promise.all([summaryPromise, healthPromise, streamsPromise, auditPromise]);
 
@@ -647,7 +689,7 @@ document.addEventListener('DOMContentLoaded', () => {
                        message, 
                        contacts_only: contactsOnlyCheckbox.checked 
                    };
-                   const result = await fetchAPI(urls.bulkNotify, 'POST', payload);
+                   const result = await fetchAPI(urls.bulkNotifyUrl, 'POST', payload);
                    showToast(result.message, result.success ? 'success' : 'error');
                } catch (error) {
                    showToast(error.message, 'error');
@@ -656,6 +698,40 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('modalCancel').onclick = () => document.getElementById('confirmationModal').classList.add('hidden');
         });
     }
+
+    if (clearAllLogsBtn) {
+        clearAllLogsBtn.addEventListener('click', () => {
+            createModal('confirmationModal', i18n.confirmClearLogsTitle,
+                `<p>${i18n.confirmClearLogsMessage}</p>`,
+                `<button id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmClearLogsButton}</button>
+                 <button id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
+            );
+
+            document.getElementById('modalConfirm').onclick = () => {
+                document.getElementById('confirmationModal').classList.add('hidden');
+                handleClearAllLogs();
+            };
+            document.getElementById('modalCancel').onclick = () => document.getElementById('confirmationModal').classList.add('hidden');
+        });
+    }
+
+    document.getElementById('auditLogContainer')?.addEventListener('click', (e) => {
+        const deleteButton = e.target.closest('.delete-log-btn');
+        if (deleteButton) {
+            const logId = deleteButton.parentElement.dataset.logId;
+            createModal('confirmationModal', i18n.confirmDeleteLogTitle,
+                `<p>${i18n.confirmDeleteLogMessage}</p>`,
+                `<button id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmDeleteLogButton}</button>
+                 <button id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
+            );
+
+            document.getElementById('modalConfirm').onclick = () => {
+                document.getElementById('confirmationModal').classList.add('hidden');
+                handleDeleteLog(logId);
+            };
+            document.getElementById('modalCancel').onclick = () => document.getElementById('confirmationModal').classList.add('hidden');
+        }
+    });
 
     // --- INICIALIZAÇÃO ---
     loadDashboardData();

@@ -402,7 +402,8 @@ export async function showUserProfileModal(user) {
 
     modal.querySelector('#confirm-renew').onclick = (e) => {
         const months = parseInt(modal.querySelector('#renew-months').value);
-        handleRenewal(e.target, { months, base: 'add_days' });
+        // CORREÇÃO: Alterado de 'add_days' para 'today' para corresponder ao schema do backend.
+        handleRenewal(e.target, { months, base: 'today' });
     };
     modal.querySelector('#renew-same-day').onclick = (e) => {
         handleRenewal(e.target, { months: 1, base: 'expiry_date' });
