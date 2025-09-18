@@ -56,10 +56,6 @@ class EfiManager:
             return {"status": "OFFLINE", "message": _("Ativado, mas falha na configuração (verifique as credenciais).")}
 
     def configure_webhook(self):
-        """
-        Configura o URL do webhook na API da Efí para a chave PIX principal.
-        Esta função deve ser chamada ao salvar as configurações.
-        """
         if not self.efi:
             logger.warning("Não é possível configurar o webhook da Efí: o serviço não está inicializado.")
             return
@@ -94,7 +90,6 @@ class EfiManager:
             else:
                 headers['x-skip-mtls-checking'] = 'true'
                 if hmac_secret:
-                    # CORREÇÃO: Constrói a URL com a ordem correta dos parâmetros
                     webhook_url = f"{base_webhook_url}?hmac={hmac_secret}&ignorar="
                 else:
                     logger.error("HMAC secret não está configurado, mas o mTLS está desativado. Esta é uma configuração insegura.")
@@ -110,7 +105,7 @@ class EfiManager:
             logger.error(f"Falha ao configurar o webhook da Efí para a chave '{pix_key}': {e}", exc_info=True)
 
 
-    def create_pix_charge(self, user_info, price, screens):
+    def create_pix_charge(self, user_info, price, screens, coupon_code=None):
         """Cria uma cobrança PIX imediata para um utilizador."""
         if not self.efi:
             return {"success": False, "message": "O serviço de pagamento não está configurado corretamente."}
@@ -157,7 +152,16 @@ class EfiManager:
                 logger.error(f"Falha ao criar cobrança PIX: {full_error_message}. Resposta completa: {response}")
                 return {"success": False, "message": full_error_message}
                 
-            self.data_manager.create_pix_payment(txid, user_info['username'], price, 'EFI', screens, external_reference=None)
+            self.data_manager.create_pix_payment(
+                txid=txid,
+                plex_user_id=user_info['plex_user_id'],
+                username=user_info['username'],
+                value=price,
+                provider='EFI',
+                screens=screens,
+                external_reference=None,
+                coupon_code=coupon_code
+            )
             
             params = {'id': response['loc']['id']}
             qr_code_response = self.efi.pix_generate_qrcode(params=params)

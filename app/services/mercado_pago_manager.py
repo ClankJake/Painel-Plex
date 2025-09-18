@@ -39,7 +39,7 @@ class MercadoPagoManager:
         else:
             return {"status": "OFFLINE", "message": _("Ativado, mas falha na configuração (verifique o Access Token).")}
 
-    def create_pix_payment(self, user_info, price, screens):
+    def create_pix_payment(self, user_info, price, screens, coupon_code=None):
         """
         Cria uma cobrança PIX no Mercado Pago com detalhes adicionais para maior
         segurança e taxa de aprovação, utilizando o SDK oficial.
@@ -100,7 +100,16 @@ class MercadoPagoManager:
             
             if payment_response.get("status") == 201 and payment:
                 txid = str(payment['id'])
-                self.data_manager.create_pix_payment(txid, user_info['username'], price, 'MERCADOPAGO', screens, external_reference)
+                self.data_manager.create_pix_payment(
+                    txid=txid,
+                    plex_user_id=user_info['plex_user_id'],
+                    username=user_info['username'],
+                    value=price,
+                    provider='MERCADOPAGO',
+                    screens=screens,
+                    external_reference=external_reference,
+                    coupon_code=coupon_code
+                )
                 
                 return {
                     "success": True,

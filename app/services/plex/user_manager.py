@@ -43,7 +43,7 @@ class PlexUserManager:
 
     def get_all_plex_users(self, force_refresh=False):
         """
-        Obtém todos os utilizadores com acesso ao servidor Plex configurado, utilizando uma cache.
+        Obtém todos os utilizadores com acesso ao servidor Plex configurado, incluindo a conta do administrador.
         """
         if not self.conn.account or not self.conn.plex:
             return None
@@ -82,6 +82,33 @@ class PlexUserManager:
                             'id': user.id, 
                             'thumb': user_thumb_url, 
                             'servers': [s.name for s in user.servers]
+                        })
+
+                # CORREÇÃO: Adiciona a conta do administrador à lista de utilizadores.
+                if self.conn.account:
+                    admin_id = self.conn.account.id
+                    is_admin_in_list = any(u['id'] == admin_id for u in users_with_access)
+                    
+                    if not is_admin_in_list:
+                        admin_thumb_url = None
+                        if self.conn.account.thumb:
+                            try:
+                                parsed_thumb = urlparse(self.conn.account.thumb)
+                                path_with_query = parsed_thumb.path
+                                if parsed_thumb.query: path_with_query += "?" + parsed_thumb.query
+                                
+                                payload_str = f"plex_account:{path_with_query}"
+                                b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                                admin_thumb_url = url_for('image.proxy_image', source=b64_payload, _external=True)
+                            except Exception as e:
+                                logger.error(f"Falha ao processar a URL do avatar para o administrador: {e}")
+
+                        users_with_access.append({
+                            'username': self.conn.account.username, 
+                            'email': self.conn.account.email, 
+                            'id': admin_id, 
+                            'thumb': admin_thumb_url, 
+                            'servers': [self.conn.plex.friendlyName]
                         })
             
             self._user_cache = users_with_access
@@ -260,4 +287,3 @@ class PlexUserManager:
             return {"success": True, "message": message}
         else:
             return {"success": False, "message": result.get("message", _("Erro desconhecido."))}
-

@@ -53,12 +53,19 @@ def get_status():
     if all_users is None:
         return jsonify({'error': _("Não foi possível obter os utilizadores do Plex. Verifique a ligação e as configurações.")}), 500
 
-    plex_user_ids = [u['id'] for u in all_users]
+    # --- CORREÇÃO INICIA AQUI ---
+    # Carrega a configuração para obter o nome do administrador e o filtra da lista.
+    config = load_or_create_config()
+    admin_username = config.get('ADMIN_USER')
+    users_to_display = [user for user in all_users if user['username'] != admin_username]
+    # --- CORREÇÃO TERMINA AQUI ---
+
+    plex_user_ids = [u['id'] for u in users_to_display]
     all_user_profiles = data_manager.get_user_profiles_by_id(plex_user_ids)
     blocked_users_data = data_manager.get_blocked_users_dict()
     
     users_with_access = []
-    for u in all_users:
+    for u in users_to_display:
         profile = all_user_profiles.get(u['id'], {})
         
         is_on_trial = False
@@ -84,12 +91,12 @@ def get_status():
 @login_required
 def get_account_details():
     config = load_or_create_config()
-    plex_user_id = current_user.id
+    plex_user_id = int(current_user.id)
     profile = data_manager.get_user_profile(plex_user_id)
     
     is_blocked_info = data_manager.get_blocked_user(plex_user_id)
     is_blocked = is_blocked_info is not None
-    block_reason = is_blocked_info.get('reason') if is_blocked else None
+    block_reason = is_blocked_info.get('block_reason') if is_blocked_info else None
     
     expiration_info = {"date": None, "days_left": None, "status": "active"}
     if exp_str := profile.get('expiration_date'):
@@ -102,7 +109,7 @@ def get_account_details():
             else:
                 days_left = (exp_dt.date() - datetime.now(local_tz).date()).days
                 expiration_info["days_left"] = days_left
-                if days_left < int(config.get("NOTIFY_EXPIRATION_DAYS", 7)):
+                if days_left < int(config.get("DAYS_TO_NOTIFY_EXPIRATION", 7)):
                     expiration_info["status"] = "expiring"
         except (ValueError, TypeError): pass
 
@@ -112,7 +119,7 @@ def get_account_details():
         except (ValueError, TypeError): pass
     
     libraries_data = plex_manager.get_user_libraries(plex_user_id)
-    watch_data = tautulli_manager.get_user_watch_details(plex_user_id, current_user=current_user)
+    watch_data = tautulli_manager.get_user_watch_details(plex_user_id=plex_user_id, current_user=current_user)
     
     notification_settings = {
         "telegram_enabled": config.get("TELEGRAM_ENABLED", False),
@@ -136,7 +143,7 @@ def get_account_details():
 @validate_json(UpdateAccountProfileSchema)
 def update_account_profile(validated_data):
     data = validated_data.dict(exclude_unset=True)
-    plex_user_id = current_user.id
+    plex_user_id = int(current_user.id)
     profile = data_manager.get_user_profile(plex_user_id)
     profile.update(data)
     data_manager.set_user_profile(plex_user_id, profile)
@@ -148,7 +155,7 @@ def update_account_profile(validated_data):
 def update_privacy_settings():
     hide_setting = request.json.get('hide')
     if not isinstance(hide_setting, bool): return jsonify({"success": False, "message": _("Valor inválido.")}), 400
-    plex_user_id = current_user.id
+    plex_user_id = int(current_user.id)
     profile = data_manager.get_user_profile(plex_user_id)
     profile['hide_from_leaderboard'] = hide_setting
     data_manager.set_user_profile(plex_user_id, profile)
@@ -381,12 +388,12 @@ def get_user_list():
 @users_api_bp.route('/payments/<int:plex_user_id>')
 @login_required
 def get_user_payments_history(plex_user_id):
-    if not current_user.is_admin and current_user.id != plex_user_id:
+    if not current_user.is_admin and int(current_user.id) != plex_user_id:
         return jsonify({"success": False, "message": _("Acesso não autorizado.")}), 403
     return jsonify({"success": True, "payments": data_manager.get_payments_by_user(plex_user_id)})
 
 @users_api_bp.route('/account/devices')
 @login_required
 def get_account_devices():
-    return jsonify(tautulli_manager.get_user_devices(current_user.id))
+    return jsonify(tautulli_manager.get_user_devices(int(current_user.id)))
 

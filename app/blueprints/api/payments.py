@@ -19,8 +19,6 @@ from ...models import UserProfile
 logger = logging.getLogger(__name__)
 payments_api_bp = Blueprint('payments_api', __name__)
 
-# Adiciona um lock de threading para a lógica de processamento de pagamento
-# como uma camada extra de proteção contra condições de corrida.
 payment_processing_lock = Lock()
 
 def efi_webhook_security(f):
@@ -79,7 +77,6 @@ def _process_successful_payment(txid):
                 logger.error(f"Erro crítico ao processar o pagamento para o TXID {txid}: {e}", exc_info=True)
                 data_manager.db.session.rollback()
 
-# O restante do ficheiro permanece igual...
 @payments_api_bp.route('/options')
 def get_payment_options():
     token = request.args.get('token')
@@ -97,7 +94,7 @@ def get_payment_options():
         return jsonify({"success": False, "message": _("Usuário não especificado ou token inválido.")}), 400
 
     config = load_or_create_config()
-    profile = data_manager.get_user_profile(username)
+    profile = data_manager.get_user_profile_by_username(username)
     current_screens = profile.get('screen_limit', 0)
     
     screen_prices = config.get("SCREEN_PRICES", {})
@@ -146,13 +143,17 @@ def validate_coupon_route():
     code = data.get('code')
     screens_str = data.get('screens')
     username = data.get('username')
+    
+    user_profile = data_manager.get_user_profile_by_username(username)
+    if not user_profile:
+        return jsonify({"success": False, "message": "Utilizador não encontrado."}), 404
+        
+    plex_user_id = user_profile.get('plex_user_id')
 
     if not code or screens_str is None:
         return jsonify({"success": False, "message": "Código do cupão e plano são necessários."}), 400
 
-    if not username:
-        logger.warning("A validação do cupão foi chamada sem um nome de utilizador. A verificação de uso único por utilizador será ignorada.")
-    elif data_manager.has_user_used_coupon(username, code):
+    if data_manager.has_user_used_coupon(plex_user_id, code):
         return jsonify({"success": False, "message": "Você já usou esse cupom."}), 403
 
     coupon = data_manager.get_coupon_by_code(code)
@@ -178,7 +179,7 @@ def validate_coupon_route():
         elif coupon['discount_type'] == 'fixed':
             discounted_price = original_price - coupon['value']
 
-        discounted_price = max(0, discounted_price) # O preço não pode ser negativo
+        discounted_price = max(0, discounted_price)
 
         return jsonify({
             "success": True,
@@ -197,18 +198,25 @@ def create_charge_route():
     provider = data.get('provider')
     screens_str = data.get('screens')
     coupon_code = data.get('coupon_code')
-    
-    plex_user_id = data.get('plex_user_id')
-    username = data.get('username')
-    if not (plex_user_id and username):
-        if current_user.is_authenticated:
-            plex_user_id = current_user.id
-            username = current_user.username
-        else:
-            return jsonify({"success": False, "message": _("Usuário não especificado para a cobrança.")}), 400
+    token = data.get('token')
 
-    if not provider and not coupon_code:
-        return jsonify({"success": False, "message": _("Dados insuficientes para gerar cobrança.")}), 400
+    plex_user_id = None
+    username = None
+
+    # --- CORREÇÃO INICIA AQUI ---
+    # Identifica o utilizador a partir da sessão (se logado) ou do token (página pública)
+    if current_user.is_authenticated:
+        plex_user_id = int(current_user.id)
+        username = current_user.username
+    elif token:
+        profile = UserProfile.query.filter_by(payment_token=token).first()
+        if profile:
+            plex_user_id = profile.plex_user_id
+            username = profile.username
+    
+    if not plex_user_id or not username:
+        return jsonify({"success": False, "message": _("Usuário não especificado para a cobrança.")}), 400
+    # --- CORREÇÃO TERMINA AQUI ---
 
     config = load_or_create_config()
     profile = data_manager.get_user_profile(plex_user_id)
@@ -245,11 +253,11 @@ def create_charge_route():
     
     result = {"success": False, "message": _("O provedor %(provider)s não está habilitado.", provider=provider)}
     if provider == 'EFI' and config.get('EFI_ENABLED'):
-        result = efi_manager.create_pix_charge(user_info, price, screens)
+        result = efi_manager.create_pix_charge(user_info, price, screens, coupon_code)
     elif provider == 'MERCADOPAGO' and config.get('MERCADOPAGO_ENABLED'):
-        result = mercado_pago_manager.create_pix_payment(user_info, price, screens)
+        result = mercado_pago_manager.create_pix_payment(user_info, price, screens, coupon_code)
     elif provider == 'BPIX' and config.get('BPIX_ENABLED'):
-        result = bpix_manager.create_pix_charge(user_info, price, screens)
+        result = bpix_manager.create_pix_charge(user_info, price, screens, coupon_code)
         
     return jsonify(result)
 
@@ -491,3 +499,4 @@ def export_financial_csv():
     except Exception as e:
         logger.error(f"Erro ao gerar o relatório CSV: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Ocorreu um erro interno ao gerar o relatório."}), 500
+

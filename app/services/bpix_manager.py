@@ -69,10 +69,10 @@ class BpixManager:
             logger.error(f"Erro de comunicação ao testar a conexão com a BPIX: {e}", exc_info=True)
             return {'success': False, 'message': _("Falha na conexão: Verifique a URL e a sua conexão de rede.")}
 
-    def create_pix_charge(self, user_info, price, screens):
+    def create_pix_charge(self, user_info, price, screens, coupon_code=None):
         """Cria uma cobrança PIX na BPIX."""
         if not self.auth_token:
-            self.reload_credentials() # Garante que as credenciais estão carregadas
+            self.reload_credentials()
             if not self.auth_token:
                 return {"success": False, "message": "O serviço de pagamento BPIX não está configurado corretamente."}
         
@@ -109,11 +109,13 @@ class BpixManager:
                 logger.info(f"Cobrança BPIX criada com sucesso. TXID: {txid}, Lookup ID: {lookup_id}")
                 self.data_manager.create_pix_payment(
                     txid=txid,
+                    plex_user_id=user_info['plex_user_id'],
                     username=user_info['username'],
                     value=price,
                     provider='BPIX',
                     screens=screens,
-                    external_reference=str(lookup_id)
+                    external_reference=str(lookup_id),
+                    coupon_code=coupon_code
                 )
                 
                 qr_image_base64 = data.get('qr_image')
@@ -147,7 +149,6 @@ class BpixManager:
         if not self.auth_token:
             return {"success": False, "message": "O serviço de pagamento BPIX não está configurado."}
 
-        # Apenas verifica se o pagamento existe localmente.
         payment = self.data_manager.get_pix_payment(txid)
         if not payment:
             logger.warning(f"Pagamento BPIX com TXID {txid} não encontrado na base de dados local durante a consulta de estado.")

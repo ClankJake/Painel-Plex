@@ -23,9 +23,9 @@ class StatsHandler:
         achievement_definitions = {
             "movie_marathon": {"title": _("Maratonista de Cinema"), "icon": "?", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_MOVIE_MARATHON_BRONZE", 5), "description": _("Bronze: Assista a %(goal)d filmes nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_MOVIE_MARATHON_BRONZE", 5), days=days)}, "silver": {"goal": config.get("ACHIEVEMENT_MOVIE_MARATHON_SILVER", 10), "description": _("Prata: Assista a %(goal)d filmes nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_MOVIE_MARATHON_SILVER", 10), days=days)}, "gold": {"goal": config.get("ACHIEVEMENT_MOVIE_MARATHON_GOLD", 20), "description": _("Ouro: Assista a %(goal)d filmes nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_MOVIE_MARATHON_GOLD", 20), days=days)} }, "check": lambda s: s.get("movie_count", 0) },
             "series_binger": {"title": _("Rei das Séries"), "icon": "?", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_SERIES_BINGER_BRONZE", 20), "description": _("Bronze: Assista a %(goal)d episódios nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_SERIES_BINGER_BRONZE", 20), days=days)}, "silver": {"goal": config.get("ACHIEVEMENT_SERIES_BINGER_SILVER", 50), "description": _("Prata: Assista a %(goal)d episódios nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_SERIES_BINGER_SILVER", 50), days=days)}, "gold": {"goal": config.get("ACHIEVEMENT_SERIES_BINGER_GOLD", 100), "description": _("Ouro: Assista a %(goal)d episódios nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_SERIES_BINGER_GOLD", 100), days=days)} }, "check": lambda s: s.get("episode_count", 0) },
-            "weekend_warrior": {"title": _("Guerreiro de Fim de Semana"), "icon": "?", "levels": { "bronze": { "goal": 0.55, "description": _("Bronze: Mais de 55%% do seu tempo de visualização é no fim de semana.") } }, "check": lambda s: (s.get("weekly_activity_python", [0]*7)[5] + s.get("weekly_activity_python", [0]*7)[6]) / sum(s.get("weekly_activity_python", [])) if sum(s.get("weekly_activity_python", [])) > 0 else 0 },
+            "weekend_warrior": {"title": _("Guerreiro de Fim de Semana"), "icon": "??", "levels": { "bronze": { "goal": 0.55, "description": _("Bronze: Mais de 55%% do seu tempo de visualização é no fim de semana.") } }, "check": lambda s: (s.get("weekly_activity_python", [0]*7)[5] + s.get("weekly_activity_python", [0]*7)[6]) / sum(s.get("weekly_activity_python", [])) if sum(s.get("weekly_activity_python", [])) > 0 else 0 },
             "time_traveler": {"title": _("Viajante do Tempo"), "icon": "?", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_TIME_TRAVELER_BRONZE", 3), "description": _("Bronze: Assista a filmes de %(goal)d décadas diferentes.", goal=config.get("ACHIEVEMENT_TIME_TRAVELER_BRONZE", 3))}, "silver": {"goal": config.get("ACHIEVEMENT_TIME_TRAVELER_SILVER", 5), "description": _("Prata: Assista a filmes de %(goal)d décadas diferentes.", goal=config.get("ACHIEVEMENT_TIME_TRAVELER_SILVER", 5))}, "gold": {"goal": config.get("ACHIEVEMENT_TIME_TRAVELER_GOLD", 7), "description": _("Ouro: Assista a filmes de %(goal)d décadas diferentes.", goal=config.get("ACHIEVEMENT_TIME_TRAVELER_GOLD", 7))} }, "check": lambda s: len(s.get("unique_decades", set())) },
-            "director_fan": {"title": _("Fã do Realizador"), "icon": "??", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3), "description": _("Bronze: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3))}, "silver": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5), "description": _("Prata: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5))}, "gold": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7), "description": _("Ouro: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7))} }, "check": lambda s: s.get("favorite_director_count", 0) }
+            "director_fan": {"title": _("Fã do Realizador"), "icon": "?", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3), "description": _("Bronze: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3))}, "silver": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5), "description": _("Prata: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5))}, "gold": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7), "description": _("Ouro: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7))} }, "check": lambda s: s.get("favorite_director_count", 0) }
         }
         
         unlocked_in_db = self.data_manager.get_unlocked_achievements(plex_user_id)
@@ -47,9 +47,9 @@ class StatsHandler:
         
         if newly_unlocked:
             self.data_manager.add_unlocked_achievements(plex_user_id, username, newly_unlocked)
-            if current_user and current_user.id == plex_user_id:
+            if current_user and current_user.id == str(plex_user_id):
                 for ach in newly_unlocked:
-                    self.data_manager.create_notification(message=_("Nova conquista desbloqueada: %(title)s (%(level)s)!", title=ach['title'], level=ach['level']), category='success', link="/statistics", plex_user_id=plex_user_id, username=username)
+                    self.data_manager.create_notification(message=_("Nova conquista desbloqueada: %(title)s (%(level)s)!", title=ach['title'], level=ach['level']), category='success', link="/statistics", plex_user_id=plex_user_id)
 
         final_achievements = []
         all_unlocked_ever = self.data_manager.get_unlocked_achievements(plex_user_id)
@@ -83,7 +83,7 @@ class StatsHandler:
                 formatted_stats.append({
                     'user_id': user_id, 'username': username, 'plays': details['plays'], 'total_duration': details['total_duration'],
                     'avg_duration': details['total_duration'] / details['plays'] if details['plays'] > 0 else 0,
-                    'thumb': plex_users_info.get(user_id, {}).get('thumb') if plex_users_info else None
+                    'thumb': plex_users_info.get(user_id) if plex_users_info else None
                 })
             
             return {"success": True, "stats": sorted(formatted_stats, key=lambda x: x['total_duration'], reverse=True)}
@@ -92,8 +92,11 @@ class StatsHandler:
         except Exception as e:
             return {"success": False, "message": str(e)}
 
-    def get_user_watch_details(self, plex_user_id, days=7, current_user=None):
+    def get_user_watch_details(self, plex_user_id, username, days=7, current_user=None):
         try:
+            if not isinstance(days, int):
+                days = int(days)
+
             after_date_str = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
             history_response = self.api.get_history(after=after_date_str, user_id=plex_user_id)
             history = history_response.get('data', [])
@@ -101,7 +104,6 @@ class StatsHandler:
             if not history:
                 return {"success": True, "details": {}}
             
-            username = history[0].get("user") # Pega o nome de utilizador do primeiro registo
             stats = defaultdict(lambda: 0, {"genre_counts": Counter(), "recent": [], "weekly_activity_python": [0]*7, "weekly_activity_js": [0]*7, "top_movies": Counter(), "top_shows": Counter(), "unique_genres": set(), "unique_days": set(), "unique_platforms": set(), "director_counts": Counter(), "unique_decades": set()})
             series_genre_cache = {}
 
@@ -153,43 +155,85 @@ class StatsHandler:
                     stats["recent"].append({"type": item.get("media_type"), "title": item.get("title"), "series": item.get("grandparent_title"), "poster_url": poster_url, "play_date": dt.strftime('%d/%m/%Y %H:%M')})
             
             stats["favorite_genre"] = stats["genre_counts"].most_common(1)[0][0] if stats["genre_counts"] else _('N/D')
-            stats["favorite_director_count"] = stats["director_counts"].most_common(1)[0][1] if stats["director_counts"] else 0
-            achievements = self._calculate_achievements(stats, days, plex_user_id, username, current_user)
-            return {"success": True, "details": { "movie_count": stats["movie_count"], "episode_count": stats["episode_count"], "total_movie_duration": stats["total_movie_duration"], "total_episode_duration": stats["total_episode_duration"], "recent": stats["recent"], "weekly_activity": stats["weekly_activity_js"], "favorite_genre": stats["favorite_genre"], "top_movies": [{'title': title, 'plays': plays} for title, plays in stats["top_movies"].most_common(3)], "top_shows": [{'title': title, 'plays': plays} for title, plays in stats["top_shows"].most_common(3)], "achievements": achievements}}
-        except RequestException as e:
-            return {"success": False, "message": str(e)}
-        except Exception as e:
-            return {"success": False, "message": str(e)}
-    
-    def get_user_watch_details(self, plex_user_id, username, days=7, current_user=None):
-        try:
-            after_date_str = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-            history_response = self.api.get_history(after=after_date_str, user=username)
-            history = history_response.get('data', [])
-            
-            stats = defaultdict(lambda: 0, {"genre_counts": Counter(), "recent": [], "weekly_activity_python": [0]*7, "weekly_activity_js": [0]*7, "top_movies": Counter(), "top_shows": Counter(), "unique_genres": set(), "unique_days": set(), "unique_platforms": set(), "director_counts": Counter(), "unique_decades": set()})
-            
-            for item in history:
-                dt = datetime.fromtimestamp(item.get('date'))
-                stats["weekly_activity_python"][dt.weekday()] += item.get('duration', 0)
-                stats["weekly_activity_js"][(dt.weekday() + 1) % 7] += item.get('duration', 0)
-                
-                if item.get("media_type") == 'movie':
-                    stats["movie_count"] += 1
-                    if item.get("directors"): stats["director_counts"].update(item.get("directors"))
-                    if item.get("year"): stats["unique_decades"].add(f"{item.get('year') // 10}0s")
-                elif item.get("media_type") == 'episode': stats["episode_count"] += 1
-            
             favorite_director_info = stats["director_counts"].most_common(1)
             stats["favorite_director_count"] = favorite_director_info[0][1] if favorite_director_info else 0
-
+            
             achievements = self._calculate_achievements(stats, days, plex_user_id, username, current_user)
-            return {"success": True, "details": {**stats, "achievements": achievements}}
+            
+            # --- CORREÇÃO INICIA AQUI ---
+            # Converte todos os sets em listas antes de retornar os dados
+            final_stats = {key: value for key, value in stats.items()}
+            for key in ['unique_genres', 'unique_platforms', 'unique_decades']:
+                if isinstance(final_stats.get(key), set):
+                    final_stats[key] = list(final_stats[key])
+            if isinstance(final_stats.get('unique_days'), set):
+                 final_stats['unique_days'] = [d.isoformat() for d in final_stats['unique_days']]
+            # --- CORREÇÃO TERMINA AQUI ---
+
+            final_stats["achievements"] = achievements
+            
+            return {"success": True, "details": final_stats}
         except RequestException as e:
-            return {"success": False, "message": _("Erro de conexão com o Tautulli: %(error)s", error=e)}
+            return {"success": False, "message": str(e)}
         except Exception as e:
-            logger.error(_("Erro inesperado ao processar detalhes do utilizador: %(error)s", error=e), exc_info=True)
-            return {"success": False, "message": _("Erro inesperado: %(error)s", error=e)}
+            logger.error(f"Erro inesperado ao processar detalhes do utilizador: {e}", exc_info=True)
+            return {"success": False, "message": str(e)}
+    
+    def get_user_watch_history(self, user_id, page=1, length=25, search=""):
+        try:
+            history_response = self.api.get_history(
+                user_id=user_id,
+                start=(page - 1) * length,
+                length=length,
+                search=search
+            )
+            
+            history_data = history_response.get('data', [])
+            total_count = history_response.get('recordsFiltered', 0)
+            
+            processed_history = []
+            for item in history_data:
+                poster_url = None
+                thumb_key = item.get('thumb')
+                if item.get('media_type') == 'episode' and item.get('grandparent_thumb'):
+                    thumb_key = item.get('grandparent_thumb')
+
+                if thumb_key:
+                    tautulli_path = f"/pms_image_proxy?img={thumb_key}&width=200&height=300"
+                    payload_str = f"tautulli:{tautulli_path}"
+                    b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                    poster_url = url_for('image.proxy_image', source=b64_payload)
+                
+                title = item.get("title")
+                subtitle = str(item.get("year")) if item.get("year") else ""
+                if item.get("media_type") == 'episode':
+                    title = item.get("grandparent_title")
+                    subtitle = f"S{item.get('parent_media_index', 0):02d} · E{item.get('media_index', 0):02d} - {item.get('title')}"
+
+                processed_history.append({
+                    "title": title,
+                    "subtitle": subtitle,
+                    "date": datetime.fromtimestamp(item.get('date')).strftime('%d/%m/%Y %H:%M'),
+                    "player": item.get('player'),
+                    "percent_complete": item.get('percent_complete'),
+                    "poster_url": poster_url,
+                })
+
+            return {
+                "success": True,
+                "history": processed_history,
+                "pagination": {
+                    "current_page": page,
+                    "total_pages": (total_count // length) + (1 if total_count % length > 0 else 0),
+                    "total_records": total_count,
+                }
+            }
+        except RequestException as e:
+            logger.error(f"Erro de API ao buscar histórico para user_id {user_id}: {e}", exc_info=True)
+            return {"success": False, "message": f"Erro de comunicação com o Tautulli: {e}"}
+        except Exception as e:
+            logger.error(f"Erro inesperado ao buscar histórico para user_id {user_id}: {e}", exc_info=True)
+            return {"success": False, "message": f"Erro inesperado: {e}"}
             
     def get_recently_added(self, days=7):
         try:
@@ -230,3 +274,4 @@ class StatsHandler:
             return {"success": False, "message": str(e)}
         except Exception as e:
             return {"success": False, "message": str(e)}
+

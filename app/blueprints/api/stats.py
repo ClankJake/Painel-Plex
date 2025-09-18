@@ -20,38 +20,30 @@ def _obfuscate_username(username):
 def get_statistics_data():
     days = request.args.get('days', 7, type=int)
     
-    # Obter dados do Tautulli e do Plex
     plex_users = plex_manager.get_all_plex_users() or []
-    plex_users_info = {u['username']: u['thumb'] for u in plex_users}
+    plex_users_info = {u['id']: u['thumb'] for u in plex_users}
     tautulli_data = tautulli_manager.get_watch_stats(days=days, plex_users_info=plex_users_info)
 
     if not tautulli_data.get("success"):
         return jsonify(tautulli_data)
 
-    # Criar uma lista única de todos os utilizadores relevantes (Tautulli + Plex)
-    tautulli_usernames = {user_stat['username'] for user_stat in tautulli_data.get("stats", [])}
-    plex_usernames = {u['username'] for u in plex_users}
-    all_usernames = list(tautulli_usernames.union(plex_usernames))
+    tautulli_user_ids = {user_stat['user_id'] for user_stat in tautulli_data.get("stats", [])}
+    plex_user_ids = {u['id'] for u in plex_users}
+    all_user_ids = list(tautulli_user_ids.union(plex_user_ids))
 
-    # Obter os perfis de privacidade para TODOS os utilizadores relevantes
-    all_user_profiles_raw = data_manager.get_user_profiles_by_username(all_usernames)
+    all_profiles = data_manager.get_user_profiles_by_id(all_user_ids)
     
-    # Normalizar as chaves para minúsculas para garantir correspondência insensível a maiúsculas/minúsculas
-    all_profiles = {k.lower(): v for k, v in all_user_profiles_raw.items()}
-    
-    # Processar as estatísticas com os perfis de privacidade completos
     processed_stats = []
     for user_stat in tautulli_data.get("stats", []):
-        username = user_stat["username"]
-        # Usa a versão em minúsculas para a busca do perfil
-        profile = all_profiles.get(username.lower(), {})
+        user_id = user_stat["user_id"]
+        profile = all_profiles.get(user_id, {})
         
         is_private = profile.get('hide_from_leaderboard', False)
         user_stat["is_private"] = is_private
-        user_stat["original_username"] = username # Adiciona o nome original para uso no frontend
+        user_stat["original_username"] = user_stat["username"]
 
-        if not current_user.is_admin() and is_private and current_user.username.lower() != username.lower():
-            user_stat["username"] = _obfuscate_username(username)
+        if not current_user.is_admin() and is_private and current_user.id != str(user_id):
+            user_stat["username"] = _obfuscate_username(user_stat["username"])
             user_stat["thumb"] = f"https://placehold.co/80x80/1F2937/E5E7EB?text=?"
 
         processed_stats.append(user_stat)
@@ -59,20 +51,20 @@ def get_statistics_data():
     tautulli_data["stats"] = processed_stats
     return jsonify(tautulli_data)
 
-@stats_api_bp.route('/user/<username>')
+@stats_api_bp.route('/user/<int:plex_user_id>')
 @login_required
-def get_user_statistics(username):
+def get_user_statistics(plex_user_id):
     """
-    Obtém as estatísticas detalhadas de um usuário, respeitando as configurações de privacidade.
+    Obtém as estatísticas detalhadas de um utilizador, respeitando as configurações de privacidade.
     """
-    profile = data_manager.get_user_profile(username)
+    profile = data_manager.get_user_profile(plex_user_id)
     is_private = profile.get('hide_from_leaderboard', False)
 
-    if not is_private or current_user.is_admin() or current_user.username == username:
+    if not is_private or current_user.is_admin() or current_user.id == str(plex_user_id):
         days = request.args.get('days', 7, type=int)
-        return jsonify(tautulli_manager.get_user_watch_details(username, days=days, current_user=current_user))
+        return jsonify(tautulli_manager.get_user_watch_details(plex_user_id=plex_user_id, days=days, current_user=current_user))
     else:
-        logger.warning(f"Acesso negado para '{current_user.username}' ao tentar ver as estatísticas privadas de '{username}'.")
+        logger.warning(f"Acesso negado para '{current_user.username}' ao tentar ver as estatísticas privadas do utilizador ID '{plex_user_id}'.")
         return jsonify({"success": False, "message": _("Este usuário prefere manter suas estatísticas privadas.")}), 403
 
 @stats_api_bp.route('/user/history')
@@ -83,12 +75,11 @@ def get_user_watch_history_route():
         page = request.args.get('page', 1, type=int)
         length = request.args.get('length', 15, type=int)
         
-        # MELHORIA DE SEGURANÇA: Sanitiza o termo de pesquisa para prevenir XSS.
         raw_search = request.args.get('search', '', type=str)
         search = bleach.clean(raw_search, strip=True)
 
         history_data = tautulli_manager.get_user_watch_history(
-            username=current_user.username,
+            user_id=int(current_user.id),
             page=page,
             length=length,
             search=search
@@ -103,3 +94,4 @@ def get_user_watch_history_route():
 def get_recently_added_route():
     days = request.args.get('days', 7, type=int)
     return jsonify(tautulli_manager.get_recently_added(days=days))
+

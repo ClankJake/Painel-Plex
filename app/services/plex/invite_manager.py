@@ -125,7 +125,9 @@ class PlexInviteManager:
 
         self.data_manager.set_user_profile(plex_user_account.id, profile_data)
         
-        new_profile = self.data_manager.get_user_profile_by_id(plex_user_account.id)
+        # --- CORREÇÃO AQUI ---
+        # A chamada foi corrigida de 'get_user_profile_by_id' para 'get_user_profile'.
+        new_profile = self.data_manager.get_user_profile(plex_user_account.id)
 
         config = load_or_create_config()
         overseerr_url = config.get("OVERSEERR_URL", "").rstrip('/')
@@ -199,3 +201,4 @@ class PlexInviteManager:
             return {"success": True}
         except Exception as e:
             return {"success": False, "message": _("Ocorreu um erro de rede ao tentar aceitar o convite.")}
+

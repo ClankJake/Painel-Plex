@@ -245,11 +245,52 @@ class DataManager:
     # --- Métodos para Perfis de Utilizador ---
     def get_user_profile(self, plex_user_id):
         profile = UserProfile.query.get(plex_user_id)
-        return self._row_to_dict(profile) if profile else {}
+        if profile:
+            return self._row_to_dict(profile)
+        
+        from ..extensions import plex_manager
+        user_info = plex_manager.get_user_by_id(plex_user_id)
+        if user_info:
+            logger.info(f"Perfil de utilizador para '{user_info['username']}' (ID: {plex_user_id}) não encontrado. A criar um perfil básico.")
+            new_profile_data = {
+                'username': user_info['username'], 'screen_limit': 0,
+                'allow_downloads': False, 'overseerr_access': False,
+                'hide_from_leaderboard': False
+            }
+            self.set_user_profile(plex_user_id, new_profile_data)
+            profile = UserProfile.query.get(plex_user_id)
+            return self._row_to_dict(profile)
+            
+        return {}
 
     def get_user_profile_by_username(self, username):
-        profile = UserProfile.query.filter_by(username=username).first()
-        return self._row_to_dict(profile) if profile else {}
+        profile = UserProfile.query.filter(func.lower(UserProfile.username) == username.lower()).first()
+        if profile:
+            return self._row_to_dict(profile)
+
+        from ..extensions import plex_manager
+        all_users = plex_manager.get_all_plex_users()
+        if all_users:
+            user_info = next((u for u in all_users if u['username'].lower() == username.lower()), None)
+            if user_info:
+                plex_user_id = user_info['id']
+                logger.info(f"Perfil de utilizador para '{username}' (ID: {plex_user_id}) não encontrado. A criar um perfil básico.")
+                new_profile_data = {
+                    'username': user_info['username'], 'screen_limit': 0,
+                    'allow_downloads': False, 'overseerr_access': False,
+                    'hide_from_leaderboard': False
+                }
+                self.set_user_profile(plex_user_id, new_profile_data)
+                profile = UserProfile.query.get(plex_user_id)
+                return self._row_to_dict(profile)
+        return {}
+
+    def get_user_profiles_by_username(self, usernames):
+        if not usernames: return {}
+        try:
+            profiles = UserProfile.query.filter(func.lower(UserProfile.username).in_([u.lower() for u in usernames])).all()
+            return {p.username: self._row_to_dict(p) for p in profiles}
+        except Exception: return {}
 
     def get_all_user_profiles(self):
         profiles = UserProfile.query.all()
@@ -410,4 +451,3 @@ class DataManager:
             if 'libraries' in d and d['libraries']: d['libraries'] = json.loads(d['libraries'])
             if 'claimed_by_users' in d and d['claimed_by_users']: d['claimed_by_users'] = json.loads(d['claimed_by_users'])
         return d
-

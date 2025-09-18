@@ -54,22 +54,29 @@ class TautulliManager:
         logger.debug(f"Buscando estatísticas de visualização (cache miss) para '{days}' dias.")
         return self.stats.get_watch_stats(days, plex_users_info)
 
-    @cache.cached(timeout=300, key_prefix='user_details_%(username)s_%(days)s')
-    def get_user_watch_details(self, username, days=7, current_user=None):
-        logger.debug(f"Buscando detalhes de visualização (cache miss) para '{username}' e '{days}' dias.")
-        return self.stats.get_user_watch_details(username, days, current_user)
+    @cache.memoize(timeout=300)
+    def get_user_watch_details(self, plex_user_id, days=7, current_user=None):
+        logger.debug(f"Buscando detalhes de visualização (cache miss) para ID '{plex_user_id}' e '{days}' dias.")
+        
+        profile = self.data_manager.get_user_profile(plex_user_id)
+        if not profile or not profile.get('username'):
+            logger.warning(f"Não foi possível encontrar o perfil para '{plex_user_id}' ao buscar detalhes de visualização.")
+            return {"success": True, "details": {}}
 
-    def get_user_watch_history(self, username, page=1, length=25, search=""):
-        # O histórico paginado e com pesquisa não é um bom candidato para um cache simples.
-        # Mantemos a chamada direta para garantir dados sempre atualizados.
-        return self.stats.get_user_watch_history(username, page, length, search)
+        username = profile.get('username')
+        
+        return self.stats.get_user_watch_details(plex_user_id, username, days=days, current_user=current_user)
+
+    def get_user_watch_history(self, user_id, page=1, length=25, search=""):
+        return self.stats.get_user_watch_history(user_id, page, length, search)
 
     @cache.cached(timeout=300, key_prefix='recently_added_%(days)s')
     def get_recently_added(self, days=7):
         logger.debug(f"Buscando itens adicionados recentemente (cache miss) para '{days}' dias.")
         return self.stats.get_recently_added(days)
 
-    @cache.cached(timeout=300, key_prefix='user_devices_%(username)s')
-    def get_user_devices(self, username):
-        logger.debug(f"Buscando dispositivos do utilizador (cache miss) para '{username}'.")
-        return self.stats.get_user_devices(username)
+    @cache.cached(timeout=300, key_prefix='user_devices_%(plex_user_id)s')
+    def get_user_devices(self, plex_user_id):
+        logger.debug(f"Buscando dispositivos do utilizador (cache miss) para o ID '{plex_user_id}'.")
+        return self.stats.get_user_devices(plex_user_id)
+
