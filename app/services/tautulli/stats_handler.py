@@ -11,6 +11,16 @@ from app.config import load_or_create_config
 
 logger = logging.getLogger(__name__)
 
+def _safe_int_float(value, default=0):
+    """Converte um valor para int de forma segura, lidando com strings vazias ou None."""
+    if value is None or value == '':
+        return default
+    try:
+        # Tenta converter para float primeiro para lidar com casos como "1.0"
+        return int(float(value))
+    except (ValueError, TypeError):
+        return default
+
 class StatsHandler:
     def __init__(self, api_client, data_manager=None):
         self.api = api_client
@@ -21,11 +31,11 @@ class StatsHandler:
         config = load_or_create_config()
         
         achievement_definitions = {
-            "movie_marathon": {"title": _("Maratonista de Cinema"), "icon": "?", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_MOVIE_MARATHON_BRONZE", 5), "description": _("Bronze: Assista a %(goal)d filmes nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_MOVIE_MARATHON_BRONZE", 5), days=days)}, "silver": {"goal": config.get("ACHIEVEMENT_MOVIE_MARATHON_SILVER", 10), "description": _("Prata: Assista a %(goal)d filmes nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_MOVIE_MARATHON_SILVER", 10), days=days)}, "gold": {"goal": config.get("ACHIEVEMENT_MOVIE_MARATHON_GOLD", 20), "description": _("Ouro: Assista a %(goal)d filmes nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_MOVIE_MARATHON_GOLD", 20), days=days)} }, "check": lambda s: s.get("movie_count", 0) },
-            "series_binger": {"title": _("Rei das Séries"), "icon": "?", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_SERIES_BINGER_BRONZE", 20), "description": _("Bronze: Assista a %(goal)d episódios nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_SERIES_BINGER_BRONZE", 20), days=days)}, "silver": {"goal": config.get("ACHIEVEMENT_SERIES_BINGER_SILVER", 50), "description": _("Prata: Assista a %(goal)d episódios nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_SERIES_BINGER_SILVER", 50), days=days)}, "gold": {"goal": config.get("ACHIEVEMENT_SERIES_BINGER_GOLD", 100), "description": _("Ouro: Assista a %(goal)d episódios nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_SERIES_BINGER_GOLD", 100), days=days)} }, "check": lambda s: s.get("episode_count", 0) },
-            "weekend_warrior": {"title": _("Guerreiro de Fim de Semana"), "icon": "??", "levels": { "bronze": { "goal": 0.55, "description": _("Bronze: Mais de 55%% do seu tempo de visualização é no fim de semana.") } }, "check": lambda s: (s.get("weekly_activity_python", [0]*7)[5] + s.get("weekly_activity_python", [0]*7)[6]) / sum(s.get("weekly_activity_python", [])) if sum(s.get("weekly_activity_python", [])) > 0 else 0 },
-            "time_traveler": {"title": _("Viajante do Tempo"), "icon": "?", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_TIME_TRAVELER_BRONZE", 3), "description": _("Bronze: Assista a filmes de %(goal)d décadas diferentes.", goal=config.get("ACHIEVEMENT_TIME_TRAVELER_BRONZE", 3))}, "silver": {"goal": config.get("ACHIEVEMENT_TIME_TRAVELER_SILVER", 5), "description": _("Prata: Assista a filmes de %(goal)d décadas diferentes.", goal=config.get("ACHIEVEMENT_TIME_TRAVELER_SILVER", 5))}, "gold": {"goal": config.get("ACHIEVEMENT_TIME_TRAVELER_GOLD", 7), "description": _("Ouro: Assista a filmes de %(goal)d décadas diferentes.", goal=config.get("ACHIEVEMENT_TIME_TRAVELER_GOLD", 7))} }, "check": lambda s: len(s.get("unique_decades", set())) },
-            "director_fan": {"title": _("Fã do Realizador"), "icon": "?", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3), "description": _("Bronze: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3))}, "silver": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5), "description": _("Prata: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5))}, "gold": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7), "description": _("Ouro: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7))} }, "check": lambda s: s.get("favorite_director_count", 0) }
+            "movie_marathon": {"title": _("Maratonista de Cinema"), "icon": "🎬", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_MOVIE_MARATHON_BRONZE", 5), "description": _("Bronze: Assista a %(goal)d filmes nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_MOVIE_MARATHON_BRONZE", 5), days=days)}, "silver": {"goal": config.get("ACHIEVEMENT_MOVIE_MARATHON_SILVER", 10), "description": _("Prata: Assista a %(goal)d filmes nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_MOVIE_MARATHON_SILVER", 10), days=days)}, "gold": {"goal": config.get("ACHIEVEMENT_MOVIE_MARATHON_GOLD", 20), "description": _("Ouro: Assista a %(goal)d filmes nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_MOVIE_MARATHON_GOLD", 20), days=days)} }, "check": lambda s: s.get("movie_count", 0) },
+            "series_binger": {"title": _("Rei das Séries"), "icon": "📺", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_SERIES_BINGER_BRONZE", 20), "description": _("Bronze: Assista a %(goal)d episódios nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_SERIES_BINGER_BRONZE", 20), days=days)}, "silver": {"goal": config.get("ACHIEVEMENT_SERIES_BINGER_SILVER", 50), "description": _("Prata: Assista a %(goal)d episódios nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_SERIES_BINGER_SILVER", 50), days=days)}, "gold": {"goal": config.get("ACHIEVEMENT_SERIES_BINGER_GOLD", 100), "description": _("Ouro: Assista a %(goal)d episódios nos últimos %(days)d dias.", goal=config.get("ACHIEVEMENT_SERIES_BINGER_GOLD", 100), days=days)} }, "check": lambda s: s.get("episode_count", 0) },
+            "weekend_warrior": {"title": _("Guerreiro de Fim de Semana"), "icon": "🎉", "levels": { "bronze": { "goal": 0.55, "description": _("Bronze: Mais de 55%% do seu tempo de visualização é no fim de semana.") } }, "check": lambda s: (s.get("weekly_activity_python", [0]*7)[5] + s.get("weekly_activity_python", [0]*7)[6]) / sum(s.get("weekly_activity_python", [])) if sum(s.get("weekly_activity_python", [])) > 0 else 0 },
+            "time_traveler": {"title": _("Viajante do Tempo"), "icon": "⏳", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_TIME_TRAVELER_BRONZE", 3), "description": _("Bronze: Assista a filmes de %(goal)d décadas diferentes.", goal=config.get("ACHIEVEMENT_TIME_TRAVELER_BRONZE", 3))}, "silver": {"goal": config.get("ACHIEVEMENT_TIME_TRAVELER_SILVER", 5), "description": _("Prata: Assista a filmes de %(goal)d décadas diferentes.", goal=config.get("ACHIEVEMENT_TIME_TRAVELER_SILVER", 5))}, "gold": {"goal": config.get("ACHIEVEMENT_TIME_TRAVELER_GOLD", 7), "description": _("Ouro: Assista a filmes de %(goal)d décadas diferentes.", goal=config.get("ACHIEVEMENT_TIME_TRAVELER_GOLD", 7))} }, "check": lambda s: len(s.get("unique_decades", set())) },
+            "director_fan": {"title": _("Fã do Realizador"), "icon": "🎥", "levels": { "bronze": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3), "description": _("Bronze: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3))}, "silver": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5), "description": _("Prata: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5))}, "gold": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7), "description": _("Ouro: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7))} }, "check": lambda s: s.get("favorite_director_count", 0) }
         }
         
         unlocked_in_db = self.data_manager.get_unlocked_achievements(plex_user_id)
@@ -139,13 +149,15 @@ class StatsHandler:
                     stats["total_movie_duration"] += item.get('duration', 0)
                     stats["top_movies"][item.get("title")] += 1
                     if item.get("directors"): stats["director_counts"].update(item.get("directors"))
-                    if item.get("year"): stats["unique_decades"].add(f"{item.get('year') // 10}0s")
+                    year = _safe_int_float(item.get("year"))
+                    if year > 0:
+                        stats["unique_decades"].add(f"{year // 10}0s")
                 elif item.get("media_type") == 'episode':
                     stats["episode_count"] += 1
                     stats["total_episode_duration"] += item.get('duration', 0)
                     stats["top_shows"][item.get("grandparent_title")] += 1
                 
-                if len(stats["recent"]) < 5:
+                if len(stats["recent"]) < 9:
                     poster_url = None
                     if item.get('thumb'):
                         tautulli_path = f"/pms_image_proxy?img={item['thumb']}&width=200&height=300"
@@ -160,15 +172,12 @@ class StatsHandler:
             
             achievements = self._calculate_achievements(stats, days, plex_user_id, username, current_user)
             
-            # --- CORREÇÃO INICIA AQUI ---
-            # Converte todos os sets em listas antes de retornar os dados
             final_stats = {key: value for key, value in stats.items()}
             for key in ['unique_genres', 'unique_platforms', 'unique_decades']:
                 if isinstance(final_stats.get(key), set):
                     final_stats[key] = list(final_stats[key])
             if isinstance(final_stats.get('unique_days'), set):
                  final_stats['unique_days'] = [d.isoformat() for d in final_stats['unique_days']]
-            # --- CORREÇÃO TERMINA AQUI ---
 
             final_stats["achievements"] = achievements
             
@@ -208,7 +217,9 @@ class StatsHandler:
                 subtitle = str(item.get("year")) if item.get("year") else ""
                 if item.get("media_type") == 'episode':
                     title = item.get("grandparent_title")
-                    subtitle = f"S{item.get('parent_media_index', 0):02d} · E{item.get('media_index', 0):02d} - {item.get('title')}"
+                    parent_index = _safe_int_float(item.get('parent_media_index', 0))
+                    media_index = _safe_int_float(item.get('media_index', 0))
+                    subtitle = f"S{parent_index:02d} · E{media_index:02d} - {item.get('title')}"
 
                 processed_history.append({
                     "title": title,
@@ -252,7 +263,17 @@ class StatsHandler:
                         payload_str = f"tautulli:{tautulli_path}"
                         b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
                         poster_url = url_for('image.proxy_image', source=b64_payload)
-                    filtered_media.append({ 'title': item.get('title'), 'year': item.get('year'), 'poster_url': poster_url, 'added_at': added_at.isoformat(), 'media_type': item.get('media_type'), 'grandparent_title': item.get('grandparent_title'), 'parent_title': item.get('parent_title'), 'media_index': int(float(item.get('media_index', 0))), 'parent_media_index': int(float(item.get('parent_media_index', 0)))})
+                    filtered_media.append({ 
+                        'title': item.get('title'), 
+                        'year': item.get('year'), 
+                        'poster_url': poster_url, 
+                        'added_at': added_at.isoformat(), 
+                        'media_type': item.get('media_type'), 
+                        'grandparent_title': item.get('grandparent_title'), 
+                        'parent_title': item.get('parent_title'), 
+                        'media_index': _safe_int_float(item.get('media_index')), 
+                        'parent_media_index': _safe_int_float(item.get('parent_media_index'))
+                    })
             return {"success": True, "media": filtered_media}
         except RequestException as e:
             return {"success": False, "message": str(e)}

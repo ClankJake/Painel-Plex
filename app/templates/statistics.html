@@ -3,49 +3,49 @@
 {% block title %}{{ _('Estatísticas') }} - {{ app_title }}{% endblock %}
 
 {% block extra_head %}
-    <style>
-        /* Apenas estilos que não podem ser feitos com classes do Tailwind permanecem, como a barra de scroll. */
-        .horizontal-scroll::-webkit-scrollbar { display: none; /* Chrome, Safari, Opera */ }
-        .horizontal-scroll { -ms-overflow-style: none;  /* IE and Edge */ scrollbar-width: none;  /* Firefox */ }
-        
-        /* Estilos para as Conquistas */
-        .achievement-badge {
-            @apply flex flex-col items-center justify-center p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg border-2 border-transparent text-center transition-all duration-300 relative;
-        }
-        .achievement-badge .icon {
-            @apply text-4xl mb-1;
-        }
-        .achievement-badge .title {
-            @apply font-bold text-sm text-gray-800 dark:text-gray-200 leading-tight;
-        }
-        .achievement-badge .tooltip {
-            @apply invisible opacity-0 absolute bottom-full mb-2 w-48 p-2 text-xs bg-gray-800 text-white rounded-md shadow-lg transition-opacity duration-300 z-10;
-        }
-        .achievement-badge:hover .tooltip {
-            @apply visible opacity-100;
-        }
-        /* Níveis de Conquista */
-        .achievement-badge.unlocked-1 { /* Bronze */
-            @apply border-yellow-600/50 dark:border-yellow-700/80 bg-yellow-50 dark:bg-yellow-900/20 shadow-inner;
-        }
-        .achievement-badge.unlocked-2 { /* Prata */
-            @apply border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-gray-700/50 shadow-md;
-        }
-        .achievement-badge.unlocked-3 { /* Ouro */
-            @apply border-yellow-400 dark:border-yellow-500 bg-yellow-100 dark:bg-yellow-500/20 shadow-lg shadow-yellow-500/20;
-        }
-        .achievement-badge.unlocked-3 .icon {
-            filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.7));
-        }
+<style>
+    /* Apenas estilos que não podem ser feitos com classes do Tailwind permanecem, como a barra de scroll. */
+    .horizontal-scroll::-webkit-scrollbar { display: none; /* Chrome, Safari, Opera */ }
+    .horizontal-scroll { -ms-overflow-style: none;  /* IE and Edge */ scrollbar-width: none;  /* Firefox */ }
+    
+    /* Estilos para as Conquistas */
+    .achievement-badge {
+        @apply flex flex-col items-center justify-center p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg border-2 border-transparent text-center transition-all duration-300 relative;
+    }
+    .achievement-badge .icon {
+        @apply text-4xl mb-1;
+    }
+    .achievement-badge .title {
+        @apply font-bold text-sm text-gray-800 dark:text-gray-200 leading-tight;
+    }
+    .achievement-badge .tooltip {
+        @apply invisible opacity-0 absolute bottom-full mb-2 w-48 p-2 text-xs bg-gray-800 text-white rounded-md shadow-lg transition-opacity duration-300 z-10;
+    }
+    .achievement-badge:hover .tooltip {
+        @apply visible opacity-100;
+    }
+    /* Níveis de Conquista */
+    .achievement-badge.unlocked-bronze {
+        @apply border-yellow-600/50 dark:border-yellow-700/80 bg-yellow-50 dark:bg-yellow-900/20 shadow-inner;
+    }
+    .achievement-badge.unlocked-silver {
+        @apply border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-gray-700/50 shadow-md;
+    }
+    .achievement-badge.unlocked-gold {
+        @apply border-yellow-400 dark:border-yellow-500 bg-yellow-100 dark:bg-yellow-500/20 shadow-lg shadow-yellow-500/20;
+    }
+    .achievement-badge.unlocked-gold .icon {
+        filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.7));
+    }
 
-        /* Estilos para os botões de scroll */
-        .scroll-button {
-            @apply bg-gray-800/50 text-white rounded-md w-8 h-8 flex items-center justify-center transition-opacity opacity-0 group-hover/container:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed z-20 backdrop-blur-sm;
-        }
-        .scroll-button:hover:not(:disabled) {
-            @apply bg-gray-800;
-        }
-    </style>
+    /* Estilos para os botões de scroll */
+    .scroll-button {
+        @apply bg-gray-800/50 text-white rounded-md w-8 h-8 flex items-center justify-center transition-opacity opacity-0 group-hover/container:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed z-20 backdrop-blur-sm;
+    }
+    .scroll-button:hover:not(:disabled) {
+        @apply bg-gray-800;
+    }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -178,7 +178,7 @@
         src="{{ url_for('static', filename='js/statistics.js') }}"
         data-current-user='{{ current_user.to_json() | safe }}'
         data-stats-url="{{ url_for('stats_api.get_statistics_data') }}"
-        data-user-stats-url="{{ url_for('stats_api.get_user_statistics', username='__USERNAME__') }}"
+        data-user-stats-url="{{ url_for('stats_api.get_user_statistics', plex_user_id=0) }}"
         data-recently-added-url="{{ url_for('stats_api.get_recently_added_route') }}"
         data-i18n-loading-failed="{{ _('Falha ao comunicar com o servidor.') }}"
         data-i18n-no-data="{{ _('Nenhum dado de visualização encontrado.') }}"
