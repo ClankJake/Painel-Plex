@@ -72,7 +72,7 @@ class PlexUserManager:
                                 
                                 payload_str = f"plex_account:{path_with_query}"
                                 b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                                user_thumb_url = url_for('image.proxy_image', source=b64_payload, _external=True)
+                                user_thumb_url = url_for('image.proxy_image', source=b64_payload)
                             except Exception as e:
                                 logger.error(f"Falha ao processar a URL do avatar para o utilizador {user.username}: {e}")
 
@@ -84,7 +84,6 @@ class PlexUserManager:
                             'servers': [s.name for s in user.servers]
                         })
 
-                # CORREÇÃO: Adiciona a conta do administrador à lista de utilizadores.
                 if self.conn.account:
                     admin_id = self.conn.account.id
                     is_admin_in_list = any(u['id'] == admin_id for u in users_with_access)
@@ -99,7 +98,7 @@ class PlexUserManager:
                                 
                                 payload_str = f"plex_account:{path_with_query}"
                                 b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                                admin_thumb_url = url_for('image.proxy_image', source=b64_payload, _external=True)
+                                admin_thumb_url = url_for('image.proxy_image', source=b64_payload)
                             except Exception as e:
                                 logger.error(f"Falha ao processar a URL do avatar para o administrador: {e}")
 
