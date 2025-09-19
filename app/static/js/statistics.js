@@ -402,9 +402,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if(isOwnerViewing || isAdminViewing) {
                 renderUserActivityChart(containerElement);
 
-                const recentContainer = document.getElementById('recent-items-container');
-                const scrollLeftRecentBtn = document.getElementById('scroll-left-recent-btn');
-                const scrollRightRecentBtn = document.getElementById('scroll-right-recent-btn');
+                // CORREÇÃO: Busca os elementos dentro do `containerElement`
+                const recentContainer = containerElement.querySelector('#recent-items-container');
+                const scrollLeftRecentBtn = containerElement.querySelector('#scroll-left-recent-btn');
+                const scrollRightRecentBtn = containerElement.querySelector('#scroll-right-recent-btn');
                 
                 if (recentContainer && scrollLeftRecentBtn && scrollRightRecentBtn) {
                     const updateRecentScrollButtons = () => {
@@ -627,4 +628,3 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- INICIALIZAÇÃO ---
     mainFetch(daysFilter.value);
 });
-
