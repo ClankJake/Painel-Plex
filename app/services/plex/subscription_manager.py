@@ -6,6 +6,7 @@ from flask import current_app
 from flask_babel import gettext as _
 from tzlocal import get_localzone
 import secrets
+import calendar  # Importa o módulo calendar
 # Importa JobLookupError para lidar com a remoção de tarefas de forma segura
 from apscheduler.jobstores.base import JobLookupError
 # CORREÇÃO: Importa a exceção de erro operacional para lidar com bloqueios de DB
@@ -44,11 +45,19 @@ class PlexSubscriptionManager:
             current_expiration_str = profile.get('expiration_date')
             if current_expiration_str:
                 try:
-                    current_expiration_date = datetime.fromisoformat(current_expiration_str)
-                    if current_expiration_date > now:
-                        base_date = current_expiration_date
+                    expiration_date = datetime.fromisoformat(current_expiration_str)
+                    # CORREÇÃO: Se a data de expiração já passou, a nova assinatura
+                    # começa a contar a partir de hoje. Caso contrário, a partir da data de expiração.
+                    if expiration_date < now:
+                        base_date = now
+                    else:
+                        base_date = expiration_date
                 except ValueError:
                     logger.warning(f"Formato de data de expiração inválido '{current_expiration_str}' para o utilizador {plex_user_id}. A renovar a partir da data atual.")
+                    base_date = now # Fallback para a data atual em caso de erro no formato
+            else:
+                # Se não houver data de expiração (primeira assinatura), usa a data atual.
+                base_date = now
         
         if base_date_str:
             try:
@@ -59,8 +68,14 @@ class PlexSubscriptionManager:
             except ValueError:
                  logger.warning(f"Formato de data base inválido '{base_date_str}'. A renovar a partir da data atual.")
 
-        # 2. Calcula a nova data de vencimento
-        new_expiration_date = base_date + timedelta(days=30 * int(months_to_add))
+        # 2. CORREÇÃO: Calcula a nova data de vencimento de forma precisa, adicionando meses de calendário.
+        # Isto substitui a lógica imprecisa de `timedelta(days=30)`.
+        months_total = base_date.month - 1 + int(months_to_add)
+        new_year = base_date.year + months_total // 12
+        new_month = months_total % 12 + 1
+        # Garante que o dia seja válido para o novo mês (ex: lida com 31 de Janeiro -> 28/29 de Fevereiro)
+        new_day = min(base_date.day, calendar.monthrange(new_year, new_month)[1])
+        new_expiration_date = base_date.replace(year=new_year, month=new_month, day=new_day)
 
         # 3. Aplica a hora de vencimento, dando prioridade à configuração universal
         config = load_or_create_config()
@@ -106,12 +121,11 @@ class PlexSubscriptionManager:
                 extensions.scheduler.remove_job(profile['expiration_job_id'])
             except JobLookupError:
                 logger.warning(f"Não foi possível encontrar a tarefa de expiração antiga '{profile['expiration_job_id']}' para remover para o utilizador {plex_user_id}.")
-            # CORREÇÃO: Captura o erro 'database is locked' especificamente
             except OperationalError as e:
                 if "database is locked" in str(e):
                     logger.warning(f"A base de dados estava bloqueada ao tentar remover a tarefa antiga '{profile['expiration_job_id']}' para o utilizador {plex_user_id}. A nova tarefa será agendada, mas a antiga pode permanecer. Isto geralmente resolve-se sozinho.")
                 else:
-                    raise # Re-levanta outros erros operacionais que não sejam de bloqueio
+                    raise 
         
         # Agenda a nova tarefa para o dia da expiração
         new_job_id = f"sub_end_{plex_user_id}_{secrets.token_hex(4)}"
@@ -139,3 +153,4 @@ class PlexSubscriptionManager:
     
     def check_user_expiration(self, plex_user_id):
         pass
+

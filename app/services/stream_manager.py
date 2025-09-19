@@ -5,6 +5,7 @@ from flask import current_app, url_for
 from datetime import datetime
 from flask_babel import gettext as _, ngettext
 import requests
+from plexapi.exceptions import NotFound # Importa a exceção específica
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +33,6 @@ class StreamManager:
         Envia um comando de término de sessão com um motivo personalizado.
         """
         try:
-            # CORREÇÃO: Adicionada uma verificação para garantir que o objeto de sessão interno
-            # (session.session) não é None antes de tentar terminar o stream.
-            # Isto previne um AttributeError quando um stream está a ser inicializado.
             session_key = getattr(session, 'sessionKey', None)
             internal_session_obj = getattr(session, 'session', None)
 
@@ -64,8 +62,6 @@ class StreamManager:
             'discord_user_id': profile.get('discord_user_id', ''),
             'phone_number': profile.get('phone_number', '')
         }
-
-        # Restante da lógica de placeholders...
         
         if context:
             placeholders.update(context)
@@ -79,7 +75,21 @@ class StreamManager:
             return
         try:
             for session in self.conn.plex.sessions():
-                if session.user and session.user.id == plex_user_id:
+                session_user_id = None
+                try:
+                    # Tenta obter o ID do utilizador de forma segura, priorizando o userID numérico.
+                    if hasattr(session, 'userID'):
+                        session_user_id = session.userID
+                    elif session.user:
+                        session_user_id = session.user.id
+                except NotFound as e:
+                    logger.warning(
+                        f"Não foi possível encontrar o utilizador '{getattr(session, '_username', 'desconhecido')}' "
+                        f"ao tentar bloquear sessões. A saltar esta sessão. Erro: {e}"
+                    )
+                    continue
+
+                if session_user_id and session_user_id == plex_user_id:
                     self._terminate_session(session, reason)
         except Exception as e:
             logger.error(f"Erro ao bloquear as sessões do utilizador ID {plex_user_id}: {e}", exc_info=True)
@@ -110,7 +120,22 @@ class StreamManager:
 
             user_sessions_by_id = defaultdict(list)
             for session in sessions:
-                user_id = getattr(session.user, 'id', None)
+                user_id = None
+                try:
+                    # CORREÇÃO: Prioriza a obtenção do ID diretamente do atributo da sessão (mais estável),
+                    # em vez de depender do objeto 'user' que pode falhar se o nome de utilizador mudar.
+                    if hasattr(session, 'userID'):
+                        user_id = session.userID
+                    elif hasattr(session, 'user'):
+                        # Fallback para o método antigo, agora protegido contra o erro NotFound.
+                        user_id = getattr(session.user, 'id', None)
+                except NotFound as e:
+                    logger.warning(
+                        f"Não foi possível encontrar o utilizador '{getattr(session, '_username', 'desconhecido')}' "
+                        f"no Plex (pode ter sido renomeado ou removido). A saltar a sessão. Erro: {e}"
+                    )
+                    continue # Pula para a próxima sessão
+                
                 if user_id:
                     user_sessions_by_id[user_id].append(session)
 
@@ -203,3 +228,4 @@ class StreamManager:
             logger.warning(f"Erro de conexão ao verificar streams (isto pode ser temporário): {e}. A saltar esta verificação.")
         except Exception as e:
             logger.error(f"Erro inesperado ao verificar e impor streams: {e}", exc_info=True)
+

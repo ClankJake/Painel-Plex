@@ -22,20 +22,33 @@ logger = logging.getLogger(__name__)
 payments_api_bp = Blueprint('payments_api', __name__)
 
 def efi_webhook_security(f):
+    """
+    Decorador de segurança para o webhook da Efí.
+    - Se mTLS estiver desativado, valida o IP de origem e o HMAC.
+    - Se mTLS estiver ativo, a segurança é garantida na camada de transporte.
+    """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        EFI_IP = '34.193.116.226'
-        remote_ip = request.headers.getlist("X-Forwarded-For")[0].rpartition(' ')[-1] if 'X-Forwarded-For' in request.headers else request.remote_addr or 'UNKNOWN'
-        if remote_ip != EFI_IP:
-            logger.warning(f"Webhook da Efí bloqueado: IP de origem '{remote_ip}' não corresponde ao IP esperado '{EFI_IP}'.")
-            return jsonify(status="error", message="IP not allowed"), 403
         config = load_or_create_config()
+        
+        # Se mTLS estiver desativado (skip-mtls), aplicamos a verificação de IP e HMAC.
         if not config.get("EFI_USE_MTLS", True):
+            # 1. Verificação do IP de Origem
+            EFI_IP = '34.193.116.226'
+            # Obtém o IP real do cliente, mesmo atrás de um proxy reverso
+            remote_ip = request.headers.getlist("X-Forwarded-For")[0].rpartition(' ')[-1] if 'X-Forwarded-For' in request.headers else request.remote_addr or 'UNKNOWN'
+            
+            if remote_ip != EFI_IP:
+                logger.warning(f"Webhook da Efí bloqueado: IP de origem '{remote_ip}' não corresponde ao IP esperado '{EFI_IP}'.")
+                return jsonify(status="error", message="IP not allowed"), 403
+            
+            # 2. Verificação do HMAC
             hmac_secret = config.get("EFI_WEBHOOK_HMAC_SECRET")
             received_hmac = request.args.get('hmac')
             if not hmac_secret or not received_hmac or hmac_secret != received_hmac:
                 logger.warning("Webhook da Efí bloqueado: HMAC inválido ou ausente.")
                 return jsonify(status="error", message="Invalid HMAC"), 403
+
         return f(*args, **kwargs)
     return decorated_function
 
@@ -83,10 +96,19 @@ def _run_payment_processing_in_thread(app, txid):
 
                     profile = extensions.data_manager.get_user_profile(plex_user_id)
                     extensions.plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
+
                     extensions.data_manager.create_notification(
-                        message=f"Pagamento de {user['username']} (R$ {payment['value']:.2f}) confirmado.", 
-                        category='success', link=url_for('main.users_page')
+                        message=_("Pagamento de %(username)s (%(value)s) confirmado.", username=user['username'], value=f"R$ {payment['value']:.2f}"), 
+                        category='success', 
+                        link=url_for('main.users_page')
                     )
+                    extensions.data_manager.create_notification(
+                        message=_("A sua renovação de %(value)s foi confirmada.", value=f"R$ {payment['value']:.2f}"),
+                        category='success',
+                        link=url_for('main.account_page'),
+                        user_plex_id=plex_user_id
+                    )
+
                     if payment.get('coupon_code'):
                         extensions.data_manager.record_coupon_usage(payment['coupon_code'], plex_user_id)
                 else:
@@ -285,19 +307,19 @@ def create_charge_route():
 
     if coupon_code and final_price <= 0:
         try:
-            extensions.plex_manager.renew_subscription(plex_user_id, 1, 'expiry_date')
-            # CORREÇÃO: Verifica o retorno da função e faz commit ou rollback.
-            if extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id):
-                extensions.data_manager.add_manual_payment(plex_user_id=plex_user_id, username=username, value=0.00, description=f"Renovação via Cupão 100% ({coupon_code})", payment_date_str=datetime.now().isoformat())
-                extensions.db.session.commit()
-                return jsonify({"success": True, "free_renewal": True, "message": _("Assinatura gratuita ativada com sucesso!")})
-            else:
-                extensions.db.session.rollback()
-                return jsonify({"success": False, "message": "Ocorreu um erro ao registrar o uso do cupão."}), 500
+            with extensions.db.session.begin_nested():
+                extensions.plex_manager.renew_subscription(plex_user_id, 1, 'expiry_date')
+                if extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id):
+                    extensions.data_manager.add_manual_payment(plex_user_id=plex_user_id, username=username, value=0.00, description=f"Renovação via Cupão 100% ({coupon_code})", payment_date_str=datetime.now().isoformat())
+                else:
+                    raise Exception("Falha ao registrar o uso do cupão.")
+            extensions.db.session.commit()
+            return jsonify({"success": True, "free_renewal": True, "message": _("Assinatura gratuita ativada com sucesso!")})
         except Exception as e:
             logger.error(f"Erro ao ativar assinatura gratuita com cupão: {e}", exc_info=True)
             extensions.db.session.rollback()
             return jsonify({"success": False, "message": "Ocorreu um erro ao ativar a sua assinatura gratuita."}), 500
+
 
     price, screens = final_price, int(screens_str)
     user_info = {"plex_user_id": plex_user_id, "username": username, "name": profile.get('name', username), "email": plex_user.get('email')}

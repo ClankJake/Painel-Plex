@@ -2,7 +2,7 @@
 
 import logging
 import secrets
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from flask import Blueprint, jsonify, request, url_for, current_app
 from flask_login import current_user
 from flask_babel import gettext as _, format_date
@@ -10,7 +10,7 @@ from tzlocal import get_localzone
 from apscheduler.jobstores.base import JobLookupError
 from pydantic import ValidationError
 
-from ...extensions import plex_manager, data_manager, tautulli_manager, overseerr_manager
+from ...extensions import plex_manager, data_manager, tautulli_manager, overseerr_manager, db
 from ...config import load_or_create_config
 from ..auth import admin_required, login_required
 from .decorators import user_lookup_by_id, validate_json
@@ -53,13 +53,10 @@ def get_status():
     if all_users is None:
         return jsonify({'error': _("Não foi possível obter os utilizadores do Plex. Verifique a ligação e as configurações.")}), 500
 
-    # --- CORREÇÃO INICIA AQUI ---
-    # Carrega a configuração para obter o nome do administrador e o filtra da lista.
     config = load_or_create_config()
     admin_username = config.get('ADMIN_USER')
     users_to_display = [user for user in all_users if user['username'] != admin_username]
-    # --- CORREÇÃO TERMINA AQUI ---
-
+    
     plex_user_ids = [u['id'] for u in users_to_display]
     all_user_profiles = data_manager.get_user_profiles_by_id(plex_user_ids)
     blocked_users_data = data_manager.get_blocked_users_dict()
@@ -101,17 +98,24 @@ def get_account_details():
     expiration_info = {"date": None, "days_left": None, "status": "active"}
     if exp_str := profile.get('expiration_date'):
         try:
-            exp_dt = datetime.fromisoformat(exp_str)
-            local_tz = get_localzone()
-            if exp_dt.tzinfo is None: exp_dt = exp_dt.replace(tzinfo=local_tz)
-            expiration_info["date"] = format_date(exp_dt, 'd \'de\' MMMM \'de\' yyyy')
-            if exp_dt < datetime.now(local_tz): expiration_info["status"] = "expired"
+            exp_dt_aware = datetime.fromisoformat(exp_str)
+            exp_dt_local = exp_dt_aware.astimezone(get_localzone())
+            
+            # CORREÇÃO: Usa .date() para formatar apenas a data, ignorando a hora e o fuso horário,
+            # o que previne o problema da data ser empurrada para o dia seguinte.
+            expiration_info["date"] = format_date(exp_dt_local.date(), 'd \'de\' MMMM \'de\' yyyy')
+            
+            now_local = datetime.now(get_localzone())
+
+            if exp_dt_local < now_local:
+                expiration_info["status"] = "expired"
             else:
-                days_left = (exp_dt.date() - datetime.now(local_tz).date()).days
+                days_left = (exp_dt_local.date() - now_local.date()).days
                 expiration_info["days_left"] = days_left
                 if days_left < int(config.get("DAYS_TO_NOTIFY_EXPIRATION", 7)):
                     expiration_info["status"] = "expiring"
-        except (ValueError, TypeError): pass
+        except (ValueError, TypeError):
+            pass
 
     join_date = _("Não disponível")
     if join_date_str := data_manager.get_user_claim_date(plex_user_id):
@@ -176,17 +180,31 @@ def get_account_requests():
 @user_lookup_by_id
 @validate_json(RenewSubscriptionSchema)
 def renew_user_subscription_route(user, validated_data):
-    data = validated_data
-    new_expiration_date = plex_manager.renew_subscription(user['id'], data.months, data.base, base_date_str=data.base_date, expiration_time_str=data.expiration_time)
-    
-    config, profile = load_or_create_config(), data_manager.get_user_profile(user['id'])
-    monthly_price_str = config.get("SCREEN_PRICES", {}).get(str(profile.get('screen_limit', 0)), config.get("RENEWAL_PRICE", "0.00"))
-    total_value = float(monthly_price_str) * data.months
-    data_manager.add_manual_payment(user['id'], user['username'], total_value, f"Renovação Admin (+{data.months} mês/meses)", datetime.now().isoformat())
-    
-    plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
-    logger.info(f"Admin '{current_user.username}' renovou a subscrição de '{user['username']}' por {data.months} mes(es).")
-    return jsonify({"success": True, "message": _("Subscrição renovada. Novo vencimento em %(date)s.", date=new_expiration_date.strftime('%d/%m/%Y'))})
+    try:
+        data = validated_data
+        new_expiration_date = plex_manager.renew_subscription(user['id'], data.months, data.base, base_date_str=data.base_date, expiration_time_str=data.expiration_time)
+        
+        config, profile = load_or_create_config(), data_manager.get_user_profile(user['id'])
+        monthly_price_str = config.get("SCREEN_PRICES", {}).get(str(profile.get('screen_limit', 0)), config.get("RENEWAL_PRICE", "0.00"))
+        total_value = float(monthly_price_str) * data.months
+        
+        with db.session.begin_nested():
+            data_manager.add_manual_payment(user['id'], user['username'], total_value, f"Renovação Admin (+{data.months} mês/meses)", datetime.now().isoformat())
+            data_manager.create_notification(
+                message=_("Renovação manual de %(username)s (%(value)s) registada.", username=user['username'], value=f"R$ {total_value:.2f}"),
+                category='success',
+                link=url_for('main.users_page')
+            )
+        db.session.commit()
+
+        plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
+        logger.info(f"Admin '{current_user.username}' renovou a subscrição de '{user['username']}' por {data.months} mes(es).")
+        return jsonify({"success": True, "message": _("Subscrição renovada. Novo vencimento em %(date)s.", date=new_expiration_date.strftime('%d/%m/%Y'))})
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Erro ao processar renovação manual para '{user['username']}': {e}", exc_info=True)
+        return jsonify({"success": False, "message": "Ocorreu um erro interno ao processar a renovação."}), 500
+
 
 @users_api_bp.route('/profile/<int:plex_user_id>', methods=['GET', 'POST'])
 @login_required

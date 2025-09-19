@@ -88,18 +88,26 @@ class DataManager:
         return None
 
     def record_coupon_usage(self, code, plex_user_id):
+        """
+        Incrementa a contagem de uso de um cupão e regista quem o usou.
+        Esta função NÃO faz commit da transação. O chamador é responsável
+        por fazer o commit ou rollback da sessão da base de dados.
+        """
         coupon = Coupon.query.filter_by(code=code).first()
-        if coupon and plex_user_id:
-            try:
-                coupon.use_count += 1
-                new_usage = CouponUsage(user_plex_id=plex_user_id, coupon_id=coupon.id)
-                db.session.add(new_usage)
-                db.session.commit()
-                return True
-            except Exception as e:
-                db.session.rollback()
-                return False
-        return False
+        if not coupon or not plex_user_id:
+            logger.warning(f"Tentativa de registar o uso de um cupão inválido ('{code}') ou para um utilizador inválido.")
+            return False
+        
+        try:
+            coupon.use_count += 1
+            new_usage = CouponUsage(user_plex_id=plex_user_id, coupon_id=coupon.id)
+            db.session.add(new_usage)
+            logger.info(f"Uso do cupão '{code}' registado para o utilizador ID {plex_user_id}. Contagem de uso atual: {coupon.use_count}.")
+            return True
+        except Exception as e:
+            # Re-lança a exceção para que o chamador possa tratar o rollback da transação.
+            logger.error(f"Erro de base de dados ao registar o uso do cupão '{code}' para o utilizador ID {plex_user_id}: {e}", exc_info=True)
+            raise
 
     def has_user_used_coupon(self, plex_user_id, code):
         usage = db.session.query(CouponUsage).join(Coupon).filter(
@@ -378,7 +386,7 @@ class DataManager:
         txid = f"manual_{secrets.token_hex(12)}"
         payment = PixPayment(txid=txid, user_plex_id=plex_user_id, username=username, value=float(value), status='CONCLUIDA', provider='Manual', description=description, created_at=payment_date_str, screens=0, external_reference=None)
         db.session.add(payment)
-        db.session.commit()
+        # O commit agora é da responsabilidade do chamador
         return self._row_to_dict(payment)
 
     def get_payments_by_user(self, plex_user_id):
