@@ -200,7 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ].filter(item => item.user && item.user.username);
     
         podiumContainer.innerHTML = podiumData.map(item => `
-            <div class="flex flex-col items-center transition-transform duration-300 ease-in-out hover:scale-105 w-1/3 max-w-[220px] cursor-pointer ${item.order}" data-username="${item.user.original_username}">
+            <div class="flex flex-col items-center transition-transform duration-300 ease-in-out hover:scale-105 w-1/3 max-w-[220px] cursor-pointer ${item.order}" data-username="${item.user.original_username}" data-plex-user-id="${item.user.user_id}">
                 <img src="${item.user.thumb || 'https://placehold.co/80x80/1F2937/E5E7EB?text=?'}" class="w-20 h-20 rounded-full border-4 border-white dark:border-gray-800 -mb-10 z-10" alt="Avatar">
                 <div class="w-full rounded-t-lg flex flex-col justify-end items-center p-2 pb-4 text-white shadow-lg" style="height: ${item.height}; background: ${item.gradient};">
                     <div class="pt-10 text-center">
@@ -232,6 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = document.createElement('tr');
             row.className = 'hover:bg-gray-100 dark:hover:bg-gray-700/50 cursor-pointer';
             row.dataset.username = user.original_username;
+            row.dataset.plexUserId = user.user_id;
             row.innerHTML = `
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 dark:text-gray-400">${rank}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
@@ -301,9 +302,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    async function renderUserAnalysis(username, days, containerElement) {
+    async function renderUserAnalysis(userId, username, days, containerElement) {
         try {
-            const url = urls.userStats.replace('__USERNAME__', username);
+            const url = urls.userStats.replace('/0', `/${userId}`);
             const data = await fetchAPI(`${url}?days=${days}`);
             const details = data.details;
             const isOwnerViewing = username === currentUser.username;
@@ -348,7 +349,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let chartsAndRecentHtml = '';
             if (isOwnerViewing || isAdminViewing) {
-                const activityData = JSON.stringify(details.weekly_activity.map(s => (s / 3600).toFixed(2)));
+                const weeklyActivity = details.weekly_activity_js || [];
+                const activityData = JSON.stringify(weeklyActivity.map(s => (s / 3600).toFixed(2)));
                 chartsAndRecentHtml = `
                     <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                         <div class="lg:col-span-3">
@@ -360,9 +362,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="w-full h-80 p-2 flex items-center justify-center"><canvas id="contentTypeChart" data-content-type='${contentTypeData}'></canvas></div>
                         </div>
                     </div>
-                    <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
-                        <h4 class="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100">${i18n.mostRecentItems}</h4>
-                        <div class="flex space-x-4 overflow-x-auto py-2 horizontal-scroll">${recentHtml}</div>
+                    <div class="pt-6 border-t border-gray-200 dark:border-gray-700 group/container relative">
+                        <div class="flex justify-between items-center mb-2">
+                             <h4 class="text-xl font-semibold text-gray-900 dark:text-gray-100">${i18n.mostRecentItems}</h4>
+                             <div class="flex items-center space-x-2">
+                                <button id="scroll-left-recent-btn" class="scroll-button">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                                </button>
+                                <button id="scroll-right-recent-btn" class="scroll-button">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="recent-items-container" class="flex space-x-4 overflow-x-auto py-2 horizontal-scroll scroll-smooth">${recentHtml}</div>
                     </div>
                 `;
             } else {
@@ -389,6 +401,29 @@ document.addEventListener('DOMContentLoaded', () => {
             renderUserContentTypeChart(containerElement);
             if(isOwnerViewing || isAdminViewing) {
                 renderUserActivityChart(containerElement);
+
+                const recentContainer = document.getElementById('recent-items-container');
+                const scrollLeftRecentBtn = document.getElementById('scroll-left-recent-btn');
+                const scrollRightRecentBtn = document.getElementById('scroll-right-recent-btn');
+                
+                if (recentContainer && scrollLeftRecentBtn && scrollRightRecentBtn) {
+                    const updateRecentScrollButtons = () => {
+                        scrollLeftRecentBtn.disabled = recentContainer.scrollLeft === 0;
+                        scrollRightRecentBtn.disabled = recentContainer.scrollLeft + recentContainer.clientWidth >= recentContainer.scrollWidth - 1;
+                    };
+
+                    scrollLeftRecentBtn.addEventListener('click', () => {
+                        recentContainer.scrollBy({ left: -recentContainer.clientWidth * 0.8, behavior: 'smooth' });
+                    });
+
+                    scrollRightRecentBtn.addEventListener('click', () => {
+                        recentContainer.scrollBy({ left: recentContainer.clientWidth * 0.8, behavior: 'smooth' });
+                    });
+
+                    recentContainer.addEventListener('scroll', updateRecentScrollButtons);
+                    new ResizeObserver(updateRecentScrollButtons).observe(recentContainer);
+                    updateRecentScrollButtons();
+                }
             }
 
         } catch (error) {
@@ -455,7 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- LÓGICA DE BUSCA E CONTROLO ---
 
-    async function showUserDetailsModal(username, days) {
+    async function showUserDetailsModal(userId, username, days) {
         const modal = document.getElementById('userDetailsModal');
         if (!modal) return;
         modal.innerHTML = `<div class="modal-content !w-full !max-w-4xl transform transition-all"><div id="modalBody" class="modal-body dark:bg-gray-800 bg-white p-4 sm:p-6 rounded-lg"><div class="text-center py-20"><svg class="animate-spin h-8 w-8 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><p class="mt-2">${i18n.analyzingHistory}</p></div></div></div>`;
@@ -466,7 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const titleHtml = `<h3 class="text-2xl font-bold text-yellow-400 mb-4">${i18n.analysisOf} ${username}</h3>`;
         
         const analysisContainer = document.createElement('div');
-        await renderUserAnalysis(username, days, analysisContainer);
+        await renderUserAnalysis(userId, username, days, analysisContainer);
         
         modalBody.innerHTML = `<div class="relative">${closeButtonHtml}${titleHtml}</div>`;
         modalBody.appendChild(analysisContainer);
@@ -519,7 +554,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderMainChart(allUsersData);
             } else {
                 const personalAnalysisContainer = document.getElementById('personal-analysis');
-                await renderUserAnalysis(currentUser.username, days, personalAnalysisContainer);
+                await renderUserAnalysis(currentUser.id, currentUser.username, days, personalAnalysisContainer);
 
                 const leaderboardList = document.getElementById('leaderboard-list');
                 if (allUsersData.length === 0) {
@@ -529,7 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const isCurrentUser = user.original_username === currentUser.username;
                         const isPrivate = user.is_private && !isCurrentUser && !currentUser.is_admin;
                         
-                        const clickableAttrs = isPrivate ? '' : `data-username="${user.original_username}"`;
+                        const clickableAttrs = isPrivate ? '' : `data-username="${user.original_username}" data-plex-user-id="${user.user_id}"`;
                         const cursorClass = isPrivate ? 'cursor-default' : 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50';
                         const highlightClass = isCurrentUser ? 'bg-yellow-100 dark:bg-yellow-500/20 ring-2 ring-yellow-500' : cursorClass;
                         
@@ -559,9 +594,9 @@ document.addEventListener('DOMContentLoaded', () => {
     daysFilter.addEventListener('change', () => mainFetch(daysFilter.value));
 
     document.body.addEventListener('click', (e) => { 
-        const clickable = e.target.closest('[data-username]'); 
+        const clickable = e.target.closest('[data-plex-user-id]'); 
         if (clickable) {
-            showUserDetailsModal(clickable.dataset.username, daysFilter.value); 
+            showUserDetailsModal(clickable.dataset.plexUserId, clickable.dataset.username, daysFilter.value); 
         } 
     });
     
