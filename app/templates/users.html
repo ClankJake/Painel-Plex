@@ -112,6 +112,7 @@
         data-url-api-users-unblock="{{ url_for('users_api.unblock_user_route') }}"
         data-url-api-users-toggle-overseerr="{{ url_for('users_api.toggle_overseerr_access_route') }}"
         data-url-api-users-update-all-limits="{{ url_for('users_api.update_all_limits_route') }}"
+        data-url-api-users-update-all-libraries="{{ url_for('users_api.update_all_libraries_route') }}"
         data-url-api-users-payments-base="{{ url_for('users_api.get_user_payments_history', plex_user_id=0) }}"
         data-url-base-invite-page="/invite/"
         data-i18n-error="{{ _('Erro') }}"
@@ -230,4 +231,3 @@
 >
 </script>
 {% endblock %}
-
