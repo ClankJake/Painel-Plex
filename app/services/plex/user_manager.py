@@ -132,6 +132,12 @@ class PlexUserManager:
 
         if not self.conn.account:
             return {"success": False, "message": _("A conta Plex não está configurada.")}
+            
+        # CORREÇÃO: Adiciona uma verificação para a conta do administrador
+        if self.conn.account.id == plex_user_id:
+            all_libraries = [sec.title for sec in self.conn.plex.library.sections()]
+            return {"success": True, "libraries": all_libraries}
+            
         try:
             plex_user_obj = self.conn.account.user(email)
             profile = self.data_manager.get_user_profile(plex_user_id)
@@ -160,6 +166,11 @@ class PlexUserManager:
         
         if not self.conn.account:
             return {"success": False, "message": _("A conta Plex não está configurada.")}
+            
+        # CORREÇÃO: Adiciona uma verificação para a conta do administrador
+        if self.conn.account.id == plex_user_id:
+            return {"success": True, "message": _("O administrador já tem acesso a todas as bibliotecas. Nenhuma alteração é necessária.")}
+            
         try:
             user_to_update = self.conn.account.user(user['email'])
             libraries_to_share = [s for s in self.conn.plex.library.sections() if s.title in library_titles]
@@ -180,12 +191,13 @@ class PlexUserManager:
         """
         all_users = self.get_all_plex_users()
         if not all_users:
-            return {"success": False, "message": _("Não foi possível obter a lista de utilizadores do Plex.")}
+            return {"success": False, "message": _("Não foi possível obter a lista de usuário do Plex.")}
 
         for user_data in all_users:
+            # A lógica dentro de update_user_libraries já ignora o admin
             self.update_user_libraries(user_data['id'], library_titles)
 
-        return {"success": True, "message": _("Bibliotecas atualizadas para todos os utilizadores.")}
+        return {"success": True, "message": _("Bibliotecas atualizadas para todos os usuário.")}
 
     def block_user(self, plex_user_id, reason='manual'):
         user_to_block = self.get_user_by_id(plex_user_id)
