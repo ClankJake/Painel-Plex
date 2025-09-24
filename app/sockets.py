@@ -3,10 +3,18 @@
 import logging
 from datetime import datetime
 from . import extensions
+import threading
 
 # Variável para manter a instância da aplicação, que será definida em app/__init__.py
 app_instance = None
 logger = logging.getLogger(__name__)
+
+# --- INÍCIO DA ALTERAÇÃO: Gestão de Estado da Tarefa ---
+# Variáveis globais para gerir o estado da tarefa em segundo plano
+background_task_greenlet = None
+connected_clients = 0
+lock = threading.Lock()
+# --- FIM DA ALTERAÇÃO ---
 
 def get_data_for_socket():
     """
@@ -67,13 +75,16 @@ def get_data_for_socket():
                 return None, None
 
 def background_task():
-    """Tarefa em segundo plano que envia atualizações do dashboard e dos streams ativos."""
+    """
+    Tarefa em segundo plano que envia atualizações do dashboard e dos streams ativos.
+    Esta tarefa agora termina automaticamente quando não há clientes conectados.
+    """
+    logger.info("Tarefa de fundo do SocketIO iniciada.")
     count = 0
-    while True:
-        # Intervalo de atualização reduzido para 5 segundos para maior reatividade
+    while connected_clients > 0:
         extensions.socketio.sleep(5)
         count += 1
-        logger.debug(f"A executar a tarefa de fundo do SocketIO - Contagem: {count}")
+        logger.debug(f"A executar a tarefa de fundo do SocketIO - Contagem: {count}, Clientes: {connected_clients}")
         
         summary_data, active_sessions = get_data_for_socket()
         
@@ -87,12 +98,36 @@ def background_task():
             extensions.socketio.emit('active_streams_update', {'sessions': active_sessions}, namespace='/dashboard')
             logger.debug("Dados de streams ativos enviados para os clientes.")
 
+    logger.info("Tarefa de fundo do SocketIO parada. Nenhum cliente conectado.")
+    global background_task_greenlet
+    with lock:
+        background_task_greenlet = None
+
+
 @extensions.socketio.on('connect', namespace='/dashboard')
 def handle_dashboard_connect():
-    """Lida com novas conexões de clientes ao namespace do dashboard."""
-    logger.info('Cliente conectado ao dashboard em tempo real.')
-    # Inicia a tarefa em segundo plano se ainda não estiver a correr
-    if not hasattr(handle_dashboard_connect, 'task_started') or not handle_dashboard_connect.task_started:
-        extensions.socketio.start_background_task(background_task)
-        handle_dashboard_connect.task_started = True
-        logger.info("Tarefa de fundo do dashboard iniciada.")
+    """
+    Lida com novas conexões de clientes ao namespace do dashboard.
+    Inicia a tarefa em segundo plano apenas se for a primeira conexão.
+    """
+    # --- ALTERAÇÃO: Lógica de contagem de clientes ---
+    global connected_clients, background_task_greenlet
+    with lock:
+        connected_clients += 1
+        logger.debug(f'Cliente conectado ao dashboard. Clientes ativos: {connected_clients}')
+        # Inicia a tarefa em segundo plano apenas se for a primeira conexão e a tarefa não estiver a correr
+        if connected_clients == 1 and (background_task_greenlet is None or getattr(background_task_greenlet, 'dead', True)):
+            background_task_greenlet = extensions.socketio.start_background_task(background_task)
+
+# --- ALTERAÇÃO: Adiciona um handler para desconexões ---
+@extensions.socketio.on('disconnect', namespace='/dashboard')
+def handle_dashboard_disconnect():
+    """
+    Lida com desconexões de clientes.
+    A tarefa em segundo plano irá parar sozinha quando o contador chegar a zero.
+    """
+    global connected_clients
+    with lock:
+        if connected_clients > 0:
+            connected_clients -= 1
+        logger.debug(f'Cliente desconectado do dashboard. Clientes ativos: {connected_clients}')
