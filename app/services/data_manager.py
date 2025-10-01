@@ -466,9 +466,23 @@ class DataManager:
         return {u.user_plex_id: self._row_to_dict(u) for u in BlockedUser.query.all()}
 
     def add_blocked_user(self, plex_user_id, username, reason='manual'):
-        user = BlockedUser.query.get(plex_user_id) or BlockedUser(user_plex_id=plex_user_id, username=username)
-        user.blocked_at, user.block_reason = datetime.now().isoformat(), reason
-        db.session.add(user)
+        # CORREÇÃO: Verifica se o utilizador já existe antes de tentar inserir.
+        # Isto torna a operação idempotente e evita o erro de UNIQUE constraint.
+        user = BlockedUser.query.get(plex_user_id)
+        if user:
+            # Se o utilizador já está bloqueado, apenas atualizamos a data e o motivo.
+            user.blocked_at = datetime.now().isoformat()
+            user.block_reason = reason
+            logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) já estava bloqueado. A atualizar o motivo para '{reason}'.")
+        else:
+            # Se não existe, criamos um novo registo.
+            user = BlockedUser(user_plex_id=plex_user_id, username=username)
+            user.blocked_at = datetime.now().isoformat()
+            user.block_reason = reason
+            db.session.add(user)
+            logger.info(f"A adicionar o utilizador '{username}' (ID: {plex_user_id}) à lista de bloqueados com o motivo '{reason}'.")
+        
+        # O commit é feito em ambos os casos (criação ou atualização).
         db.session.commit()
 
     def remove_blocked_user(self, plex_user_id):
