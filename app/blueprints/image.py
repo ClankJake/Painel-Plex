@@ -113,7 +113,7 @@ def proxy_image():
         # 3. Salva a imagem em cache no formato WebP
         img.save(cache_filepath, 'webp', quality=80)
         
-        logger.info(f"Imagem '{unique_identifier}' obtida, convertida para WebP e armazenada em cache.")
+        logger.debug(f"Imagem '{unique_identifier}' obtida, convertida para WebP e armazenada em cache.")
         
         # 4. Retorna a imagem recém-convertida para o cliente
         with open(cache_filepath, 'rb') as f:
@@ -131,4 +131,5 @@ def proxy_image():
         logger.error(f"Erro ao processar e converter a imagem '{unique_identifier}' para WebP: {e}", exc_info=True)
         # Se a conversão falhar, serve a imagem original para não quebrar a UI
         return Response(image_content, mimetype=response.headers.get('Content-Type', 'image/jpeg'))
+
 
