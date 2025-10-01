@@ -151,60 +151,34 @@ def get_payment_options():
     token = request.args.get('token')
     username = None
     is_public_request = bool(token)
+    user_profile = None
 
     if token:
-        profile = UserProfile.query.filter_by(payment_token=token).first()
-        if profile:
-            username = profile.username
+        profile_from_token = UserProfile.query.filter_by(payment_token=token).first()
+        if profile_from_token:
+            username = profile_from_token.username
+            user_profile = extensions.data_manager._row_to_dict(profile_from_token)
     elif current_user.is_authenticated:
         username = current_user.username
+        user_profile = extensions.data_manager.get_user_profile(int(current_user.id))
     
-    if not username:
+    if not user_profile:
         return jsonify({"success": False, "message": _("Usuário não especificado ou token inválido.")}), 400
 
     config = load_or_create_config()
-    profile = extensions.data_manager.get_user_profile_by_username(username)
-    current_screens = profile.get('screen_limit', 0)
     
-    screen_prices = config.get("SCREEN_PRICES", {})
-    renewal_price = config.get("RENEWAL_PRICE")
+    # REATORAÇÃO: Usa o PricingManager para obter os planos
+    available_prices = extensions.pricing_manager.get_available_plans(user_profile, is_public_request)
     
-    available_prices = {}
-    can_downgrade = True
-
-    if is_public_request:
-        price_for_current_plan = screen_prices.get(str(current_screens), renewal_price)
-        if price_for_current_plan and float(price_for_current_plan) > 0:
-            available_prices = {str(current_screens): price_for_current_plan}
-        else:
-            return jsonify({"success": False, "message": _("O seu plano atual não tem um preço de renovação definido.")}), 404
-    else:
-        valid_screen_prices = {k: v for k, v in screen_prices.items() if v and float(v) > 0}
-        if valid_screen_prices:
-            expiration_date_str = profile.get('expiration_date')
-            days_left = 999
-            if expiration_date_str:
-                try:
-                    expiration_date = datetime.fromisoformat(expiration_date_str).date()
-                    days_left = (expiration_date - date.today()).days
-                except ValueError: pass
-            
-            renewal_window_days = int(config.get("DAYS_TO_NOTIFY_EXPIRATION", 7))
-            can_downgrade = days_left <= renewal_window_days
-            
-            for screens, price in valid_screen_prices.items():
-                if can_downgrade or int(screens) >= current_screens:
-                    available_prices[screens] = price
+    if not available_prices:
+        return jsonify({"success": False, "message": _("Nenhum plano de renovação disponível ou definido pelo administrador.")}), 404
         
-        if not available_prices and renewal_price and float(renewal_price) > 0:
-            available_prices["0"] = renewal_price
-    
     enabled_providers = {
         "efi": config.get("EFI_ENABLED"), 
         "mercadopago": config.get("MERCADOPAGO_ENABLED"),
         "bpix": config.get("BPIX_ENABLED")
     }
-    return jsonify({"success": True, "prices": available_prices, "providers": enabled_providers, "can_downgrade": can_downgrade})
+    return jsonify({"success": True, "prices": available_prices, "providers": enabled_providers, "can_downgrade": True}) # can_downgrade é agora tratado em get_available_plans
 
 @payments_api_bp.route('/validate-coupon', methods=['POST'])
 def validate_coupon_route():
@@ -222,43 +196,14 @@ def validate_coupon_route():
     if not code or screens_str is None:
         return jsonify({"success": False, "message": "Código do cupão e plano são necessários."}), 400
 
-    if extensions.data_manager.has_user_used_coupon(plex_user_id, code):
-        return jsonify({"success": False, "message": "Você já usou esse cupom."}), 403
-
-    coupon = extensions.data_manager.get_coupon_by_code(code)
-
-    if not coupon:
-        return jsonify({"success": False, "message": "Cupão inválido ou não encontrado."}), 404
-    if not coupon['is_active']:
-        return jsonify({"success": False, "message": "Este cupão não está mais ativo."}), 403
-    if coupon['expires_at'] and datetime.utcnow() > coupon['expires_at']:
-        return jsonify({"success": False, "message": "Este cupão expirou."}), 403
-    if coupon['use_count'] >= coupon['max_uses']:
-        return jsonify({"success": False, "message": "Este cupão já atingiu o limite de utilizações."}), 403
-
-    config = load_or_create_config()
-    price_str = config.get("SCREEN_PRICES", {}).get(str(screens_str)) or config.get("RENEWAL_PRICE")
+    # REATORAÇÃO: Delega a lógica de cálculo para o PricingManager
+    result = extensions.pricing_manager.calculate_price(
+        screens=screens_str,
+        coupon_code=code,
+        plex_user_id=plex_user_id
+    )
     
-    try:
-        original_price = float(price_str)
-        discounted_price = original_price
-
-        if coupon['discount_type'] == 'percentage':
-            discounted_price = original_price * (1 - coupon['value'] / 100)
-        elif coupon['discount_type'] == 'fixed':
-            discounted_price = original_price - coupon['value']
-
-        discounted_price = max(0, discounted_price)
-
-        return jsonify({
-            "success": True,
-            "original_price": original_price,
-            "discounted_price": discounted_price,
-            "message": "Cupão aplicado com sucesso!"
-        })
-
-    except (ValueError, TypeError):
-        return jsonify({"success": False, "message": "Preço do plano inválido."}), 400
+    return jsonify(result)
 
 
 @payments_api_bp.route('/create-charge', methods=['POST'])
@@ -284,35 +229,37 @@ def create_charge_route():
     if not plex_user_id or not username:
         return jsonify({"success": False, "message": _("Usuário não especificado para a cobrança.")}), 400
 
-    config = load_or_create_config()
     profile = extensions.data_manager.get_user_profile(plex_user_id)
     
     plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
     if not plex_user:
         return jsonify({"success": False, "message": _("Usuário não encontrado no Plex.")}), 404
 
-    price_str = config.get("SCREEN_PRICES", {}).get(str(screens_str)) or config.get("RENEWAL_PRICE")
-    if not price_str or float(price_str) <= 0:
-        return jsonify({"success": False, "message": _("Opção de plano inválida ou sem preço definido.")}), 400
-        
-    final_price = float(price_str)
-    if coupon_code:
-        if extensions.data_manager.has_user_used_coupon(plex_user_id, coupon_code):
-             return jsonify({"success": False, "message": "Você já usou esse cupom."}), 403
-        coupon = extensions.data_manager.get_coupon_by_code(coupon_code)
-        if coupon and coupon['is_active'] and coupon['use_count'] < coupon['max_uses'] and (not coupon['expires_at'] or datetime.utcnow() < coupon['expires_at']):
-            final_price = final_price * (1 - coupon['value'] / 100) if coupon['discount_type'] == 'percentage' else max(0, final_price - coupon['value'])
-        else:
-            return jsonify({"success": False, "message": "O cupão fornecido já não é válido."}), 400
+    # REATORAÇÃO: Usa o PricingManager como fonte única da verdade para o preço final
+    price_calculation = extensions.pricing_manager.calculate_price(
+        screens=screens_str,
+        coupon_code=coupon_code,
+        plex_user_id=plex_user_id
+    )
 
-    if coupon_code and final_price <= 0:
+    if not price_calculation.get("success"):
+        return jsonify(price_calculation), 400
+
+    final_price = price_calculation.get("discounted_price")
+
+    if final_price <= 0:
         try:
             with extensions.db.session.begin_nested():
                 extensions.plex_manager.renew_subscription(plex_user_id, 1, 'expiry_date')
-                if extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id):
-                    extensions.data_manager.add_manual_payment(plex_user_id=plex_user_id, username=username, value=0.00, description=f"Renovação via Cupão 100% ({coupon_code})", payment_date_str=datetime.now().isoformat())
-                else:
-                    raise Exception("Falha ao registrar o uso do cupão.")
+                if coupon_code and not extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id):
+                     raise Exception("Falha ao registrar o uso do cupão.")
+                
+                # Regista um pagamento manual de valor zero para manter o histórico financeiro
+                data_manager.add_manual_payment(
+                    plex_user_id=plex_user_id, username=username, value=0.00,
+                    description=f"Renovação via Cupão 100% ({coupon_code})",
+                    payment_date_str=datetime.now().isoformat()
+                )
             extensions.db.session.commit()
             return jsonify({"success": True, "free_renewal": True, "message": _("Assinatura gratuita ativada com sucesso!")})
         except Exception as e:
@@ -320,10 +267,10 @@ def create_charge_route():
             extensions.db.session.rollback()
             return jsonify({"success": False, "message": "Ocorreu um erro ao ativar a sua assinatura gratuita."}), 500
 
-
     price, screens = final_price, int(screens_str)
     user_info = {"plex_user_id": plex_user_id, "username": username, "name": profile.get('name', username), "email": plex_user.get('email')}
     
+    config = load_or_create_config()
     result = {"success": False, "message": _("O provedor %(provider)s não está habilitado.", provider=provider)}
     if provider == 'EFI' and config.get('EFI_ENABLED'):
         result = extensions.efi_manager.create_pix_charge(user_info, price, screens, coupon_code)
@@ -572,4 +519,3 @@ def export_financial_csv():
     except Exception as e:
         logger.error(f"Erro ao gerar o relatório CSV: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Ocorreu um erro interno ao gerar o relatório."}), 500
-
