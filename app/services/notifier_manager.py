@@ -20,7 +20,7 @@ DEFAULT_TEMPLATES = {
     "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "? Olá {username}! A sua subscrição foi renovada com sucesso. O seu novo vencimento é em {new_date}.",
     "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "Seu período de teste para {username} terminou. Para continuar com o acesso, renove sua assinatura em: {payment_link}",
     "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! ?\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
-    "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ?\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
+    "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ?\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!\", "color": 65280}]}',
     "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ?\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
     "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
     "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "? A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
@@ -83,6 +83,18 @@ class NotifierManager:
         config = load_or_create_config()
         request_id = uuid.uuid4()
         
+        # --- INÍCIO DA CORREÇÃO ---
+        # Verifica se existe algum notificador ativo E se o utilizador tem o contacto correspondente
+        # ANTES de gerar o link de pagamento.
+        can_notify_telegram = config.get("TELEGRAM_ENABLED") and user_profile.get('telegram_user')
+        can_notify_webhook = config.get("WEBHOOK_ENABLED") and user_profile.get('phone_number')
+        can_notify_discord = config.get("DISCORD_ENABLED") and user_profile.get('discord_user_id')
+
+        if not (can_notify_telegram or can_notify_webhook or can_notify_discord):
+            logger.info(f"[ID: {request_id}] Nenhuma notificação enviada para '{user.get('username')}' (evento: {event_type}) porque nenhum método de contacto está registado ou habilitado.")
+            return # Sai da função se não houver para onde enviar.
+        # --- FIM DA CORREÇÃO ---
+
         user_screen_limit = user_profile.get('screen_limit', 0)
         screen_prices = config.get("SCREEN_PRICES", {})
         renewal_price_str = config.get("RENEWAL_PRICE", "0.00")
@@ -107,12 +119,12 @@ class NotifierManager:
 
         placeholders = {**self._build_placeholders('notification', user, user_profile, context), 'payment_link': payment_link, 'price': formatted_price, 'plan_name': plan_name}
         
-        if config.get("TELEGRAM_ENABLED") and user_profile.get('telegram_user'):
+        if can_notify_telegram:
             template = config.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE")
             if template:
                 self._send_telegram_notification(template.format(**placeholders), user_profile['telegram_user'], request_id)
         
-        if config.get("WEBHOOK_ENABLED") and user_profile.get('phone_number'):
+        if can_notify_webhook:
             template_str = config.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE")
             if template_str:
                 try:
@@ -124,7 +136,7 @@ class NotifierManager:
                 except (json.JSONDecodeError, KeyError) as e:
                     logger.error(f"[ID: {request_id}] Erro no template do Webhook: {e}")
 
-        if config.get("DISCORD_ENABLED") and user_profile.get('discord_user_id'):
+        if can_notify_discord:
             template_str = config.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE")
             if template_str:
                 try:
