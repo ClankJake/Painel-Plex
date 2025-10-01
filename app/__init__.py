@@ -185,10 +185,12 @@ def create_app():
     from .services import (
         DataManager, TautulliManager, PlexManager, 
         NotifierManager, EfiManager, MercadoPagoManager,
-        OverseerrManager, LinkShortener, BpixManager, StreamManager
+        OverseerrManager, LinkShortener, BpixManager, StreamManager,
+        PricingManager
     )
 
     extensions.data_manager = DataManager()
+    extensions.pricing_manager = PricingManager(data_manager=extensions.data_manager) # NOVO
     extensions.tautulli_manager = TautulliManager(data_manager=extensions.data_manager)
     extensions.link_shortener = LinkShortener()
     extensions.notifier_manager = NotifierManager(link_shortener_service=extensions.link_shortener, socketio_instance=extensions.socketio)
