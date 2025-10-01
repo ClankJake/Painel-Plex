@@ -9,11 +9,7 @@ const savedViewState = JSON.parse(localStorage.getItem('userListViewState'));
 export let viewState = savedViewState || {
     filter: 'all',
     searchTerm: '',
-    sortBy: 'name_asc',
-    // NOVAS PROPRIEDADES PARA VIRTUALIZAÇÃO
-    currentPage: 1,
-    itemsPerPage: 15,
-    hasMoreUsers: true,
+    sortBy: 'name_asc'
 };
 
 export function setAllLibraries(libs) { allLibraries = libs; }
