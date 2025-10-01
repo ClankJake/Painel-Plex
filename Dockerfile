@@ -52,8 +52,10 @@ COPY babel.cfg .
 # Copia os assets construídos e as dependências do estágio de frontend para o diretório final correto
 COPY --from=frontend-builder /build/app/static/dist/output.css ./app/static/dist/output.css
 COPY --from=frontend-builder /build/node_modules/chart.js/dist/chart.umd.js ./app/static/dist/chart.umd.js
+COPY --from=frontend-builder /build/node_modules/chart.js/dist/chart.umd.js.map ./app/static/dist/chart.umd.js.map
 COPY --from=frontend-builder /build/node_modules/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js ./app/static/dist/chartjs-adapter-date-fns.bundle.min.js
 COPY --from=frontend-builder /build/node_modules/socket.io-client/dist/socket.io.min.js ./app/static/dist/socket.io.min.js
+COPY --from=frontend-builder /build/node_modules/socket.io-client/dist/socket.io.min.js.map ./app/static/dist/socket.io.min.js.map
 
 
 # Expor a Porta: Informa ao Docker que a aplicação irá escutar na porta definida pela variável de ambiente.
