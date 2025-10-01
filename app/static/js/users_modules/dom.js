@@ -8,7 +8,6 @@
  */
 
 export const userGrid = document.getElementById('userGrid');
-export const userGridLoader = document.getElementById('user-grid-loader'); // NOVO: Loader para scroll infinito
 export const inviteListDiv = document.getElementById('inviteList');
 export const createInviteButton = document.getElementById('createInviteButton');
 export const refreshButton = document.getElementById('refreshButton');
