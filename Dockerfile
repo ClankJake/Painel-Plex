@@ -39,6 +39,14 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# Instala as dependências de sistema necessárias para a biblioteca Pillow (processamento de imagens)
+RUN apt-get update && apt-get install -y \
+    libjpeg-dev \
+    zlib1g-dev \
+    libwebp-dev \
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
+
 # Instalação de Dependências Python:
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

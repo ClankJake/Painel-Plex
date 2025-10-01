@@ -44,3 +44,4 @@ mercado_pago_manager = None
 bpix_manager = None
 overseerr_manager = None
 link_shortener = None
+pricing_manager = None
