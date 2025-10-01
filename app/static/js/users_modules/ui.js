@@ -3,7 +3,7 @@
 import * as dom from './dom.js';
 import * as state from './state.js';
 import * as api from './api.js';
-import { i18n } from './config.js';
+import { i18n, urls } from './config.js';
 import { showToast } from '../utils.js';
 import { handleInviteAction, handleUserAction } from './handlers.js';
 import * as modals from './modals.js';
@@ -27,10 +27,6 @@ export const {
     showPaymentHistoryModal
 } = modals;
 
-// --- CORREÇÃO: Variáveis para o scroll infinito ---
-let observer;
-let usersToRender = []; // Array filtrado e ordenado para renderização
-let isLoadingMoreUsers = false; // Flag para prevenir cargas múltiplas
 
 /**
  * Renderiza a lista de convites pendentes.
@@ -102,33 +98,31 @@ function renderInviteCard(details) {
 }
 
 /**
- * Renderiza a grelha de utilizadores com base no estado atual, agora com virtualização.
- * Esta função prepara a lista, limpa a UI e inicia o processo de renderização por partes.
+ * Renderiza a grelha de utilizadores com base no estado atual.
  */
 export function renderUserGrid() {
-    // 1. Prepara a lista completa de utilizadores a serem renderizados
-    let filteredUsers = [...state.allUsersCache];
+    let usersToRender = [...state.allUsersCache];
 
     // Filtragem
     if (state.viewState.filter === 'active') {
-        filteredUsers = filteredUsers.filter(u => !u.is_blocked);
+        usersToRender = usersToRender.filter(u => !u.is_blocked);
     } else if (state.viewState.filter === 'blocked') {
-        filteredUsers = filteredUsers.filter(u => u.is_blocked);
+        usersToRender = usersToRender.filter(u => u.is_blocked);
     } else if (state.viewState.filter === 'trial') {
-        filteredUsers = filteredUsers.filter(u => u.is_on_trial);
+        usersToRender = usersToRender.filter(u => u.is_on_trial);
     }
 
     // Pesquisa
     if (state.viewState.searchTerm) {
         const term = state.viewState.searchTerm.toLowerCase();
-        filteredUsers = filteredUsers.filter(u =>
+        usersToRender = usersToRender.filter(u =>
             u.username.toLowerCase().includes(term) ||
             u.email.toLowerCase().includes(term)
         );
     }
 
     // Ordenação
-    filteredUsers.sort((a, b) => {
+    usersToRender.sort((a, b) => {
         if (state.viewState.sortBy === 'name_asc') return a.username.localeCompare(b.username);
         if (state.viewState.sortBy === 'name_desc') return b.username.localeCompare(a.username);
         if (state.viewState.sortBy === 'exp_asc' || state.viewState.sortBy === 'exp_desc') {
@@ -141,88 +135,11 @@ export function renderUserGrid() {
         return 0;
     });
 
-    usersToRender = filteredUsers; // Armazena a lista processada
-
-    // 2. Limpa a UI e re-inicializa o estado de paginação
     dom.userGrid.innerHTML = '';
-    isLoadingMoreUsers = false; // CORREÇÃO: Reseta a flag de carregamento
-    state.setViewState({ currentPage: 1, hasMoreUsers: true });
-
-    // 3. Configura ou re-configura o Intersection Observer
-    setupIntersectionObserver();
-    
-    // 4. Carrega a primeira "página" de utilizadores
-    loadMoreUsers();
-}
-
-/**
- * Carrega e renderiza o próximo lote (página) de utilizadores.
- */
-function loadMoreUsers() {
-    // CORREÇÃO: Adiciona uma flag para prevenir chamadas múltiplas enquanto uma já está em progresso.
-    if (!state.viewState.hasMoreUsers || isLoadingMoreUsers) {
-        return;
-    }
-    isLoadingMoreUsers = true;
-    dom.userGridLoader.classList.remove('hidden');
-
-    // CORREÇÃO: Adiciona um pequeno timeout para permitir que o loader apareça
-    // e para evitar que o observer dispare múltiplas vezes em rápida sucessão.
-    setTimeout(() => {
-        const page = state.viewState.currentPage;
-        const itemsPerPage = state.viewState.itemsPerPage;
-        const startIndex = (page - 1) * itemsPerPage;
-        const endIndex = startIndex + itemsPerPage;
-        const userChunk = usersToRender.slice(startIndex, endIndex);
-
-        if (userChunk.length > 0) {
-            userChunk.forEach(user => dom.userGrid.appendChild(renderUserCard(user)));
-            state.setViewState({ currentPage: page + 1 });
-        }
-
-        if (endIndex >= usersToRender.length) {
-            state.setViewState({ hasMoreUsers: false });
-            if (observer) {
-                observer.disconnect();
-            }
-            if (usersToRender.length === 0) {
-                 dom.userGrid.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center col-span-full py-10">${i18n.noUsersFound}</p>`;
-            }
-        }
-        
-        // CORREÇÃO: Esconde o loader apenas quando o processo termina e ainda há mais itens.
-        // Se não houver mais, a condição acima já o esconde.
-        if (state.viewState.hasMoreUsers) {
-            dom.userGridLoader.classList.add('hidden');
-        }
-
-        isLoadingMoreUsers = false;
-    }, 300); // Um delay de 300ms é um bom ponto de partida.
-}
-
-/**
- * Configura o Intersection Observer para observar o elemento de carregamento.
- */
-function setupIntersectionObserver() {
-    if (observer) {
-        observer.disconnect();
-    }
-
-    const options = {
-        root: null, // viewport
-        rootMargin: '200px', // Começa a carregar 200px antes do loader aparecer na tela
-        threshold: 0
-    };
-
-    observer = new IntersectionObserver((entries) => {
-        // CORREÇÃO: A verificação de `isIntersecting` é a parte crucial.
-        if (entries[0] && entries[0].isIntersecting && state.viewState.hasMoreUsers) {
-            loadMoreUsers();
-        }
-    }, options);
-
-    if (dom.userGridLoader) {
-        observer.observe(dom.userGridLoader);
+    if (usersToRender.length > 0) {
+        usersToRender.forEach(user => dom.userGrid.appendChild(renderUserCard(user)));
+    } else {
+        dom.userGrid.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center col-span-full py-10">${i18n.noUsersFound}</p>`;
     }
 }
 
@@ -318,4 +235,3 @@ export function updateTabCounts() {
     dom.countBlocked.textContent = state.allUsersCache.filter(u => u.is_blocked).length;
     dom.countTrial.textContent = state.allUsersCache.filter(u => u.is_on_trial).length;
 }
-
