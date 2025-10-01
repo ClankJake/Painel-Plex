@@ -1,3 +1,4 @@
+# app/services/__init__.py
 
 """
 Este ficheiro transforma a pasta 'services' num pacote Python
@@ -15,6 +16,7 @@ from .overseerr_manager import OverseerrManager
 from .link_shortener import LinkShortener
 from .bpix_manager import BpixManager
 from .stream_manager import StreamManager
+from .pricing_manager import PricingManager
 
 __all__ = [
     'DataManager',
@@ -27,4 +29,5 @@ __all__ = [
     'StreamManager',
     'LinkShortener',
     'BpixManager',
+    'PricingManager',
 ]
