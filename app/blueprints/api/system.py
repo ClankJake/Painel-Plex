@@ -412,7 +412,7 @@ def test_overseerr_connection():
 def bulk_notify():
     data = request.get_json()
     message = data.get('message')
-    contacts_only = data.get('contacts_only', False)
+    target_audience = data.get('target_audience', 'active')
 
     if not message:
         return jsonify({"success": False, "message": _("A mensagem não pode estar vazia.")}), 400
@@ -426,8 +426,11 @@ def bulk_notify():
     if not is_any_notifier_enabled:
         return jsonify({"success": False, "message": _("Nenhum agente de notificação (Telegram, Discord, etc.) está ativado nas configurações.")}), 400
 
-    # MELHORIA DE ROBUSTEZ: Cria uma tarefa persistente na base de dados em vez de uma thread
-    task_payload = {'message': message, 'contacts_only': contacts_only}
+    task_payload = {
+        'message': message,
+        'target_audience': target_audience
+    }
     task = data_manager.create_task('bulk_notification', task_payload)
 
     return jsonify({"success": True, "message": _("A tarefa de envio de notificações em massa foi agendada e será iniciada em breve."), "task_id": task['id']})
+
