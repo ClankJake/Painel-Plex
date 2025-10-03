@@ -8,22 +8,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorMessage = document.getElementById('errorMessage');
     const realtimeStatus = document.getElementById('realtime-status');
     const sendBulkNotificationBtn = document.getElementById('send-bulk-notification-btn');
-    const contactsOnlyCheckbox = document.getElementById('contacts_only_checkbox');
+    const sendBulkBtnText = document.getElementById('send-bulk-btn-text');
     const clearAllLogsBtn = document.getElementById('clear-all-logs-btn');
 
     const scriptTag = document.getElementById('dashboard-script');
     const urls = {};
     const i18n = {};
 
-    // CORREÇÃO: Popula os objetos urls e i18n a partir dos data-attributes do script tag.
     if (scriptTag) {
         for (const key in scriptTag.dataset) {
             if (key.startsWith('i18n')) {
                 const i18nKey = key.charAt(4).toLowerCase() + key.slice(5).replace(/-(\w)/g, (_, letter) => letter.toUpperCase());
                 i18n[i18nKey] = scriptTag.dataset[key];
             } else {
-                // Converte kebab-case para camelCase para as chaves do objeto urls.
-                // Ex: data-summary-url se torna summaryUrl
                 const urlKey = key.replace(/-(\w)/g, (_, letter) => letter.toUpperCase());
                 urls[urlKey] = scriptTag.dataset[key];
             }
@@ -609,7 +606,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.on('bulk_notification_start', (data) => {
             progressContainer.classList.remove('hidden');
             sendBulkNotificationBtn.disabled = true;
-            sendBulkNotificationBtn.textContent = i18n.sendingBulkNotification;
+            sendBulkBtnText.textContent = i18n.sendingBulkNotification;
             progressBar.style.width = '0%';
             progressBar.classList.remove('bg-red-600');
             progressBar.classList.add('bg-blue-600');
@@ -631,10 +628,10 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast(i18n.bulkSendComplete, 'success');
             setTimeout(() => {
                 sendBulkNotificationBtn.disabled = false;
-                sendBulkNotificationBtn.innerHTML = `<svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086L2.279 16.76a.75.75 0 00.95.826l16-5.333a.75.75 0 000-1.418l-16-5.333z" /></svg> ${i18n.sendToAllActive}`;
+                sendBulkBtnText.textContent = i18n.sendToAllActive;
                 progressContainer.classList.add('hidden');
                 document.getElementById('bulk_message').value = '';
-                if (contactsOnlyCheckbox) contactsOnlyCheckbox.checked = false;
+                document.getElementById('target_active').checked = true;
             }, 3000);
         });
         
@@ -645,7 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
             progressBar.classList.add('bg-red-600');
             setTimeout(() => {
                  sendBulkNotificationBtn.disabled = false;
-                sendBulkNotificationBtn.innerHTML = `<svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086L2.279 16.76a.75.75 0 00.95.826l16-5.333a.75.75 0 000-1.418l-16-5.333z" /></svg> ${i18n.sendToAllActive}`;
+                sendBulkBtnText.textContent = i18n.sendToAllActive;
                 progressContainer.classList.add('hidden');
             }, 5000);
         });
@@ -667,6 +664,18 @@ document.addEventListener('DOMContentLoaded', () => {
             userStatusChart.update();
         }
     });
+    
+    document.querySelectorAll('input[name="notification_target"]').forEach((radio) => {
+        radio.addEventListener('change', function() {
+            if (this.value === 'blocked') {
+                sendBulkBtnText.textContent = i18n.sendToAllBlocked;
+            } else if (this.value === 'all') {
+                sendBulkBtnText.textContent = i18n.sendToAllUsers;
+            } else { // active
+                sendBulkBtnText.textContent = i18n.sendToAllActive;
+            }
+        });
+    });
 
     if (sendBulkNotificationBtn) {
         sendBulkNotificationBtn.addEventListener('click', () => {
@@ -676,7 +685,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            createModal('confirmationModal', i18n.confirmBulkSendTitle, 
+            const targetAudience = document.querySelector('input[name="notification_target"]:checked').value;
+            let title = i18n.sendToAllActive;
+            if (targetAudience === 'blocked') title = i18n.sendToAllBlocked;
+            if (targetAudience === 'all') title = i18n.sendToAllUsers;
+
+            createModal('confirmationModal', title, 
                 `<p>${i18n.confirmBulkSendMessage}</p>`,
                 `<button id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmSendButton}</button>
                  <button id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
@@ -687,7 +701,7 @@ document.addEventListener('DOMContentLoaded', () => {
                try {
                    const payload = { 
                        message, 
-                       contacts_only: contactsOnlyCheckbox.checked 
+                       target_audience: targetAudience
                    };
                    const result = await fetchAPI(urls.bulkNotifyUrl, 'POST', payload);
                    showToast(result.message, result.success ? 'success' : 'error');
