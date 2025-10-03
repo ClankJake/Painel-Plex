@@ -100,19 +100,32 @@
             <div id="bulk-notification-form" class="space-y-4">
                 <div>
                     <label for="bulk_message" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Mensagem a ser enviada') }}</label>
-                    <textarea id="bulk_message" rows="3" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: O servidor entrará em manutenção em 1 hora.') }}"></textarea>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Esta mensagem será inserida nos templates que você configurou. Use {username} para mencionar o usuário.') }}</p>
+                    <textarea id="bulk_message" rows="3" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: Olá {name}, o servidor entrará em manutenção em 1 hora.') }}"></textarea>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Use {name}, {username} ou {email} para personalizar a mensagem.') }}</p>
                 </div>
-                <div class="flex items-center">
-                    <input id="contacts_only_checkbox" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                    <label for="contacts_only_checkbox" class="ml-2 text-sm font-medium text-gray-900 dark:text-gray-300">
-                        {{ _('Enviar apenas para utilizadores com contacto registado (Telegram, Discord ou Telefone)') }}
-                    </label>
+                <div>
+                    <label class="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">{{ _('Destinatários') }}</label>
+                    <div class="space-y-2">
+                        <div class="flex items-center">
+                            <input id="target_active" name="notification_target" type="radio" value="active" class="h-4 w-4 border-gray-300 text-yellow-600 focus:ring-yellow-500" checked>
+                            <label for="target_active" class="ml-3 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ _('Utilizadores Ativos') }}</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input id="target_blocked" name="notification_target" type="radio" value="blocked" class="h-4 w-4 border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                            <label for="target_blocked" class="ml-3 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ _('Apenas Utilizadores Bloqueados') }}</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input id="target_all" name="notification_target" type="radio" value="all" class="h-4 w-4 border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                            <label for="target_all" class="ml-3 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ _('TODOS os Utilizadores (Ativos e Bloqueados)') }}</label>
+                        </div>
+                    </div>
+                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ _('Nota: As mensagens só serão enviadas para utilizadores com um método de contacto registado.') }}</p>
                 </div>
+
                 <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <button type="button" id="send-bulk-notification-btn" class="btn bg-red-600 hover:bg-red-500 text-white w-full sm:w-auto shadow-lg shadow-red-500/20">
                         <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086L2.279 16.76a.75.75 0 00.95.826l16-5.333a.75.75 0 000-1.418l-16-5.333z" /></svg>
-                        {{ _('Enviar para Todos os Utilizadores Ativos') }}
+                        <span id="send-bulk-btn-text">{{ _('Enviar para Utilizadores Ativos') }}</span>
                     </button>
                     <div id="bulk-progress-container" class="w-full sm:w-1/2 hidden">
                         <div class="flex justify-between mb-1">
@@ -196,11 +209,13 @@
         data-i18n-reconnecting="{{ _('A reconectar...') }}"
         data-i18n-disconnected="{{ _('Desconectado') }}"
         data-i18n-confirm-bulk-send-title="{{ _('Confirmar Envio em Massa') }}"
-        data-i18n-confirm-bulk-send-message="{{ _('Tem a certeza que deseja enviar esta mensagem para todos os utilizadores ativos? Esta ação não pode ser desfeita.') }}"
-        data-i18n-confirm-send-button="{{ _('Sim, Enviar para Todos') }}"
+        data-i18n-confirm-bulk-send-message="{{ _('Tem a certeza que deseja enviar esta mensagem? Esta ação não pode ser desfeita.') }}"
+        data-i18n-confirm-send-button="{{ _('Sim, Enviar') }}"
         data-i18n-cancel="{{ _('Cancelar') }}"
         data-i18n-sending-bulk-notification="{{ _('Enviando...') }}"
-        data-i18n-send-to-all-active="{{ _('Enviar para Todos os Utilizadores Ativos') }}"
+        data-i18n-send-to-all-active="{{ _('Enviar para Utilizadores Ativos') }}"
+        data-i18n-send-to-all-blocked="{{ _('Enviar para Utilizadores Bloqueados') }}"
+        data-i18n-send-to-all-users="{{ _('Enviar para TODOS os Utilizadores') }}"
         data-i18n-bulk-send-started="{{ _('O envio em massa foi iniciado.') }}"
         data-i18n-bulk-send-complete="{{ _('Envio em massa concluído!') }}"
         data-i18n-bulk-send-progress="{{ _('Enviando {current} de {total}...') }}"
@@ -222,3 +237,4 @@
         data-i18n-confirm-delete-log-button="{{ _('Sim, Apagar') }}"
 ></script>
 {% endblock %}
+
