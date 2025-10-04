@@ -10,6 +10,7 @@ from ..models import (
     UnlockedAchievement, ShortLink, Coupon, CouponUsage, Task, StreamTerminationLog
 )
 from sqlalchemy import func, extract, not_
+from sqlalchemy.exc import IntegrityError
 from tzlocal import get_localzone
 from flask_babel import gettext as _, ngettext
 
@@ -466,24 +467,28 @@ class DataManager:
         return {u.user_plex_id: self._row_to_dict(u) for u in BlockedUser.query.all()}
 
     def add_blocked_user(self, plex_user_id, username, reason='manual'):
-        # CORREÇÃO: Verifica se o utilizador já existe antes de tentar inserir.
-        # Isto torna a operação idempotente e evita o erro de UNIQUE constraint.
-        user = BlockedUser.query.get(plex_user_id)
-        if user:
-            # Se o utilizador já está bloqueado, apenas atualizamos a data e o motivo.
-            user.blocked_at = datetime.now().isoformat()
-            user.block_reason = reason
-            logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) já estava bloqueado. A atualizar o motivo para '{reason}'.")
-        else:
-            # Se não existe, criamos um novo registo.
+        """Adiciona ou atualiza um utilizador na lista de bloqueados de forma segura."""
+        try:
             user = BlockedUser(user_plex_id=plex_user_id, username=username)
             user.blocked_at = datetime.now().isoformat()
             user.block_reason = reason
             db.session.add(user)
+            db.session.commit()
             logger.info(f"A adicionar o utilizador '{username}' (ID: {plex_user_id}) à lista de bloqueados com o motivo '{reason}'.")
-        
-        # O commit é feito em ambos os casos (criação ou atualização).
-        db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            user = BlockedUser.query.get(plex_user_id)
+            if user:
+                user.blocked_at = datetime.now().isoformat()
+                user.block_reason = reason
+                db.session.commit()
+                logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) já estava bloqueado. A atualizar o motivo para '{reason}'.")
+            else:
+                logger.error(f"Falha de integridade ao bloquear o utilizador '{username}', mas não foi possível encontrar o registo existente para atualizar.")
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Erro inesperado ao adicionar utilizador bloqueado '{username}': {e}", exc_info=True)
+            raise
 
     def remove_blocked_user(self, plex_user_id):
         user = BlockedUser.query.get(plex_user_id)
