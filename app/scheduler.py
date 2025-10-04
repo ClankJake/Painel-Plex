@@ -121,7 +121,7 @@ def end_subscription_job(plex_user_id):
             try:
                 profile = extensions.data_manager.get_user_profile(plex_user_id)
                 if profile and profile.get('expiration_job_id'):
-                    logger.info(f"A limpar o ID da tarefa de expiração '{profile['expiration_job_id']}' do perfil do utilizador {plex_user_id}.")
+                    logger.info(f"A limpar o ID da tarefa de expiração '{profile['expiration_job_id']}' do perfil do utilizador '{user_identifier}'.")
                     profile['expiration_job_id'] = None
                     extensions.data_manager.set_user_profile(plex_user_id, profile)
             except Exception as e:
@@ -230,3 +230,4 @@ def setup_scheduler(app):
     if not extensions.scheduler.running:
         extensions.scheduler.start()
         logger.info(f"Agendador de tarefas iniciado com PID: {os.getpid()}.")
+
