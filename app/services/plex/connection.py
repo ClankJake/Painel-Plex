@@ -54,8 +54,8 @@ class PlexConnectionManager:
             if not all(k in config and config[k] for k in ["PLEX_URL", "PLEX_TOKEN"]):
                 raise ValueError(_("Configurações do Plex (URL e Token) não encontradas ou estão vazias."))
             
-            # Utiliza a sessão com retentativas para inicializar o PlexServer e a MyPlexAccount
-            self.plex = PlexServer(config["PLEX_URL"], config["PLEX_TOKEN"], session=resilient_session, timeout=20)
+            # Otimização: Aumentado o timeout para 30 segundos para ser mais tolerante com redes lentas.
+            self.plex = PlexServer(config["PLEX_URL"], config["PLEX_TOKEN"], session=resilient_session, timeout=30)
             self.account = self.plex.myPlexAccount()
             # Garante que a conta também usa a sessão resiliente
             self.account._session = resilient_session
