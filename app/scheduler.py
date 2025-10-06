@@ -196,21 +196,26 @@ def setup_scheduler(app):
     extensions.scheduler.add_job(
         id='expiration_notification_job', func=expiration_notification_job,
         trigger=CronTrigger(hour=int(exp_time_parts[0]), minute=int(exp_time_parts[1]), timezone=tz),
-        replace_existing=True
+        replace_existing=True,
+        # CORREÇÃO: Aumenta a tolerância a atrasos para 300 segundos (5 minutos).
+        # Isto irá suprimir os avisos "was missed by" para esta tarefa.
+        misfire_grace_time=300
     )
 
     block_time_parts = config.get("BLOCK_REMOVAL_TIME", "02:00").split(':')
     extensions.scheduler.add_job(
         id='removal_job', func=removal_job,
         trigger=CronTrigger(hour=int(block_time_parts[0]), minute=int(block_time_parts[1]), timezone=tz),
-        replace_existing=True
+        replace_existing=True,
+        misfire_grace_time=300
     )
 
     cleanup_time_parts = config.get("CLEANUP_TIME", "03:00").split(':')
     extensions.scheduler.add_job(
         id='cleanup_job', func=cleanup_job,
         trigger=CronTrigger(hour=int(cleanup_time_parts[0]), minute=int(cleanup_time_parts[1]), timezone=tz),
-        replace_existing=True
+        replace_existing=True,
+        misfire_grace_time=300
     )
 
     if config.get("IMAGE_CACHE_CLEANUP_ENABLED", False):
@@ -218,7 +223,8 @@ def setup_scheduler(app):
         extensions.scheduler.add_job(
             id='cleanup_image_cache_job', func=cleanup_image_cache_job,
             trigger=CronTrigger(hour=int(cache_cleanup_time_parts[0]), minute=int(cache_cleanup_time_parts[1]), timezone=tz),
-            replace_existing=True
+            replace_existing=True,
+            misfire_grace_time=300
         )
 
     extensions.scheduler.add_job(
