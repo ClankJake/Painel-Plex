@@ -290,10 +290,24 @@ def user_profile_route(plex_user_id):
 @user_lookup_by_id
 def notify_user_route(user):
     profile = data_manager.get_user_profile(user['id'])
-    if not profile.get('expiration_date'): return jsonify({"success": False, "message": _("Este utilizador não tem uma data de vencimento definida.")})
-    plex_manager.notifier_manager.send_expiration_notification(user, profile)
+    expiration_date_str = profile.get('expiration_date')
+
+    if not expiration_date_str:
+        return jsonify({"success": False, "message": _("Este utilizador não tem uma data de vencimento definida.")})
+    
+    try:
+        # CORREÇÃO: Calcula os dias restantes antes de chamar a função de notificação.
+        exp_date = datetime.fromisoformat(expiration_date_str).date()
+        days_left = (exp_date - date.today()).days
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": _("Formato de data de expiração inválido no perfil do utilizador.")})
+
+    # CORREÇÃO: Passa o argumento 'days_left' que estava em falta.
+    plex_manager.notifier_manager.send_expiration_notification(user, days_left, profile)
+    
     logger.info(f"Admin '{current_user.username}' enviou uma notificação manual para '{user['username']}'.")
     return jsonify({"success": True, "message": _("Notificação de vencimento enviada para %(username)s.", username=user['username'])})
+
 
 @users_api_bp.route('/libraries/<int:plex_user_id>')
 @login_required
@@ -414,4 +428,3 @@ def get_user_payments_history(plex_user_id):
 @login_required
 def get_account_devices():
     return jsonify(tautulli_manager.get_user_devices(int(current_user.id)))
-
