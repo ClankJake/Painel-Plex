@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from flask import current_app, url_for
 from flask_babel import gettext as _
 from requests.exceptions import ConnectTimeout, ReadTimeout, ConnectionError, RequestException
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from tzlocal import get_localzone
 
 from .plex.connection import PlexConnectionManager
@@ -183,17 +183,26 @@ class PlexManager:
         last_sent_str = profile.get('last_notification_sent')
         if last_sent_str:
             try:
-                if datetime.fromisoformat(last_sent_str).date() >= date.today():
+                # CORREÇÃO: Lógica de verificação mais robusta.
+                # Em vez de comparar apenas a data, verifica se já se passaram pelo menos 23 horas
+                # desde o último envio. Isto evita problemas com fusos horários e pequenos atrasos na tarefa.
+                last_sent_dt = datetime.fromisoformat(last_sent_str)
+                if (datetime.now(timezone.utc) - last_sent_dt) < timedelta(hours=23):
+                    logger.info(f"Notificação para {user_info['username']} já foi enviada nas últimas 23 horas. A saltar.")
                     return
-            except (ValueError, TypeError): pass
+            except (ValueError, TypeError):
+                # Se o formato da data for inválido, ignora e tenta enviar a notificação.
+                pass
 
         expiration_date_str = profile.get('expiration_date')
         if expiration_date_str:
             try:
+                # A lógica para calcular os dias restantes permanece a mesma.
                 days_left = (datetime.fromisoformat(expiration_date_str).date() - date.today()).days
                 self.notifier_manager.send_expiration_notification(user_info, days_left, profile)
                 self.data_manager.update_user_notification_timestamp(plex_user_id)
-            except (ValueError, TypeError): pass
+            except (ValueError, TypeError) as e:
+                logger.error(f"Erro ao processar data de expiração para '{user_info['username']}': {e}")
         
     def get_users_to_remove(self):
         from app.config import load_or_create_config
@@ -212,4 +221,3 @@ class PlexManager:
                     users_to_remove.append(plex_id)
             except (ValueError, TypeError, AttributeError): continue
         return users_to_remove
-
