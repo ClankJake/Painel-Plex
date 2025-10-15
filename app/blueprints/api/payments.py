@@ -64,26 +64,35 @@ def _run_payment_processing_in_thread(app, txid):
     for attempt in range(MAX_RETRIES):
         try:
             with app.test_request_context():
-                payment = extensions.data_manager.get_and_lock_pix_payment(txid)
-                if not payment:
-                    logger.warning(f"Pagamento com TXID {txid} não encontrado. A ignorar.")
-                    extensions.db.session.rollback()
-                    return
-                if payment.get('status') == 'CONCLUIDA':
-                    logger.warning(f"Pagamento {txid} já está 'CONCLUIDA'. A ignorar processamento duplicado.")
-                    extensions.db.session.commit()
-                    return
+                # CORREÇÃO: Lógica de bloqueio e processamento em etapas para maior robustez.
+                
+                # Etapa 1: Tenta adquirir o lock e marcar como "PROCESSANDO"
+                with extensions.db.session.begin_nested():
+                    payment = extensions.data_manager.get_and_lock_pix_payment(txid)
+                    if not payment:
+                        logger.warning(f"Pagamento com TXID {txid} não encontrado na tentativa {attempt + 1}. A ignorar.")
+                        return # Sai da função, não da thread
+                    
+                    if payment.get('status') != 'ATIVA':
+                        logger.warning(f"Pagamento {txid} já está a ser processado ou foi concluído (estado: {payment.get('status')}). A ignorar processamento duplicado.")
+                        return
+                    
+                    # Marca imediatamente como processando para evitar corridas
+                    extensions.data_manager.update_pix_payment_status(txid, 'PROCESSANDO')
+                
+                # O commit da transação aninhada acima acontece aqui, libertando o lock da linha
+                # mas garantindo que o estado é 'PROCESSANDO'.
+                extensions.db.session.commit()
+                
+                logger.info(f"Pagamento {txid} marcado como 'PROCESSANDO'. A iniciar a lógica de renovação.")
 
-                extensions.data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
+                # Etapa 2: Executa a lógica de negócio (renovação, notificações, etc.)
                 plex_user_id = payment['user_plex_id']
                 user = extensions.plex_manager.get_user_by_id(plex_user_id)
                 if user:
                     config = load_or_create_config()
                     screens_to_set = payment.get('screens')
-
-                    expiration_time = None
-                    if config.get("UNIVERSAL_EXPIRATION_ENABLED"):
-                        expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59")
+                    expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
                     
                     new_expiration_date = extensions.plex_manager.renew_subscription(
                         plex_user_id, 1, 'expiry_date', expiration_time_str=expiration_time
@@ -96,33 +105,29 @@ def _run_payment_processing_in_thread(app, txid):
 
                     profile = extensions.data_manager.get_user_profile(plex_user_id)
                     extensions.plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
-
+                    
                     extensions.data_manager.create_notification(
                         message=_("Pagamento de %(username)s (%(value)s) confirmado.", username=user['username'], value=f"R$ {payment['value']:.2f}"), 
-                        category='success', 
-                        link=url_for('main.users_page')
+                        category='success', link=url_for('main.users_page')
                     )
                     extensions.data_manager.create_notification(
                         message=_("A sua renovação de %(value)s foi confirmada.", value=f"R$ {payment['value']:.2f}"),
-                        category='success',
-                        link=url_for('main.account_page'),
-                        user_plex_id=plex_user_id
+                        category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
                     )
-
                     if payment.get('coupon_code'):
                         extensions.data_manager.record_coupon_usage(payment['coupon_code'], plex_user_id)
                 else:
                     logger.warning(f"Utilizador do pagamento {txid} (ID: {plex_user_id}) não encontrado no Plex. A renovação falhou.")
-                
+
+                # Etapa 3: Marca o pagamento como "CONCLUIDA" e faz o commit final
+                extensions.data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
                 extensions.db.session.commit()
-                logger.info(f"Processamento do pagamento para TXID {txid} concluído com sucesso na tentativa {attempt + 1}.")
+                logger.info(f"Processamento do pagamento para TXID {txid} concluído com sucesso.")
                 return
 
         except OperationalError as e:
             if "database is locked" in str(e):
-                with app.app_context():
-                    extensions.db.session.rollback()
-                
+                with app.app_context(): extensions.db.session.rollback()
                 if attempt < MAX_RETRIES - 1:
                     logger.warning(f"Base de dados bloqueada na tentativa {attempt + 1}/{MAX_RETRIES} para o TXID {txid}. A tentar novamente em {RETRY_DELAY}s...")
                     time.sleep(RETRY_DELAY)
@@ -133,10 +138,10 @@ def _run_payment_processing_in_thread(app, txid):
                 break
         except Exception as e:
             logger.error(f"Erro crítico ao processar o pagamento para o TXID {txid} na thread: {e}", exc_info=True)
-            with app.app_context():
-                extensions.db.session.rollback()
+            with app.app_context(): 
+                extensions.data_manager.update_pix_payment_status(txid, 'FALHOU')
+                extensions.db.session.commit()
             break
-
 
 def _process_successful_payment(txid):
     app = current_app._get_current_object()
@@ -255,7 +260,7 @@ def create_charge_route():
                      raise Exception("Falha ao registrar o uso do cupão.")
                 
                 # Regista um pagamento manual de valor zero para manter o histórico financeiro
-                data_manager.add_manual_payment(
+                extensions.data_manager.add_manual_payment(
                     plex_user_id=plex_user_id, username=username, value=0.00,
                     description=f"Renovação via Cupão 100% ({coupon_code})",
                     payment_date_str=datetime.now().isoformat()
