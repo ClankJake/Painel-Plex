@@ -111,21 +111,23 @@ def end_subscription_job(plex_user_id):
 
         logger.info(f"Fim da subscrição para '{user_identifier}'. A acionar o bloqueio.")
         
+        # CORREÇÃO: Limpa o ID da tarefa do perfil do utilizador ANTES de tentar o bloqueio.
+        # Isto garante que o ID seja limpo mesmo que a operação de bloqueio falhe,
+        # prevenindo erros de "JobLookupError" em futuras renovações.
+        try:
+            profile = extensions.data_manager.get_user_profile(plex_user_id)
+            if profile and profile.get('expiration_job_id'):
+                logger.info(f"A limpar o ID da tarefa de expiração '{profile['expiration_job_id']}' do perfil do utilizador '{user_identifier}'.")
+                profile['expiration_job_id'] = None
+                extensions.data_manager.set_user_profile(plex_user_id, profile)
+        except Exception as e:
+            logger.error(f"Erro ao limpar o ID da tarefa de expiração do perfil do utilizador {plex_user_id}: {e}", exc_info=True)
+
         if user_info:
             _execute_with_retry(
                 action=lambda: extensions.plex_manager.block_user(plex_user_id, reason='expired'),
                 description=f"bloquear utilizador por subscrição expirada '{user_identifier}'"
             )
-            # CORREÇÃO: Limpa o ID da tarefa do perfil do utilizador após a sua execução bem-sucedida.
-            # Isto impede que a aplicação tente remover uma tarefa que já não existe em futuras renovações.
-            try:
-                profile = extensions.data_manager.get_user_profile(plex_user_id)
-                if profile and profile.get('expiration_job_id'):
-                    logger.info(f"A limpar o ID da tarefa de expiração '{profile['expiration_job_id']}' do perfil do utilizador '{user_identifier}'.")
-                    profile['expiration_job_id'] = None
-                    extensions.data_manager.set_user_profile(plex_user_id, profile)
-            except Exception as e:
-                logger.error(f"Erro ao limpar o ID da tarefa de expiração do perfil do utilizador {plex_user_id}: {e}", exc_info=True)
         else:
             logger.warning(f"Utilizador com ID '{plex_user_id}' não encontrado durante a tarefa de fim de subscrição.")
 
@@ -236,4 +238,3 @@ def setup_scheduler(app):
     if not extensions.scheduler.running:
         extensions.scheduler.start()
         logger.info(f"Agendador de tarefas iniciado com PID: {os.getpid()}.")
-
