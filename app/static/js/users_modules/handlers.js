@@ -13,6 +13,14 @@ import { showToast } from '../utils.js';
  * funções da API e da UI conforme necessário.
  */
 
+// CORREÇÃO: Função de sanitização para prevenir XSS
+function sanitizeHTML(str) {
+    const temp = document.createElement('div');
+    temp.textContent = str;
+    return temp.innerHTML;
+}
+
+
 /**
  * Manipula ações nos cartões de convite (copiar, apagar).
  * @param {string} action - A ação a ser executada ('copy-invite' ou 'delete-invite').
@@ -23,7 +31,7 @@ export function handleInviteAction(action, code) {
         const inviteUrl = `${window.location.origin}${urls.baseInvitePage}${code}`;
         ui.showInviteLinkModal(inviteUrl);
     } else if (action === 'delete-invite') {
-        const message = `${i18n.confirmDeleteInvite} <strong>${code}</strong>? ${i18n.actionCannotBeUndone}`;
+        const message = `${i18n.confirmDeleteInvite} <strong>${sanitizeHTML(code)}</strong>? ${i18n.actionCannotBeUndone}`;
         ui.showConfirmationModal({
             title: i18n.deleteInvite,
             message: message,
@@ -47,7 +55,7 @@ export function handleInviteAction(action, code) {
  * @param {object} user - O objeto do usuário.
  */
 async function handleQuickRenewal(user) {
-    const message = `${i18n.confirmAddOneMonth} <strong>${user.username}</strong>?`;
+    const message = `${i18n.confirmAddOneMonth} <strong>${sanitizeHTML(user.username)}</strong>?`;
     ui.showConfirmationModal({
         title: i18n.addOneMonth,
         message: message,
@@ -100,7 +108,7 @@ export function handleUserAction(action, user) {
     const confirmationActions = {
         'remove': {
             title: i18n.removeUserTitle,
-            message: `${i18n.confirmRemoveUser} <strong>${user.username}</strong>?`,
+            message: `${i18n.confirmRemoveUser} <strong>${sanitizeHTML(user.username)}</strong>?`,
             confirmText: i18n.confirmRemoveButton,
             confirmClass: 'bg-red-600 text-white',
             apiCall: () => api.removeUser(user.id),
@@ -109,7 +117,7 @@ export function handleUserAction(action, user) {
         },
         'block': {
             title: i18n.blockUserTitle,
-            message: `${i18n.confirmBlockUser} <strong>${user.username}</strong>?`,
+            message: `${i18n.confirmBlockUser} <strong>${sanitizeHTML(user.username)}</strong>?`,
             confirmText: i18n.confirmBlockButton,
             confirmClass: 'bg-red-600 text-white',
             apiCall: () => api.blockUser(user.id),
@@ -118,7 +126,7 @@ export function handleUserAction(action, user) {
         },
         'unblock': {
             title: i18n.unblockUserTitle,
-            message: `${i18n.confirmUnblockUser} <strong>${user.username}</strong>?`,
+            message: `${i18n.confirmUnblockUser} <strong>${sanitizeHTML(user.username)}</strong>?`,
             confirmText: i18n.confirmUnblockButton,
             confirmClass: 'bg-yellow-500 text-black',
             apiCall: () => api.unblockUser(user.id),
@@ -160,4 +168,3 @@ export function handleUserAction(action, user) {
         });
     }
 }
-
