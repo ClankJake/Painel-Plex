@@ -7,6 +7,9 @@ from flask_babel import gettext as _, ngettext
 import requests
 from plexapi.exceptions import NotFound # Importa a exceção específica
 
+# CORREÇÃO: Importa a função para carregar a configuração
+from ..config import load_or_create_config
+
 logger = logging.getLogger(__name__)
 
 def get_greeting():
@@ -100,6 +103,9 @@ class StreamManager:
         Verifica todas as sessões ativas e impõe as regras de bloqueio e limite de telas.
         """
         logger.debug("A executar a verificação de streams agendada...")
+        # CORREÇÃO: Carrega a configuração mais recente do ficheiro a cada execução.
+        config = load_or_create_config()
+
         if not self.conn.plex:
             if not self.conn.reload(from_job=True)[0]:
                 logger.debug("StreamManager: Conexão com o Plex não disponível. A saltar a verificação de streams.")
@@ -186,7 +192,8 @@ class StreamManager:
                         'trial_expired': "O seu período de teste terminou. Renove para continuar."
                     }.get(block_reason, "O seu acesso ao servidor foi bloqueado pelo administrador.")
 
-                    msg_template = current_app.config.get(msg_template_key) or default_msg
+                    # CORREÇÃO: Usa a configuração recém-carregada (config) em vez de current_app.config.
+                    msg_template = config.get(msg_template_key) or default_msg
                     placeholders = self._build_placeholders(user_id, username, profile, first_session)
                     reason = msg_template.format(**placeholders)
 
@@ -202,7 +209,8 @@ class StreamManager:
                     
                     sorted_user_sessions = sorted(user_session_list, key=lambda s: s.viewOffset or 0, reverse=True)
                     
-                    msg_template = current_app.config.get(
+                    # CORREÇÃO: Usa a configuração recém-carregada (config) em vez de current_app.config.
+                    msg_template = config.get(
                         'TERMINATION_MSG_SCREEN_LIMIT'
                     ) or "Você excedeu o seu limite de {limit} telas simultâneas."
 
@@ -228,4 +236,3 @@ class StreamManager:
             logger.warning(f"Erro de conexão ao verificar streams (isto pode ser temporário): {e}. A saltar esta verificação.")
         except Exception as e:
             logger.error(f"Erro inesperado ao verificar e impor streams: {e}", exc_info=True)
-
