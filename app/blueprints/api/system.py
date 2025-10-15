@@ -182,6 +182,9 @@ def api_settings():
             'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD',
             'TELEGRAM_BULK_MESSAGE_TEMPLATE', 'DISCORD_BULK_MESSAGE_TEMPLATE', 'WEBHOOK_BULK_MESSAGE_TEMPLATE',
             'UNIVERSAL_EXPIRATION_ENABLED', 'UNIVERSAL_EXPIRATION_TIME',
+            # CORREÇÃO: Adicionados os campos de template do Discord que faltavam.
+            'DISCORD_ENABLED', 'DISCORD_WEBHOOK_URL', 'DISCORD_EXPIRATION_MESSAGE_TEMPLATE',
+            'DISCORD_RENEWAL_MESSAGE_TEMPLATE', 'DISCORD_TRIAL_END_MESSAGE_TEMPLATE',
             # Novas chaves de configuração
             'STREAM_CHECK_INTERVAL_SECONDS', 'TERMINATION_MSG_BLOCKED_MANUAL', 'TERMINATION_MSG_BLOCKED_EXPIRED',
             'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED', 'TERMINATION_MSG_SCREEN_LIMIT'
@@ -433,4 +436,3 @@ def bulk_notify():
     task = data_manager.create_task('bulk_notification', task_payload)
 
     return jsonify({"success": True, "message": _("A tarefa de envio de notificações em massa foi agendada e será iniciada em breve."), "task_id": task['id']})
-
