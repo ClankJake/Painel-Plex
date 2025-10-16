@@ -96,9 +96,7 @@ def payment_page(token):
     """
     Página de pagamento pública para um utilizador específico, utilizando um token seguro.
     """
-    logger.info(f"Acesso à página de pagamento com o token: {token}")
     config = load_or_create_config()
-    
     profile = UserProfile.query.filter_by(payment_token=token).first()
 
     if not profile:
@@ -108,31 +106,30 @@ def payment_page(token):
                                reason_message=_("O link que você acessou não é válido ou expirou. Por favor, solicite um novo link ao administrador.")), 404
 
     username = profile.username
-    logger.info(f"Token '{token}' corresponde ao utilizador '{username}'. A verificar a janela de renovação.")
-    
-    if not profile.expiration_date:
-        return render_template('payment_public.html', token=token, username=username)
+    is_reactivation = profile.status == 'inactive'
+    logger.info(f"Acesso à página de pagamento para '{username}' (Token: {token}, Status: {profile.status})")
 
-    try:
-        exp_date = datetime.fromisoformat(profile.expiration_date).date()
-        today = date.today()
-        days_left = (exp_date - today).days
-        renewal_window = int(config.get("DAYS_TO_NOTIFY_EXPIRATION", 7))
-        grace_period = int(config.get("PAYMENT_LINK_GRACE_PERIOD_DAYS", 7))
+    if not is_reactivation and profile.expiration_date:
+        try:
+            exp_date = datetime.fromisoformat(profile.expiration_date).date()
+            today = date.today()
+            days_left = (exp_date - today).days
+            renewal_window = int(config.get("DAYS_TO_NOTIFY_EXPIRATION", 7))
+            grace_period = int(config.get("PAYMENT_LINK_GRACE_PERIOD_DAYS", 7))
 
-        if days_left < renewal_window:
+            if days_left >= renewal_window:
+                message = _("Sua assinatura vence em %(days)d dias. A renovação estará disponível quando faltarem %(window)d dias ou menos para o vencimento.", days=days_left, window=renewal_window)
+                return render_template('payment_unavailable.html',
+                                       reason_title=_("Renovação Indisponível no Momento"),
+                                       reason_message=message)
+
             if days_left < -grace_period:
-                flash(_("Sua assinatura expirou. Renove seu acesso aqui na sua página de conta."), "warning")
-                if current_user.is_authenticated:
+                flash(_("Sua assinatura expirou há muito tempo. Por favor, faça login para ver as opções de renovação na sua página de conta."), "warning")
+                if current_user.is_authenticated and current_user.username == username:
                     return redirect(url_for('main.account_page'))
                 else:
                     return redirect(url_for('auth.login', next=url_for('main.account_page')))
-            return render_template('payment_public.html', token=token, username=username)
-        else:
-            message = _("Sua assinatura vence em %(days)d dias. A renovação estará disponível quando faltarem %(window)d dias ou menos para o vencimento.", days=days_left, window=renewal_window)
-            return render_template('payment_unavailable.html',
-                                   reason_title=_("Renovação Indisponível no Momento"),
-                                   reason_message=message)
-    except (ValueError, TypeError):
-        return render_template('payment_public.html', token=token, username=username)
+        except (ValueError, TypeError):
+             pass
 
+    return render_template('payment_public.html', token=token, username=username, is_reactivation=is_reactivation)
