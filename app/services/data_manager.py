@@ -287,8 +287,11 @@ class DataManager:
         if user_info:
             logger.info(f"Perfil de utilizador para '{user_info['username']}' (ID: {plex_user_id}) não encontrado. A criar um perfil básico.")
             new_profile_data = {
-                'username': user_info['username'], 'screen_limit': 0,
-                'allow_downloads': False, 'overseerr_access': False,
+                'username': user_info['username'],
+                'email': user_info.get('email'),
+                'screen_limit': 0,
+                'allow_downloads': False,
+                'overseerr_access': False,
                 'hide_from_leaderboard': False
             }
             self.set_user_profile(plex_user_id, new_profile_data)
@@ -310,8 +313,11 @@ class DataManager:
                 plex_user_id = user_info['id']
                 logger.info(f"Perfil de utilizador para '{username}' (ID: {plex_user_id}) não encontrado. A criar um perfil básico.")
                 new_profile_data = {
-                    'username': user_info['username'], 'screen_limit': 0,
-                    'allow_downloads': False, 'overseerr_access': False,
+                    'username': user_info['username'],
+                    'email': user_info.get('email'),
+                    'screen_limit': 0,
+                    'allow_downloads': False,
+                    'overseerr_access': False,
                     'hide_from_leaderboard': False
                 }
                 self.set_user_profile(plex_user_id, new_profile_data)
