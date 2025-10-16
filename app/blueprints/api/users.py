@@ -9,6 +9,7 @@ from flask_babel import gettext as _, format_date
 from tzlocal import get_localzone
 from apscheduler.jobstores.base import JobLookupError
 from pydantic import ValidationError
+import json
 
 from ...extensions import plex_manager, data_manager, tautulli_manager, overseerr_manager, db
 from ...config import load_or_create_config
@@ -62,21 +63,25 @@ def get_public_user_profile_by_token(token):
 def get_status():
     if not plex_manager.conn.plex: return jsonify({"error": _("Plex não configurado.")}), 500
     
-    all_users = plex_manager.get_all_plex_users(force_refresh=request.args.get('force', 'false').lower() == 'true')
-    if all_users is None:
+    force_refresh = request.args.get('force', 'false').lower() == 'true'
+    all_plex_users = plex_manager.get_all_plex_users(force_refresh=force_refresh)
+    if all_plex_users is None:
         return jsonify({'error': _("Não foi possível obter os utilizadores do Plex. Verifique a ligação e as configurações.")}), 500
 
     config = load_or_create_config()
     admin_username = config.get('ADMIN_USER')
-    users_to_display = [user for user in all_users if user['username'] != admin_username]
     
-    plex_user_ids = [u['id'] for u in users_to_display]
-    all_user_profiles = data_manager.get_user_profiles_by_id(plex_user_ids)
+    # Get active/blocked users currently on Plex
+    plex_user_ids = {u['id'] for u in all_plex_users}
+    all_user_profiles_from_db = data_manager.get_user_profiles_by_id(list(plex_user_ids))
     blocked_users_data = data_manager.get_blocked_users_dict()
     
     users_with_access = []
-    for u in users_to_display:
-        profile = all_user_profiles.get(u['id'], {})
+    for u in all_plex_users:
+        if u['username'] == admin_username:
+            continue
+            
+        profile = all_user_profiles_from_db.get(u['id'], {})
         
         is_on_trial = False
         if trial_end_date_str := profile.get('trial_end_date'):
@@ -88,6 +93,7 @@ def get_status():
         user_data = {
             'id': u['id'], 'username': u['username'], 'email': u['email'], 'thumb': u['thumb'],
             'is_blocked': u['id'] in blocked_users_data,
+            'status': 'active', # Mark as active because they are on Plex
             'screen_limit': profile.get('screen_limit', 0),
             'expiration_date': profile.get('expiration_date'),
             'trial_end_date': trial_end_date_str, 'is_on_trial': is_on_trial,
@@ -95,7 +101,27 @@ def get_status():
         }
         users_with_access.append(user_data)
         
-    return jsonify({'users': sorted(users_with_access, key=lambda u: u['username'].lower()), 'libraries': plex_manager.conn.get_libraries()})
+    # Get inactive users from the local database
+    inactive_profiles = UserProfile.query.filter_by(status='inactive').all()
+    inactive_users_data = []
+    for profile in inactive_profiles:
+        inactive_users_data.append({
+            'id': profile.plex_user_id,
+            'username': profile.username,
+            'email': profile.email,
+            'thumb': None,
+            'is_blocked': False, # Inactive users are not considered 'blocked' in the same way
+            'status': 'inactive',
+            'screen_limit': profile.screen_limit,
+            'expiration_date': profile.expiration_date,
+            'trial_end_date': profile.trial_end_date,
+            'is_on_trial': False,
+            'payment_token': profile.payment_token
+        })
+
+    all_users_to_return = users_with_access + inactive_users_data
+        
+    return jsonify({'users': sorted(all_users_to_return, key=lambda u: u['username'].lower()), 'libraries': plex_manager.conn.get_libraries()})
 
 @users_api_bp.route('/account/details')
 @login_required
@@ -297,6 +323,82 @@ def user_profile_route(plex_user_id):
         
         return jsonify({"success": True, "message": _("Perfil do utilizador atualizado com sucesso.")})
 
+@users_api_bp.route('/reactivate', methods=['POST'])
+@login_required
+@admin_required
+def reactivate_user_route():
+    plex_user_id = request.json.get('plex_user_id')
+    if not plex_user_id:
+        return jsonify({"success": False, "message": _("ID do utilizador não fornecido.")}), 400
+
+    profile = data_manager.get_user_profile(plex_user_id)
+    if not profile or profile.get('status') != 'inactive':
+        return jsonify({"success": False, "message": _("Utilizador não está inativo ou não foi encontrado.")}), 404
+
+    try:
+        # Passo 1: Reativar o utilizador na base de dados local
+        profile['status'] = 'active'
+        data_manager.set_user_profile(plex_user_id, profile)
+        data_manager.remove_blocked_user(plex_user_id)  # Garantir que não está na lista de bloqueados
+
+        username = profile.get('username')
+        logger.info(f"Admin '{current_user.username}' reativou o utilizador '{username}'. A tentar enviar novo convite.")
+
+        # Passo 2: Enviar automaticamente um novo convite do Plex
+        identifier = profile.get('email') or username
+        if not identifier:
+            logger.warning(f"Não foi possível enviar convite para '{username}' (ID: {plex_user_id}) por falta de email/username.")
+            return jsonify({"success": True, "message": _("Utilizador reativado, mas não foi possível enviar convite (sem email/username). Por favor, convide-o manualmente.")})
+
+        libraries = profile.get('last_known_libraries', [])
+        allow_sync = profile.get('allow_sync', False)
+
+        try:
+            invite_result = plex_manager.create_invitation(
+                identifier=identifier,
+                libraries=libraries,
+                unlimited_access=True,
+                allow_sync=allow_sync,
+                is_reinvite=True
+            )
+            if not invite_result.get('success'):
+                error_message = invite_result.get('message', _('Erro desconhecido ao convidar.'))
+                logger.warning(f"Utilizador '{username}' reativado, mas o convite automático falhou: {error_message}")
+                return jsonify({"success": True, "message": _("Utilizador reativado, mas o convite automático falhou: %(error)s", error=error_message)})
+
+            logger.info(f"Convite enviado com sucesso para '{identifier}' para o utilizador reativado '{username}'.")
+            return jsonify({"success": True, "message": _("Utilizador reativado e um novo convite foi enviado para %(identifier)s.", identifier=identifier)})
+
+        except Exception as invite_error:
+            logger.error(f"Exceção ao reenviar convite para '{username}': {invite_error}", exc_info=True)
+            return jsonify({"success": True, "message": _("Utilizador reativado, mas ocorreu um erro inesperado ao enviar o convite. Verifique os logs.")})
+
+    except Exception as e:
+        logger.error(f"Erro ao reativar o utilizador {plex_user_id}: {e}", exc_info=True)
+        return jsonify({"success": False, "message": _("Ocorreu um erro ao reativar o utilizador.")}), 500
+
+
+@users_api_bp.route('/delete-permanently', methods=['POST'])
+@login_required
+@admin_required
+def delete_permanently_route():
+    plex_user_id = request.json.get('plex_user_id')
+    if not plex_user_id:
+        return jsonify({"success": False, "message": _("ID do utilizador não fornecido.")}), 400
+
+    profile = data_manager.get_user_profile(plex_user_id)
+    if not profile or profile.get('status') != 'inactive':
+        return jsonify({"success": False, "message": _("Apenas utilizadores inativos podem ser apagados permanentemente.")}), 400
+
+    try:
+        username = profile['username']
+        data_manager.delete_user_profile(plex_user_id)
+        logger.info(f"Admin '{current_user.username}' apagou permanentemente o utilizador '{username}' (ID: {plex_user_id}).")
+        return jsonify({"success": True, "message": _("Utilizador apagado permanentemente.")})
+    except Exception as e:
+        logger.error(f"Erro ao apagar permanentemente o utilizador {plex_user_id}: {e}", exc_info=True)
+        return jsonify({"success": False, "message": _("Ocorreu um erro ao apagar o utilizador.")}), 500
+
 @users_api_bp.route('/notify/<int:plex_user_id>', methods=['POST'])
 @login_required
 @admin_required
@@ -441,3 +543,4 @@ def get_user_payments_history(plex_user_id):
 @login_required
 def get_account_devices():
     return jsonify(tautulli_manager.get_user_devices(int(current_user.id)))
+
