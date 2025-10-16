@@ -475,22 +475,22 @@ class DataManager:
     def add_blocked_user(self, plex_user_id, username, reason='manual'):
         """Adiciona ou atualiza um utilizador na lista de bloqueados de forma segura."""
         try:
-            user = BlockedUser(user_plex_id=plex_user_id, username=username)
-            user.blocked_at = datetime.now().isoformat()
+            user = BlockedUser.query.get(plex_user_id)
+            if not user:
+                user = BlockedUser(user_plex_id=plex_user_id, username=username)
+
+            # *** INÍCIO DA CORREÇÃO ***
+            # Garante que o timestamp é guardado com a informação do fuso horário local.
+            user.blocked_at = datetime.now(get_localzone()).isoformat()
+            # *** FIM DA CORREÇÃO ***
+            
             user.block_reason = reason
             db.session.add(user)
             db.session.commit()
-            logger.info(f"A adicionar o utilizador '{username}' (ID: {plex_user_id}) à lista de bloqueados com o motivo '{reason}'.")
-        except IntegrityError:
+            logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) adicionado/atualizado na lista de bloqueados com o motivo '{reason}'.")
+        except IntegrityError: # This might be less likely now, but kept for safety.
             db.session.rollback()
-            user = BlockedUser.query.get(plex_user_id)
-            if user:
-                user.blocked_at = datetime.now().isoformat()
-                user.block_reason = reason
-                db.session.commit()
-                logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) já estava bloqueado. A atualizar o motivo para '{reason}'.")
-            else:
-                logger.error(f"Falha de integridade ao bloquear o utilizador '{username}', mas não foi possível encontrar o registo existente para atualizar.")
+            logger.error(f"Falha de integridade ao bloquear o utilizador '{username}'.")
         except Exception as e:
             db.session.rollback()
             logger.error(f"Erro inesperado ao adicionar utilizador bloqueado '{username}': {e}", exc_info=True)
@@ -509,3 +509,4 @@ class DataManager:
             if 'libraries' in d and d['libraries']: d['libraries'] = json.loads(d['libraries'])
             if 'claimed_by_users' in d and d['claimed_by_users']: d['claimed_by_users'] = json.loads(d['claimed_by_users'])
         return d
+
