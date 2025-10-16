@@ -95,6 +95,7 @@ class UserProfile(db.Model):
     __tablename__ = 'user_profiles'
     plex_user_id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String, unique=True, nullable=False, index=True)
+    email = db.Column(db.String, nullable=True)
     name = db.Column(db.String)
     telegram_user = db.Column(db.String)
     discord_user_id = db.Column(db.String)
@@ -109,6 +110,7 @@ class UserProfile(db.Model):
     hide_from_leaderboard = db.Column(db.Boolean, default=False, nullable=False)
     libraries = db.Column(db.Text, nullable=True)
     payment_token = db.Column(db.String, unique=True, nullable=True)
+    status = db.Column(db.String(20), default='active', nullable=False, index=True)
     coupon_usages = db.relationship('CouponUsage', backref='user', lazy=True, cascade="all, delete-orphan")
     notifications = db.relationship('Notification', backref='user', lazy=True, cascade="all, delete-orphan")
     unlocked_achievements = db.relationship('UnlockedAchievement', backref='user', lazy=True, cascade="all, delete-orphan")
