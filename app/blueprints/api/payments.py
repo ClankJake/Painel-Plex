@@ -91,8 +91,13 @@ def _run_payment_processing_in_thread(app, txid):
                 plex_user_id = payment['user_plex_id']
                 profile = extensions.data_manager.get_user_profile(plex_user_id)
                 
+                # *** INÍCIO DA CORREÇÃO ***
+                # Verifica se é uma reativação ANTES de qualquer modificação
+                is_reactivation = profile.get('status') == 'inactive'
+                
                 # Se o utilizador é INATIVO, é uma REATIVAÇÃO
-                if profile.get('status') == 'inactive':
+                if is_reactivation:
+                # *** FIM DA CORREÇÃO ***
                     logger.info(f"Processando reativação para o utilizador '{profile['username']}' (ID: {plex_user_id}).")
                     invite_result = extensions.plex_manager.invites._invite_user_to_plex(profile['email'], json.loads(profile.get('libraries', '[]')))
                     if invite_result.get('success'):
@@ -109,9 +114,15 @@ def _run_payment_processing_in_thread(app, txid):
                     screens_to_set = payment.get('screens')
                     expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
                     
+                    # *** INÍCIO DA CORREÇÃO ***
+                    # Define a base do cálculo: 'today' para reativações, 'expiry_date' para renovações normais
+                    renewal_base_mode = 'today' if is_reactivation else 'expiry_date'
+                    logger.info(f"A renovar subscrição para '{profile['username']}' com o modo base: '{renewal_base_mode}'.")
+                    
                     new_expiration_date = extensions.plex_manager.renew_subscription(
-                        plex_user_id, 1, 'expiry_date', expiration_time_str=expiration_time
+                        plex_user_id, 1, renewal_base_mode, expiration_time_str=expiration_time
                     )
+                    # *** FIM DA CORREÇÃO ***
                     
                     if screens_to_set is not None and screens_to_set >= 0:
                         profile['screen_limit'] = screens_to_set
@@ -569,4 +580,3 @@ def export_financial_csv():
     except Exception as e:
         logger.error(f"Erro ao gerar o relatório CSV: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Ocorreu um erro interno ao gerar o relatório."}), 500
-
