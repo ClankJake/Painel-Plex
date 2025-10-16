@@ -213,11 +213,27 @@ class PlexManager:
         blocked_users_data = self.data_manager.get_blocked_users_dict()
         if not blocked_users_data: return []
             
-        today = datetime.now(get_localzone()).date()
+        # *** INÍCIO DA CORREÇÃO ***
+        # Obtém apenas a DATA atual no fuso horário local.
+        today_local = datetime.now(get_localzone()).date()
+        # *** FIM DA CORREÇÃO ***
+
         users_to_remove = []
         for plex_id, block_data in blocked_users_data.items():
             try:
-                if (today - datetime.fromisoformat(block_data.get('blocked_at')).date()).days >= days_to_remove:
+                blocked_at_str = block_data.get('blocked_at')
+                if not blocked_at_str:
+                    continue
+
+                # *** INÍCIO DA CORREÇÃO ***
+                # Converte a data guardada para um objeto datetime e extrai apenas a DATA.
+                # Isto ignora a hora, tornando a comparação mais robusta.
+                blocked_date_local = datetime.fromisoformat(blocked_at_str).date()
+                
+                # Compara a diferença de dias entre as datas.
+                if (today_local - blocked_date_local).days >= days_to_remove:
                     users_to_remove.append(plex_id)
+                # *** FIM DA CORREÇÃO ***
             except (ValueError, TypeError, AttributeError): continue
         return users_to_remove
+
