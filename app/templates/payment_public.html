@@ -45,12 +45,18 @@
                     <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
                 </div>
                 
-                <div id="paymentContainer" class="hidden">
+                <div id="paymentContainer" class="hidden" data-is-reactivation="{{ 'true' if is_reactivation else 'false' }}">
                     <div class="flex flex-col items-center text-center">
-                        <img id="user-thumb" src="" alt="Avatar" class="w-24 h-24 rounded-full mb-4">
+                        <img id="user-thumb" src="https://placehold.co/96x96/1F2937/E5E7EB?text=?" alt="Avatar" class="w-24 h-24 rounded-full mb-4">
+                        {% if is_reactivation %}
+                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white" id="user-username">{{ _('Bem-vindo de volta, %(username)s!', username=username) }}</h2>
+                        <p class="text-gray-500 dark:text-gray-400 mt-2">{{ _('A sua subscrição anterior expirou. Efetue o pagamento abaixo para reativar o seu acesso instantaneamente.') }}</p>
+                        {% else %}
                         <h2 class="text-2xl font-bold text-gray-900 dark:text-white" id="user-username"></h2>
                         <p class="text-sm text-gray-500 dark:text-gray-400" id="user-expiration"></p>
+                        {% endif %}
                     </div>
+
 
                     <div id="payment-section" class="mt-8 space-y-4">
                         <!-- Opções de pagamento serão inseridas aqui -->
@@ -91,6 +97,7 @@
         data-i18n-no-provider="{{ _('Nenhum provedor de pagamento ou plano está habilitado pelo administrador.') }}"
         data-i18n-generate-pix="{{ _('Gerar PIX') }}"
         data-i18n-generate-pix-for-price="{{ _('Renovar por R$ {price}') }}"
+        data-i18n-reactivate-for-price="{{ _('Reativar por R$ {price}') }}"
         data-i18n-activate-free-subscription="{{ _('Ativar Assinatura Gratuita') }}"
         data-i18n-choose-provider="{{ _('Escolha um Provedor') }}"
         data-i18n-pay-with-efi="{{ _('Pagar com Efí') }}"
@@ -110,5 +117,4 @@
     ></script>
 </body>
 </html>
-
 
