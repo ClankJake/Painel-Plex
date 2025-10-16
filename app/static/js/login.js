@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (checkData.success) {
                     clearInterval(pinCheckInterval);
                     authWindow.close();
+                    // Redireciona com base na ação definida pelo backend
                     window.location.href = checkData.redirect_url || '/';
                 } else if (checkData.message === 'auth_denied') {
                     clearInterval(pinCheckInterval);
@@ -111,4 +112,3 @@ document.addEventListener('DOMContentLoaded', () => {
         loginButton.addEventListener('click', loginWithPlex);
     }
 });
-
