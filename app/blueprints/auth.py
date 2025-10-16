@@ -14,7 +14,7 @@ from flask_babel import gettext as _
 
 from ..models import User
 from ..config import is_configured, load_or_create_config
-from ..extensions import plex_manager
+from ..extensions import plex_manager, data_manager
 
 # --- Configurações e Constantes ---
 logger = logging.getLogger(__name__)
@@ -130,6 +130,22 @@ def check_plex_pin(client_id, pin_id):
             session['plex_username'] = account.username
             redirect_url = url_for('main.setup', _external=False)
             return jsonify({"success": True, "redirect_url": redirect_url})
+        
+        # ### INÍCIO DA LÓGICA DE REATIVAÇÃO ###
+        user_profile = data_manager.get_user_profile_by_username(account.username)
+        if user_profile and user_profile.get('status') == 'inactive':
+            logger.info(f"Tentativa de login do utilizador inativo '{account.username}'. A atualizar o e-mail e a redirecionar.")
+            
+            # **CORREÇÃO CRÍTICA**: Atualiza o e-mail do utilizador na base de dados neste momento.
+            if account.email and user_profile.get('email') != account.email:
+                user_profile['email'] = account.email
+                data_manager.set_user_profile(user_profile['plex_user_id'], user_profile)
+                logger.info(f"E-mail do utilizador inativo '{account.username}' atualizado para '{account.email}' na base de dados.")
+            
+            flash(_("A sua conta está inativa. Por favor, efetue o pagamento para reativar o seu acesso."), "info")
+            reactivation_url = url_for('main.payment_page', token=user_profile.get('payment_token'), _external=False)
+            return jsonify({"success": True, "action": "reactivate", "redirect_url": reactivation_url})
+        # ### FIM DA LÓGICA DE REATIVAÇÃO ###
 
         admin_username = config.get('ADMIN_USER')
         user_role = 'admin' if account.username == admin_username else 'user'
@@ -157,7 +173,7 @@ def check_plex_pin(client_id, pin_id):
         else:
             redirect_url = url_for('main.index' if user_role == 'admin' else 'main.statistics_page', _external=False)
 
-        return jsonify({"success": True, "redirect_url": redirect_url})
+        return jsonify({"success": True, "action": "login", "redirect_url": redirect_url})
 
     except Exception as e:
         logger.error(f"Erro ao verificar o PIN {pin_id} do Plex: {e}", exc_info=True)
