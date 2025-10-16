@@ -105,6 +105,7 @@ class PlexInviteManager:
 
         profile_data = {
             'username': plex_user_account.username,
+            'email': plex_user_account.email,
             'screen_limit': invitation['screen_limit'], 
             'allow_downloads': invitation.get('allow_downloads', False), 
             'libraries': json.dumps(invitation.get('libraries', []))
@@ -201,4 +202,3 @@ class PlexInviteManager:
             return {"success": True}
         except Exception as e:
             return {"success": False, "message": _("Ocorreu um erro de rede ao tentar aceitar o convite.")}
-
