@@ -71,6 +71,7 @@
                 <button data-filter="active" class="user-tab py-3 px-1 border-b-2 font-medium text-sm">{{ _('Ativos') }} <span id="count-active" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">0</span></button>
                 <button data-filter="trial" class="user-tab py-3 px-1 border-b-2 font-medium text-sm">{{ _('Em Teste') }} <span id="count-trial" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">0</span></button>
                 <button data-filter="blocked" class="user-tab py-3 px-1 border-b-2 font-medium text-sm">{{ _('Bloqueados') }} <span id="count-blocked" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">0</span></button>
+                <button data-filter="inactive" class="user-tab py-3 px-1 border-b-2 font-medium text-sm">{{ _('Inativos') }} <span id="count-inactive" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300">0</span></button>
             </nav>
         </div>
     </div>
@@ -110,6 +111,8 @@
         data-url-api-users-remove="{{ url_for('users_api.remove_user_route') }}"
         data-url-api-users-block="{{ url_for('users_api.block_user_route') }}"
         data-url-api-users-unblock="{{ url_for('users_api.unblock_user_route') }}"
+        data-url-api-users-reactivate="{{ url_for('users_api.reactivate_user_route') }}"
+        data-url-api-users-delete-permanently="{{ url_for('users_api.delete_permanently_route') }}"
         data-url-api-users-toggle-overseerr="{{ url_for('users_api.toggle_overseerr_access_route') }}"
         data-url-api-users-update-all-limits="{{ url_for('users_api.update_all_limits_route') }}"
         data-url-api-users-update-all-libraries="{{ url_for('users_api.update_all_libraries_route') }}"
@@ -199,6 +202,7 @@
         data-i18n-error-loading-libs="{{ _('Erro ao carregar bibliotecas.') }}"
         data-i18n-blocked-title="{{ _('Bloqueado') }}"
         data-i18n-active-title="{{ _('Ativo') }}"
+        data-i18n-inactive-title="{{ _('Inativo') }}"
         data-i18n-in-test-with-time="{{ _('Em Teste') }} ({remainingTime})"
         data-i18n-test-finished="{{ _('Teste Finalizado') }}"
         data-i18n-expires-on="{{ _('Vence em:') }}"
@@ -228,6 +232,14 @@
         data-i18n-uses="{{ _('usos') }}"
         data-i18n-copy-payment-link="{{ _('Copiar Link de Pagamento') }}"
         data-i18n-payment-link-copied="{{ _('Link de pagamento copiado!') }}"
+        data-i18n-reactivate="{{ _('Reativar') }}"
+        data-i18n-delete-permanently="{{ _('Apagar Permanente') }}"
+        data-i18n-reactivate-user-title="{{ _('Reativar e Convidar Utilizador') }}"
+        data-i18n-confirm-reactivate-user="{{ _('Tem a certeza que deseja reativar {username}? Um novo convite do Plex será enviado automaticamente.') }}"
+        data-i18n-confirm-reactivate-button="{{ _('Sim, Reativar e Convidar') }}"
+        data-i18n-delete-permanently-title="{{ _('Apagar Permanentemente') }}"
+        data-i18n-confirm-delete-permanently="{{ _('Esta ação é IRREVERSÍVEL e irá apagar todos os dados associados a') }}"
 >
 </script>
 {% endblock %}
+
