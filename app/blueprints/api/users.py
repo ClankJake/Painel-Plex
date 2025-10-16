@@ -26,9 +26,20 @@ def get_public_user_profile_by_token(token):
     if not profile:
         return jsonify({"success": False, "message": _("Link de pagamento inválido ou usuário não encontrado.")}), 404
 
-    user = plex_manager.get_user_by_id(profile.plex_user_id)
-    if not user:
-        return jsonify({"success": False, "message": _("Usuário não encontrado.")}), 404
+    user_thumb = None
+    username = profile.username
+
+    # Para utilizadores ativos, tenta obter os dados mais recentes do Plex
+    if profile.status == 'active':
+        user = plex_manager.get_user_by_id(profile.plex_user_id)
+        if not user:
+            logger.warning(f"Utilizador ativo '{username}' (ID: {profile.plex_user_id}) não encontrado no Plex. A tratar como inativo para a página pública.")
+        else:
+            user_thumb = user.get('thumb')
+    # Para utilizadores inativos, confiamos nos dados armazenados na nossa base de dados.
+    # O avatar pode não estar disponível, o que é uma limitação aceitável.
+    else: # 'inactive' ou qualquer outro estado
+        logger.info(f"A gerar perfil público para o utilizador inativo '{username}' a partir dos dados da base de dados.")
     
     expiration_date_formatted = None
     if profile.expiration_date:
@@ -38,8 +49,10 @@ def get_public_user_profile_by_token(token):
         except (ValueError, TypeError): pass
 
     public_data = {
-        "username": user['username'], "thumb": user['thumb'],
-        "expiration_date_formatted": expiration_date_formatted, "expiration_date_iso": profile.expiration_date
+        "username": username,
+        "thumb": user_thumb, # Será None para utilizadores inativos
+        "expiration_date_formatted": expiration_date_formatted,
+        "expiration_date_iso": profile.expiration_date
     }
     return jsonify({"success": True, "profile": public_data})
 
