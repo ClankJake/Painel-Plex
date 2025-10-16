@@ -112,8 +112,6 @@ export function handleUserAction(action, user) {
             confirmText: i18n.confirmRemoveButton,
             confirmClass: 'bg-red-600 text-white',
             apiCall: () => api.removeUser(user.id),
-            optimisticAction: () => state.removeUserFromCache(user.id),
-            rollbackAction: (originalUser) => state.addUserToCache(originalUser)
         },
         'block': {
             title: i18n.blockUserTitle,
@@ -121,8 +119,6 @@ export function handleUserAction(action, user) {
             confirmText: i18n.confirmBlockButton,
             confirmClass: 'bg-red-600 text-white',
             apiCall: () => api.blockUser(user.id),
-            optimisticAction: () => state.updateUserInCache(user.id, { is_blocked: true }),
-            rollbackAction: (originalUser) => state.replaceUserInCache(originalUser)
         },
         'unblock': {
             title: i18n.unblockUserTitle,
@@ -130,8 +126,20 @@ export function handleUserAction(action, user) {
             confirmText: i18n.confirmUnblockButton,
             confirmClass: 'bg-yellow-500 text-black',
             apiCall: () => api.unblockUser(user.id),
-            optimisticAction: () => state.updateUserInCache(user.id, { is_blocked: false }),
-            rollbackAction: (originalUser) => state.replaceUserInCache(originalUser)
+        },
+        'reactivate': {
+            title: i18n.reactivateUserTitle,
+            message: i18n.confirmReactivateUser.replace('{username}', `<strong>${sanitizeHTML(user.username)}</strong>`),
+            confirmText: i18n.confirmReactivateButton,
+            confirmClass: 'bg-green-600 text-white',
+            apiCall: () => api.reactivateUser(user.id),
+        },
+        'delete-permanently': {
+            title: i18n.deletePermanentlyTitle,
+            message: `${i18n.confirmDeletePermanently} <strong>${sanitizeHTML(user.username)}</strong>? ${i18n.actionCannotBeUndone}`,
+            confirmText: i18n.confirmDeleteButton,
+            confirmClass: 'bg-red-800 text-white',
+            apiCall: () => api.deleteUserPermanently(user.id),
         }
     };
 
@@ -143,28 +151,18 @@ export function handleUserAction(action, user) {
             confirmText: config.confirmText,
             confirmClass: config.confirmClass,
             onConfirm: async () => {
-                const originalUserState = config.optimisticAction();
-                ui.renderUserGrid();
-                ui.updateTabCounts(); 
-
                 try {
                     const result = await config.apiCall();
                     showToast(result.message, result.success ? 'success' : 'error');
-
-                    if (!result.success) {
-                        throw new Error(result.message);
+                    if (result.success) {
+                        ui.loadStatus(true); // Always refresh on success
                     }
-                    ui.loadStatus(true);
-
                 } catch (error) {
                     showToast(error.message, 'error');
-                    if (originalUserState) {
-                        config.rollbackAction(originalUserState);
-                        ui.renderUserGrid();
-                        ui.updateTabCounts();
-                    }
+                    ui.loadStatus(true); // Refresh on error too
                 }
             }
         });
     }
 }
+

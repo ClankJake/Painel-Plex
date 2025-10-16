@@ -21,3 +21,4 @@ export const countAll = document.getElementById('count-all');
 export const countActive = document.getElementById('count-active');
 export const countTrial = document.getElementById('count-trial');
 export const countBlocked = document.getElementById('count-blocked');
+export const countInactive = document.getElementById('count-inactive');

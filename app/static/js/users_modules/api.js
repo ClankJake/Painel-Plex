@@ -24,8 +24,9 @@ export const updateUserLibraries = (plexUserId, libraries) => fetchAPI(urls.apiU
 export const removeUser = (plexUserId) => fetchAPI(urls.apiUsersRemove, 'POST', { plex_user_id: plexUserId });
 export const blockUser = (plexUserId) => fetchAPI(urls.apiUsersBlock, 'POST', { plex_user_id: plexUserId });
 export const unblockUser = (plexUserId) => fetchAPI(urls.apiUsersUnblock, 'POST', { plex_user_id: plexUserId });
+export const reactivateUser = (plexUserId) => fetchAPI(urls.apiUsersReactivate, 'POST', { plex_user_id: plexUserId });
+export const deleteUserPermanently = (plexUserId) => fetchAPI(urls.apiUsersDeletePermanently, 'POST', { plex_user_id: plexUserId });
 export const toggleOverseerr = (plexUserId, access) => fetchAPI(urls.apiUsersToggleOverseerr, 'POST', { plex_user_id: plexUserId, access });
 export const updateAllLimits = (screens) => fetchAPI(urls.apiUsersUpdateAllLimits, 'POST', { screens });
 export const fetchPaymentHistory = (plexUserId) => fetchAPI(urls.apiUsersPaymentsBase.replace('0', plexUserId));
 export const updateAllLibraries = (libraries) => fetchAPI(urls.apiUsersUpdateAllLibraries, 'POST', { libraries });
-

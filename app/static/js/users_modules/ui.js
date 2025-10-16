@@ -105,11 +105,13 @@ export function renderUserGrid() {
 
     // Filtragem
     if (state.viewState.filter === 'active') {
-        usersToRender = usersToRender.filter(u => !u.is_blocked);
+        usersToRender = usersToRender.filter(u => !u.is_blocked && u.status === 'active');
     } else if (state.viewState.filter === 'blocked') {
         usersToRender = usersToRender.filter(u => u.is_blocked);
     } else if (state.viewState.filter === 'trial') {
         usersToRender = usersToRender.filter(u => u.is_on_trial);
+    } else if (state.viewState.filter === 'inactive') {
+        usersToRender = usersToRender.filter(u => u.status === 'inactive');
     }
 
     // Pesquisa
@@ -117,7 +119,7 @@ export function renderUserGrid() {
         const term = state.viewState.searchTerm.toLowerCase();
         usersToRender = usersToRender.filter(u =>
             u.username.toLowerCase().includes(term) ||
-            u.email.toLowerCase().includes(term)
+            (u.email && u.email.toLowerCase().includes(term))
         );
     }
 
@@ -152,6 +154,8 @@ function renderUserCard(user) {
     const card = document.createElement('div');
     card.className = 'flex flex-col bg-white dark:bg-gray-800 p-4 rounded-lg hover:shadow-xl transition-shadow duration-300 border border-gray-200 dark:border-gray-700';
     
+    const isInactive = user.status === 'inactive';
+
     let trialHtml = '';
     if (user.trial_end_date) {
         const trialEndDate = new Date(user.trial_end_date);
@@ -177,31 +181,41 @@ function renderUserCard(user) {
         expirationHtml = `<div class="mt-1 text-xs flex items-center ${dateColor}"><span>${i18n.expiresOn} ${formattedDate}</span></div>`;
     }
 
+    const inactiveButtons = `
+        <button data-action="reactivate" title="${i18n.reactivate}" class="btn text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1">${i18n.reactivate}</button>
+        <button data-action="delete-permanently" title="${i18n.deletePermanently}" class="btn text-xs bg-red-800 hover:bg-red-700 text-white px-2 py-1">${i18n.deletePermanently}</button>
+    `;
+
+    const activeButtons = `
+        <button data-action="renew-month" title="${i18n.addOneMonth}" class="btn text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1">${i18n.addOneMonth}</button>
+        <div class="flex items-center justify-end flex-wrap gap-1">
+            <button data-action="copy-payment-link" title="${i18n.copyPaymentLink}" class="p-2 rounded-full text-gray-500 hover:bg-teal-100 dark:hover:bg-teal-500/20 dark:text-teal-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg></button>
+            <button data-action="manage-profile" title="${i18n.manageProfileAndExpiration}" class="p-2 rounded-full text-gray-500 hover:bg-green-100 dark:hover:bg-green-500/20 dark:text-green-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2V7a5 5 0 00-5-5zm0 10a3 3 0 100-6 3 3 0 000 6z" /></svg></button>
+            <button data-action="payment-history" title="${i18n.paymentHistory}" class="p-2 rounded-full text-gray-500 hover:bg-yellow-100 dark:hover:bg-yellow-500/20 dark:text-yellow-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg></button>
+            <button data-action="manage-libraries" title="${i18n.manageLibraries}" class="p-2 rounded-full text-gray-500 hover:bg-purple-100 dark:hover:bg-purple-500/20 dark:text-purple-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2-2H4a2 2 0 01-2-2v-4z" /></svg></button>
+            <button data-action="manage-limit" title="${i18n.manageScreenLimit}" class="p-2 rounded-full text-gray-500 hover:bg-blue-100 dark:hover:bg-blue-500/20 dark:text-blue-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2-2H5a2 2 0 01-2-2V5zm4 0h6v10H7V5z" clip-rule="evenodd" /></svg></button>
+            ${user.is_blocked ? `<button data-action="unblock" title="${i18n.unblock}" class="p-2 rounded-full text-gray-500 hover:bg-yellow-100 dark:hover:bg-yellow-500/20 dark:text-yellow-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg></button>`: `<button data-action="block" title="${i18n.block}" class="p-2 rounded-full text-gray-500 hover:bg-red-100 dark:hover:bg-red-500/20 dark:text-red-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></button>`}
+            <button data-action="remove" title="${i18n.removeUserButton}" class="p-2 rounded-full text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg></button>
+        </div>
+    `;
+
     card.innerHTML = `
         <div class="flex items-start flex-1">
             <img src="${user.thumb || 'https://placehold.co/80x80/1F2937/E5E7EB?text=?'}" alt="Avatar" class="w-16 h-16 rounded-full mr-4">
             <div class="flex-1">
                 <div class="flex items-center gap-2">
-                    <div class="w-3 h-3 rounded-full ${user.is_blocked ? 'bg-red-500' : 'bg-green-500'}" title="${user.is_blocked ? i18n.blockedTitle : i18n.activeTitle}"></div>
+                    <div class="w-3 h-3 rounded-full ${isInactive ? 'bg-gray-500' : (user.is_blocked ? 'bg-red-500' : 'bg-green-500')}" title="${isInactive ? i18n.inactiveTitle : (user.is_blocked ? i18n.blockedTitle : i18n.activeTitle)}"></div>
                     <p class="font-semibold text-gray-900 dark:text-white text-lg">${user.username}</p>
                 </div>
-                <p class="text-sm text-gray-500 dark:text-gray-400 truncate">${user.email}</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400 truncate">${user.email || ''}</p>
                 ${trialHtml || expirationHtml}
                 ${user.screen_limit > 0 ? `<div class="mt-2 text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-500/50 dark:text-blue-200 border border-blue-200 dark:border-blue-400/30 px-2 py-1 rounded-full inline-block">${user.screen_limit} ${user.screen_limit > 1 ? i18n.screenPlural : i18n.screenSingular}</div>` : ''}
             </div>
         </div>
-        <div class="flex flex-wrap items-center justify-between gap-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <button data-action="renew-month" title="${i18n.addOneMonth}" class="btn text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1">${i18n.addOneMonth}</button>
-            <div class="flex items-center justify-end flex-wrap gap-1">
-                <button data-action="copy-payment-link" title="${i18n.copyPaymentLink}" class="p-2 rounded-full text-gray-500 hover:bg-teal-100 dark:hover:bg-teal-500/20 dark:text-teal-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg></button>
-                <button data-action="manage-profile" title="${i18n.manageProfileAndExpiration}" class="p-2 rounded-full text-gray-500 hover:bg-green-100 dark:hover:bg-green-500/20 dark:text-green-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2V7a5 5 0 00-5-5zm0 10a3 3 0 100-6 3 3 0 000 6z" /></svg></button>
-                <button data-action="payment-history" title="${i18n.paymentHistory}" class="p-2 rounded-full text-gray-500 hover:bg-yellow-100 dark:hover:bg-yellow-500/20 dark:text-yellow-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg></button>
-                <button data-action="manage-libraries" title="${i18n.manageLibraries}" class="p-2 rounded-full text-gray-500 hover:bg-purple-100 dark:hover:bg-purple-500/20 dark:text-purple-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2-2H4a2 2 0 01-2-2v-4z" /></svg></button>
-                <button data-action="manage-limit" title="${i18n.manageScreenLimit}" class="p-2 rounded-full text-gray-500 hover:bg-blue-100 dark:hover:bg-blue-500/20 dark:text-blue-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2-2H5a2 2 0 01-2-2V5zm4 0h6v10H7V5z" clip-rule="evenodd" /></svg></button>
-                ${user.is_blocked ? `<button data-action="unblock" title="${i18n.unblock}" class="p-2 rounded-full text-gray-500 hover:bg-yellow-100 dark:hover:bg-yellow-500/20 dark:text-yellow-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg></button>`: `<button data-action="block" title="${i18n.block}" class="p-2 rounded-full text-gray-500 hover:bg-red-100 dark:hover:bg-red-500/20 dark:text-red-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></button>`}
-                <button data-action="remove" title="${i18n.removeUserButton}" class="p-2 rounded-full text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg></button>
-            </div>
-        </div>`;
+        <div class="flex flex-wrap items-center justify-end gap-1 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            ${isInactive ? inactiveButtons : activeButtons}
+        </div>
+    `;
     card.querySelectorAll('button').forEach(button => button.onclick = () => handleUserAction(button.dataset.action, user));
     return card;
 }
@@ -231,7 +245,8 @@ export async function loadStatus(force = false) {
 
 export function updateTabCounts() {
     dom.countAll.textContent = state.allUsersCache.length;
-    dom.countActive.textContent = state.allUsersCache.filter(u => !u.is_blocked && !u.is_on_trial).length;
+    dom.countActive.textContent = state.allUsersCache.filter(u => !u.is_blocked && u.status === 'active' && !u.is_on_trial).length;
     dom.countBlocked.textContent = state.allUsersCache.filter(u => u.is_blocked).length;
     dom.countTrial.textContent = state.allUsersCache.filter(u => u.is_on_trial).length;
+    dom.countInactive.textContent = state.allUsersCache.filter(u => u.status === 'inactive').length;
 }
