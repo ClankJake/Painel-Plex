@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 from flask import current_app, url_for
 from urllib.parse import urlparse
+from apscheduler.jobstores.base import JobLookupError
 
 logger = logging.getLogger(__name__)
 
@@ -255,26 +256,33 @@ class PlexUserManager:
             if self.stream_manager:
                 self.stream_manager.block_user_sessions(plex_user_id, "A sua conta está a ser removida do servidor.")
             
-            if profile.get('trial_job_id'):
-                try: scheduler.remove_job(profile['trial_job_id'])
-                except Exception as e: logger.warning(f"Não foi possível remover a tarefa de teste agendada: {e}")
-            if profile.get('expiration_job_id'):
-                 try: scheduler.remove_job(profile['expiration_job_id'])
-                 except Exception as e: logger.warning(f"Não foi possível remover a tarefa de expiração agendada: {e}")
-
             if profile.get('overseerr_access'):
                 self.overseerr_manager.remove_user(email)
 
-            plex_user_obj = self.conn.account.user(email)
-            self.conn.account.removeFriend(plex_user_obj)
+            try:
+                plex_user_obj = self.conn.account.user(email)
+                self.conn.account.removeFriend(plex_user_obj)
+                logger.info(f"Acesso ao Plex para '{username}' removido com sucesso.")
+            except NotFound:
+                logger.warning(f"Utilizador '{username}' já não era amigo na conta Plex. A continuar com a desativação.")
             
-            self.invalidate_user_cache()
-            self.data_manager.remove_blocked_user(plex_user_id)
-            self.data_manager.delete_user_profile(plex_user_id)
+            profile['status'] = 'inactive'
+            profile['expiration_date'] = None
 
-            return {"success": True, "message": _("Utilizador %(username)s removido com sucesso.", username=username)}
-        except NotFound:
-            return {"success": False, "message": _("Utilizador com o email %(email)s não encontrado.", email=email)}
+            if profile.get('trial_job_id'):
+                try: scheduler.remove_job(profile['trial_job_id'])
+                except JobLookupError: pass
+                profile['trial_job_id'] = None
+            if profile.get('expiration_job_id'):
+                 try: scheduler.remove_job(profile['expiration_job_id'])
+                 except JobLookupError: pass
+                 profile['expiration_job_id'] = None
+
+            self.data_manager.set_user_profile(plex_user_id, profile)
+            self.data_manager.remove_blocked_user(plex_user_id)
+            self.invalidate_user_cache()
+
+            return {"success": True, "message": _("Utilizador %(username)s desativado e acesso removido com sucesso.", username=username)}
         except Exception as e:
             logger.error(_("Erro ao remover o utilizador %(email)s: %(error)s", email=email, error=e), exc_info=True)
             return {"success": False, "message": str(e)}
