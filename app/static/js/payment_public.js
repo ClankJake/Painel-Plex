@@ -54,6 +54,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const priceText = price.toFixed(2).replace('.', ',');
+        const isReactivation = container.dataset.isReactivation === 'true';
+        const buttonText = isReactivation
+            ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', priceText)
+            : i18n.generatePixForPrice.replace('{price}', priceText);
 
         paymentSection.innerHTML = `
             <div class="text-center p-4 rounded-lg border-2 border-gray-300 dark:border-gray-600">
@@ -70,7 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div id="coupon-status" class="text-xs mt-1 h-4"></div>
             </div>
 
-            <button id="initiatePixButton" class="w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white">${i18n.generatePixForPrice.replace('{price}', priceText)}</button>
+            <button id="initiatePixButton" class="w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white">${buttonText}</button>
         `;
 
         document.getElementById('initiatePixButton').addEventListener('click', () => {
@@ -87,6 +91,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const code = document.getElementById('couponCodeInput').value.trim();
             const statusDiv = document.getElementById('coupon-status');
             const pixButton = document.getElementById('initiatePixButton');
+            const isReactivation = container.dataset.isReactivation === 'true';
             if (!code) return;
 
             try {
@@ -96,24 +101,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                     document.getElementById('price-display').innerHTML = `<s class="text-gray-400 text-lg">${result.original_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</s> ${result.discounted_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
                     validatedCouponCode = code;
                     const newPriceText = result.discounted_price.toFixed(2).replace('.', ',');
-                    
+
                     if (result.discounted_price <= 0) {
                         pixButton.textContent = i18n.activateFreeSubscription;
                     } else {
-                        pixButton.textContent = i18n.generatePixForPrice.replace('{price}', newPriceText);
+                        pixButton.textContent = isReactivation
+                            ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', newPriceText)
+                            : i18n.generatePixForPrice.replace('{price}', newPriceText);
                     }
                 } else {
                     statusDiv.innerHTML = `<span class="text-red-500">${result.message}</span>`;
                     document.getElementById('price-display').innerHTML = originalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                     validatedCouponCode = null;
                     const originalPriceText = originalPrice.toFixed(2).replace('.', ',');
-                    pixButton.textContent = i18n.generatePixForPrice.replace('{price}', originalPriceText);
+                    pixButton.textContent = isReactivation
+                        ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', originalPriceText)
+                        : i18n.generatePixForPrice.replace('{price}', originalPriceText);
                 }
             } catch (error) {
                 statusDiv.innerHTML = `<span class="text-red-500">${error.message}</span>`;
                 validatedCouponCode = null;
                 const originalPriceText = originalPrice.toFixed(2).replace('.', ',');
-                pixButton.textContent = i18n.generatePixForPrice.replace('{price}', originalPriceText);
+                pixButton.textContent = isReactivation
+                    ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', originalPriceText)
+                    : i18n.generatePixForPrice.replace('{price}', originalPriceText);
             }
         });
     }
@@ -173,13 +184,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
-            
+
             if (result && result.success && result.free_renewal) {
                 showToast(result.message, 'success');
                 setTimeout(() => window.location.reload(), 3000);
-                return; 
+                return;
             }
-            
+
             if(result && result.success) {
                 paymentSection.style.display = 'none';
                 pixDisplay.style.display = 'block';
@@ -239,30 +250,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 paymentSection.innerHTML = `<p class="text-yellow-500">${paymentOptions.message || i18n.noPlanPrice}</p>`;
             }
-            
-            // --- CORREÇÃO INICIA AQUI ---
+
             const thumbUrl = profileData.profile.thumb;
+            const isReactivation = container.dataset.isReactivation === 'true';
+            
             const thumbElement = document.getElementById('user-thumb');
             if (thumbUrl) {
-                // Se o URL já for absoluto, usa-o diretamente.
-                // Se for relativo (começa com '/'), constrói o URL completo com a origem da página atual.
                 if (thumbUrl.startsWith('http')) {
                     thumbElement.src = thumbUrl;
                 } else if (thumbUrl.startsWith('/')) {
                     thumbElement.src = `${window.location.origin}${thumbUrl}`;
                 } else {
-                    // Fallback para um URL relativo que pode funcionar em alguns casos.
                     thumbElement.src = thumbUrl;
                 }
             } else {
                 thumbElement.src = 'https://placehold.co/96x96/1F2937/E5E7EB?text=?';
             }
-            // --- CORREÇÃO TERMINA AQUI ---
             
-            document.getElementById('user-username').textContent = profileData.profile.username;
+            if (!isReactivation) {
+                 document.getElementById('user-username').textContent = profileData.profile.username;
+            }
 
             const expirationElem = document.getElementById('user-expiration');
-            if (profileData.profile.expiration_date_iso) {
+            if (profileData.profile.expiration_date_iso && expirationElem) {
                 const expDate = new Date(profileData.profile.expiration_date_iso);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
