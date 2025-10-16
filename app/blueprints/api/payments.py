@@ -5,6 +5,7 @@ import csv
 from io import StringIO
 import threading
 import time
+import json
 from datetime import datetime, date, timezone
 from flask import Blueprint, jsonify, request, url_for, current_app, Response
 from flask_login import current_user
@@ -88,8 +89,22 @@ def _run_payment_processing_in_thread(app, txid):
 
                 # Etapa 2: Executa a lógica de negócio (renovação, notificações, etc.)
                 plex_user_id = payment['user_plex_id']
+                profile = extensions.data_manager.get_user_profile(plex_user_id)
+                
+                # Se o utilizador é INATIVO, é uma REATIVAÇÃO
+                if profile.get('status') == 'inactive':
+                    logger.info(f"Processando reativação para o utilizador '{profile['username']}' (ID: {plex_user_id}).")
+                    invite_result = extensions.plex_manager.invites._invite_user_to_plex(profile['email'], json.loads(profile.get('libraries', '[]')))
+                    if invite_result.get('success'):
+                        logger.info(f"Convite de reativação enviado para {profile['email']}.")
+                        profile['status'] = 'active'
+                        extensions.data_manager.set_user_profile(plex_user_id, profile)
+                    else:
+                        raise Exception(f"Falha ao reconvidar o utilizador inativo '{profile['username']}': {invite_result.get('message')}")
+
                 user = extensions.plex_manager.get_user_by_id(plex_user_id)
                 if user:
+                    user_info_for_notification = user
                     config = load_or_create_config()
                     screens_to_set = payment.get('screens')
                     expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
@@ -99,15 +114,14 @@ def _run_payment_processing_in_thread(app, txid):
                     )
                     
                     if screens_to_set is not None and screens_to_set >= 0:
-                        profile = extensions.data_manager.get_user_profile(plex_user_id)
                         profile['screen_limit'] = screens_to_set
                         extensions.data_manager.set_user_profile(plex_user_id, profile)
 
-                    profile = extensions.data_manager.get_user_profile(plex_user_id)
-                    extensions.plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
+                    refreshed_profile = extensions.data_manager.get_user_profile(plex_user_id)
+                    extensions.plex_manager.notifier_manager.send_renewal_notification(user_info_for_notification, new_expiration_date, refreshed_profile)
                     
                     extensions.data_manager.create_notification(
-                        message=_("Pagamento de %(username)s (%(value)s) confirmado.", username=user['username'], value=f"R$ {payment['value']:.2f}"), 
+                        message=_("Pagamento de %(username)s (%(value)s) confirmado.", username=profile['username'], value=f"R$ {payment['value']:.2f}"), 
                         category='success', link=url_for('main.users_page')
                     )
                     extensions.data_manager.create_notification(
@@ -172,7 +186,6 @@ def get_payment_options():
 
     config = load_or_create_config()
     
-    # REATORAÇÃO: Usa o PricingManager para obter os planos
     available_prices = extensions.pricing_manager.get_available_plans(user_profile, is_public_request)
     
     if not available_prices:
@@ -183,7 +196,7 @@ def get_payment_options():
         "mercadopago": config.get("MERCADOPAGO_ENABLED"),
         "bpix": config.get("BPIX_ENABLED")
     }
-    return jsonify({"success": True, "prices": available_prices, "providers": enabled_providers, "can_downgrade": True}) # can_downgrade é agora tratado em get_available_plans
+    return jsonify({"success": True, "prices": available_prices, "providers": enabled_providers, "can_downgrade": True})
 
 @payments_api_bp.route('/validate-coupon', methods=['POST'])
 def validate_coupon_route():
@@ -201,7 +214,6 @@ def validate_coupon_route():
     if not code or screens_str is None:
         return jsonify({"success": False, "message": "Código do cupão e plano são necessários."}), 400
 
-    # REATORAÇÃO: Delega a lógica de cálculo para o PricingManager
     result = extensions.pricing_manager.calculate_price(
         screens=screens_str,
         coupon_code=code,
@@ -235,16 +247,30 @@ def create_charge_route():
         return jsonify({"success": False, "message": _("Usuário não especificado para a cobrança.")}), 400
 
     profile = extensions.data_manager.get_user_profile(plex_user_id)
-    
-    plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
-    if not plex_user:
-        return jsonify({"success": False, "message": _("Usuário não encontrado no Plex.")}), 404
+    if not profile:
+        return jsonify({"success": False, "message": _("Perfil do usuário não encontrado.")}), 404
 
-    # REATORAÇÃO: Usa o PricingManager como fonte única da verdade para o preço final
+    user_info = {}
+
+    if profile.get('status') == 'inactive':
+        logger.info(f"Gerando cobrança para o utilizador inativo '{username}' a partir dos dados locais.")
+        if not profile.get('email'):
+            return jsonify({"success": False, "message": _("Não foi possível encontrar o e-mail do utilizador inativo para processar o pagamento.")}), 500
+        user_info = {
+            "plex_user_id": plex_user_id, "username": username,
+            "name": profile.get('name', username), "email": profile.get('email')
+        }
+    else:
+        plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
+        if not plex_user:
+            return jsonify({"success": False, "message": _("Usuário não encontrado no Plex.")}), 404
+        user_info = {
+            "plex_user_id": plex_user_id, "username": username,
+            "name": profile.get('name', username), "email": plex_user.get('email')
+        }
+
     price_calculation = extensions.pricing_manager.calculate_price(
-        screens=screens_str,
-        coupon_code=coupon_code,
-        plex_user_id=plex_user_id
+        screens=screens_str, coupon_code=coupon_code, plex_user_id=plex_user_id
     )
 
     if not price_calculation.get("success"):
@@ -254,26 +280,45 @@ def create_charge_route():
 
     if final_price <= 0:
         try:
-            with extensions.db.session.begin_nested():
-                extensions.plex_manager.renew_subscription(plex_user_id, 1, 'expiry_date')
-                if coupon_code and not extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id):
-                     raise Exception("Falha ao registrar o uso do cupão.")
+            is_reactivation = profile.get('status') == 'inactive'
+            
+            if is_reactivation:
+                logger.info(f"Processando reativação gratuita para o utilizador '{username}' (ID: {plex_user_id}).")
+                invite_result = extensions.plex_manager.invites._invite_user_to_plex(profile['email'], json.loads(profile.get('libraries', '[]')))
+                if not invite_result.get('success'):
+                    raise Exception(f"Falha ao reconvidar o utilizador inativo '{username}': {invite_result.get('message')}")
                 
-                # Regista um pagamento manual de valor zero para manter o histórico financeiro
-                extensions.data_manager.add_manual_payment(
-                    plex_user_id=plex_user_id, username=username, value=0.00,
-                    description=f"Renovação via Cupão 100% ({coupon_code})",
-                    payment_date_str=datetime.now().isoformat()
-                )
+                user_profile_obj = UserProfile.query.get(plex_user_id)
+                if user_profile_obj:
+                    user_profile_obj.status = 'active'
+                logger.info(f"Status do utilizador '{username}' definido como 'active' na sessão.")
+
+            new_expiration_date = extensions.plex_manager.renew_subscription(plex_user_id, 1, 'expiry_date')
+            
+            if coupon_code:
+                if not extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id):
+                     raise Exception("Falha ao registrar o uso do cupão.")
+            
+            extensions.data_manager.add_manual_payment(
+                plex_user_id=plex_user_id, username=username, value=0.00,
+                description=f"Renovação/Reativação via Cupão 100% ({coupon_code})",
+                payment_date_str=datetime.now().isoformat()
+            )
+
             extensions.db.session.commit()
+
+            user_info_for_notification = {'id': plex_user_id, 'username': username}
+            updated_profile = extensions.data_manager.get_user_profile(plex_user_id)
+            extensions.plex_manager.notifier_manager.send_renewal_notification(user_info_for_notification, new_expiration_date, updated_profile)
+
             return jsonify({"success": True, "free_renewal": True, "message": _("Assinatura gratuita ativada com sucesso!")})
+        
         except Exception as e:
-            logger.error(f"Erro ao ativar assinatura gratuita com cupão: {e}", exc_info=True)
             extensions.db.session.rollback()
+            logger.error(f"Erro ao ativar assinatura gratuita com cupão: {e}", exc_info=True)
             return jsonify({"success": False, "message": "Ocorreu um erro ao ativar a sua assinatura gratuita."}), 500
 
     price, screens = final_price, int(screens_str)
-    user_info = {"plex_user_id": plex_user_id, "username": username, "name": profile.get('name', username), "email": plex_user.get('email')}
     
     config = load_or_create_config()
     result = {"success": False, "message": _("O provedor %(provider)s não está habilitado.", provider=provider)}
@@ -524,3 +569,4 @@ def export_financial_csv():
     except Exception as e:
         logger.error(f"Erro ao gerar o relatório CSV: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Ocorreu um erro interno ao gerar o relatório."}), 500
+
