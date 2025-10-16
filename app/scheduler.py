@@ -136,14 +136,34 @@ def removal_job():
     if not _app: return
     with _app.test_request_context():
         from . import extensions
+        
+        logger.info("A iniciar a tarefa 'removal_job' para remover utilizadores bloqueados há muito tempo.")
+        
         users_to_remove = extensions.plex_manager.get_users_to_remove()
+        
+        if not users_to_remove:
+            logger.info("Nenhum utilizador bloqueado atingiu o prazo para remoção. A tarefa foi concluída.")
+            return
+
+        logger.info(f"Encontrados {len(users_to_remove)} utilizador(es) para remover.")
+        
+        removed_count = 0
         for plex_user_id in users_to_remove:
             user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
             user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
-            _execute_with_retry(
+            
+            success = _execute_with_retry(
                 action=lambda: extensions.plex_manager.remove_user(plex_user_id),
                 description=f"remover utilizador bloqueado '{user_identifier}'"
             )
+            if success:
+                removed_count += 1
+        
+        if removed_count > 0:
+            logger.info(f"Tarefa 'removal_job' concluída. {removed_count} de {len(users_to_remove)} utilizador(es) foram removidos com sucesso.")
+        else:
+            logger.warning("Tarefa 'removal_job' concluída, mas nenhum utilizador foi efetivamente removido (verifique os logs de erro).")
+
 
 @single_instance_job('cleanup_job')
 def cleanup_job():
