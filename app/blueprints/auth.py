@@ -5,7 +5,7 @@ import urllib.parse
 import logging
 import requests
 from functools import wraps
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from flask import Blueprint, render_template, redirect, url_for, flash, session, jsonify, request, current_app
 from flask_login import login_user, logout_user, login_required, current_user
@@ -134,17 +134,34 @@ def check_plex_pin(client_id, pin_id):
         # ### INÍCIO DA LÓGICA DE REATIVAÇÃO ###
         user_profile = data_manager.get_user_profile_by_username(account.username)
         if user_profile and user_profile.get('status') == 'inactive':
-            logger.info(f"Tentativa de login do utilizador inativo '{account.username}'. A atualizar o e-mail e a redirecionar.")
+            # *** INÍCIO DA CORREÇÃO ***
+            # Verifica se houve um pagamento de reativação concluído recentemente.
+            latest_payment = data_manager.get_latest_completed_payment(user_profile['plex_user_id'])
+            is_recently_paid = False
+            if latest_payment and latest_payment.get('created_at'):
+                try:
+                    payment_time_utc = datetime.fromisoformat(latest_payment['created_at']).astimezone(timezone.utc)
+                    # Considera pagamentos nos últimos 5 minutos como "recentes" para quebrar o ciclo.
+                    if (datetime.now(timezone.utc) - payment_time_utc) < timedelta(minutes=5):
+                        is_recently_paid = True
+                except (ValueError, TypeError):
+                    pass # Ignora erros de parsing de data
             
-            # **CORREÇÃO CRÍTICA**: Atualiza o e-mail do utilizador na base de dados neste momento.
-            if account.email and user_profile.get('email') != account.email:
-                user_profile['email'] = account.email
-                data_manager.set_user_profile(user_profile['plex_user_id'], user_profile)
-                logger.info(f"E-mail do utilizador inativo '{account.username}' atualizado para '{account.email}' na base de dados.")
-            
-            flash(_("A sua conta está inativa. Por favor, efetue o pagamento para reativar o seu acesso."), "info")
-            reactivation_url = url_for('main.payment_page', token=user_profile.get('payment_token'), _external=False)
-            return jsonify({"success": True, "action": "reactivate", "redirect_url": reactivation_url})
+            if is_recently_paid:
+                logger.info(f"Utilizador inativo '{account.username}' tem um pagamento recente. A permitir o login assumindo que a reativação está a ser processada.")
+            else:
+                # Lógica original para utilizadores genuinamente inativos
+                logger.info(f"Tentativa de login do utilizador inativo '{account.username}'. A redirecionar para pagamento.")
+                
+                if account.email and user_profile.get('email') != account.email:
+                    user_profile['email'] = account.email
+                    data_manager.set_user_profile(user_profile['plex_user_id'], user_profile)
+                    logger.info(f"E-mail do utilizador inativo '{account.username}' atualizado para '{account.email}' na base de dados.")
+                
+                flash(_("A sua conta está inativa. Por favor, efetue o pagamento para reativar o seu acesso."), "info")
+                reactivation_url = url_for('main.payment_page', token=user_profile.get('payment_token'), _external=False)
+                return jsonify({"success": True, "action": "reactivate", "redirect_url": reactivation_url})
+            # *** FIM DA CORREÇÃO ***
         # ### FIM DA LÓGICA DE REATIVAÇÃO ###
 
         admin_username = config.get('ADMIN_USER')
@@ -204,4 +221,3 @@ def redirect_to_auth():
     """
     context_url = url_for('auth.get_plex_auth_context')
     return render_template('plex_redirect.html', get_plex_auth_context_url=context_url)
-
