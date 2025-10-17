@@ -25,7 +25,7 @@ class PlexSubscriptionManager:
         self.data_manager = data_manager
         self.plex_manager = None # Injetado pelo PlexManager após a inicialização
 
-    def renew_subscription(self, plex_user_id, months_to_add, base_mode='today', base_date_str=None, expiration_time_str=None):
+    def renew_subscription(self, plex_user_id, months_to_add, screens=None, base_mode='today', base_date_str=None, expiration_time_str=None, is_reactivation=False):
         """
         Renova a subscrição de um utilizador, calcula a nova data de vencimento
         e reagenda a sua tarefa de expiração.
@@ -36,6 +36,14 @@ class PlexSubscriptionManager:
         profile = self.data_manager.get_user_profile(plex_user_id)
         if not profile:
             raise ValueError("Perfil de utilizador não encontrado.")
+
+        if is_reactivation:
+            logger.info(f"A reativar o perfil do utilizador '{profile['username']}' (ID: {plex_user_id}).")
+            profile['status'] = 'active'
+
+        if screens is not None and screens >= 0:
+            profile['screen_limit'] = screens
+            logger.info(f"Limite de telas para '{profile['username']}' definido para {screens} durante a renovação.")
 
         now = datetime.now(get_localzone())
         base_date = now

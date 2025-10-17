@@ -82,7 +82,7 @@ class PlexInviteManager:
         if plex_user_account.username in claimed_users:
             return {"success": False, "message": _("Você já resgatou este convite anteriormente.")}
 
-        invite_result = self._invite_user_to_plex(plex_user_account.email, invitation['libraries'])
+        invite_result = self.send_plex_invite(plex_user_account.email, invitation['libraries'])
         if not invite_result.get("success"):
             return invite_result
         if invite_result.get("already_exists"):
@@ -126,8 +126,6 @@ class PlexInviteManager:
 
         self.data_manager.set_user_profile(plex_user_account.id, profile_data)
         
-        # --- CORREÇÃO AQUI ---
-        # A chamada foi corrigida de 'get_user_profile_by_id' para 'get_user_profile'.
         new_profile = self.data_manager.get_user_profile(plex_user_account.id)
 
         config = load_or_create_config()
@@ -154,7 +152,8 @@ class PlexInviteManager:
         self.data_manager.delete_invitation(code)
         return {"success": True, "message": _("Convite removido com sucesso.")}
 
-    def _invite_user_to_plex(self, identifier, library_titles):
+    def send_plex_invite(self, identifier, library_titles):
+        """Método público para enviar um convite do Plex."""
         if not self.conn.plex:
             return {"success": False, "message": _("O Plex não está configurado.")}
         try:
@@ -202,3 +201,4 @@ class PlexInviteManager:
             return {"success": True}
         except Exception as e:
             return {"success": False, "message": _("Ocorreu um erro de rede ao tentar aceitar o convite.")}
+
