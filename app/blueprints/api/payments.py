@@ -136,6 +136,10 @@ def _run_payment_processing_in_thread(app, txid):
                 extensions.data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
                 extensions.db.session.commit()
                 logger.info(f"Processamento do pagamento para TXID {txid} concluído com sucesso.")
+
+                if extensions.socketio:
+                    extensions.socketio.emit('user_list_updated', {'message': f'User {plex_user_id} status updated after payment.'}, namespace='/dashboard')
+                    logger.info(f"Socket.IO event 'user_list_updated' emitted for user {plex_user_id}.")
                 return
 
         except OperationalError as e:
@@ -292,7 +296,14 @@ def create_charge_route():
                     user_profile_obj.status = 'active'
                 logger.info(f"Status do utilizador '{username}' definido como 'active' na sessão.")
 
-            new_expiration_date = extensions.plex_manager.renew_subscription(plex_user_id, 1, 'expiry_date')
+            # *** INÍCIO DA CORREÇÃO ***
+            # A chamada agora usa keyword arguments para evitar o erro de tipo.
+            new_expiration_date = extensions.plex_manager.renew_subscription(
+                plex_user_id,
+                months_to_add=1,
+                base_mode='expiry_date'
+            )
+            # *** FIM DA CORREÇÃO ***
             
             if coupon_code:
                 if not extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id):
@@ -309,6 +320,10 @@ def create_charge_route():
             user_info_for_notification = {'id': plex_user_id, 'username': username}
             updated_profile = extensions.data_manager.get_user_profile(plex_user_id)
             extensions.plex_manager.notifier_manager.send_renewal_notification(user_info_for_notification, new_expiration_date, updated_profile)
+
+            if extensions.socketio:
+                extensions.socketio.emit('user_list_updated', {'message': f'User {plex_user_id} status updated after free renewal.'}, namespace='/dashboard')
+                logger.info(f"Socket.IO event 'user_list_updated' emitted for user {plex_user_id} (free renewal).")
 
             return jsonify({"success": True, "free_renewal": True, "message": _("Assinatura gratuita ativada com sucesso!")})
         
