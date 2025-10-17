@@ -65,71 +65,60 @@ def _run_payment_processing_in_thread(app, txid):
     for attempt in range(MAX_RETRIES):
         try:
             with app.test_request_context():
-                # CORREÇÃO: Lógica de bloqueio e processamento em etapas para maior robustez.
-                
-                # Etapa 1: Tenta adquirir o lock e marcar como "PROCESSANDO"
                 with extensions.db.session.begin_nested():
                     payment = extensions.data_manager.get_and_lock_pix_payment(txid)
                     if not payment:
                         logger.warning(f"Pagamento com TXID {txid} não encontrado na tentativa {attempt + 1}. A ignorar.")
-                        return # Sai da função, não da thread
+                        return
                     
                     if payment.get('status') != 'ATIVA':
                         logger.warning(f"Pagamento {txid} já está a ser processado ou foi concluído (estado: {payment.get('status')}). A ignorar processamento duplicado.")
                         return
                     
-                    # Marca imediatamente como processando para evitar corridas
                     extensions.data_manager.update_pix_payment_status(txid, 'PROCESSANDO')
-                
-                # O commit da transação aninhada acima acontece aqui, libertando o lock da linha
-                # mas garantindo que o estado é 'PROCESSANDO'.
                 extensions.db.session.commit()
                 
                 logger.info(f"Pagamento {txid} marcado como 'PROCESSANDO'. A iniciar a lógica de renovação.")
 
-                # Etapa 2: Executa a lógica de negócio (renovação, notificações, etc.)
                 plex_user_id = payment['user_plex_id']
                 profile = extensions.data_manager.get_user_profile(plex_user_id)
                 
-                # *** INÍCIO DA CORREÇÃO ***
-                # Verifica se é uma reativação ANTES de qualquer modificação
                 is_reactivation = profile.get('status') == 'inactive'
                 
-                # Se o utilizador é INATIVO, é uma REATIVAÇÃO
                 if is_reactivation:
-                # *** FIM DA CORREÇÃO ***
                     logger.info(f"Processando reativação para o utilizador '{profile['username']}' (ID: {plex_user_id}).")
-                    invite_result = extensions.plex_manager.invites._invite_user_to_plex(profile['email'], json.loads(profile.get('libraries', '[]')))
-                    if invite_result.get('success'):
-                        logger.info(f"Convite de reativação enviado para {profile['email']}.")
-                        profile['status'] = 'active'
-                        extensions.data_manager.set_user_profile(plex_user_id, profile)
-                    else:
+                    invite_result = extensions.plex_manager.invites.send_plex_invite(profile['email'], json.loads(profile.get('libraries', '[]')))
+                    if not invite_result.get('success'):
                         raise Exception(f"Falha ao reconvidar o utilizador inativo '{profile['username']}': {invite_result.get('message')}")
+                    logger.info(f"Convite de reativação enviado para {profile['email']}.")
 
-                user = extensions.plex_manager.get_user_by_id(plex_user_id)
-                if user:
-                    user_info_for_notification = user
+                user_info_for_renewal = extensions.plex_manager.get_user_by_id(plex_user_id)
+                if not user_info_for_renewal and is_reactivation:
+                    logger.info(f"Utilizador '{profile['username']}' está a ser reativado. A usar dados do perfil local para a renovação.")
+                    user_info_for_renewal = {
+                        'id': plex_user_id,
+                        'username': profile.get('username'),
+                        'email': profile.get('email')
+                    }
+
+                if user_info_for_renewal:
                     config = load_or_create_config()
                     screens_to_set = payment.get('screens')
                     expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
                     
-                    # *** INÍCIO DA CORREÇÃO ***
-                    # Define a base do cálculo: 'today' para reativações, 'expiry_date' para renovações normais
                     renewal_base_mode = 'today' if is_reactivation else 'expiry_date'
                     logger.info(f"A renovar subscrição para '{profile['username']}' com o modo base: '{renewal_base_mode}'.")
                     
                     new_expiration_date = extensions.plex_manager.renew_subscription(
-                        plex_user_id, 1, renewal_base_mode, expiration_time_str=expiration_time
+                        plex_user_id, 1,
+                        screens=screens_to_set,
+                        base_mode=renewal_base_mode,
+                        expiration_time_str=expiration_time,
+                        is_reactivation=is_reactivation
                     )
-                    # *** FIM DA CORREÇÃO ***
                     
-                    if screens_to_set is not None and screens_to_set >= 0:
-                        profile['screen_limit'] = screens_to_set
-                        extensions.data_manager.set_user_profile(plex_user_id, profile)
-
                     refreshed_profile = extensions.data_manager.get_user_profile(plex_user_id)
-                    extensions.plex_manager.notifier_manager.send_renewal_notification(user_info_for_notification, new_expiration_date, refreshed_profile)
+                    extensions.plex_manager.notifier_manager.send_renewal_notification(user_info_for_renewal, new_expiration_date, refreshed_profile)
                     
                     extensions.data_manager.create_notification(
                         message=_("Pagamento de %(username)s (%(value)s) confirmado.", username=profile['username'], value=f"R$ {payment['value']:.2f}"), 
@@ -142,9 +131,8 @@ def _run_payment_processing_in_thread(app, txid):
                     if payment.get('coupon_code'):
                         extensions.data_manager.record_coupon_usage(payment['coupon_code'], plex_user_id)
                 else:
-                    logger.warning(f"Utilizador do pagamento {txid} (ID: {plex_user_id}) não encontrado no Plex. A renovação falhou.")
+                    logger.warning(f"Utilizador do pagamento {txid} (ID: {plex_user_id}) não encontrado. A renovação falhou.")
 
-                # Etapa 3: Marca o pagamento como "CONCLUIDA" e faz o commit final
                 extensions.data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
                 extensions.db.session.commit()
                 logger.info(f"Processamento do pagamento para TXID {txid} concluído com sucesso.")
@@ -295,7 +283,7 @@ def create_charge_route():
             
             if is_reactivation:
                 logger.info(f"Processando reativação gratuita para o utilizador '{username}' (ID: {plex_user_id}).")
-                invite_result = extensions.plex_manager.invites._invite_user_to_plex(profile['email'], json.loads(profile.get('libraries', '[]')))
+                invite_result = extensions.plex_manager.invites.send_plex_invite(profile['email'], json.loads(profile.get('libraries', '[]')))
                 if not invite_result.get('success'):
                     raise Exception(f"Falha ao reconvidar o utilizador inativo '{username}': {invite_result.get('message')}")
                 
@@ -580,3 +568,4 @@ def export_financial_csv():
     except Exception as e:
         logger.error(f"Erro ao gerar o relatório CSV: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Ocorreu um erro interno ao gerar o relatório."}), 500
+

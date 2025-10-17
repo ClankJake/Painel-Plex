@@ -221,7 +221,7 @@ def get_account_requests():
 def renew_user_subscription_route(user, validated_data):
     try:
         data = validated_data
-        new_expiration_date = plex_manager.renew_subscription(user['id'], data.months, data.base, base_date_str=data.base_date, expiration_time_str=data.expiration_time)
+        new_expiration_date = plex_manager.renew_subscription(user['id'], data.months, base_mode=data.base, base_date_str=data.base_date, expiration_time_str=data.expiration_time)
         
         config, profile = load_or_create_config(), data_manager.get_user_profile(user['id'])
         monthly_price_str = config.get("SCREEN_PRICES", {}).get(str(profile.get('screen_limit', 0)), config.get("RENEWAL_PRICE", "0.00"))
@@ -336,45 +336,38 @@ def reactivate_user_route():
         return jsonify({"success": False, "message": _("Utilizador não está inativo ou não foi encontrado.")}), 404
 
     try:
-        # Passo 1: Reativar o utilizador na base de dados local
-        profile['status'] = 'active'
-        data_manager.set_user_profile(plex_user_id, profile)
-        data_manager.remove_blocked_user(plex_user_id)  # Garantir que não está na lista de bloqueados
-
         username = profile.get('username')
         logger.info(f"Admin '{current_user.username}' reativou o utilizador '{username}'. A tentar enviar novo convite.")
 
-        # Passo 2: Enviar automaticamente um novo convite do Plex
         identifier = profile.get('email') or username
         if not identifier:
             logger.warning(f"Não foi possível enviar convite para '{username}' (ID: {plex_user_id}) por falta de email/username.")
-            return jsonify({"success": True, "message": _("Utilizador reativado, mas não foi possível enviar convite (sem email/username). Por favor, convide-o manualmente.")})
+            return jsonify({"success": True, "message": _("Utilizador reativado, mas não foi possível enviar convite (sem email/username).")})
 
-        libraries = profile.get('last_known_libraries', [])
-        allow_sync = profile.get('allow_sync', False)
-
+        libraries_str = profile.get('libraries')
         try:
-            invite_result = plex_manager.create_invitation(
-                identifier=identifier,
-                libraries=libraries,
-                unlimited_access=True,
-                allow_sync=allow_sync,
-                is_reinvite=True
-            )
-            if not invite_result.get('success'):
-                error_message = invite_result.get('message', _('Erro desconhecido ao convidar.'))
-                logger.warning(f"Utilizador '{username}' reativado, mas o convite automático falhou: {error_message}")
-                return jsonify({"success": True, "message": _("Utilizador reativado, mas o convite automático falhou: %(error)s", error=error_message)})
+            libraries = json.loads(libraries_str) if libraries_str else []
+        except json.JSONDecodeError:
+            libraries = []
+        
+        invite_result = plex_manager.invites.send_plex_invite(identifier, libraries)
+        if not invite_result.get('success'):
+            error_message = invite_result.get('message', _('Erro desconhecido ao convidar.'))
+            logger.warning(f"Tentativa de reativação para '{username}' falhou no envio do convite: {error_message}")
+            return jsonify({"success": False, "message": _("Falha ao enviar novo convite: %(error)s", error=error_message)})
 
-            logger.info(f"Convite enviado com sucesso para '{identifier}' para o utilizador reativado '{username}'.")
-            return jsonify({"success": True, "message": _("Utilizador reativado e um novo convite foi enviado para %(identifier)s.", identifier=identifier)})
+        profile['status'] = 'active'
+        data_manager.set_user_profile(plex_user_id, profile)
+        data_manager.remove_blocked_user(plex_user_id)
 
-        except Exception as invite_error:
-            logger.error(f"Exceção ao reenviar convite para '{username}': {invite_error}", exc_info=True)
-            return jsonify({"success": True, "message": _("Utilizador reativado, mas ocorreu um erro inesperado ao enviar o convite. Verifique os logs.")})
+        logger.info(f"Convite enviado com sucesso para '{identifier}' para o utilizador reativado '{username}'.")
+        return jsonify({"success": True, "message": _("Utilizador reativado e um novo convite foi enviado para %(identifier)s.", identifier=identifier)})
 
     except Exception as e:
         logger.error(f"Erro ao reativar o utilizador {plex_user_id}: {e}", exc_info=True)
+        # Reverte a alteração de status se algo der errado após a tentativa de convite
+        profile['status'] = 'inactive'
+        data_manager.set_user_profile(plex_user_id, profile)
         return jsonify({"success": False, "message": _("Ocorreu um erro ao reativar o utilizador.")}), 500
 
 
