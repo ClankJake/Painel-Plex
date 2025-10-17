@@ -91,6 +91,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    /**
+     * Configura a conexão WebSocket para receber atualizações em tempo real.
+     */
+    function setupWebSocket() {
+        const socket = io('/dashboard', { reconnectionAttempts: 5, transports: ['websocket'] });
+
+        socket.on('connect', () => {
+            console.log('Conectado para atualizações em tempo real da lista de usuários.');
+        });
+
+        socket.on('user_list_updated', (data) => {
+            console.log('Evento de atualização da lista de usuários recebido:', data);
+            
+            // Exibe uma notificação para o administrador
+            ui.showToast('A lista de usuários foi atualizada automaticamente.', 'info');
+            
+            // Força a atualização da lista de usuários na UI
+            ui.loadStatus(true);
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Erro de conexão com o WebSocket para atualizações de usuários:', error);
+        });
+    }
+
     // --- Ponto de Entrada ---
     initializeView();
     initializeEventListeners();
@@ -99,4 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicia a verificação periódica de convites
     const intervalId = setInterval(() => ui.loadInvites(true), 10000);
     state.setInviteCheckInterval(intervalId);
+
+    // Inicia a escuta por atualizações em tempo real
+    setupWebSocket();
 });
