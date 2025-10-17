@@ -93,6 +93,7 @@
         data-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
         data-get-payment-status-base-url="{{ url_for('payments_api.get_payment_status', txid='__TXID__') }}"
         data-validate-coupon-url="{{ url_for('payments_api.validate_coupon_route') }}"
+        data-account-page-url="{{ url_for('main.account_page') }}"
         data-i18n-error="{{ _('Erro') }}"
         data-i18n-no-provider="{{ _('Nenhum provedor de pagamento ou plano está habilitado pelo administrador.') }}"
         data-i18n-generate-pix="{{ _('Gerar PIX') }}"
@@ -106,6 +107,8 @@
         data-i18n-wait="{{ _('Aguarde...') }}"
         data-i18n-payment-confirmed="{{ _('Pagamento confirmado! A sua assinatura foi renovada.') }}"
         data-i18n-polling-confirmed="{{ _('Pagamento Confirmado! A página será atualizada em 3 segundos...') }}"
+        data-i18n-reactivation-success="{{ _('Conta reativada com sucesso!') }}"
+        data-i18n-redirecting-to-account="{{ _('Reativação confirmada! A redirecionar para a sua conta em 3 segundos...') }}"
         data-i18n-polling-error="{{ _('Erro ao verificar o estado do pagamento (a tentar novamente):') }}"
         data-i18n-code-copied="{{ _('Código PIX copiado!') }}"
         data-i18n-screen-singular="{{ _('Tela') }}"
@@ -117,4 +120,3 @@
     ></script>
 </body>
 </html>
-
