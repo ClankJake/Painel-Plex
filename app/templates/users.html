@@ -93,6 +93,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='dist/socket.io.min.js') }}"></script>
 <script id="users-script" 
         type="module"
         src="{{ url_for('static', filename='js/users.js') }}"
