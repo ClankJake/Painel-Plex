@@ -219,9 +219,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const statusResult = await fetchAPI(urls.getPaymentStatusBaseUrl.replace('__TXID__', txid));
                 if (statusResult.success && statusResult.status === 'CONCLUIDA') {
                     clearInterval(pollingIntervalId);
-                    showToast(i18n.paymentConfirmed, "success");
-                    if(pollingStatus) pollingStatus.innerHTML = `<div class="text-green-500 font-bold p-4">${i18n.pollingConfirmed}</div>`;
-                    setTimeout(() => window.location.reload(), 3000);
+                    const isReactivation = container.dataset.isReactivation === 'true';
+
+                    if (isReactivation) {
+                        showToast(i18n.reactivationSuccess, "success");
+                        if(pollingStatus) pollingStatus.innerHTML = `<div class="text-green-500 font-bold p-4">${i18n.redirectingToAccount}</div>`;
+                        setTimeout(() => window.location.href = urls.accountPageUrl, 3000);
+                    } else {
+                        showToast(i18n.paymentConfirmed, "success");
+                        if(pollingStatus) pollingStatus.innerHTML = `<div class="text-green-500 font-bold p-4">${i18n.pollingConfirmed}</div>`;
+                        setTimeout(() => window.location.reload(), 3000);
+                    }
                 }
             } catch (error) {
                 console.warn(`${i18n.pollingError}:`, error.message);
@@ -297,4 +305,3 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     main();
 });
-
