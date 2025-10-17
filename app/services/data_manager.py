@@ -276,6 +276,14 @@ class DataManager:
             return [self._row_to_dict(p) for p in payments]
         except Exception: return []
 
+    def get_latest_completed_payment(self, plex_user_id):
+        """Busca o pagamento concluído mais recente para um utilizador."""
+        payment = PixPayment.query.filter_by(
+            user_plex_id=plex_user_id,
+            status='CONCLUIDA'
+        ).order_by(PixPayment.created_at.desc()).first()
+        return self._row_to_dict(payment) if payment else None
+        
     # --- Métodos para Perfis de Utilizador ---
     def get_user_profile(self, plex_user_id):
         profile = UserProfile.query.get(plex_user_id)
@@ -509,4 +517,3 @@ class DataManager:
             if 'libraries' in d and d['libraries']: d['libraries'] = json.loads(d['libraries'])
             if 'claimed_by_users' in d and d['claimed_by_users']: d['claimed_by_users'] = json.loads(d['claimed_by_users'])
         return d
-
