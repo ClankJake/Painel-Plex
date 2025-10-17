@@ -156,7 +156,12 @@ class PlexManager:
     def claim_invitation(self, code, plex_user_account): return self.invites.claim_invitation(code, plex_user_account)
     def list_invitations(self): return self.invites.list_invitations()
     def delete_invitation(self, code): return self.invites.delete_invitation(code)
-    def renew_subscription(self, plex_user_id, months_to_add, base_mode='today', base_date_str=None, expiration_time_str=None): return self.subscriptions.renew_subscription(plex_user_id, months_to_add, base_mode, base_date_str, expiration_time_str)
+    def renew_subscription(self, plex_user_id, months_to_add, screens=None, base_mode='today', base_date_str=None, expiration_time_str=None, is_reactivation=False):
+        return self.subscriptions.renew_subscription(
+            plex_user_id, months_to_add, screens=screens, base_mode=base_mode, 
+            base_date_str=base_date_str, expiration_time_str=expiration_time_str, 
+            is_reactivation=is_reactivation
+        )
 
     def get_users_within_notification_window(self):
         from app.config import load_or_create_config
