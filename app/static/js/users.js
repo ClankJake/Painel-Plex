@@ -104,8 +104,9 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.on('user_list_updated', (data) => {
             console.log('Evento de atualização da lista de usuários recebido:', data);
             
-            // Exibe uma notificação para o administrador
-            ui.showToast('A lista de usuários foi atualizada automaticamente.', 'info');
+            // Exibe uma notificação para o administrador com a mensagem do servidor
+            const toastMessage = data.message || 'A lista de usuários foi atualizada automaticamente.';
+            ui.showToast(toastMessage, 'info');
             
             // Força a atualização da lista de usuários na UI
             ui.loadStatus(true);
