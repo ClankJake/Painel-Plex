@@ -87,47 +87,59 @@ def _run_payment_processing_in_thread(app, txid):
                 
                 if is_reactivation:
                     logger.info(f"Processando reativação para o utilizador '{profile['username']}' (ID: {plex_user_id}).")
+                    
+                    extensions.data_manager.create_notification(
+                        message=_("O utilizador %(username)s reativou a conta. Pagamento de %(value)s confirmado.", 
+                                  username=profile['username'], 
+                                  value=f"R$ {payment['value']:.2f}"),
+                        category='success', link=url_for('main.users_page')
+                    )
+                    extensions.data_manager.create_notification(
+                        message=_("A sua conta foi reativada com sucesso! Pagamento de %(value)s confirmado.", 
+                                  value=f"R$ {payment['value']:.2f}"),
+                        category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
+                    )
+
                     invite_result = extensions.plex_manager.invites.send_plex_invite(profile['email'], json.loads(profile.get('libraries', '[]')))
                     if not invite_result.get('success'):
                         raise Exception(f"Falha ao reconvidar o utilizador inativo '{profile['username']}': {invite_result.get('message')}")
                     logger.info(f"Convite de reativação enviado para {profile['email']}.")
 
+                    logger.info(f"Aguardando 8 segundos para a API do Plex processar a reativação de '{profile['username']}'...")
+                    time.sleep(8)
+                    extensions.plex_manager.users.invalidate_user_cache()
+                    logger.info("Cache de utilizadores do Plex invalidado para garantir dados atualizados.")
+
                 user_info_for_renewal = extensions.plex_manager.get_user_by_id(plex_user_id)
                 if not user_info_for_renewal and is_reactivation:
                     logger.info(f"Utilizador '{profile['username']}' está a ser reativado. A usar dados do perfil local para a renovação.")
-                    user_info_for_renewal = {
-                        'id': plex_user_id,
-                        'username': profile.get('username'),
-                        'email': profile.get('email')
-                    }
+                    user_info_for_renewal = { 'id': plex_user_id, 'username': profile.get('username'), 'email': profile.get('email') }
 
                 if user_info_for_renewal:
                     config = load_or_create_config()
                     screens_to_set = payment.get('screens')
                     expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
-                    
                     renewal_base_mode = 'today' if is_reactivation else 'expiry_date'
                     logger.info(f"A renovar subscrição para '{profile['username']}' com o modo base: '{renewal_base_mode}'.")
                     
                     new_expiration_date = extensions.plex_manager.renew_subscription(
-                        plex_user_id, 1,
-                        screens=screens_to_set,
-                        base_mode=renewal_base_mode,
-                        expiration_time_str=expiration_time,
-                        is_reactivation=is_reactivation
+                        plex_user_id, 1, screens=screens_to_set, base_mode=renewal_base_mode,
+                        expiration_time_str=expiration_time, is_reactivation=is_reactivation
                     )
                     
                     refreshed_profile = extensions.data_manager.get_user_profile(plex_user_id)
                     extensions.plex_manager.notifier_manager.send_renewal_notification(user_info_for_renewal, new_expiration_date, refreshed_profile)
                     
-                    extensions.data_manager.create_notification(
-                        message=_("Pagamento de %(username)s (%(value)s) confirmado.", username=profile['username'], value=f"R$ {payment['value']:.2f}"), 
-                        category='success', link=url_for('main.users_page')
-                    )
-                    extensions.data_manager.create_notification(
-                        message=_("A sua renovação de %(value)s foi confirmada.", value=f"R$ {payment['value']:.2f}"),
-                        category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
-                    )
+                    if not is_reactivation:
+                        extensions.data_manager.create_notification(
+                            message=_("Pagamento de %(username)s (%(value)s) confirmado.", username=profile['username'], value=f"R$ {payment['value']:.2f}"), 
+                            category='success', link=url_for('main.users_page')
+                        )
+                        extensions.data_manager.create_notification(
+                            message=_("A sua renovação de %(value)s foi confirmada.", value=f"R$ {payment['value']:.2f}"),
+                            category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
+                        )
+
                     if payment.get('coupon_code'):
                         extensions.data_manager.record_coupon_usage(payment['coupon_code'], plex_user_id)
                 else:
@@ -138,7 +150,8 @@ def _run_payment_processing_in_thread(app, txid):
                 logger.info(f"Processamento do pagamento para TXID {txid} concluído com sucesso.")
 
                 if extensions.socketio:
-                    extensions.socketio.emit('user_list_updated', {'message': f'User {plex_user_id} status updated after payment.'}, namespace='/dashboard')
+                    toast_message = _("O utilizador %(username)s foi reativado após pagamento.", username=profile['username']) if is_reactivation else _("Pagamento de %(username)s confirmado. A lista será atualizada.", username=profile['username'])
+                    extensions.socketio.emit('user_list_updated', { 'message': toast_message }, namespace='/dashboard')
                     logger.info(f"Socket.IO event 'user_list_updated' emitted for user {plex_user_id}.")
                 return
 
@@ -296,14 +309,11 @@ def create_charge_route():
                     user_profile_obj.status = 'active'
                 logger.info(f"Status do utilizador '{username}' definido como 'active' na sessão.")
 
-            # *** INÍCIO DA CORREÇÃO ***
-            # A chamada agora usa keyword arguments para evitar o erro de tipo.
             new_expiration_date = extensions.plex_manager.renew_subscription(
                 plex_user_id,
                 months_to_add=1,
                 base_mode='expiry_date'
             )
-            # *** FIM DA CORREÇÃO ***
             
             if coupon_code:
                 if not extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id):
