@@ -30,6 +30,29 @@ document.addEventListener('DOMContentLoaded', () => {
     let isPanelOpen = false;
     let hasUnread = false;
 
+    try {
+        const socket = io('/', { transports: ['websocket'] });
+
+        socket.on('connect', () => {
+            console.log('Conectado ao servidor para notificações em tempo real.');
+        });
+
+        socket.on('new_notification', () => {
+            console.log('Recebida notificação de nova mensagem. A atualizar...');
+            fetchNotifications();
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Desconectado do servidor de notificações.');
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Falha ao conectar ao WebSocket de notificações:', error);
+        });
+    } catch (e) {
+        console.error("Não foi possível iniciar o Socket.IO para notificações.", e);
+    }
+
     function formatTimeAgo(dateString) {
         const date = new Date(dateString);
         const now = new Date();
