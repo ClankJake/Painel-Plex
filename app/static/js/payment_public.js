@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const errorMessage = document.getElementById('errorMessage');
     const paymentSection = document.getElementById('payment-section');
     const pixDisplay = document.getElementById('pix-display');
+    const successDisplay = document.getElementById('success-display');
+    const userInfoHeader = document.getElementById('user-info-header');
     const scriptTag = document.getElementById('payment-public-script');
 
     const urls = {};
@@ -186,8 +188,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
 
             if (result && result.success && result.free_renewal) {
-                showToast(result.message, 'success');
-                setTimeout(() => window.location.reload(), 3000);
+                const isReactivation = container.dataset.isReactivation === 'true';
+                showSuccessState(isReactivation);
                 return;
             }
 
@@ -203,16 +205,42 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             showToast(error.message, 'error');
         } finally {
-            if (!(result && result.success && result.free_renewal)) {
+            if (!(result && result.success && (result.free_renewal || result.qr_code_image))) {
                 button.disabled = false;
                 button.textContent = originalText;
             }
         }
     }
 
+    function showSuccessState(isReactivation) {
+        if (paymentSection) paymentSection.style.display = 'none';
+        if (pixDisplay) pixDisplay.style.display = 'none';
+        if (userInfoHeader) userInfoHeader.style.display = 'none';
+        
+        const successTitle = document.getElementById('success-title');
+        const successMessage = document.getElementById('success-message');
+        const loginButton = document.getElementById('login-button');
+
+        if (successTitle && successMessage && loginButton && successDisplay) {
+            if (isReactivation) {
+                successTitle.textContent = i18n.reactivationSuccessTitle;
+                successMessage.textContent = i18n.reactivationSuccessMessage;
+            } else {
+                successTitle.textContent = i18n.renewalSuccessTitle;
+                successMessage.textContent = i18n.renewalSuccessMessage;
+            }
+            loginButton.textContent = i18n.loginButtonText;
+            loginButton.href = urls.loginPageUrl;
+            
+            successDisplay.classList.remove('hidden');
+        } else {
+            // Fallback
+            window.location.href = urls.loginPageUrl || '/';
+        }
+    }
+
     function startPaymentStatusPolling(txid) {
         if (pollingIntervalId) clearInterval(pollingIntervalId);
-        const pollingStatus = document.getElementById('polling-status');
 
         pollingIntervalId = setInterval(async () => {
             try {
@@ -220,16 +248,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (statusResult.success && statusResult.status === 'CONCLUIDA') {
                     clearInterval(pollingIntervalId);
                     const isReactivation = container.dataset.isReactivation === 'true';
-
-                    if (isReactivation) {
-                        showToast(i18n.reactivationSuccess, "success");
-                        if(pollingStatus) pollingStatus.innerHTML = `<div class="text-green-500 font-bold p-4">${i18n.redirectingToAccount}</div>`;
-                        setTimeout(() => window.location.href = urls.accountPageUrl, 3000);
-                    } else {
-                        showToast(i18n.paymentConfirmed, "success");
-                        if(pollingStatus) pollingStatus.innerHTML = `<div class="text-green-500 font-bold p-4">${i18n.pollingConfirmed}</div>`;
-                        setTimeout(() => window.location.reload(), 3000);
-                    }
+                    showSuccessState(isReactivation);
                 }
             } catch (error) {
                 console.warn(`${i18n.pollingError}:`, error.message);
@@ -276,7 +295,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             
             if (!isReactivation) {
-                 document.getElementById('user-username').textContent = profileData.profile.username;
+                document.getElementById('user-username').textContent = profileData.profile.username;
             }
 
             const expirationElem = document.getElementById('user-expiration');
@@ -305,3 +324,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     main();
 });
+
