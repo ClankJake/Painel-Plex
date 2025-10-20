@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from . import extensions
 import threading
+from flask_login import current_user
 
 # Variável para manter a instância da aplicação, que será definida em app/__init__.py
 app_instance = None
@@ -79,7 +80,7 @@ def background_task():
     Tarefa em segundo plano que envia atualizações do dashboard e dos streams ativos.
     Esta tarefa agora termina automaticamente quando não há clientes conectados.
     """
-    logger.info("Tarefa de fundo do SocketIO iniciada.")
+    logger.debug("Tarefa de fundo do SocketIO iniciada.")
     count = 0
     while connected_clients > 0:
         extensions.socketio.sleep(5)
@@ -98,7 +99,7 @@ def background_task():
             extensions.socketio.emit('active_streams_update', {'sessions': active_sessions}, namespace='/dashboard')
             logger.debug("Dados de streams ativos enviados para os clientes.")
 
-    logger.info("Tarefa de fundo do SocketIO parada. Nenhum cliente conectado.")
+    logger.debug("Tarefa de fundo do SocketIO parada. Nenhum cliente conectado.")
     global background_task_greenlet
     with lock:
         background_task_greenlet = None
@@ -110,16 +111,13 @@ def handle_dashboard_connect():
     Lida com novas conexões de clientes ao namespace do dashboard.
     Inicia a tarefa em segundo plano apenas se for a primeira conexão.
     """
-    # --- ALTERAÇÃO: Lógica de contagem de clientes ---
     global connected_clients, background_task_greenlet
     with lock:
         connected_clients += 1
         logger.debug(f'Cliente conectado ao dashboard. Clientes ativos: {connected_clients}')
-        # Inicia a tarefa em segundo plano apenas se for a primeira conexão e a tarefa não estiver a correr
         if connected_clients == 1 and (background_task_greenlet is None or getattr(background_task_greenlet, 'dead', True)):
             background_task_greenlet = extensions.socketio.start_background_task(background_task)
 
-# --- ALTERAÇÃO: Adiciona um handler para desconexões ---
 @extensions.socketio.on('disconnect', namespace='/dashboard')
 def handle_dashboard_disconnect():
     """
@@ -131,3 +129,17 @@ def handle_dashboard_disconnect():
         if connected_clients > 0:
             connected_clients -= 1
         logger.debug(f'Cliente desconectado do dashboard. Clientes ativos: {connected_clients}')
+
+@extensions.socketio.on('connect', namespace='/')
+def handle_main_connect():
+    if current_user.is_authenticated:
+        logger.debug(f'Cliente {current_user.username} (ID: {current_user.id}) conectado ao namespace principal para notificações.')
+    else:
+        logger.debug('Cliente anónimo conectado ao namespace principal.')
+
+@extensions.socketio.on('disconnect', namespace='/')
+def handle_main_disconnect():
+    if current_user.is_authenticated:
+        logger.debug(f'Cliente {current_user.username} desconectado do namespace principal.')
+    else:
+        logger.debug('Cliente anónimo desconectado do namespace principal.')
