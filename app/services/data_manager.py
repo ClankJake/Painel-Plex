@@ -137,6 +137,7 @@ class DataManager:
 
     # --- MÉTODOS DE NOTIFICAÇÃO ---
     def create_notification(self, message, category='info', link=None, user_plex_id=None):
+        from .. import extensions
         try:
             notification = Notification(
                 message=message, category=category, link=link,
@@ -144,8 +145,14 @@ class DataManager:
             )
             db.session.add(notification)
             db.session.commit()
+            
+            if extensions.socketio:
+                logger.info(f"Emitindo evento 'new_notification' via Socket.IO para acionar a atualização da UI.")
+                extensions.socketio.emit('new_notification', namespace='/')
+            
         except Exception as e:
             db.session.rollback()
+            logger.error(f"Erro ao criar notificação: {e}", exc_info=True)
 
     def get_notifications(self, user_plex_id=None, limit=10, include_read=False):
         query = Notification.query.filter_by(user_plex_id=user_plex_id).order_by(Notification.timestamp.desc())
@@ -284,7 +291,7 @@ class DataManager:
         ).order_by(PixPayment.created_at.desc()).first()
         return self._row_to_dict(payment) if payment else None
         
-    # --- Métodos para Perfis de Utilizador ---
+    # --- MÉTODOS para Perfis de Utilizador ---
     def get_user_profile(self, plex_user_id):
         profile = UserProfile.query.get(plex_user_id)
         if profile:
@@ -377,7 +384,7 @@ class DataManager:
         profiles = UserProfile.query.filter(UserProfile.trial_end_date.isnot(None), UserProfile.trial_end_date != '').all()
         return {p.plex_user_id: self._row_to_dict(p) for p in profiles}
 
-    # --- Métodos de Pagamento PIX ---
+    # --- MÉTODOS de Pagamento PIX ---
     def get_and_lock_pix_payment(self, txid):
         try:
             return self._row_to_dict(db.session.query(PixPayment).filter_by(txid=txid).with_for_update().first())
@@ -421,7 +428,7 @@ class DataManager:
                 raise
         return False
 
-    # --- Métodos de Limpeza de Dados ---
+    # --- MÉTODOS de Limpeza de Dados ---
     def delete_old_pending_payments(self, days_old):
         if not isinstance(days_old, int) or days_old <= 0: return 0
         try:
@@ -434,7 +441,7 @@ class DataManager:
             db.session.rollback()
             return 0
 
-    # --- Métodos de Convites ---
+    # --- MÉTODOS de Convites ---
     def add_invitation(self, code, details):
         invitation = Invitation(code=code, libraries=json.dumps(details.get('libraries', [])), screen_limit=details.get('screen_limit', 0), allow_downloads=details.get('allow_downloads', False), created_at=details.get('created_at'), expires_at=details.get('expires_at'), trial_duration_minutes=details.get('trial_duration_minutes', 0), overseerr_access=details.get('overseerr_access', False), max_uses=details.get('max_uses', 1), use_count=details.get('use_count', 0), claimed_by_users=json.dumps(details.get('claimed_by_users', [])))
         db.session.add(invitation)
@@ -470,7 +477,7 @@ class DataManager:
         invitation = Invitation.query.filter(Invitation.claimed_by_users.contains(profile.username)).order_by(Invitation.claimed_at.desc()).first()
         return invitation.claimed_at if invitation else None
 
-    # --- Métodos de Utilizadores Bloqueados ---
+    # --- MÉTODOS de Utilizadores Bloqueados ---
     def get_blocked_user(self, plex_user_id):
         return self._row_to_dict(BlockedUser.query.get(plex_user_id))
 
@@ -487,16 +494,13 @@ class DataManager:
             if not user:
                 user = BlockedUser(user_plex_id=plex_user_id, username=username)
 
-            # *** INÍCIO DA CORREÇÃO ***
-            # Garante que o timestamp é guardado com a informação do fuso horário local.
             user.blocked_at = datetime.now(get_localzone()).isoformat()
-            # *** FIM DA CORREÇÃO ***
             
             user.block_reason = reason
             db.session.add(user)
             db.session.commit()
             logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) adicionado/atualizado na lista de bloqueados com o motivo '{reason}'.")
-        except IntegrityError: # This might be less likely now, but kept for safety.
+        except IntegrityError: 
             db.session.rollback()
             logger.error(f"Falha de integridade ao bloquear o utilizador '{username}'.")
         except Exception as e:
