@@ -23,6 +23,8 @@
         .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.75); display: flex; justify-content: center; align-items: center; z-index: 50; backdrop-filter: blur(4px); }
         .modal-content { @apply bg-white dark:bg-gray-800; padding: 1.5rem; border-radius: 0.75rem; max-width: 90%; width: 500px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
         .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border-radius: 0.5rem; font-weight: 600; transition: all 0.2s ease-in-out; border: 1px solid transparent; }
+        .animate-fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-300 transition-colors duration-300">
@@ -46,7 +48,7 @@
                 </div>
                 
                 <div id="paymentContainer" class="hidden" data-is-reactivation="{{ 'true' if is_reactivation else 'false' }}">
-                    <div class="flex flex-col items-center text-center">
+                    <div id="user-info-header" class="flex flex-col items-center text-center">
                         <img id="user-thumb" src="https://placehold.co/96x96/1F2937/E5E7EB?text=?" alt="Avatar" class="w-24 h-24 rounded-full mb-4">
                         {% if is_reactivation %}
                         <h2 class="text-2xl font-bold text-gray-900 dark:text-white" id="user-username">{{ _('Bem-vindo de volta, %(username)s!', username=username) }}</h2>
@@ -75,6 +77,19 @@
                             <p class="text-sm">{{ _('Para garantir que sua assinatura seja ativada instantaneamente, por favor, mantenha esta página aberta até que o pagamento seja confirmado.') }}</p>
                         </div>
                     </div>
+
+                    <div id="success-display" class="hidden text-center space-y-4 animate-fade-in">
+                        <svg class="w-16 h-16 text-green-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <h2 id="success-title" class="text-2xl font-bold text-gray-900 dark:text-white"></h2>
+                        <p id="success-message" class="text-gray-600 dark:text-gray-400"></p>
+                        <div class="mt-8">
+                            <a id="login-button" href="#" class="btn bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3">
+                                <!-- O texto do botão será inserido pelo JS -->
+                            </a>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -93,7 +108,7 @@
         data-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
         data-get-payment-status-base-url="{{ url_for('payments_api.get_payment_status', txid='__TXID__') }}"
         data-validate-coupon-url="{{ url_for('payments_api.validate_coupon_route') }}"
-        data-account-page-url="{{ url_for('main.account_page') }}"
+        data-login-page-url="{{ url_for('auth.login') }}"
         data-i18n-error="{{ _('Erro') }}"
         data-i18n-no-provider="{{ _('Nenhum provedor de pagamento ou plano está habilitado pelo administrador.') }}"
         data-i18n-generate-pix="{{ _('Gerar PIX') }}"
@@ -105,10 +120,6 @@
         data-i18n-pay-with-mp="{{ _('Pagar com Mercado Pago') }}"
         data-i18n-cancel="{{ _('Cancelar') }}"
         data-i18n-wait="{{ _('Aguarde...') }}"
-        data-i18n-payment-confirmed="{{ _('Pagamento confirmado! A sua assinatura foi renovada.') }}"
-        data-i18n-polling-confirmed="{{ _('Pagamento Confirmado! A página será atualizada em 3 segundos...') }}"
-        data-i18n-reactivation-success="{{ _('Conta reativada com sucesso!') }}"
-        data-i18n-redirecting-to-account="{{ _('Reativação confirmada! A redirecionar para a sua conta em 3 segundos...') }}"
         data-i18n-polling-error="{{ _('Erro ao verificar o estado do pagamento (a tentar novamente):') }}"
         data-i18n-code-copied="{{ _('Código PIX copiado!') }}"
         data-i18n-screen-singular="{{ _('Tela') }}"
@@ -117,6 +128,12 @@
         data-i18n-expired-on="{{ _('Vencido em:') }}"
         data-i18n-current-plan="{{ _('Seu Plano Atual') }}"
         data-i18n-no-plan-price="{{ _('O seu plano atual não possui um preço de renovação definido. Por favor, contacte o administrador.') }}"
+        data-i18n-login-button-text="{{ _('Acessar Painel') }}"
+        data-i18n-reactivation-success-title="{{ _('Conta Reativada com Sucesso!') }}"
+        data-i18n-reactivation-success-message="{{ _('Seu pagamento foi confirmado. Você já pode aceder ao seu painel.') }}"
+        data-i18n-renewal-success-title="{{ _('Renovação Confirmada!') }}"
+        data-i18n-renewal-success-message="{{ _('Sua assinatura foi estendida com sucesso.') }}"
     ></script>
 </body>
 </html>
+
