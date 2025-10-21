@@ -256,4 +256,3 @@ def redirect_to_auth():
     """
     context_url = url_for('auth.get_plex_auth_context')
     return render_template('plex_redirect.html', get_plex_auth_context_url=context_url)
-
