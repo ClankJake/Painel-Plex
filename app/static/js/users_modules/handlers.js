@@ -2,6 +2,7 @@
 
 import * as api from './api.js';
 import * as ui from './ui.js';
+import * as modals from './modals.js';
 import * as state from './state.js';
 import { i18n, urls } from './config.js';
 import { showToast } from '../utils.js';
@@ -29,10 +30,10 @@ function sanitizeHTML(str) {
 export function handleInviteAction(action, code) {
     if (action === 'copy-invite') {
         const inviteUrl = `${window.location.origin}${urls.baseInvitePage}${code}`;
-        ui.showInviteLinkModal(inviteUrl);
+        modals.showInviteLinkModal(inviteUrl);
     } else if (action === 'delete-invite') {
         const message = `${i18n.confirmDeleteInvite} <strong>${sanitizeHTML(code)}</strong>? ${i18n.actionCannotBeUndone}`;
-        ui.showConfirmationModal({
+        modals.showConfirmationModal({
             title: i18n.deleteInvite,
             message: message,
             confirmText: i18n.confirmDeleteButton,
@@ -56,7 +57,7 @@ export function handleInviteAction(action, code) {
  */
 async function handleQuickRenewal(user) {
     const message = `${i18n.confirmAddOneMonth} <strong>${sanitizeHTML(user.username)}</strong>?`;
-    ui.showConfirmationModal({
+    modals.showConfirmationModal({
         title: i18n.addOneMonth,
         message: message,
         confirmText: i18n.confirm,
@@ -82,11 +83,16 @@ async function handleQuickRenewal(user) {
  * @param {object} user - O objeto do usuário.
  */
 export function handleUserAction(action, user) {
+    if (action === 'reactivate') {
+        modals.showReactivationModal(user);
+        return;
+    }
+
     const modalActions = {
-        'manage-profile': () => ui.showUserProfileModal(user),
-        'manage-limit': () => ui.showScreenLimitModal(user),
-        'manage-libraries': () => ui.showLibraryManagementModal(user),
-        'payment-history': () => ui.showPaymentHistoryModal(user),
+        'manage-profile': () => modals.showUserProfileModal(user),
+        'manage-limit': () => modals.showScreenLimitModal(user),
+        'manage-libraries': () => modals.showLibraryManagementModal(user),
+        'payment-history': () => modals.showPaymentHistoryModal(user),
         'renew-month': () => handleQuickRenewal(user),
         'copy-payment-link': () => {
             if (user.payment_token) {
@@ -127,13 +133,6 @@ export function handleUserAction(action, user) {
             confirmClass: 'bg-yellow-500 text-black',
             apiCall: () => api.unblockUser(user.id),
         },
-        'reactivate': {
-            title: i18n.reactivateUserTitle,
-            message: i18n.confirmReactivateUser.replace('{username}', `<strong>${sanitizeHTML(user.username)}</strong>`),
-            confirmText: i18n.confirmReactivateButton,
-            confirmClass: 'bg-green-600 text-white',
-            apiCall: () => api.reactivateUser(user.id),
-        },
         'delete-permanently': {
             title: i18n.deletePermanentlyTitle,
             message: `${i18n.confirmDeletePermanently} <strong>${sanitizeHTML(user.username)}</strong>? ${i18n.actionCannotBeUndone}`,
@@ -145,7 +144,7 @@ export function handleUserAction(action, user) {
 
     const config = confirmationActions[action];
     if (config) {
-        ui.showConfirmationModal({
+        modals.showConfirmationModal({
             title: config.title,
             message: config.message,
             confirmText: config.confirmText,

@@ -17,7 +17,7 @@ function toggleSelectAll(container, button) {
     const checkboxes = container.querySelectorAll('input[type="checkbox"]');
     const areAllSelected = Array.from(checkboxes).every(cb => cb.checked);
     checkboxes.forEach(cb => cb.checked = !areAllSelected);
-    button.textContent = areAllSelected ? i18n.unselectAll : i18n.selectAll;
+    button.textContent = areAllSelected ? i18n.selectAll : i18n.unselectAll;
 }
 
 // --- Funções de Modais ---
@@ -449,4 +449,55 @@ export async function showPaymentHistoryModal(user) {
     } catch (error) {
         container.innerHTML = `<p class="text-red-500">${error.message}</p>`;
     }
+}
+
+export async function showReactivationModal(user) {
+    const title = `${i18n.reactivateUserTitle} - ${user.username}`;
+    const body = `
+        <p class="mb-4">${i18n.selectLibsForReactivation.replace('{username}', `<strong>${user.username}</strong>`)}</p>
+        <div class="flex justify-end mb-2">
+            <button type="button" id="modalSelectAllLibs" class="text-xs bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 px-2 py-1 rounded-md">${i18n.selectAll}</button>
+        </div>
+        <div id="modalLibsContainer" class="max-h-40 overflow-y-auto bg-gray-100 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-300 dark:border-gray-600 space-y-1 modal-body">
+            ${state.allLibraries.map(lib => `
+                <label class="flex items-center space-x-2 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
+                    <input type="checkbox" class="form-checkbox bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-500 rounded text-yellow-500" value="${lib.title}">
+                    <span>${lib.title}</span>
+                </label>`).join('')}
+        </div>`;
+    const footer = `
+        <button id="modalConfirm" class="btn bg-green-600 hover:bg-green-500 text-white w-full sm:w-auto">${i18n.confirmReactivateButton}</button>
+        <button id="modalCancel" class="btn bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200 w-full sm:w-auto">${i18n.cancel}</button>`;
+
+    const modal = createModal('reactivationModal', title, body, footer);
+
+    const modalLibsContainer = modal.querySelector('#modalLibsContainer');
+    const selectAllButton = modal.querySelector('#modalSelectAllLibs');
+    const confirmButton = modal.querySelector('#modalConfirm');
+
+    selectAllButton.onclick = () => toggleSelectAll(modalLibsContainer, selectAllButton);
+    modal.querySelector('#modalCancel').onclick = () => modal.classList.add('hidden');
+
+    confirmButton.onclick = async () => {
+        const selectedLibraries = Array.from(modalLibsContainer.querySelectorAll('input:checked')).map(input => input.value);
+        if (selectedLibraries.length === 0) {
+            showToast(i18n.selectOneLibrary, 'error');
+            return;
+        }
+
+        confirmButton.disabled = true;
+        confirmButton.textContent = i18n.reactivating || 'Reativando...';
+
+        try {
+            const result = await api.reactivateUser(user.id, selectedLibraries);
+            showToast(result.message, result.success ? 'success' : 'error');
+            if (result.success) {
+                document.dispatchEvent(new CustomEvent('data-refresh-requested'));
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        } finally {
+            modal.classList.add('hidden');
+        }
+    };
 }
