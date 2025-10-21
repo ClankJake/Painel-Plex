@@ -153,27 +153,51 @@ class PlexInviteManager:
         return {"success": True, "message": _("Convite removido com sucesso.")}
 
     def send_plex_invite(self, identifier, library_titles):
-        """Método público para enviar um convite do Plex."""
+        """
+        Método inteligente para convidar ou reativar o acesso de um usuário ao Plex.
+        - Se o usuário não for amigo, envia um novo convite.
+        - Se o usuário já for amigo mas não tiver acesso, atualiza suas permissões.
+        """
         if not self.conn.plex:
             return {"success": False, "message": _("O Plex não está configurado.")}
+        
         try:
-            try:
-                user_account = self.conn.account.user(identifier)
-                if self.conn.plex.machineIdentifier in [s.machineIdentifier for s in user_account.servers]:
-                     return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso.")}
-            except NotFound:
-                pass 
             libraries_to_share = [s for s in self.conn.plex.library.sections() if s.title in library_titles]
             if not libraries_to_share:
-                return {"success": False, "message": _("Nenhuma biblioteca válida encontrada para partilhar.")}
+                return {"success": False, "message": _("Nenhuma biblioteca válida foi encontrada para compartilhar.")}
+
+            # Tenta encontrar o usuário na conta do Plex
+            user_to_invite = self.conn.account.user(identifier)
+            
+            # Verifica se o usuário já tem acesso a este servidor específico
+            if self.conn.plex.machineIdentifier in [s.machineIdentifier for s in user_to_invite.servers]:
+                logger.info(f"O utilizador '{identifier}' já tem acesso ao servidor. Nenhuma ação necessária.")
+                return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso.")}
+
+            # Se o usuário é amigo, mas não tem acesso, atualiza as permissões (reativação)
+            logger.info(f"Utilizador '{identifier}' encontrado na conta Plex, mas sem acesso a este servidor. A atualizar as partilhas.")
+            self.conn.account.updateFriend(user=user_to_invite, server=self.conn.plex, sections=libraries_to_share)
+            return {"success": True, "message": _("Acesso do utilizador existente atualizado com sucesso para %(identifier)s!", identifier=identifier)}
+
+        except NotFound:
+            # Se o usuário não for encontrado (NotFound), ele não é um amigo. Envia um novo convite.
+            logger.info(f"Utilizador '{identifier}' não encontrado como amigo. A enviar novo convite.")
             self.conn.account.inviteFriend(user=identifier, server=self.conn.plex, sections=libraries_to_share)
             return {"success": True, "message": _("Convite enviado com sucesso para %(identifier)s!", identifier=identifier)}
+        
         except BadRequest as e:
-            if 'user is already a friend' in str(e).lower() or "already sharing" in str(e).lower():
-                return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso.")}
+            # Lida com outros erros da API, como convites já pendentes.
+            error_str = str(e).lower()
+            if 'user is already a friend' in error_str or "already sharing" in error_str or "invite has already been sent" in error_str:
+                logger.warning(f"API do Plex indicou que '{identifier}' já é amigo ou tem um convite pendente, mas a verificação inicial falhou. A considerar como sucesso.")
+                return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso ou um convite pendente.")}
+            logger.error(f"Erro 'BadRequest' ao convidar '{identifier}': {e}")
             return {"success": False, "message": str(e)}
+        
         except Exception as e:
+            logger.error(f"Erro inesperado ao convidar '{identifier}': {e}", exc_info=True)
             return {"success": False, "message": str(e)}
+
 
     def _accept_invite_v2(self, user_account: MyPlexAccount):
         owner_identifier = self.conn.account.username
@@ -201,4 +225,3 @@ class PlexInviteManager:
             return {"success": True}
         except Exception as e:
             return {"success": False, "message": _("Ocorreu um erro de rede ao tentar aceitar o convite.")}
-
