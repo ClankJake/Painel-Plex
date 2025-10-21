@@ -90,6 +90,7 @@
 <div id="bulkScreenLimitModal" class="modal-backdrop hidden"></div>
 <div id="userProfileModal" class="modal-backdrop hidden"></div>
 <div id="paymentHistoryModal" class="modal-backdrop hidden"></div>
+<div id="reactivationModal" class="modal-backdrop hidden"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -240,7 +241,8 @@
         data-i18n-confirm-reactivate-button="{{ _('Sim, Reativar e Convidar') }}"
         data-i18n-delete-permanently-title="{{ _('Apagar Permanentemente') }}"
         data-i18n-confirm-delete-permanently="{{ _('Esta ação é IRREVERSÍVEL e irá apagar todos os dados associados a') }}"
+        data-i18n-select-libs-for-reactivation="{{ _('Selecione as bibliotecas para partilhar com {username} ao reativar o acesso.') }}"
+        data-i18n-reactivating="{{ _('Reativando...') }}"
 >
 </script>
 {% endblock %}
-
