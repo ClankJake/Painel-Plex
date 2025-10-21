@@ -199,6 +199,10 @@ function renderUserCard(user) {
         </div>
     `;
 
+    const buttonContainerClass = isInactive
+        ? 'flex flex-wrap items-center justify-end gap-1'
+        : 'flex flex-wrap items-center justify-between gap-1';
+
     card.innerHTML = `
         <div class="flex items-start flex-1">
             <img src="${user.thumb || 'https://placehold.co/80x80/1F2937/E5E7EB?text=?'}" alt="Avatar" class="w-16 h-16 rounded-full mr-4">
@@ -212,7 +216,7 @@ function renderUserCard(user) {
                 ${user.screen_limit > 0 ? `<div class="mt-2 text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-500/50 dark:text-blue-200 border border-blue-200 dark:border-blue-400/30 px-2 py-1 rounded-full inline-block">${user.screen_limit} ${user.screen_limit > 1 ? i18n.screenPlural : i18n.screenSingular}</div>` : ''}
             </div>
         </div>
-        <div class="flex flex-wrap items-center justify-end gap-1 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div class="${buttonContainerClass} mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
             ${isInactive ? inactiveButtons : activeButtons}
         </div>
     `;
@@ -250,3 +254,4 @@ export function updateTabCounts() {
     dom.countTrial.textContent = state.allUsersCache.filter(u => u.is_on_trial).length;
     dom.countInactive.textContent = state.allUsersCache.filter(u => u.status === 'inactive').length;
 }
+
