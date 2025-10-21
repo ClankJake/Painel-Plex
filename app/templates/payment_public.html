@@ -52,7 +52,7 @@
                         <img id="user-thumb" src="https://placehold.co/96x96/1F2937/E5E7EB?text=?" alt="Avatar" class="w-24 h-24 rounded-full mb-4">
                         {% if is_reactivation %}
                         <h2 class="text-2xl font-bold text-gray-900 dark:text-white" id="user-username">{{ _('Bem-vindo de volta, %(username)s!', username=username) }}</h2>
-                        <p class="text-gray-500 dark:text-gray-400 mt-2">{{ _('A sua subscrição anterior expirou. Efetue o pagamento abaixo para reativar o seu acesso instantaneamente.') }}</p>
+                        <p class="text-gray-500 dark:text-gray-400 mt-2">{{ _('A sua assinatura expirou. Efetue o pagamento abaixo para reativar o seu acesso instantaneamente.') }}</p>
                         {% else %}
                         <h2 class="text-2xl font-bold text-gray-900 dark:text-white" id="user-username"></h2>
                         <p class="text-sm text-gray-500 dark:text-gray-400" id="user-expiration"></p>
@@ -106,7 +106,7 @@
         data-get-public-profile-url="{{ url_for('users_api.get_public_user_profile_by_token', token=token) }}"
         data-get-payment-options-url="{{ url_for('payments_api.get_payment_options') }}"
         data-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
-        data-get-payment-status-base-url="{{ url_for('payments_api.get_payment_status', txid='__TXID__') }}"
+        data-get-payment-status-base-url="{{ url_for('payments_api.get_payment_status_route', txid='__TXID__') }}"
         data-validate-coupon-url="{{ url_for('payments_api.validate_coupon_route') }}"
         data-login-page-url="{{ url_for('auth.login') }}"
         data-i18n-error="{{ _('Erro') }}"
