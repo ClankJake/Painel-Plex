@@ -240,32 +240,42 @@ class PlexUserManager:
             return {"success": False, "message": str(e)}
 
     def remove_user(self, plex_user_id):
-        user_to_remove = self.get_user_by_id(plex_user_id)
-        if not user_to_remove:
-            return {"success": False, "message": _("Utilizador não encontrado.")}
+        # Primeiro, obtemos o perfil local para ter o email/username, mesmo que o utilizador já não exista no Plex
+        profile = self.data_manager.get_user_profile(plex_user_id)
+        if not profile:
+            # Se não houver nem perfil local, não há nada a fazer
+            return {"success": False, "message": _("Utilizador não encontrado na base de dados local.")}
+
+        email = profile.get('email')
+        username = profile.get('username')
 
         if not self.conn.account:
             return {"success": False, "message": _("O Plex não está configurado.")}
         try:
             from app.extensions import scheduler
-            
-            email = user_to_remove['email']
-            username = user_to_remove['username']
-            profile = self.data_manager.get_user_profile(plex_user_id)
 
+            # Interrompe os streams do utilizador, se houver
             if self.stream_manager:
                 self.stream_manager.block_user_sessions(plex_user_id, "A sua conta está a ser removida do servidor.")
             
-            if profile.get('overseerr_access'):
+            # Remove do Overseerr, se aplicável
+            if profile.get('overseerr_access') and email:
                 self.overseerr_manager.remove_user(email)
 
+            # Tenta remover do Plex, mas não falha se já não existir
             try:
-                plex_user_obj = self.conn.account.user(email)
-                self.conn.account.removeFriend(plex_user_obj)
-                logger.info(f"Acesso ao Plex para '{username}' removido com sucesso.")
+                # Tenta encontrar o utilizador pelo email ou username para remover
+                identifier = email or username
+                if identifier:
+                    plex_user_obj = self.conn.account.user(identifier)
+                    self.conn.account.removeFriend(plex_user_obj)
+                    logger.info(f"Acesso ao Plex para '{username}' removido com sucesso.")
+                else:
+                    logger.warning(f"Não foi possível tentar remover '{username}' do Plex por falta de email/username.")
             except NotFound:
-                logger.warning(f"Utilizador '{username}' já não era amigo na conta Plex. A continuar com a desativação.")
+                logger.warning(f"Utilizador '{username}' já não era amigo na conta Plex. A continuar com a desativação local.")
             
+            # Procede com a limpeza local independentemente do resultado do Plex
             profile['status'] = 'inactive'
             profile['expiration_date'] = None
 
@@ -282,9 +292,9 @@ class PlexUserManager:
             self.data_manager.remove_blocked_user(plex_user_id)
             self.invalidate_user_cache()
 
-            return {"success": True, "message": _("Utilizador %(username)s desativado e acesso removido com sucesso.", username=username)}
+            return {"success": True, "message": _("Utilizador %(username)s desativado e acesso removido com sucesso.", username=username), "username": username}
         except Exception as e:
-            logger.error(_("Erro ao remover o utilizador %(email)s: %(error)s", email=email, error=e), exc_info=True)
+            logger.error(_("Erro ao remover o utilizador %(username)s: %(error)s", username=username, error=e), exc_info=True)
             return {"success": False, "message": str(e)}
 
     def toggle_overseerr_access(self, plex_user_id, access: bool):
