@@ -94,7 +94,7 @@ def proxy_image():
         # 3. Guarda a imagem no cache em disco
         with open(cache_filepath, 'wb') as f:
             f.write(image_content)
-        logger.info(f"Imagem '{unique_identifier}' obtida e armazenada na cache.")
+        logger.debug(f"Imagem '{unique_identifier}' obtida e armazenada na cache.")
         
         # 4. Retorna a imagem para o cliente
         return Response(image_content, mimetype=content_type, headers={
