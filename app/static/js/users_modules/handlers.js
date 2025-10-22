@@ -64,10 +64,22 @@ async function handleQuickRenewal(user) {
         confirmClass: 'bg-green-600 text-white',
         onConfirm: async () => {
             try {
-                const result = await api.renewSubscription(user.id, {
-                    months: 1,
-                    base: 'expiry_date'
-                });
+                // Tenta renovar a partir da data de expiração, se existir e for futura
+                const payload = { months: 1, base: 'expiry_date' };
+                if (user.expiration_date) {
+                    try {
+                        const expDate = new Date(user.expiration_date);
+                        if (expDate < new Date()) {
+                            payload.base = 'today'; // Se já expirou, renova a partir de hoje
+                        }
+                    } catch (e) {
+                         payload.base = 'today'; // Fallback se a data for inválida
+                    }
+                } else {
+                    payload.base = 'today'; // Se não há data, renova a partir de hoje
+                }
+
+                const result = await api.renewSubscription(user.id, payload);
                 showToast(result.message, result.success ? 'success' : 'error');
                 if (result.success) ui.loadStatus(true);
             } catch (error) {
@@ -94,6 +106,7 @@ export function handleUserAction(action, user) {
         'manage-libraries': () => modals.showLibraryManagementModal(user),
         'payment-history': () => modals.showPaymentHistoryModal(user),
         'renew-month': () => handleQuickRenewal(user),
+        'extend-trial': () => modals.showExtendTrialModal(user), // NOVO: Chama o novo modal
         'copy-payment-link': () => {
             if (user.payment_token) {
                 const paymentUrl = `${window.location.origin}/pay/${user.payment_token}`;
@@ -164,4 +177,3 @@ export function handleUserAction(action, user) {
         });
     }
 }
-

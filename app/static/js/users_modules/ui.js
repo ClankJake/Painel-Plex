@@ -24,7 +24,9 @@ export const {
     showScreenLimitModal,
     showLibraryManagementModal,
     showUserProfileModal,
-    showPaymentHistoryModal
+    showPaymentHistoryModal,
+    showReactivationModal,
+    showExtendTrialModal
 } = modals;
 
 
@@ -39,16 +41,16 @@ export async function loadInvites(isPeriodicCheck = false) {
 
         if (isPeriodicCheck && state.activeInviteCount > 0 && pendingInvites.length < state.activeInviteCount) {
             showToast(i18n.inviteUsedUpdating, 'info');
-            await loadStatus(true);
-            return;
+            await loadStatus(true); // Força atualização da lista de utilizadores
+            return; // Retorna aqui para evitar renderizar a lista de convites desatualizada
         }
 
         state.setActiveInviteCount(pendingInvites.length);
         dom.inviteListDiv.innerHTML = pendingInvites.length > 0
             ? pendingInvites.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map(renderInviteCard).join('')
             : `<p class="text-gray-500 dark:text-gray-400">${i18n.noPendingInvites}</p>`;
-        
-        dom.inviteListDiv.querySelectorAll('button').forEach(button => 
+
+        dom.inviteListDiv.querySelectorAll('button').forEach(button =>
             button.onclick = () => handleInviteAction(button.dataset.action, button.dataset.code)
         );
     } catch (e) {
@@ -130,9 +132,9 @@ export function renderUserGrid() {
         if (state.viewState.sortBy === 'exp_asc' || state.viewState.sortBy === 'exp_desc') {
             const dateA = a.expiration_date ? new Date(a.expiration_date) : null;
             const dateB = b.expiration_date ? new Date(b.expiration_date) : null;
-            if (dateA && dateB) return state.viewState.sortBy === 'exp_asc' ? dateA - dateB : dateB - dateA;
-            if (!dateA) return 1;
-            if (!dateB) return -1;
+            if (dateA && dateB) return state.viewState.sortBy === 'exp_asc' ? dateA - dateB : dateB - a;
+            if (!dateA) return 1; // Utilizadores sem data vêm depois
+            if (!dateB) return -1; // Utilizadores sem data vêm depois
         }
         return 0;
     });
@@ -153,32 +155,41 @@ export function renderUserGrid() {
 function renderUserCard(user) {
     const card = document.createElement('div');
     card.className = 'flex flex-col bg-white dark:bg-gray-800 p-4 rounded-lg hover:shadow-xl transition-shadow duration-300 border border-gray-200 dark:border-gray-700';
-    
-    const isInactive = user.status === 'inactive';
 
+    const isInactive = user.status === 'inactive';
+    // const isOnTrial = user.is_on_trial; // Lógica movida para baixo
+
+    // --- LÓGICA ALTERADA: Mostra status de teste (ativo ou finalizado) ---
     let trialHtml = '';
-    if (user.trial_end_date) {
-        const trialEndDate = new Date(user.trial_end_date);
-        if (trialEndDate > new Date()) {
+    if (user.trial_end_date) { // Verifica se existe uma data de teste
+        try {
+            const trialEndDate = new Date(user.trial_end_date);
             const diffMs = trialEndDate - new Date();
-            const diffHours = Math.floor(diffMs / 3600000);
-            const diffMinutes = Math.round((diffMs % 3600000) / 60000);
-            const remainingTime = diffHours > 0 ? `${diffHours}h ${diffMinutes}m` : `${diffMinutes}m`;
-            trialHtml = `<div class="mt-2 text-xs font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 px-2 py-1 rounded-full inline-flex items-center gap-1"><span>${i18n.inTestWithTime.replace('{remainingTime}', remainingTime)}</span></div>`;
-        } else {
-            trialHtml = `<div class="mt-2 text-xs font-bold bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200 px-2 py-1 rounded-full inline-flex items-center gap-1"><span>${i18n.testFinished}</span></div>`;
-        }
+            if (diffMs > 0) {
+                // Em teste
+                const diffHours = Math.floor(diffMs / 3600000);
+                const diffMinutes = Math.round((diffMs % 3600000) / 60000);
+                const remainingTime = diffHours > 0 ? `${diffHours}h ${diffMinutes}m` : `${diffMinutes}m`;
+                trialHtml = `<div class="mt-2 text-xs font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 px-2 py-1 rounded-full inline-flex items-center gap-1"><span>${i18n.inTestWithTime.replace('{remainingTime}', remainingTime)}</span></div>`;
+            } else {
+                // Teste finalizado
+                 trialHtml = `<div class="mt-2 text-xs font-bold bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200 px-2 py-1 rounded-full inline-flex items-center gap-1"><span>${i18n.testFinished}</span></div>`;
+            }
+        } catch(e) { /* ignore parse errors */ }
     }
+    // --- FIM DA ALTERAÇÃO ---
 
     let expirationHtml = '';
-    if (!trialHtml && user.expiration_date) {
-        const expDate = new Date(user.expiration_date);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const daysLeft = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
-        const dateColor = daysLeft < 0 ? 'text-red-500 font-semibold' : (daysLeft <= 7 ? 'text-yellow-500 font-semibold' : 'text-gray-400 dark:text-gray-500');
-        const formattedDate = expDate.toLocaleDateString();
-        expirationHtml = `<div class="mt-1 text-xs flex items-center ${dateColor}"><span>${i18n.expiresOn} ${formattedDate}</span></div>`;
+    if (!trialHtml && user.expiration_date) { // Só mostra vencimento se não for um teste
+        try {
+            const expDate = new Date(user.expiration_date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const daysLeft = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
+            const dateColor = daysLeft < 0 ? 'text-red-500 font-semibold' : (daysLeft <= 7 ? 'text-yellow-500 font-semibold' : 'text-gray-400 dark:text-gray-500');
+            const formattedDate = expDate.toLocaleDateString();
+            expirationHtml = `<div class="mt-1 text-xs flex items-center ${dateColor}"><span>${i18n.expiresOn} ${formattedDate}</span></div>`;
+        } catch(e) { /* ignore parse errors */ }
     }
 
     const inactiveButtons = `
@@ -186,8 +197,15 @@ function renderUserCard(user) {
         <button data-action="delete-permanently" title="${i18n.deletePermanently}" class="btn text-xs bg-red-800 hover:bg-red-700 text-white px-2 py-1">${i18n.deletePermanently}</button>
     `;
 
+    // --- LÓGICA ALTERADA: Mostra o botão se "trial_end_date" existir ---
+    const extendTrialButton = user.trial_end_date ? `
+        <button data-action="extend-trial" title="${i18n.extendTrial}" class="btn text-xs bg-orange-600 hover:bg-orange-700 text-white px-2 py-1">${i18n.extendTrial}</button>
+    ` : '';
+    // --- FIM DA ALTERAÇÃO ---
+
     const activeButtons = `
         <button data-action="renew-month" title="${i18n.addOneMonth}" class="btn text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1">${i18n.addOneMonth}</button>
+        ${extendTrialButton}
         <div class="flex items-center justify-end flex-wrap gap-1">
             <button data-action="copy-payment-link" title="${i18n.copyPaymentLink}" class="p-2 rounded-full text-gray-500 hover:bg-teal-100 dark:hover:bg-teal-500/20 dark:text-teal-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg></button>
             <button data-action="manage-profile" title="${i18n.manageProfileAndExpiration}" class="p-2 rounded-full text-gray-500 hover:bg-green-100 dark:hover:bg-green-500/20 dark:text-green-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2V7a5 5 0 00-5-5zm0 10a3 3 0 100-6 3 3 0 000 6z" /></svg></button>
@@ -238,7 +256,7 @@ export async function loadStatus(force = false) {
         state.setAllLibraries(data.libraries || []);
         updateTabCounts();
         renderUserGrid();
-        await loadInvites();
+        await loadInvites(); // Recarrega convites após atualizar utilizadores
     } catch (e) {
         dom.userGrid.innerHTML = `<p class="text-red-500 text-center col-span-full">${i18n.loadingUsersFailed} ${e.message}</p>`;
     } finally {

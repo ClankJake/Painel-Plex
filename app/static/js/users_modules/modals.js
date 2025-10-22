@@ -17,7 +17,7 @@ function toggleSelectAll(container, button) {
     const checkboxes = container.querySelectorAll('input[type="checkbox"]');
     const areAllSelected = Array.from(checkboxes).every(cb => cb.checked);
     checkboxes.forEach(cb => cb.checked = !areAllSelected);
-    button.textContent = areAllSelected ? i18n.selectAll : i18n.unselectAll;
+    button.textContent = areAllSelected ? i18n.unselectAll : i18n.selectAll; // Corrigido para desmarcar
 }
 
 // --- Funções de Modais ---
@@ -58,7 +58,7 @@ export function showCreateInviteModal() {
                     <div>
                         <label for="inviteTrialDuration" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.trialDuration}</label>
                         <select id="inviteTrialDuration" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                            <option value="0">${i18n.noTrial}</option><option value="15">15 ${i18n.minutes}</option><option value="30">30 ${i18n.minutes}</option><option value="60">1 ${i18n.hour}</option><option value="120">2 ${i18n.hour}s</option><option value="1440">24 ${i18n.hour}s</option><option value="2880">48 ${i18n.hour}s</option>
+                            <option value="0">${i18n.noTrial}</option><option value="15">15 ${i18n.minutes}</option><option value="30">30 ${i18n.minutes}</option><option value="60">1 ${i18n.hour}</option><option value="120">2 ${i18n.hours}</option><option value="1440">24 ${i18n.hours}</option><option value="2880">48 ${i18n.hours}</option>
                         </select>
                     </div>
                     <div>
@@ -98,9 +98,9 @@ export function showCreateInviteModal() {
         button.textContent = i18n.generating;
 
         try {
-            const result = await api.createInvite({ 
+            const result = await api.createInvite({
                 libraries: selectedLibraries,
-                screens: parseInt(modal.querySelector('#inviteScreenLimit').value), 
+                screens: parseInt(modal.querySelector('#inviteScreenLimit').value),
                 allow_downloads: modal.querySelector('#inviteAllowDownloads').checked,
                 expires_in_minutes: parseInt(modal.querySelector('#inviteExpiration').value),
                 trial_duration_minutes: parseInt(modal.querySelector('#inviteTrialDuration').value),
@@ -134,7 +134,7 @@ export function showInviteLinkModal(inviteUrl) {
                   </div>`;
     const footer = `<button id="modalClose" class="btn bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200 w-full">${i18n.close}</button>`;
     const modal = createModal('showInviteLinkModal', i18n.inviteLinkGenerated, body, footer);
-    
+
     modal.querySelector('#modalClose').onclick = () => modal.classList.add('hidden');
     modal.querySelector('#copyInviteLink').onclick = () => {
         const input = modal.querySelector('#inviteLinkInput');
@@ -229,7 +229,7 @@ export async function showLibraryManagementModal(user = null) {
     const modalLibsContainer = modal.querySelector('#modalLibsContainer');
     const selectAllButton = modal.querySelector('#modalSelectAllLibs');
     const saveButton = modal.querySelector('#libMgmtSave');
-    
+
     modal.querySelector('#libMgmtCancel').onclick = () => modal.classList.add('hidden');
     saveButton.disabled = true;
 
@@ -247,7 +247,7 @@ export async function showLibraryManagementModal(user = null) {
              return;
         }
     }
-    
+
     modalLibsContainer.innerHTML = state.allLibraries.map(lib => `<label class="flex items-center space-x-2 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"><input type="checkbox" class="form-checkbox bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-500 rounded text-yellow-500" value="${lib.title}" ${userLibraries.includes(lib.title) ? 'checked' : ''}><span>${lib.title}</span></label>`).join('');
     saveButton.disabled = false;
     selectAllButton.onclick = () => toggleSelectAll(modalLibsContainer, selectAllButton);
@@ -269,145 +269,209 @@ export async function showLibraryManagementModal(user = null) {
 }
 
 export async function showUserProfileModal(user) {
-    const body = `
-        <div class="space-y-4">
-            <div><label for="profileName" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.fullName}</label><input type="text" id="profileName" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></div>
-            <div id="telegram-field-container"><label for="profileTelegram" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.telegramUser}</label><input type="text" id="profileTelegram" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></div>
-            <div id="discord-field-container"><label for="profileDiscord" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.discordUserId}</label><input type="text" id="profileDiscord" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></div>
-            <div><label for="profilePhone" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.phoneNumber}</label><input type="tel" id="profilePhone" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label for="profileExpiration" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.expirationDate}</label>
-                    <input type="date" id="profileExpiration" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                </div>
-                <div id="expiration-time-container">
-                    <label for="profileExpirationTime" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.blockTime}</label>
-                    <input type="time" id="profileExpirationTime" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                    <p id="universal-time-notice" class="hidden text-xs text-yellow-500 mt-1"></p>
-                </div>
-            </div>
-            <div class="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700"><label for="profileOverseerrAccess" class="text-sm font-medium text-gray-600 dark:text-gray-300">${i18n.overseerrAccess}</label><input type="checkbox" id="profileOverseerrAccess" class="form-checkbox h-5 w-5 rounded text-yellow-500"></div>
-            <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700/50">
-                <label class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.renewSubscription}</label>
-                <div class="space-y-2">
-                    <div class="flex items-center gap-2"><input type="number" id="renew-months" value="1" min="1" class="w-full text-center bg-transparent border border-gray-300 dark:border-gray-600 rounded-lg p-2"><button type="button" id="confirm-renew" class="btn bg-sky-600 hover:bg-sky-500 text-white flex-1">${i18n.addMonths}</button></div>
-                    <button type="button" id="renew-same-day" class="btn bg-gray-600 hover:bg-gray-500 text-white w-full">${i18n.renewSameDay}</button>
-                </div>
-               <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700/50">
-                    <label class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.manualActions}</label>
-                    <button id="sendNotificationButton" class="btn bg-blue-600 hover:bg-blue-500 text-white w-full" disabled>${i18n.sendExpirationNotification}</button>
-               </div>
-            </div>
-        </div>`;
     const footer = `<button id="saveProfileButton" class="btn bg-green-600 hover:bg-green-500 text-white">${i18n.save}</button><button id="modalCancel" class="btn bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200">${i18n.cancel}</button>`;
-    const modal = createModal('userProfileModal', `${i18n.manageProfileTitle} ${user.username}`, body, footer);
+    const modal = createModal('userProfileModal', `${i18n.manageProfileTitle} ${user.username}`, 'Loading...', footer); // Start with loading state
+    const modalBody = modal.querySelector('.modal-body');
 
-    const sendNotificationButton = modal.querySelector('#sendNotificationButton');
-    const expirationTimeInput = modal.querySelector('#profileExpirationTime');
-    const universalTimeNotice = modal.querySelector('#universal-time-notice');
+    try {
+        const data = await api.fetchUserProfile(user.id);
+        if (!data.success) throw new Error(data.message);
 
-    api.fetchUserProfile(user.id).then(data => {
-        if(data.success) {
-            if (data.profile) {
-                modal.querySelector('#profileName').value = data.profile.name || '';
-                modal.querySelector('#profileTelegram').value = data.profile.telegram_user || '';
-                modal.querySelector('#profileDiscord').value = data.profile.discord_user_id || '';
-                modal.querySelector('#profilePhone').value = data.profile.phone_number || '';
-                modal.querySelector('#profileOverseerrAccess').checked = data.profile.overseerr_access || false;
-                if (data.profile.expiration_date) {
-                    const expDate = new Date(data.profile.expiration_date);
-                    const year = expDate.getFullYear();
-                    const month = (expDate.getMonth() + 1).toString().padStart(2, '0');
-                    const day = expDate.getDate().toString().padStart(2, '0');
-                    const hours = expDate.getHours().toString().padStart(2, '0');
-                    const minutes = expDate.getMinutes().toString().padStart(2, '0');
-                    modal.querySelector('#profileExpiration').value = `${year}-${month}-${day}`;
-                    expirationTimeInput.value = `${hours}:${minutes}`;
+        // Build the body HTML based on fetched data
+        const profile = data.profile || {};
+        const notificationSettings = data.notification_settings || {};
+        const universalExpiration = data.universal_expiration_settings || {};
+
+        let expirationDateValue = '';
+        let expirationTimeValue = '00:00';
+        if (profile.expiration_date) {
+            try {
+                const expDate = new Date(profile.expiration_date);
+                expirationDateValue = expDate.toISOString().split('T')[0];
+                expirationTimeValue = expDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            } catch (e) { /* Ignore invalid date format */ }
+        }
+
+        const bodyHtml = `
+            <div class="space-y-4">
+                <div><label for="profileName" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.fullName}</label><input type="text" id="profileName" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" value="${profile.name || ''}"></div>
+                <div id="telegram-field-container" ${notificationSettings.telegram_enabled ? '' : 'class="hidden"'}><label for="profileTelegram" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.telegramUser}</label><input type="text" id="profileTelegram" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" value="${profile.telegram_user || ''}"></div>
+                <div id="discord-field-container" ${notificationSettings.discord_enabled ? '' : 'class="hidden"'}><label for="profileDiscord" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.discordUserId}</label><input type="text" id="profileDiscord" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" value="${profile.discord_user_id || ''}"></div>
+                <div id="phone-field-container" ${notificationSettings.webhook_enabled ? '' : 'class="hidden"'}><label for="profilePhone" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.phoneNumber}</label><input type="tel" id="profilePhone" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" value="${profile.phone_number || ''}"></div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="profileExpiration" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.expirationDate}</label>
+                        <input type="date" id="profileExpiration" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" value="${expirationDateValue}">
+                    </div>
+                    <div id="expiration-time-container">
+                        <label for="profileExpirationTime" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.blockTime}</label>
+                        <input type="time" id="profileExpirationTime" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" value="${expirationTimeValue}" ${universalExpiration.enabled ? 'disabled' : ''}>
+                        <p id="universal-time-notice" class="${universalExpiration.enabled ? '' : 'hidden'} text-xs text-yellow-500 mt-1">${i18n.universalTimeActive}: ${universalExpiration.time}</p>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700"><label for="profileOverseerrAccess" class="text-sm font-medium text-gray-600 dark:text-gray-300">${i18n.overseerrAccess}</label><input type="checkbox" id="profileOverseerrAccess" class="form-checkbox h-5 w-5 rounded text-yellow-500" ${profile.overseerr_access ? 'checked' : ''}></div>
+                <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700/50">
+                    <label class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.renewSubscription}</label>
+                    <div class="space-y-2">
+                        <div class="flex items-center gap-2"><input type="number" id="renew-months" value="1" min="1" class="w-full text-center bg-transparent border border-gray-300 dark:border-gray-600 rounded-lg p-2"><button type="button" id="confirm-renew" class="btn bg-sky-600 hover:bg-sky-500 text-white flex-1">${i18n.addMonths}</button></div>
+                        <button type="button" id="renew-same-day" class="btn bg-gray-600 hover:bg-gray-500 text-white w-full">${i18n.renewSameDay}</button>
+                    </div>
+                </div>
+                <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700/50">
+                    <label class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.manualActions}</label>
+                    <button id="sendNotificationButton" class="btn bg-blue-600 hover:bg-blue-500 text-white w-full" ${!profile.expiration_date ? 'disabled' : ''}>${i18n.sendExpirationNotification}</button>
+                </div>
+            </div>
+        `;
+        modalBody.innerHTML = bodyHtml;
+
+        // Add event listeners AFTER the HTML is in the DOM
+        const expirationTimeInput = modal.querySelector('#profileExpirationTime');
+        modal.querySelector('#modalCancel').onclick = () => modal.classList.add('hidden');
+        modal.querySelector('#saveProfileButton').onclick = async () => {
+            const dateValue = modal.querySelector('#profileExpiration').value;
+            const timeValue = expirationTimeInput.value || '00:00';
+            const localDateTimeString = dateValue ? `${dateValue}T${timeValue}` : null;
+            const profileData = {
+                name: modal.querySelector('#profileName').value,
+                telegram_user: modal.querySelector('#profileTelegram').value,
+                discord_user_id: modal.querySelector('#profileDiscord').value,
+                phone_number: modal.querySelector('#profilePhone').value,
+                expiration_datetime_local: localDateTimeString
+            };
+            try {
+                const result = await api.updateUserProfile(user.id, profileData);
+                showToast(result.message, result.success ? 'success' : 'error');
+                if (result.success) { modal.classList.add('hidden'); document.dispatchEvent(new CustomEvent('data-refresh-requested')); }
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        };
+
+        modal.querySelector('#profileOverseerrAccess').onchange = async (e) => {
+            try {
+                const result = await api.toggleOverseerr(user.id, e.target.checked);
+                showToast(result.message, result.success ? 'success' : 'error');
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        };
+
+        const sendNotificationButton = modal.querySelector('#sendNotificationButton');
+        if(sendNotificationButton) {
+            sendNotificationButton.onclick = async () => {
+                sendNotificationButton.disabled = true;
+                try {
+                    const result = await api.notifyUser(user.id);
+                    showToast(result.message, result.success ? 'success' : 'error');
+                } catch (error) {
+                    showToast(error.message, 'error');
+                } finally {
                     sendNotificationButton.disabled = false;
                 }
-            }
-            if (data.notification_settings) {
-                const telegramField = modal.querySelector('#telegram-field-container');
-                const discordField = modal.querySelector('#discord-field-container');
-                if (telegramField && !data.notification_settings.telegram_enabled) telegramField.classList.add('hidden');
-                if (discordField && !data.notification_settings.discord_enabled) discordField.classList.add('hidden');
-            }
-            if (data.universal_expiration_settings && data.universal_expiration_settings.enabled) {
-                expirationTimeInput.disabled = true;
-                universalTimeNotice.textContent = `Horário universal ativo: ${data.universal_expiration_settings.time}`;
-                universalTimeNotice.classList.remove('hidden');
-            }
+            };
         }
-    }).catch(error => showToast(error.message, 'error'));
+
+        const handleRenewal = async (button, payload) => {
+            button.disabled = true;
+            const expirationInput = modal.querySelector('#profileExpiration');
+            if (expirationInput && expirationInput.value) payload.base_date = expirationInput.value;
+            const timeInput = expirationTimeInput;
+            if (timeInput && timeInput.value && !timeInput.disabled) payload.expiration_time = timeInput.value;
+
+            try {
+                const result = await api.renewSubscription(user.id, payload);
+                showToast(result.message, result.success ? 'success' : 'error');
+                if (result.success) { modal.classList.add('hidden'); document.dispatchEvent(new CustomEvent('data-refresh-requested')); }
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally {
+                button.disabled = false;
+            }
+        };
+
+        modal.querySelector('#confirm-renew').onclick = (e) => {
+            const months = parseInt(modal.querySelector('#renew-months').value);
+            handleRenewal(e.target, { months, base: 'today' });
+        };
+        modal.querySelector('#renew-same-day').onclick = (e) => {
+            handleRenewal(e.target, { months: 1, base: 'expiry_date' });
+        };
+
+    } catch (error) {
+        modalBody.innerHTML = `<p class="text-red-500">${i18n.errorLoadingProfile}: ${error.message}</p>`;
+    }
 
     modal.querySelector('#modalCancel').onclick = () => modal.classList.add('hidden');
-    modal.querySelector('#saveProfileButton').onclick = async () => {
-        const dateValue = modal.querySelector('#profileExpiration').value;
-        const timeValue = expirationTimeInput.value || '00:00';
-        const localDateTimeString = dateValue ? `${dateValue}T${timeValue}` : null;
-        const profileData = {
-            name: modal.querySelector('#profileName').value,
-            telegram_user: modal.querySelector('#profileTelegram').value,
-            discord_user_id: modal.querySelector('#profileDiscord').value,
-            phone_number: modal.querySelector('#profilePhone').value,
-            expiration_datetime_local: localDateTimeString 
-        };
-        try {
-            const result = await api.updateUserProfile(user.id, profileData);
-            showToast(result.message, result.success ? 'success' : 'error');
-            if (result.success) { modal.classList.add('hidden'); document.dispatchEvent(new CustomEvent('data-refresh-requested')); }
-        } catch (error) {
-            showToast(error.message, 'error');
-        }
-    };
-    
-    modal.querySelector('#profileOverseerrAccess').onchange = async (e) => {
-        try {
-            const result = await api.toggleOverseerr(user.id, e.target.checked);
-            showToast(result.message, result.success ? 'success' : 'error');
-        } catch (error) {
-            showToast(error.message, 'error');
-        }
-    };
-    
-    sendNotificationButton.onclick = async () => {
-        sendNotificationButton.disabled = true;
-        try {
-            const result = await api.notifyUser(user.id);
-            showToast(result.message, result.success ? 'success' : 'error');
-        } catch (error) {
-            showToast(error.message, 'error');
-        } finally {
-            sendNotificationButton.disabled = false;
-        }
-    };
+}
 
-    const handleRenewal = async (button, payload) => {
-        button.disabled = true;
-        const expirationInput = modal.querySelector('#profileExpiration');
-        if (expirationInput && expirationInput.value) payload.base_date = expirationInput.value;
-        const timeInput = expirationTimeInput;
-        if (timeInput && timeInput.value && !timeInput.disabled) payload.expiration_time = timeInput.value;
-
+// --- Modal para Estender Período de Teste ---
+export function showExtendTrialModal(user) {
+    let currentTrialEndDateFormatted = 'N/A';
+    if (user.trial_end_date) {
         try {
-            const result = await api.renewSubscription(user.id, payload);
-            showToast(result.message, result.success ? 'success' : 'error');
-            if (result.success) { modal.classList.add('hidden'); document.dispatchEvent(new CustomEvent('data-refresh-requested')); }
-        } catch (error) {
-            showToast(error.message, 'error');
-        } finally {
-            button.disabled = false;
-        }
-    };
-
-    modal.querySelector('#confirm-renew').onclick = (e) => {
-        const months = parseInt(modal.querySelector('#renew-months').value);
-        // CORREÇÃO: Alterado de 'add_days' para 'today' para corresponder ao schema do backend.
-        handleRenewal(e.target, { months, base: 'today' });
-    };
-    modal.querySelector('#renew-same-day').onclick = (e) => {
-        handleRenewal(e.target, { months: 1, base: 'expiry_date' });
+            const trialEndDate = new Date(user.trial_end_date);
+            currentTrialEndDateFormatted = trialEndDate.toLocaleString('pt-BR');
+        } catch (e) {/* ignore */}
     }
+
+    // --- ALTERAÇÃO: Adiciona input para minutos ---
+    const body = `
+        <p class="mb-2 text-sm text-gray-500 dark:text-gray-400">${i18n.currentTrialEnds}: ${currentTrialEndDateFormatted}</p>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="extend-trial-hours-modal" class="block mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">${i18n.hours}</label>
+                <input type="number" id="extend-trial-hours-modal" value="24" min="0" class="w-full text-center bg-transparent border border-gray-300 dark:border-gray-600 rounded-lg p-2">
+            </div>
+            <div>
+                <label for="extend-trial-minutes-modal" class="block mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">${i18n.minutes}</label>
+                <input type="number" id="extend-trial-minutes-modal" value="0" min="0" step="15" class="w-full text-center bg-transparent border border-gray-300 dark:border-gray-600 rounded-lg p-2">
+            </div>
+        </div>
+    `;
+    // --- FIM DA ALTERAÇÃO ---
+
+    const footer = `
+        <button id="modalConfirmExtendTrial" class="btn bg-orange-600 hover:bg-orange-500 text-white w-full sm:w-auto">${i18n.extendTrial}</button>
+        <button id="modalCancelExtendTrial" class="btn bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200 w-full sm:w-auto">${i18n.cancel}</button>
+    `;
+    const modal = createModal('extendTrialModal', `${i18n.extendTrialPeriod} - ${user.username}`, body, footer);
+
+    const confirmButton = modal.querySelector('#modalConfirmExtendTrial');
+    modal.querySelector('#modalCancelExtendTrial').onclick = () => modal.classList.add('hidden');
+
+    confirmButton.onclick = async () => {
+        const hoursInput = modal.querySelector('#extend-trial-hours-modal');
+        const minutesInput = modal.querySelector('#extend-trial-minutes-modal'); // NOVO
+        const hours = parseInt(hoursInput.value) || 0; // Default to 0 if NaN
+        const minutes = parseInt(minutesInput.value) || 0; // Default to 0 if NaN
+
+        const extend_minutes = (hours * 60) + minutes; // Calcula total de minutos
+
+        // --- ALTERAÇÃO: Validação para total de minutos ---
+        if (isNaN(extend_minutes) || extend_minutes <= 0) {
+            showToast(i18n.invalidExtensionDuration, 'error'); // Mensagem genérica
+            return;
+        }
+        // --- FIM DA ALTERAÇÃO ---
+
+        confirmButton.disabled = true;
+        confirmButton.textContent = i18n.extending;
+
+        try {
+            const result = await api.extendTrial(user.id, { extend_minutes });
+            showToast(result.message, result.success ? 'success' : 'error');
+            if (result.success) {
+                modal.classList.add('hidden');
+                document.dispatchEvent(new CustomEvent('data-refresh-requested'));
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        } finally {
+            confirmButton.disabled = false;
+            confirmButton.textContent = i18n.extendTrial;
+        }
+    };
 }
 
 export async function showPaymentHistoryModal(user) {
@@ -501,3 +565,4 @@ export async function showReactivationModal(user) {
         }
     };
 }
+

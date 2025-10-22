@@ -18,6 +18,7 @@ export const updateUserLimit = (plexUserId, screens) => fetchAPI(urls.apiUsersUp
 export const renewSubscription = (plexUserId, payload) => fetchAPI(urls.apiUsersRenewBase.replace('0', plexUserId), 'POST', payload);
 export const fetchUserProfile = (plexUserId) => fetchAPI(urls.apiUsersProfileBase.replace('0', plexUserId));
 export const updateUserProfile = (plexUserId, payload) => fetchAPI(urls.apiUsersProfileSetBase.replace('0', plexUserId), 'POST', payload);
+export const extendTrial = (plexUserId, payload) => fetchAPI(urls.apiUsersExtendTrialBase.replace('0', plexUserId), 'POST', payload);
 export const notifyUser = (plexUserId) => fetchAPI(urls.apiUsersNotifyBase.replace('0', plexUserId), 'POST');
 export const fetchUserLibraries = (plexUserId) => fetchAPI(urls.apiUsersLibrariesBase.replace('0', plexUserId));
 export const updateUserLibraries = (plexUserId, libraries) => fetchAPI(urls.apiUsersUpdateLibraries, 'POST', { plex_user_id: plexUserId, libraries });
