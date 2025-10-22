@@ -304,6 +304,9 @@ def create_charge_route():
                 if not invite_result.get('success'):
                     raise Exception(f"Falha ao reconvidar o utilizador inativo '{username}': {invite_result.get('message')}")
                 
+                time.sleep(3)
+                extensions.plex_manager.users.invalidate_user_cache()
+                
                 user_profile_obj = UserProfile.query.get(plex_user_id)
                 if user_profile_obj:
                     user_profile_obj.status = 'active'
@@ -356,10 +359,13 @@ def create_charge_route():
     return jsonify(result)
 
 @payments_api_bp.route('/status/<string:txid>')
-def get_payment_status(txid):
+def get_payment_status_route(txid):
     payment = extensions.data_manager.get_pix_payment(txid)
-    if not payment: return jsonify({"success": False, "status": "NOT_FOUND"}), 404
-    if payment.get('status') == 'CONCLUIDA': return jsonify({"success": True, "status": "CONCLUIDA"})
+    if not payment:
+        return jsonify({"success": False, "status": "NOT_FOUND"}), 404
+        
+    if payment.get('status') == 'CONCLUIDA':
+        return jsonify({"success": True, "status": "CONCLUIDA"})
     
     provider = payment.get('provider', 'EFI') 
     is_confirmed = False
