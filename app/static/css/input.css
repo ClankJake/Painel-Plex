@@ -101,7 +101,28 @@
     .dark #notification-badge {
         border-color: #1f2937;
     }
-    
+
+    /* Estilos das Abas de Usuário movidos para cá */
+    .user-tab {
+        @apply flex items-center justify-center gap-1 sm:gap-2 py-3 px-2 sm:px-3 border-b-2 font-medium text-sm transition-all duration-200 border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 whitespace-nowrap rounded-t-md min-w-0;
+    }
+    .user-tab.active {
+        @apply border-yellow-500 text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-500/10;
+    }
+    .user-tab .tab-icon {
+        @apply h-5 w-5 flex-shrink-0; /* Ícone com tamanho fixo */
+    }
+    .user-tab .tab-text {
+        @apply hidden sm:inline;
+    }
+    .user-tab .tab-count {
+        @apply ml-1 px-2 py-0.5 text-xs font-medium rounded-full;
+    }
+
+    /* Esconde a barra de scroll horizontal */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
     /* NOVO: Animação para novas entradas no log */
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(-10px); }
@@ -111,4 +132,3 @@
       animation: fadeIn 0.5s ease-out forwards;
     }
 }
-
