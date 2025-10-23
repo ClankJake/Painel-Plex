@@ -2,16 +2,6 @@
 
 {% block title %}{{ _('Dashboard Financeiro') }} - {{ app_title }}{% endblock %}
 
-{% block extra_head %}
-    <style>
-        .tab-button.active {
-            @apply bg-white dark:bg-gray-800 shadow-md text-yellow-600 dark:text-yellow-400 font-semibold;
-        }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-    </style>
-{% endblock %}
-
 {% block content %}
 <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
     <div>
