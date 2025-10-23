@@ -3,39 +3,22 @@
 {% block title %}{{ _('Gerenciar Usuários') }} - {{ app_title }}{% endblock %}
 
 {% block extra_head %}
+{# O bloco <style> foi removido daqui e os estilos movidos para input.css #}
 <style>
-    .user-tab {
-        /* Base styles */
-        @apply flex items-center justify-center gap-1 py-3 px-2 sm:px-3 sm:gap-2 border-b-2 font-medium text-sm transition-all duration-200 border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-gray-200 whitespace-nowrap rounded-t-md;
-    }
-    .user-tab.active {
-        /* Active styles */
-        @apply border-yellow-500 text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-500/10;
-    }
-    .user-tab .tab-icon {
-        /* Ícone tamanho h-4 w-4 e não encolhe */
-        @apply h-4 w-4 flex-shrink-0; /* Alterado para h-4 w-4 */
-    }
-    .user-tab .tab-text {
-        /* Texto continua oculto em mobile (hidden) e aparece em sm+ (sm:inline) */
-        @apply hidden sm:inline;
-    }
-    .user-tab .tab-count {
-        /* Contador arredondado */
-        @apply ml-1 px-2 py-0.5 text-xs font-medium rounded-full;
-    }
-    /* Style to visually hide the horizontal scrollbar */
+    /* Esconde a barra de scroll horizontal (se ainda for necessário, mas já está no input.css) */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 </style>
 {% endblock %}
 
 {% block content %}
+<!-- Cabeçalho da página -->
 <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
     <div>
         <h2 class="text-3xl font-bold text-gray-900 dark:text-white">{{ _('Gerenciar Usuários') }}</h2>
         <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Gere convites, monitore e gerencie os usuários do seu servidor.') }}</p>
     </div>
+    <!-- Botões de Ação Principais -->
     <div class="flex-shrink-0 flex flex-wrap gap-2">
         <button id="createInviteButton" class="btn bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-500/20">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5"><path d="M11 5.5a1 1 0 011-1h1a1 1 0 110 2h-1a1 1 0 01-1-1zM11 9.5a1 1 0 011-1h4a1 1 0 110 2h-4a1 1 0 01-1-1zM5 7a1 1 0 000 2h2a1 1 0 100-2H5zM5 11a1 1 0 000 2h2a1 1 0 100-2H5zM3 3a1 1 0 00-1 1v12a1 1 0 001 1h14a1 1 0 001-1V4a1 1 0 00-1-1H3zm13 14H4V5h12v12z" /></svg>
@@ -57,19 +40,21 @@
     </div>
 </header>
 
-<!-- Lista de Convites -->
+<!-- Seção da Lista de Convites Pendentes -->
 <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-8">
     <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Convites Pendentes') }}</h3>
     <div id="inviteList" class="space-y-2">
+        <!-- Indicador de carregamento inicial -->
         <p class="text-gray-500 dark:text-gray-400">{{ _('Carregando convites...') }}</p>
     </div>
 </div>
 
-<!-- Grelha de Utilizadores -->
+<!-- Seção da Grelha de Utilizadores -->
 <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-    <!-- Barra de Ferramentas de Utilizadores -->
+    <!-- Barra de Ferramentas: Pesquisa, Ordenação e Abas de Filtro -->
     <div class="mb-4">
-        <div class="flex flex-col sm:flex-row gap-4 justify-between">
+        <!-- Pesquisa e Ordenação -->
+        <div class="flex flex-col sm:flex-row gap-4 justify-between mb-4">
             <div class="relative flex-grow">
                 <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" /></svg>
@@ -85,47 +70,53 @@
                 </select>
             </div>
         </div>
-        <div class="border-b border-gray-200 dark:border-gray-700 mt-4 overflow-hidden">
+        <!-- Abas de Filtro -->
+        <div class="border-b border-gray-200 dark:border-gray-700 overflow-hidden">
             <nav id="userTabs" class="-mb-px flex space-x-1 sm:space-x-2 overflow-x-auto no-scrollbar" aria-label="Tabs">
-                <!-- Botão Todos -->
+                <!-- Aba Todos -->
                 <button data-filter="all" class="user-tab active">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon w-5 h-5 " viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" /></svg>
-                    <span class="tab-text hidden sm:inline">{{ _('Todos') }}</span>
-                    <span id="count-all" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-300">0</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" /></svg>
+                    <span class="tab-text">{{ _('Todos') }}</span>
+                    <span id="count-all" class="tab-count bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-300">0</span>
                 </button>
-                <!-- Botão Ativos -->
+                <!-- Aba Ativos -->
                 <button data-filter="active" class="user-tab">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon w-5 h-5 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
-                    <span class="tab-text hidden sm:inline">{{ _('Ativos') }}</span>
-                    <span id="count-active" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">0</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-green-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                    <span class="tab-text">{{ _('Ativos') }}</span>
+                    <span id="count-active" class="tab-count bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">0</span>
                 </button>
-                <!-- Botão Em Teste -->
+                <!-- Aba Em Teste -->
                 <button data-filter="trial" class="user-tab">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon w-5 h-5 text-purple-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.414L11 10.586V6z" clip-rule="evenodd" /></svg>
-                    <span class="tab-text hidden sm:inline">{{ _('Em Teste') }}</span>
-                    <span id="count-trial" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">0</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-purple-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.414L11 10.586V6z" clip-rule="evenodd" /></svg>
+                    <span class="tab-text">{{ _('Em Teste') }}</span>
+                    <span id="count-trial" class="tab-count bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">0</span>
                 </button>
-                <!-- Botão Bloqueados -->
+                <!-- Aba Bloqueados -->
                 <button data-filter="blocked" class="user-tab">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon w-5 h-5 text-red-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm-2.5 8V5.5a2.5 2.5 0 115 0V9h-5z" clip-rule="evenodd" /></svg>
-                    <span class="tab-text hidden sm:inline">{{ _('Bloqueados') }}</span>
-                    <span id="count-blocked" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">0</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-red-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm-2.5 8V5.5a2.5 2.5 0 115 0V9h-5z" clip-rule="evenodd" /></svg>
+                    <span class="tab-text">{{ _('Bloqueados') }}</span>
+                    <span id="count-blocked" class="tab-count bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">0</span>
                 </button>
-                <!-- Botão Inativos -->
+                <!-- Aba Inativos -->
                 <button data-filter="inactive" class="user-tab">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon w-5 h-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>
-                    <span class="tab-text hidden sm:inline">{{ _('Inativos') }}</span>
-                    <span id="count-inactive" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300">0</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>
+                    <span class="tab-text">{{ _('Inativos') }}</span>
+                    <span id="count-inactive" class="tab-count bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300">0</span>
                 </button>
             </nav>
         </div>
     </div>
+    <!-- Grelha onde os cartões de utilizador serão inseridos -->
      <div id="userGrid" class="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4 min-h-[200px]">
-        <!-- User cards will be injected here -->
+        <!-- Indicador de carregamento inicial -->
+        <div class="col-span-full text-center py-10">
+            <svg class="animate-spin h-8 w-8 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <p class="mt-2 text-gray-500 dark:text-gray-400">Carregando utilizadores...</p>
+        </div>
      </div>
 </div>
 
-<!-- Modals -->
+<!-- Modals (placeholders) -->
 <div id="confirmationModal" class="modal-backdrop hidden"></div>
 <div id="screenLimitModal" class="modal-backdrop hidden"></div>
 <div id="libraryManagementModal" class="modal-backdrop hidden"></div>
@@ -140,6 +131,7 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Scripts -->
 <script src="{{ url_for('static', filename='dist/socket.io.min.js') }}"></script>
 <script id="users-script"
         type="module"
