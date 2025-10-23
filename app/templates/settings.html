@@ -2,49 +2,6 @@
 
 {% block title %}{{ _('Configurações') }} - {{ app_title }}{% endblock %}
 
-{% block extra_head %}
-<style>
-    .tab-button {
-        @apply px-4 py-2 font-semibold text-gray-500 dark:text-gray-400 border-b-2 border-transparent -mb-px whitespace-nowrap;
-        @apply hover:border-yellow-500 hover:text-gray-700 dark:hover:text-gray-200 transition-colors duration-200;
-    }
-    .tab-button.active {
-        @apply border-yellow-500 text-yellow-600 dark:text-yellow-400;
-    }
-    .tab-content, .sub-tab-content {
-        display: none;
-    }
-    .tab-content.active, .sub-tab-content.active {
-        display: block;
-    }
-    .input-group:has(input[type=checkbox]:not(:checked)) .disablable-input {
-        @apply bg-gray-200 dark:bg-gray-800 cursor-not-allowed opacity-50;
-    }
-    #log-display {
-        white-space: pre-wrap;
-        word-break: break-all;
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 0.8rem;
-    }
-    .modal-backdrop {
-        @apply fixed inset-0 z-50 flex items-center justify-center bg-gray-100 dark:bg-gray-900;
-    }
-    .provider-fields {
-        display: none;
-    }
-    .provider-fields.active {
-        display: block;
-    }
-    .no-scrollbar::-webkit-scrollbar {
-        display: none;
-    }
-    .no-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
     <div>
