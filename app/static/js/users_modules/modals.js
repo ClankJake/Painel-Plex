@@ -282,15 +282,22 @@ export async function showUserProfileModal(user) {
         const notificationSettings = data.notification_settings || {};
         const universalExpiration = data.universal_expiration_settings || {};
 
+        // --- CORREÇÃO: Formata a data para YYYY-MM-DD sem converter para UTC ---
         let expirationDateValue = '';
         let expirationTimeValue = '00:00';
         if (profile.expiration_date) {
             try {
                 const expDate = new Date(profile.expiration_date);
-                expirationDateValue = expDate.toISOString().split('T')[0];
+                // Extrai ano, mês e dia da data (considerando o fuso horário local já implícito no objeto Date)
+                const year = expDate.getFullYear();
+                const month = String(expDate.getMonth() + 1).padStart(2, '0'); // Mês é 0-indexed
+                const day = String(expDate.getDate()).padStart(2, '0');
+                expirationDateValue = `${year}-${month}-${day}`;
                 expirationTimeValue = expDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
             } catch (e) { /* Ignore invalid date format */ }
         }
+        // --- FIM DA CORREÇÃO ---
+
 
         const bodyHtml = `
             <div class="space-y-4">
@@ -565,4 +572,3 @@ export async function showReactivationModal(user) {
         }
     };
 }
-
