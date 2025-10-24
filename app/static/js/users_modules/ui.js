@@ -111,7 +111,8 @@ export function renderUserGrid() {
     } else if (state.viewState.filter === 'blocked') {
         usersToRender = usersToRender.filter(u => u.is_blocked);
     } else if (state.viewState.filter === 'trial') {
-        usersToRender = usersToRender.filter(u => u.is_on_trial);
+        // CORREÇÃO: Mostra apenas quem está *atualmente* em teste
+        usersToRender = usersToRender.filter(u => u.is_on_trial && u.trial_end_date && new Date(u.trial_end_date) > new Date());
     } else if (state.viewState.filter === 'inactive') {
         usersToRender = usersToRender.filter(u => u.status === 'inactive');
     }
@@ -132,9 +133,16 @@ export function renderUserGrid() {
         if (state.viewState.sortBy === 'exp_asc' || state.viewState.sortBy === 'exp_desc') {
             const dateA = a.expiration_date ? new Date(a.expiration_date) : null;
             const dateB = b.expiration_date ? new Date(b.expiration_date) : null;
-            if (dateA && dateB) return state.viewState.sortBy === 'exp_asc' ? dateA - dateB : dateB - a;
-            if (!dateA) return 1; // Utilizadores sem data vêm depois
-            if (!dateB) return -1; // Utilizadores sem data vêm depois
+            // CORREÇÃO: Trata datas inválidas ou nulas corretamente na ordenação
+            if (dateA && dateB) {
+                return state.viewState.sortBy === 'exp_asc' ? dateA - dateB : dateB - dateA;
+            } else if (!dateA && !dateB) {
+                return 0; // Se ambos não têm data, mantém a ordem
+            } else if (!dateA) {
+                return state.viewState.sortBy === 'exp_asc' ? 1 : -1; // Sem data vem depois (asc) ou antes (desc)
+            } else { // !dateB
+                return state.viewState.sortBy === 'exp_asc' ? -1 : 1; // Sem data vem depois (asc) ou antes (desc)
+            }
         }
         return 0;
     });
@@ -157,11 +165,24 @@ function renderUserCard(user) {
     card.className = 'flex flex-col bg-white dark:bg-gray-800 p-4 rounded-lg hover:shadow-xl transition-shadow duration-300 border border-gray-200 dark:border-gray-700';
 
     const isInactive = user.status === 'inactive';
-    // const isOnTrial = user.is_on_trial; // Lógica movida para baixo
 
-    // --- LÓGICA ALTERADA: Mostra status de teste (ativo ou finalizado) ---
-    let trialHtml = '';
-    if (user.trial_end_date) { // Verifica se existe uma data de teste
+    let statusHtml = ''; // Armazena o HTML do status (teste ou expiração)
+
+    // --- CORREÇÃO: Lógica de prioridade ---
+    // 1. Verifica se há uma data de expiração regular
+    if (user.expiration_date) {
+        try {
+            const expDate = new Date(user.expiration_date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Compara apenas a data
+            const daysLeft = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
+            const dateColor = daysLeft < 0 ? 'text-red-500 font-semibold' : (daysLeft <= 7 ? 'text-yellow-500 font-semibold' : 'text-gray-400 dark:text-gray-500');
+            const formattedDate = expDate.toLocaleDateString();
+            statusHtml = `<div class="mt-1 text-xs flex items-center ${dateColor}"><span>${i18n.expiresOn} ${formattedDate}</span></div>`;
+        } catch(e) { /* ignora erros de parsing */ }
+    }
+    // 2. Se NÃO houver data de expiração regular, verifica a data de teste
+    else if (user.trial_end_date) {
         try {
             const trialEndDate = new Date(user.trial_end_date);
             const diffMs = trialEndDate - new Date();
@@ -170,35 +191,23 @@ function renderUserCard(user) {
                 const diffHours = Math.floor(diffMs / 3600000);
                 const diffMinutes = Math.round((diffMs % 3600000) / 60000);
                 const remainingTime = diffHours > 0 ? `${diffHours}h ${diffMinutes}m` : `${diffMinutes}m`;
-                trialHtml = `<div class="mt-2 text-xs font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 px-2 py-1 rounded-full inline-flex items-center gap-1"><span>${i18n.inTestWithTime.replace('{remainingTime}', remainingTime)}</span></div>`;
+                statusHtml = `<div class="mt-2 text-xs font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 px-2 py-1 rounded-full inline-flex items-center gap-1"><span>${i18n.inTestWithTime.replace('{remainingTime}', remainingTime)}</span></div>`;
             } else {
                 // Teste finalizado
-                 trialHtml = `<div class="mt-2 text-xs font-bold bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200 px-2 py-1 rounded-full inline-flex items-center gap-1"><span>${i18n.testFinished}</span></div>`;
+                 statusHtml = `<div class="mt-2 text-xs font-bold bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200 px-2 py-1 rounded-full inline-flex items-center gap-1"><span>${i18n.testFinished}</span></div>`;
             }
-        } catch(e) { /* ignore parse errors */ }
+        } catch(e) { /* ignora erros de parsing */ }
     }
-    // --- FIM DA ALTERAÇÃO ---
+    // --- FIM DA CORREÇÃO ---
 
-    let expirationHtml = '';
-    if (!trialHtml && user.expiration_date) { // Só mostra vencimento se não for um teste
-        try {
-            const expDate = new Date(user.expiration_date);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const daysLeft = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
-            const dateColor = daysLeft < 0 ? 'text-red-500 font-semibold' : (daysLeft <= 7 ? 'text-yellow-500 font-semibold' : 'text-gray-400 dark:text-gray-500');
-            const formattedDate = expDate.toLocaleDateString();
-            expirationHtml = `<div class="mt-1 text-xs flex items-center ${dateColor}"><span>${i18n.expiresOn} ${formattedDate}</span></div>`;
-        } catch(e) { /* ignore parse errors */ }
-    }
 
     const inactiveButtons = `
         <button data-action="reactivate" title="${i18n.reactivate}" class="btn text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1">${i18n.reactivate}</button>
         <button data-action="delete-permanently" title="${i18n.deletePermanently}" class="btn text-xs bg-red-800 hover:bg-red-700 text-white px-2 py-1">${i18n.deletePermanently}</button>
     `;
 
-    // --- LÓGICA ALTERADA: Mostra o botão se "trial_end_date" existir ---
-    const extendTrialButton = user.trial_end_date ? `
+    // --- LÓGICA ALTERADA: Mostra o botão se "trial_end_date" existir E não houver expiration_date
+    const extendTrialButton = (user.trial_end_date && !user.expiration_date) ? `
         <button data-action="extend-trial" title="${i18n.extendTrial}" class="btn text-xs bg-orange-600 hover:bg-orange-700 text-white px-2 py-1">${i18n.extendTrial}</button>
     ` : '';
     // --- FIM DA ALTERAÇÃO ---
@@ -230,7 +239,7 @@ function renderUserCard(user) {
                     <p class="font-semibold text-gray-900 dark:text-white text-lg">${user.username}</p>
                 </div>
                 <p class="text-sm text-gray-500 dark:text-gray-400 truncate">${user.email || ''}</p>
-                ${trialHtml || expirationHtml}
+                ${statusHtml}
                 ${user.screen_limit > 0 ? `<div class="mt-2 text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-500/50 dark:text-blue-200 border border-blue-200 dark:border-blue-400/30 px-2 py-1 rounded-full inline-block">${user.screen_limit} ${user.screen_limit > 1 ? i18n.screenPlural : i18n.screenSingular}</div>` : ''}
             </div>
         </div>
@@ -267,9 +276,9 @@ export async function loadStatus(force = false) {
 
 export function updateTabCounts() {
     dom.countAll.textContent = state.allUsersCache.length;
-    dom.countActive.textContent = state.allUsersCache.filter(u => !u.is_blocked && u.status === 'active' && !u.is_on_trial).length;
+    dom.countActive.textContent = state.allUsersCache.filter(u => !u.is_blocked && u.status === 'active').length; // CORREÇÃO: Não conta trial aqui
     dom.countBlocked.textContent = state.allUsersCache.filter(u => u.is_blocked).length;
-    dom.countTrial.textContent = state.allUsersCache.filter(u => u.is_on_trial).length;
+    // CORREÇÃO: Conta apenas quem está *atualmente* em teste
+    dom.countTrial.textContent = state.allUsersCache.filter(u => u.is_on_trial && u.trial_end_date && new Date(u.trial_end_date) > new Date()).length;
     dom.countInactive.textContent = state.allUsersCache.filter(u => u.status === 'inactive').length;
 }
-
