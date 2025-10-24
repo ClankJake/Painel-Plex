@@ -184,6 +184,12 @@ export function initializeEventListeners() {
         dom.hmacInput.value = randomString;
     });
 
+    // --- CORREÇÃO: Adiciona o event listener para o dropdown ---
+    if (dom.mainTabsSelect) {
+        dom.mainTabsSelect.addEventListener('change', ui.handleTabsSelectChange);
+    }
+    // --- FIM DA CORREÇÃO ---
+
     document.querySelectorAll('.show-help-button').forEach(button => button.addEventListener('click', () => dom.helpModal?.classList.remove('hidden')));
     if (dom.closeHelpModalButton) dom.closeHelpModalButton.addEventListener('click', () => dom.helpModal?.classList.add('hidden'));
 
