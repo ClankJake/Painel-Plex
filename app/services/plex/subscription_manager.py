@@ -66,7 +66,7 @@ class PlexSubscriptionManager:
             else:
                 # Se não houver data de expiração (primeira assinatura), usa a data atual.
                 base_date = now
-        
+
         if base_date_str:
             try:
                 base_time = base_date.time()
@@ -89,7 +89,7 @@ class PlexSubscriptionManager:
         config = load_or_create_config()
         universal_enabled = config.get("UNIVERSAL_EXPIRATION_ENABLED", False)
         universal_time_str = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59")
-        
+
         final_expiration_time_str = None
         if universal_enabled:
             final_expiration_time_str = universal_time_str
@@ -105,16 +105,18 @@ class PlexSubscriptionManager:
 
         profile['expiration_date'] = new_expiration_date.isoformat()
 
-        # Limpa os dados do período de teste ao renovar a assinatura.
-        if 'trial_end_date' in profile:
+        # CORREÇÃO: Limpa os dados do período de teste ao renovar/definir uma subscrição regular.
+        if 'trial_end_date' in profile and profile['trial_end_date']:
             profile['trial_end_date'] = None
+            logger.info(f"Data de fim de teste limpa para o utilizador {plex_user_id} devido à renovação/definição da subscrição.")
         if 'trial_job_id' in profile and profile['trial_job_id']:
             try:
                 extensions.scheduler.remove_job(profile['trial_job_id'])
-                logger.info(f"Tarefa de teste '{profile['trial_job_id']}' removida para o utilizador {plex_user_id} após renovação.")
+                logger.info(f"Tarefa de teste '{profile['trial_job_id']}' removida para o utilizador {plex_user_id} após renovação/definição da subscrição.")
             except JobLookupError:
                 logger.warning(f"Não foi possível encontrar a tarefa de teste '{profile['trial_job_id']}' para remover para o utilizador {plex_user_id}.")
             profile['trial_job_id'] = None
+        # --- FIM DA CORREÇÃO ---
 
         # Garante que o utilizador seja desbloqueado se estava bloqueado por expiração
         blocked_user_info = self.data_manager.get_blocked_user(plex_user_id)
@@ -133,8 +135,10 @@ class PlexSubscriptionManager:
                 if "database is locked" in str(e):
                     logger.warning(f"A base de dados estava bloqueada ao tentar remover a tarefa antiga '{profile['expiration_job_id']}' para o utilizador {plex_user_id}. A nova tarefa será agendada, mas a antiga pode permanecer. Isto geralmente resolve-se sozinho.")
                 else:
-                    raise 
-        
+                    raise
+            # CORREÇÃO: Garante que o job_id é limpo mesmo se a remoção falhar (ex: DB bloqueada)
+            profile['expiration_job_id'] = None
+
         # Agenda a nova tarefa para o dia da expiração
         new_job_id = f"sub_end_{plex_user_id}_{secrets.token_hex(4)}"
         extensions.scheduler.add_job(
@@ -143,13 +147,14 @@ class PlexSubscriptionManager:
             args=[plex_user_id],
             trigger='date',
             run_date=new_expiration_date,
-            misfire_grace_time=3600
+            misfire_grace_time=3600 # 1 hora de tolerância para execução
         )
         profile['expiration_job_id'] = new_job_id
-        
+        logger.info(f"Tarefa de expiração para '{profile['username']}' agendada para {new_expiration_date.strftime('%Y-%m-%d %H:%M:%S')} com ID '{new_job_id}'.")
+
         # Salva o perfil atualizado
         self.data_manager.set_user_profile(plex_user_id, profile)
-        
+
         return new_expiration_date
 
     # Manter as outras funções da classe para evitar quebrar outras partes do código
@@ -158,7 +163,6 @@ class PlexSubscriptionManager:
 
     def end_user_trial(self, plex_user_id):
         pass
-    
+
     def check_user_expiration(self, plex_user_id):
         pass
-
