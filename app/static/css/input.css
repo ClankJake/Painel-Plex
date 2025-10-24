@@ -134,9 +134,36 @@
     .tab-content.active, .sub-tab-content.active {
         display: block;
     }
-    .input-group:has(input[type=checkbox]:not(:checked)) .disablable-input {
+    /* Regras específicas para desabilitar campos com base na checkbox principal de cada provedor */
+    #subtab-EFI:has(#EFI_ENABLED:not(:checked)) .disablable-input,
+    #subtab-MERCADOPAGO:has(#MERCADOPAGO_ENABLED:not(:checked)) .disablable-input,
+    #subtab-BPIX:has(#BPIX_ENABLED:not(:checked)) .disablable-input {
         @apply bg-gray-200 dark:bg-gray-800 cursor-not-allowed opacity-50;
+        /* Impede interações com os campos desativados */
+        pointer-events: none;
     }
+    /* Garante que os inputs dentro fiquem com aparência desativada também */
+    #subtab-EFI:has(#EFI_ENABLED:not(:checked)) .disablable-input input,
+    #subtab-EFI:has(#EFI_ENABLED:not(:checked)) .disablable-input select,
+    #subtab-EFI:has(#EFI_ENABLED:not(:checked)) .disablable-input textarea,
+    #subtab-EFI:has(#EFI_ENABLED:not(:checked)) .disablable-input button,
+    #subtab-MERCADOPAGO:has(#MERCADOPAGO_ENABLED:not(:checked)) .disablable-input input,
+    #subtab-MERCADOPAGO:has(#MERCADOPAGO_ENABLED:not(:checked)) .disablable-input select,
+    #subtab-MERCADOPAGO:has(#MERCADOPAGO_ENABLED:not(:checked)) .disablable-input textarea,
+    #subtab-MERCADOPAGO:has(#MERCADOPAGO_ENABLED:not(:checked)) .disablable-input button,
+    #subtab-BPIX:has(#BPIX_ENABLED:not(:checked)) .disablable-input input,
+    #subtab-BPIX:has(#BPIX_ENABLED:not(:checked)) .disablable-input select,
+    #subtab-BPIX:has(#BPIX_ENABLED:not(:checked)) .disablable-input textarea,
+    #subtab-BPIX:has(#BPIX_ENABLED:not(:checked)) .disablable-input button {
+         @apply cursor-not-allowed;
+    }
+    /* Estilo específico para checkboxes dentro da área desativada */
+    #subtab-EFI:has(#EFI_ENABLED:not(:checked)) .disablable-input input[type="checkbox"],
+    #subtab-MERCADOPAGO:has(#MERCADOPAGO_ENABLED:not(:checked)) .disablable-input input[type="checkbox"],
+    #subtab-BPIX:has(#BPIX_ENABLED:not(:checked)) .disablable-input input[type="checkbox"] {
+         @apply opacity-50; /* Apenas reduz a opacidade */
+    }
+
     #log-display {
         white-space: pre-wrap;
         word-break: break-all;
@@ -165,4 +192,3 @@
       animation: fadeIn 0.5s ease-out forwards;
     }
 }
-
