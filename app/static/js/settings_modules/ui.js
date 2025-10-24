@@ -19,6 +19,10 @@ export async function loadSettings() {
     try {
         const config = await api.getSettings();
         populateForm(config);
+        // NOVO: Preenche o dropdown após carregar as configurações
+        populateTabsSelect();
+        // NOVO: Garante que o dropdown está sincronizado com a tab ativa inicial
+        syncTabsSelect();
     } catch (error) {
         showToast(`Falha ao carregar configurações: ${error.message}`, 'error');
     }
@@ -143,7 +147,8 @@ export function toggleLogUpdates() {
 }
 
 export async function clearLogs() {
-    dom.toggleLogsButton.disabled = true;
+    dom.clearLogsButton.disabled = true;
+    dom.toggleLogsButton.disabled = true; // Desabilita também o botão de toggle
     try {
         const result = await api.clearLogs();
         if (result.success) dom.logDisplay.textContent = '';
@@ -151,9 +156,11 @@ export async function clearLogs() {
     } catch (error) {
         showToast(`${i18n.errorGeneric}: ${error.message}`, 'error');
     } finally {
-        dom.toggleLogsButton.disabled = false;
+        dom.clearLogsButton.disabled = false;
+        dom.toggleLogsButton.disabled = false; // Reabilita o botão de toggle
     }
 }
+
 
 export function toggleHmacSection() {
     if (dom.efiUseMtlsCheckbox && dom.efiHmacSection) {
@@ -161,26 +168,95 @@ export function toggleHmacSection() {
     }
 }
 
+/**
+ * Configura a navegação entre abas (tanto principal quanto sub-abas).
+ * @param {HTMLElement} navElement - O container dos botões/select de navegação.
+ * @param {HTMLElement} contentContainer - O container do conteúdo das abas.
+ * @param {string} contentSelector - O seletor CSS para identificar os elementos de conteúdo individuais.
+ */
 export function setupTabNavigation(navElement, contentContainer, contentSelector) {
     if (!navElement || !contentContainer) return;
     navElement.addEventListener('click', (e) => {
         const button = e.target.closest('button[data-tab], button[data-subtab]');
         if (button) {
-            const isSubtab = button.dataset.subtab;
-            const tabId = isSubtab || button.dataset.tab;
-            const prefix = isSubtab ? 'subtab-' : 'tab-';
-
-            navElement.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-            button.classList.add('active');
-            contentContainer.querySelectorAll(contentSelector).forEach(content => content.classList.remove('active'));
-            document.getElementById(`${prefix}${tabId}`).classList.add('active');
-
-            if (tabId === 'logs' && !isSubtab) {
-                if (!logIntervalId) toggleLogUpdates(); // Inicia se não estiver a correr
-            } else if (!isSubtab) {
-                if (logIntervalId) toggleLogUpdates(); // Para se estiver a correr e mudamos de aba principal
-            }
+            handleTabChange(button, navElement, contentContainer, contentSelector);
         }
     });
 }
 
+/**
+ * Lida com a mudança de aba, atualizando a interface.
+ * @param {HTMLElement} clickedButton - O botão que foi clicado.
+ * @param {HTMLElement} navElement - O container dos botões/select de navegação.
+ * @param {HTMLElement} contentContainer - O container do conteúdo das abas.
+ * @param {string} contentSelector - O seletor CSS para identificar os elementos de conteúdo individuais.
+ */
+function handleTabChange(clickedButton, navElement, contentContainer, contentSelector) {
+    const isSubtab = clickedButton.dataset.subtab;
+    const tabId = isSubtab || clickedButton.dataset.tab;
+    const prefix = isSubtab ? 'subtab-' : 'tab-';
+
+    // Atualiza botões
+    navElement.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+    clickedButton.classList.add('active');
+
+    // Atualiza conteúdo
+    contentContainer.querySelectorAll(contentSelector).forEach(content => content.classList.remove('active'));
+    const contentElement = document.getElementById(`${prefix}${tabId}`);
+    if (contentElement) {
+        contentElement.classList.add('active');
+    } else {
+        console.warn(`Elemento de conteúdo não encontrado para ${prefix}${tabId}`);
+    }
+
+
+    // Lógica específica para logs
+    if (tabId === 'logs' && !isSubtab) {
+        if (!logIntervalId) toggleLogUpdates(); // Inicia se não estiver a correr
+    } else if (!isSubtab) {
+        if (logIntervalId) toggleLogUpdates(); // Para se estiver a correr e mudamos de aba principal
+    }
+
+    // NOVO: Sincroniza o dropdown se for a aba principal
+    if (!isSubtab) {
+        syncTabsSelect();
+    }
+}
+
+/**
+ * NOVO: Preenche as opções do select dropdown com base nos botões da aba principal.
+ */
+export function populateTabsSelect() {
+    if (!dom.mainTabsSelect || !dom.mainTabs) return;
+
+    dom.mainTabsSelect.innerHTML = ''; // Limpa opções existentes
+    dom.mainTabs.querySelectorAll('.tab-button').forEach(button => {
+        const option = document.createElement('option');
+        option.value = button.dataset.tab;
+        option.textContent = button.textContent;
+        dom.mainTabsSelect.appendChild(option);
+    });
+}
+
+/**
+ * NOVO: Sincroniza o valor selecionado no dropdown com a aba principal ativa.
+ */
+export function syncTabsSelect() {
+    if (!dom.mainTabsSelect || !dom.mainTabs) return;
+    const activeButton = dom.mainTabs.querySelector('.tab-button.active');
+    if (activeButton) {
+        dom.mainTabsSelect.value = activeButton.dataset.tab;
+    }
+}
+
+/**
+ * NOVO: Lida com a mudança de seleção no dropdown.
+ */
+export function handleTabsSelectChange(event) {
+    const selectedTabId = event.target.value;
+    const correspondingButton = dom.mainTabs.querySelector(`button[data-tab="${selectedTabId}"]`);
+    if (correspondingButton) {
+        // Simula um clique no botão correspondente para reutilizar a lógica
+        handleTabChange(correspondingButton, dom.mainTabs, dom.mainTabContent, '.tab-content');
+    }
+}
