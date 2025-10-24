@@ -434,7 +434,7 @@ def user_profile_route(plex_user_id):
 
     if request.method == 'POST':
         from ...extensions import scheduler
-        from ...scheduler import end_subscription_job
+        from ...scheduler import end_subscription_job, end_trial_job # Importa end_trial_job
 
         try: validated_data = UpdateProfileSchema(**request.json)
         except ValidationError as e: return jsonify({"success": False, "message": "Dados inválidos.", "errors": {err['loc'][0]: err['msg'] for err in e.errors()}}), 400
@@ -445,14 +445,29 @@ def user_profile_route(plex_user_id):
         profile_to_update = extensions.data_manager.get_user_profile(plex_user_id)
         profile_to_update.update(data)
 
+        # --- CORREÇÃO: Limpa os dados de teste se uma data de expiração regular for definida ---
+        if local_datetime_str:
+            if 'trial_end_date' in profile_to_update and profile_to_update['trial_end_date']:
+                profile_to_update['trial_end_date'] = None
+                logger.info(f"Data de fim de teste limpa para '{username}' ao definir data de expiração regular.")
+            if 'trial_job_id' in profile_to_update and profile_to_update['trial_job_id']:
+                try:
+                    scheduler.remove_job(profile_to_update['trial_job_id'])
+                    logger.info(f"Tarefa de teste '{profile_to_update['trial_job_id']}' removida para '{username}'.")
+                except JobLookupError:
+                    logger.warning(f"Não foi possível encontrar a tarefa de teste '{profile_to_update['trial_job_id']}' para remover para '{username}'.")
+                profile_to_update['trial_job_id'] = None
+        # --- FIM DA CORREÇÃO ---
+
+
         if not local_datetime_str:
             profile_to_update['expiration_date'] = None
             if old_job_id := profile_to_update.pop('expiration_job_id', None):
                 try:
                     scheduler.remove_job(old_job_id)
-                    logger.info(f"Tarefa de bloqueio para '{username}' removida (ID: {old_job_id}).")
+                    logger.info(f"Tarefa de bloqueio de subscrição para '{username}' removida (ID: {old_job_id}).")
                 except JobLookupError:
-                    logger.warning(f"Não foi possível encontrar a tarefa de bloqueio '{old_job_id}' para remover para o utilizador '{username}'.")
+                    logger.warning(f"Não foi possível encontrar a tarefa de bloqueio de subscrição '{old_job_id}' para remover para '{username}'.")
         else:
             naive_dt = datetime.fromisoformat(local_datetime_str)
             config = load_or_create_config()
@@ -462,16 +477,18 @@ def user_profile_route(plex_user_id):
                     naive_dt = naive_dt.replace(hour=time_parts[0], minute=time_parts[1], second=0, microsecond=0)
                 except (ValueError, IndexError): pass
 
+            # Remove a tarefa de expiração antiga (subscrição), se existir
             if old_job_id := profile_to_update.pop('expiration_job_id', None):
                 try: scheduler.remove_job(old_job_id)
                 except JobLookupError: pass
 
+            # Agenda a nova tarefa de expiração de subscrição
             new_job_id = f"sub_end_{plex_user_id}_{secrets.token_hex(4)}"
             scheduler.add_job(id=new_job_id, func=end_subscription_job, args=[plex_user_id], trigger='date', run_date=naive_dt, misfire_grace_time=3600)
 
             profile_to_update['expiration_date'] = naive_dt.astimezone(get_localzone()).isoformat()
             profile_to_update['expiration_job_id'] = new_job_id
-            logger.info(f"Tarefa de bloqueio para '{username}' reagendada para {naive_dt.strftime('%Y-%m-%d %H:%M:%S')} com ID '{new_job_id}'.")
+            logger.info(f"Tarefa de bloqueio de subscrição para '{username}' reagendada para {naive_dt.strftime('%Y-%m-%d %H:%M:%S')} com ID '{new_job_id}'.")
 
         extensions.data_manager.set_user_profile(plex_user_id, profile_to_update)
         logger.info(f"Admin '{current_user.username}' atualizou o perfil de '{username}'.")
@@ -481,22 +498,24 @@ def user_profile_route(plex_user_id):
 
         # --- Lógica de Sincronização de Status (Bloqueio/Desbloqueio) ---
         new_status = 'active' # Assume ativo por padrão
-        
-        # 1. Verifica Expiração de Assinatura
+
+        # 1. Verifica Expiração de Assinatura (TEM PRIORIDADE)
         if exp_date_str := profile_to_update.get('expiration_date'):
             exp_date_utc = datetime.fromisoformat(exp_date_str).astimezone(timezone.utc)
             if exp_date_utc <= now_utc:
                 new_status = 'expired' # Prioridade máxima se assinatura expirou
 
-        # 2. Verifica Expiração de Teste (se não houver assinatura expirada)
+        # 2. Verifica Expiração de Teste (APENAS se não houver assinatura expirada)
         elif trial_end_str := profile_to_update.get('trial_end_date'):
             trial_end_utc = datetime.fromisoformat(trial_end_str).astimezone(timezone.utc)
             if trial_end_utc <= now_utc:
                 new_status = 'trial_expired' # Prioridade se teste expirou
-                
+
         # 3. Aplica a ação (Bloquear ou Desbloquear)
         if new_status != 'active': # Se expirou (assinatura ou teste)
-            if not is_blocked or extensions.data_manager.get_blocked_user(plex_user_id).get('block_reason') != new_status:
+            # Bloqueia apenas se não estiver bloqueado ou se o motivo for diferente
+            current_block_info = extensions.data_manager.get_blocked_user(plex_user_id)
+            if not current_block_info or current_block_info.get('block_reason') != new_status:
                 logger.info(f"A bloquear utilizador '{username}' automaticamente devido a: {new_status}")
                 extensions.plex_manager.block_user(plex_user_id, reason=new_status)
         elif is_blocked: # Se deveria estar ativo, mas está bloqueado
@@ -529,12 +548,20 @@ def extend_trial_route(user, validated_data):
     profile = extensions.data_manager.get_user_profile(plex_user_id)
     trial_end_date_str = profile.get('trial_end_date')
 
-    if not trial_end_date_str:
-        return jsonify({"success": False, "message": _("Este utilizador não tem um período de teste associado.")}), 400
+    # CORREÇÃO: Permite estender mesmo se não houver data de teste (inicia a partir de agora)
+    # if not trial_end_date_str:
+    #     return jsonify({"success": False, "message": _("Este utilizador não tem um período de teste associado.")}), 400
 
     try:
-        current_trial_end_utc = datetime.fromisoformat(trial_end_date_str)
         now_utc = datetime.now(timezone.utc)
+        current_trial_end_utc = now_utc # Base padrão é agora
+
+        if trial_end_date_str:
+            try:
+                current_trial_end_utc = datetime.fromisoformat(trial_end_date_str)
+            except (ValueError, TypeError):
+                 logger.warning(f"Formato inválido para trial_end_date ('{trial_end_date_str}') para {username}. A estender a partir de agora.")
+                 current_trial_end_utc = now_utc
 
         # --- LÓGICA ALTERADA ---
         # Se o teste já expirou, a base para extensão é AGORA.
@@ -560,27 +587,34 @@ def extend_trial_route(user, validated_data):
         # Atualiza o perfil
         profile['trial_end_date'] = new_trial_end_utc.isoformat()
         profile['trial_job_id'] = new_job_id
+        # CORREÇÃO: Limpa a data de expiração regular, se existir, pois agora é um teste
+        if 'expiration_date' in profile and profile['expiration_date']:
+             profile['expiration_date'] = None
+             logger.info(f"Data de expiração regular limpa para '{username}' ao estender/iniciar teste.")
+        if 'expiration_job_id' in profile and profile['expiration_job_id']:
+            try: scheduler.remove_job(profile['expiration_job_id'])
+            except JobLookupError: pass
+            profile['expiration_job_id'] = None
+
         extensions.data_manager.set_user_profile(plex_user_id, profile)
 
-        # --- NOVO: Desbloqueia o utilizador se o teste estava expirado ---
-        if current_trial_end_utc <= now_utc:
-            blocked_info = extensions.data_manager.get_blocked_user(plex_user_id)
-            # Apenas desbloqueia se o motivo do bloqueio foi 'trial_expired'
-            if blocked_info and blocked_info.get('block_reason') == 'trial_expired':
-                extensions.plex_manager.unblock_user(plex_user_id)
-                logger.info(f"Utilizador '{username}' foi desbloqueado automaticamente após extensão do teste.")
+        # --- NOVO: Desbloqueia o utilizador se o teste estava expirado ou se estava bloqueado por expiração regular ---
+        blocked_info = extensions.data_manager.get_blocked_user(plex_user_id)
+        if blocked_info and blocked_info.get('block_reason') in ['trial_expired', 'expired']:
+            extensions.plex_manager.unblock_user(plex_user_id)
+            logger.info(f"Utilizador '{username}' foi desbloqueado automaticamente após extensão/início do teste.")
         # --- FIM NOVO ---
 
-        logger.info(f"Admin '{current_user.username}' estendeu o período de teste de '{username}' por {extend_minutes} minutos. Novo fim em {naive_run_date.strftime('%Y-%m-%d %H:%M:%S')}.")
+        logger.info(f"Admin '{current_user.username}' estendeu/iniciou o período de teste de '{username}' por {extend_minutes} minutos. Novo fim em {naive_run_date.strftime('%Y-%m-%d %H:%M:%S')}.")
 
         return jsonify({
             "success": True,
-            "message": _("Período de teste estendido com sucesso. Novo fim em %(date)s.", date=naive_run_date.strftime('%d/%m/%Y %H:%M'))
+            "message": _("Período de teste definido/estendido com sucesso. Novo fim em %(date)s.", date=naive_run_date.strftime('%d/%m/%Y %H:%M'))
         })
 
     except Exception as e:
-        logger.error(f"Erro ao estender o período de teste para '{username}': {e}", exc_info=True)
-        return jsonify({"success": False, "message": _("Ocorreu um erro ao estender o período de teste.")}), 500
+        logger.error(f"Erro ao estender/definir o período de teste para '{username}': {e}", exc_info=True)
+        return jsonify({"success": False, "message": _("Ocorreu um erro ao estender/definir o período de teste.")}), 500
 # --- FIM NOVO ---
 
 @users_api_bp.route('/reactivate', methods=['POST'])
