@@ -168,20 +168,20 @@ def get_status():
 
         # Autocorreção: Se o nome de utilizador não corresponder, atualiza o nome local
         if profile.get('username') != plex_data.get('username'):
-             logger.warning(f"Inconsistência de username detectada para ID {plex_user_id}. Plex: '{plex_data.get('username')}', Local: '{profile.get('username')}'. A atualizar localmente.")
-             profile['username'] = plex_data.get('username')
-             profiles_to_update.append({'id': plex_user_id, 'data': {'username': plex_data.get('username')}})
-             # Atualiza o nome de utilizador para o resto desta execução da função
-             username = plex_data.get('username')
+              logger.warning(f"Inconsistência de username detectada para ID {plex_user_id}. Plex: '{plex_data.get('username')}', Local: '{profile.get('username')}'. A atualizar localmente.")
+              profile['username'] = plex_data.get('username')
+              profiles_to_update.append({'id': plex_user_id, 'data': {'username': plex_data.get('username')}})
+              # Atualiza o nome de utilizador para o resto desta execução da função
+              username = plex_data.get('username')
 
         is_blocked = plex_user_id in blocked_users_data
         final_status = profile.get('status', 'inactive') # Padrão para inativo se o status estiver em falta de alguma forma
 
         # Autocorreção: Se o status for inativo mas o utilizador for encontrado no Plex, marca como ativo (a menos que esteja bloqueado)
         if final_status == 'inactive' and not is_blocked:
-             logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) está inativo localmente mas foi encontrado no Plex e não está bloqueado. A marcar como ativo.")
-             final_status = 'active'
-             profiles_to_update.append({'id': plex_user_id, 'data': {'status': 'active'}})
+              logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) está inativo localmente mas foi encontrado no Plex e não está bloqueado. A marcar como ativo.")
+              final_status = 'active'
+              profiles_to_update.append({'id': plex_user_id, 'data': {'status': 'active'}})
 
 
         is_on_trial = False
@@ -211,7 +211,7 @@ def get_status():
         if existing_user_index != -1:
             all_users_to_return[existing_user_index] = user_data
         else:
-             all_users_to_return.append(user_data) # Anexa apenas se não foi adicionado durante a fase de criação
+            all_users_to_return.append(user_data) # Anexa apenas se não foi adicionado durante a fase de criação
 
 
     # --- INÍCIO DA NOVA LÓGICA: Cria perfis ausentes ---
@@ -357,7 +357,7 @@ def renew_user_subscription_route(user, validated_data):
         total_value = float(monthly_price_str.replace(',', '.')) * data.months
 
         # 3. Adiciona registo de pagamento manual e notificação de admin numa transação
-        #    Usa begin_nested para potenciais rollbacks parciais se necessário, embora commit trate da transação principal.
+        #   Usa begin_nested para potenciais rollbacks parciais se necessário, embora commit trate da transação principal.
         with extensions.db.session.begin_nested():
             extensions.data_manager.add_manual_payment(
                 user['id'], user['username'], total_value,
@@ -849,18 +849,46 @@ def toggle_overseerr_access_route(user):
         logger.info(f"Admin '{current_user.username}' {action} o acesso ao Overseerr para '{user['username']}'.")
     return jsonify(result)
 
+# --- FUNÇÃO get_user_list AJUSTADA ---
 @users_api_bp.route('/list')
 @login_required
 @admin_required
 def get_user_list():
+    """Retorna uma lista de utilizadores com detalhes básicos e perfil, filtrados por contacto."""
     try:
-        all_users = extensions.plex_manager.get_all_plex_users()
-        if all_users is None:
-            return jsonify({"success": False, "message": "Falha ao obter lista de utilizadores do Plex."}), 500
-        users = [{'id': u['id'], 'username': u['username'], 'email': u['email']} for u in all_users]
-        return jsonify({"success": True, "users": sorted(users, key=lambda u: u['username'].lower())})
-    except Exception:
-        return jsonify({"success": False, "message": "Falha ao obter lista de utilizadores."}), 500
+        plex_users = extensions.plex_manager.get_all_plex_users()
+        if plex_users is None:
+            return jsonify({"success": False, "message": _("Falha ao obter utilizadores do Plex.")}), 500
+
+        user_profiles = extensions.data_manager.get_all_user_profiles()
+        profiles_map = {p['plex_user_id']: p for p in user_profiles}
+
+        # **LÓGICA DE FILTRAGEM APLICADA AQUI:**
+        filtered_users = []
+        for user in plex_users:
+            profile = profiles_map.get(user['id'], {})
+            has_contact = (
+                profile.get('telegram_user') or
+                profile.get('discord_user_id') or
+                profile.get('phone_number')
+            )
+            if has_contact:
+                # Adiciona apenas os campos necessários para o modal (id, username, email)
+                filtered_users.append({
+                    'id': user['id'],
+                    'username': user.get('username', user.get('title', 'N/A')), # Garante que username existe
+                    'email': user.get('email', '') # Garante que email existe
+                })
+
+        # Ordena alfabeticamente pelo nome de utilizador
+        filtered_users.sort(key=lambda x: x['username'].lower())
+
+        return jsonify({"success": True, "users": filtered_users})
+
+    except Exception as e:
+        logger.error(f"Erro ao listar utilizadores para seleção: {e}", exc_info=True)
+        return jsonify({"success": False, "message": _("Erro interno ao obter lista de utilizadores.")}), 500
+# --- FIM DO AJUSTE ---
 
 @users_api_bp.route('/payments/<int:plex_user_id>')
 @login_required
@@ -873,3 +901,4 @@ def get_user_payments_history(plex_user_id):
 @login_required
 def get_account_devices():
     return jsonify(extensions.tautulli_manager.get_user_devices(int(current_user.id)))
+
