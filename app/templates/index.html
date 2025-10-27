@@ -52,10 +52,10 @@
       animation: fadeIn 0.5s ease-out forwards;
     }
     /* Estilos para a lista de seleção de usuários no MODAL */
-    #bulk-notify-selection-list { max-height: 40vh; } /* Corrigido ID */
-    #bulk-notify-selection-list label:hover { background-color: rgba(255, 255, 255, 0.05); } /* Corrigido ID */
-    #bulk-notify-selection-list::-webkit-scrollbar { width: 4px; } /* Corrigido ID */
-    #bulk-notify-selection-list::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 4px; } /* Corrigido ID */
+    #bulk-notify-selection-list { max-height: 40vh; }
+    #bulk-notify-selection-list label:hover { background-color: rgba(255, 255, 255, 0.05); }
+    #bulk-notify-selection-list::-webkit-scrollbar { width: 4px; }
+    #bulk-notify-selection-list::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 4px; }
 </style>
 {% endblock %}
 
@@ -133,7 +133,7 @@
                                 </label>
                             </div>
                             <!-- Botão Selecionar... com tamanho ajustado -->
-                            <button type="button" id="open-user-selection-modal-btn" class="btn bg-yellow-500 text-white ml-4 py-1 px-2 text-xs" disabled>
+                            <button type="button" id="open-user-selection-modal-btn" class="btn bg-yellow-500 text-white ml-4 py-1 px-2 text-xs rounded-md shadow-sm hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
                                 {{ _('Selecionar...') }}
                             </button>
                         </div>
@@ -146,13 +146,14 @@
                         <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086L2.279 16.76a.75.75 0 00.95.826l16-5.333a.75.75 0 000-1.418l-16-5.333z" /></svg>
                         <span id="send-bulk-btn-text">{{ _('Enviar para Utilizadores Ativos') }}</span>
                     </button>
+                    <!-- Barra de Progresso -->
                     <div id="bulk-progress-container" class="w-full sm:w-1/2 hidden">
                         <div class="flex justify-between mb-1">
                             <span id="bulk-progress-text" class="text-sm font-medium text-gray-700 dark:text-white">{{ _('A iniciar...') }}</span>
                             <span id="bulk-progress-percent" class="text-sm font-medium text-gray-700 dark:text-white">0%</span>
                         </div>
                         <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-                            <div id="bulk-progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                            <div id="bulk-progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-linear" style="width: 0%"></div>
                         </div>
                     </div>
                 </div>
@@ -191,30 +192,33 @@
 
 
 <!-- [INÍCIO] Esqueleto do Modal de Seleção de Utilizador -->
-<!-- Este modal é baseado na estrutura do 'confirmationModal' que deve estar em base.html -->
+<!-- Adicionado fixed inset-0 para cobrir a tela e ajudar na centralização -->
 <div id="userSelectionModal" class="fixed inset-0 z-50 overflow-y-auto hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="flex items-center justify-center min-h-screen p-4 text-center">
+    <div class="flex items-center justify-center min-h-screen p-4 text-center sm:block sm:p-0"> <!-- Ajuste para centralização vertical em telas pequenas -->
         <!-- Overlay -->
         <div class="fixed inset-0 bg-gray-500/75 dark:bg-gray-900/75 transition-opacity" aria-hidden="true"></div>
 
+        <!-- Alinhamento vertical (trick para sm:) -->
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
         <!-- Conteúdo do Modal -->
-        <div class="inline-block w-full max-w-lg p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white dark:bg-gray-800 shadow-xl rounded-2xl border border-gray-200 dark:border-gray-700">
+        <div class="inline-block w-full max-w-lg p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white dark:bg-gray-800 shadow-xl rounded-2xl border border-gray-200 dark:border-gray-700 sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
             <!-- Cabeçalho -->
-            <div class="flex justify-between items-center pb-3">
+            <div class="flex justify-between items-center pb-3 border-b border-gray-200 dark:border-gray-700">
                 <h3 class="modal-title text-lg font-medium leading-6 text-gray-900 dark:text-white">{{ _('Selecionar Utilizadores') }}</h3>
-                <button type="button" class="modal-close p-1 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700">
+                <button type="button" class="modal-close p-1 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
                     <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
             </div>
 
             <!-- Corpo -->
-            <div class="modal-body mt-2">
+            <div class="modal-body mt-4">
                 <!-- O JS irá injetar o conteúdo (pesquisa, lista, etc.) aqui -->
                 <p>{{ _('A carregar...') }}</p>
             </div>
 
             <!-- Rodapé -->
-            <div class="modal-footer mt-4 flex justify-end space-x-3">
+            <div class="modal-footer mt-5 sm:mt-6 flex justify-end space-x-3">
                 <!-- O JS irá injetar os botões (Confirmar, Cancelar) aqui -->
             </div>
         </div>
