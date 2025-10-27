@@ -13,6 +13,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const targetOptionsDiv = document.getElementById('target-options');
     // Novo botão para abrir o modal
     const openUserSelectionBtn = document.getElementById('open-user-selection-modal-btn');
+    // CORREÇÃO: Referências aos elementos da barra de progresso
+    const progressContainer = document.getElementById('bulk-progress-container');
+    const progressBar = document.getElementById('bulk-progress-bar');
+    const progressText = document.getElementById('bulk-progress-text');
+    const progressPercent = document.getElementById('bulk-progress-percent');
 
     const scriptTag = document.getElementById('dashboard-script');
     const urls = {};
@@ -128,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (monthlyRevenueChart) {
                 monthlyRevenueChart.data.labels = labels;
                 monthlyRevenueChart.data.datasets[0].data = data;
-                monthlyRevenueChart.update('none');
+                monthlyRevenueChart.update('none'); // Update without animation for smoother real-time updates
             } else {
                  monthlyRevenueChart = new Chart(revenueCanvas.getContext('2d'), {
                     type: 'bar',
@@ -160,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = [summary.active_users, summary.blocked_users];
             if (userStatusChart) {
                 userStatusChart.data.datasets[0].data = data;
-                userStatusChart.update('none');
+                userStatusChart.update('none'); // Update without animation
             } else {
                  userStatusChart = new Chart(userStatusCanvas.getContext('2d'), {
                     type: 'doughnut',
@@ -169,7 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         datasets: [{
                             data: data,
                             backgroundColor: colors.doughnutColors,
-                            borderColor: colors.tooltipBg,
+                            borderColor: colors.tooltipBg, // Use tooltip background for border in dark mode visibility
                             borderWidth: 4,
                         }]
                     },
@@ -208,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         container.innerHTML = Object.entries(health).map(([key, value]) => {
             const service = serviceMap[key] || { label: key };
-            const status = statusMap[value.status] || statusMap['OFFLINE'];
+            const status = statusMap[value.status] || statusMap['OFFLINE']; // Default to offline if status unknown
             return `
                 <div class="flex items-center p-3 bg-gray-100 dark:bg-gray-900/50 rounded-lg" title="${value.message}">
                     <div class="flex-shrink-0 w-8 h-8 rounded-full ${status.color} flex items-center justify-center text-white">
@@ -227,19 +232,22 @@ document.addEventListener('DOMContentLoaded', () => {
         let stateIcon = '';
         let iconColorClass = '';
 
+        // Determine icon and color based on playback state
         if (s.state === 'paused') {
             iconColorClass = 'text-yellow-500';
             stateIcon = `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M9 8h2v8H9zm4 0h2v8h-2z"></path></svg>`;
         } else if (s.state === 'buffering') {
             iconColorClass = 'text-blue-500';
             stateIcon = `<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
-        } else { // playing
+        } else { // playing or unknown state defaults to playing icon
             iconColorClass = 'text-green-500';
             stateIcon = `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>`;
         }
 
+        // Generate platform icon class name
         const platform_icon_name = (s.platform || 'default').toLowerCase().replace(/\s+/g, '');
 
+        // Stream details formatting
         const sd = s.stream_details;
         let streamText = sd.is_transcoding ? `Transcode` : 'Direct Play';
         if (sd.is_transcoding && typeof sd.transcode_progress === 'number') {
@@ -256,6 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
+        // Assemble the card's inner HTML
         return `
             <div class="w-24 sm:w-28 flex-shrink-0">
                 <img src="${s.thumb_url || 'https://placehold.co/150x225/1F2937/E5E7EB?text=?'}" class="w-full h-auto aspect-[2/3] object-cover rounded-md shadow-sm" alt="Poster">
@@ -293,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const newSessionKeys = new Set(sessions.map(s => s.session_key));
 
-        // 1. Remove cartões de sessões que não existem mais
+        // 1. Remove cards for sessions that no longer exist
         container.querySelectorAll('.stream-card').forEach(card => {
             const key = card.dataset.sessionKey;
             if (!newSessionKeys.has(key)) {
@@ -306,41 +315,45 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sessions && sessions.length > 0) {
             section.classList.remove('hidden');
 
-            // 2. Adiciona ou atualiza os cartões de sessão
+            // 2. Add or update session cards
             sessions.forEach(s => {
                 let card = container.querySelector(`[data-session-key="${s.session_key}"]`);
                 if (!card) {
+                    // Create a new card if it doesn't exist
                     card = document.createElement('div');
                     card.dataset.sessionKey = s.session_key;
                     card.className = 'stream-card bg-white dark:bg-gray-800/80 p-3 sm:p-4 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex items-start gap-3 sm:gap-4 overflow-hidden';
                     container.appendChild(card);
                 }
+                // Update the inner HTML of the card
                 card.innerHTML = getStreamCardInnerHtml(s);
             });
         } else {
+            // Hide section and clear container if no active streams
             section.classList.add('hidden');
             container.innerHTML = '';
         }
 
-        // 3. Gerencia os timers para a animação suave
+        // 3. Manage timers for smooth progress animation
         sessions.forEach(s => {
             const timer = activeTimers[s.session_key];
 
             if (timer) {
-                // Sincroniza com os dados do servidor
+                // Sync timer data with server data
                 timer.view_offset = s.view_offset;
                 timer.duration = s.duration;
                 timer.last_updated = Date.now();
 
+                // Stop timer if not playing, start if playing and no timer exists
                 if (s.state !== 'playing' && timer.interval) {
                     clearInterval(timer.interval);
                     timer.interval = null;
                 } else if (s.state === 'playing' && !timer.interval) {
                     timer.interval = createTimerInterval(s.session_key);
                 }
-                timer.state = s.state;
+                timer.state = s.state; // Update state regardless
             } else {
-                // Cria um novo timer
+                // Create a new timer object for the session
                 activeTimers[s.session_key] = {
                     view_offset: s.view_offset,
                     duration: s.duration,
@@ -356,13 +369,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return setInterval(() => {
             const timer = activeTimers[sessionKey];
             if (!timer) {
-                clearInterval(this);
+                clearInterval(this); // Stop interval if timer object is gone
                 return;
             };
 
+            // Calculate current offset based on last update time
             const elapsedSinceUpdate = Date.now() - timer.last_updated;
             const current_offset = timer.view_offset + elapsedSinceUpdate;
 
+            // Update UI elements for time and progress
             const timeEl = document.getElementById(`time-${sessionKey}`);
             const progressEl = document.getElementById(`progress-${sessionKey}`);
 
@@ -370,7 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (progressEl && timer.duration > 0) {
                 progressEl.style.width = `${Math.min(100, (current_offset / timer.duration) * 100)}%`;
             }
-        }, 1000);
+        }, 1000); // Update every second
     }
 
     // --- FUNÇÕES DE LOG DE AUDITORIA ---
@@ -378,13 +393,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.log-time-ago').forEach(el => {
             const timestamp = el.dataset.timestamp;
             if (timestamp) {
-                const date = new Date(timestamp + 'Z');
+                const date = new Date(timestamp + 'Z'); // Assume UTC
                 el.textContent = formatTimeAgo(date);
             }
         });
     }
 
     function getReasonText(reason) {
+        // Map internal reason codes to user-friendly text
         switch (reason) {
             case 'limit_exceeded':
                 return i18n.reasonLimitExceeded;
@@ -395,22 +411,24 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'blocked_trial_expired':
                 return i18n.reasonBlockedTrialExpired;
             default:
-                if (reason && reason.startsWith('blocked')) {
+                if (reason && reason.startsWith('blocked')) { // Catch-all for other blocked reasons
                     return i18n.reasonBlocked;
                 }
-                return reason || 'Desconhecido';
+                return reason || 'Desconhecido'; // Fallback
         }
     }
 
     function createTerminationLogRow(log) {
-        const timeAgo = formatTimeAgo(new Date(log.timestamp + 'Z'));
+        const timeAgo = formatTimeAgo(new Date(log.timestamp + 'Z')); // Assume UTC
         const isBlocked = log.reason.startsWith('blocked');
+        // Select appropriate icon based on the reason
         const icon = isBlocked
-            ? `<svg class="w-5 h-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm-2.5 8V5.5a2.5 2.5 0 115 0V9h-5z" clip-rule="evenodd" /></svg>`
-            : `<svg class="w-5 h-5 text-orange-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v11.5A2.25 2.25 0 004.25 18h11.5A2.25 2.25 0 0018 15.75V4.25A2.25 2.25 0 0015.75 2H4.25zM6.5 6a.75.75 0 000 1.5h7a.75.75 0 000-1.5h-7zM6 10.25a.75.75 0 01.75-.75h7a.75.75 0 010 1.5h-7A.75.75 0 016 10.25zM7.25 14a.75.75 0 000 1.5h3a.75.75 0 000-1.5h-3z" clip-rule="evenodd" /></svg>`;
+            ? `<svg class="w-5 h-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm-2.5 8V5.5a2.5 2.5 0 115 0V9h-5z" clip-rule="evenodd" /></svg>` // Lock icon
+            : `<svg class="w-5 h-5 text-orange-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v11.5A2.25 2.25 0 004.25 18h11.5A2.25 2.25 0 0018 15.75V4.25A2.25 2.25 0 0015.75 2H4.25zM6.5 6a.75.75 0 000 1.5h7a.75.75 0 000-1.5h-7zM6 10.25a.75.75 0 01.75-.75h7a.75.75 0 010 1.5h-7A.75.75 0 016 10.25zM7.25 14a.75.75 0 000 1.5h3a.75.75 0 000-1.5h-3z" clip-rule="evenodd" /></svg>`; // List icon
         const iconBg = isBlocked ? 'bg-red-100 dark:bg-red-900/50' : 'bg-orange-100 dark:bg-orange-900/50';
         const reasonText = getReasonText(log.reason);
 
+        // Generate HTML for the log row
         return `
         <div class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 animate-fade-in group" data-log-id="${log.id}">
             <div class="flex items-center gap-3 min-w-0">
@@ -438,29 +456,34 @@ document.addEventListener('DOMContentLoaded', () => {
             if (clearAllLogsBtn) clearAllLogsBtn.disabled = true;
             return;
         }
+        // Populate container with log rows
         container.innerHTML = logs.map(log => createTerminationLogRow(log)).join('');
         if (clearAllLogsBtn) clearAllLogsBtn.disabled = false;
 
+        // Set up interval to update 'time ago' display
         if (timeAgoInterval) clearInterval(timeAgoInterval);
-        timeAgoInterval = setInterval(updateLogTimestamps, 30000);
+        timeAgoInterval = setInterval(updateLogTimestamps, 30000); // Update every 30 seconds
     }
 
     function prependTerminationLog(log) {
         const container = document.getElementById('auditLogContainer');
         if (!container) return;
 
+        // Remove placeholder if it exists
         const placeholder = container.querySelector('p');
         if (placeholder) {
             placeholder.remove();
         }
 
+        // Add new log row to the top
         const newRowHtml = createTerminationLogRow(log);
         container.insertAdjacentHTML('afterbegin', newRowHtml);
 
+        // Keep only the last 20 logs
         while (container.children.length > 20) {
             container.lastElementChild.remove();
         }
-        if (clearAllLogsBtn) clearAllLogsBtn.disabled = false;
+        if (clearAllLogsBtn) clearAllLogsBtn.disabled = false; // Enable clear button
     }
 
     async function handleDeleteLog(logId) {
@@ -469,15 +492,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await fetchAPI(url, 'DELETE');
             showToast(result.message, result.success ? 'success' : 'error');
             if (result.success) {
+                // Animate removal and update UI
                 const logElement = document.querySelector(`[data-log-id="${logId}"]`);
                 logElement.style.opacity = '0';
                 setTimeout(() => {
                     logElement.remove();
                     const container = document.getElementById('auditLogContainer');
+                    // If list becomes empty, show placeholder
                     if (container.children.length === 0) {
                         renderTerminationLogs([]);
                     }
-                }, 300);
+                }, 300); // Wait for animation
             }
         } catch (error) {
             showToast(error.message, 'error');
@@ -489,7 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await fetchAPI(urls.clearAllLogsUrl, 'POST');
             showToast(result.message, result.success ? 'success' : 'error');
             if (result.success) {
-                renderTerminationLogs([]);
+                renderTerminationLogs([]); // Clear the list visually
             }
         } catch (error) {
             showToast(error.message, 'error');
@@ -505,7 +530,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (count > 0) {
             countSpan.textContent = ` (${count} ${i18n.selected})`;
         } else {
-            countSpan.textContent = '';
+            countSpan.textContent = ''; // Clear count if zero
         }
     }
 
@@ -513,7 +538,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const modalId = 'userSelectionModal';
         const modalTitle = i18n.selectUsers;
 
-        // IDs únicos para os elementos internos do modal
+        // Unique IDs for modal elements
         const searchInputId = 'bulk-notify-search-input';
         const listId = 'bulk-notify-selection-list';
         const selectAllId = 'bulk-notify-select-all';
@@ -522,6 +547,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const confirmBtnId = 'bulk-notify-confirm';
         const cancelBtnId = 'bulk-notify-cancel';
 
+        // Modal structure
         const modalBody = `
             <div class="relative mb-3">
                 <input type="search" id="${searchInputId}" placeholder="${i18n.searchUsers}" class="w-full p-2 pl-8 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
@@ -530,7 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
             <div id="${listId}" class="overflow-y-auto bg-gray-100 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-300 dark:border-gray-600" style="max-height: 40vh;">
-                <!-- Conteúdo será carregado... -->
+                <!-- Content will be loaded... -->
             </div>
             <div class="flex justify-between items-center text-xs mt-2 px-1">
                 <button type="button" id="${selectAllId}" class="text-blue-500 hover:underline">${i18n.selectAll}</button>
@@ -543,17 +569,17 @@ document.addEventListener('DOMContentLoaded', () => {
             <button id="${cancelBtnId}" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>
         `;
 
-        // 1. Chama createModal para preencher o HTML
+        // Create and show the modal
         createModal(modalId, modalTitle, modalBody, modalFooter);
 
-        // 2. AGORA, obtenha o elemento do modal (que 'createModal' encontrou e mostrou)
+        // Get modal elements after creation
         const modalElement = document.getElementById(modalId);
         if (!modalElement) {
-            console.error("Falha ao encontrar o elemento do modal preenchido.");
+            console.error("Failed to find the created modal element.");
             return;
         }
 
-        // 3. Encontre os elementos INTERNOS usando querySelector RELATIVO ao modalElement
+        // Get inner elements using querySelector relative to the modal
         const searchInput = modalElement.querySelector(`#${searchInputId}`);
         const userList = modalElement.querySelector(`#${listId}`);
         const selectAll = modalElement.querySelector(`#${selectAllId}`);
@@ -561,23 +587,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const countSpan = modalElement.querySelector(`#${countId}`);
         const confirmBtn = modalElement.querySelector(`#${confirmBtnId}`);
         const cancelBtn = modalElement.querySelector(`#${cancelBtnId}`);
-        const closeBtn = modalElement.querySelector('.modal-close'); // O botão 'X'
+        const closeBtn = modalElement.querySelector('.modal-close'); // The 'X' button
 
-        // Estado temporário para o modal
+        // Temporary state for the modal's selections
         const tempSelectedIds = new Set(selectedUserIdsState);
 
+        // Update the selected count display in the modal
         const updateModalCount = () => {
             if (!countSpan) return;
             const selectedCount = tempSelectedIds.size;
             countSpan.textContent = `${selectedCount} ${i18n.selected}`;
         };
 
+        // Render the list of users inside the modal
         const renderModalUserList = (users) => {
             if (!userList) return;
             if (users.length === 0) {
                 userList.innerHTML = `<p class="text-gray-400 text-sm p-2">${i18n.noUsersToSelect}</p>`;
                 return;
             }
+            // Generate list items with checkboxes, checking against tempSelectedIds
             userList.innerHTML = users.map(user => {
                 const isChecked = tempSelectedIds.has(user.id);
                 return `
@@ -587,9 +616,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     </label>
                 `;
             }).join('');
-            updateModalCount();
+            updateModalCount(); // Update count after rendering
         };
 
+        // Filter the user list based on the search input
         const filterModalUserList = () => {
             if (!searchInput) return;
             const searchTerm = searchInput.value.toLowerCase();
@@ -600,12 +630,13 @@ document.addEventListener('DOMContentLoaded', () => {
             renderModalUserList(filteredUsers);
         };
 
-        // 4. Adiciona os event listeners (com verificações)
+        // Add event listeners (with checks for element existence)
         if (searchInput) {
             searchInput.addEventListener('input', filterModalUserList);
         }
 
         if (userList) {
+            // Handle checkbox changes to update temporary selection state
             userList.addEventListener('change', (e) => {
                 if (e.target.type === 'checkbox') {
                     const id = parseInt(e.target.value);
@@ -622,6 +653,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (selectAll) {
             selectAll.addEventListener('click', () => {
                 if (!userList) return;
+                // Check all visible checkboxes and add their IDs to temp state
                 userList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                     if (!cb.checked) {
                         cb.checked = true;
@@ -635,6 +667,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (deselectAll) {
             deselectAll.addEventListener('click', () => {
                 if (!userList) return;
+                // Uncheck all visible checkboxes and remove their IDs from temp state
                 userList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                     if (cb.checked) {
                         cb.checked = false;
@@ -645,41 +678,42 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        // Function to close the modal, optionally resetting the radio button if canceled
         const closeModal = (forceResetRadio = false) => {
             modalElement.classList.add('hidden');
-            // Se cancelou e não havia nada selecionado antes, volta para 'active'
+            // If canceled and nothing was selected before, revert to 'active' target
             if (forceResetRadio && selectedUserIdsState.size === 0) {
                  const targetActive = document.getElementById('target_active');
                  if (targetActive) targetActive.checked = true;
-                 if (openUserSelectionBtn) openUserSelectionBtn.disabled = true;
-                 updateSendButtonText();
+                 if (openUserSelectionBtn) openUserSelectionBtn.disabled = true; // Disable select button again
+                 updateSendButtonText(); // Reset main button text
             }
         };
 
         if (confirmBtn) {
             confirmBtn.onclick = () => {
-                selectedUserIdsState = tempSelectedIds; // Confirma as alterações
-                updateSpecificUserLabel(selectedUserIdsState.size);
-                updateSendButtonText();
+                selectedUserIdsState = tempSelectedIds; // Confirm changes to global state
+                updateSpecificUserLabel(selectedUserIdsState.size); // Update main page label
+                updateSendButtonText(); // Update main send button text
                 closeModal();
             };
         }
 
         if (cancelBtn) {
-            cancelBtn.onclick = () => closeModal(true); // Descarta as alterações (tempSelectedIds) e força reset se necessário
+            cancelBtn.onclick = () => closeModal(true); // Discard temp changes and force reset if needed
         }
 
         if (closeBtn) {
-             closeBtn.onclick = () => closeModal(true); // Botão 'X', força reset se necessário
+             closeBtn.onclick = () => closeModal(true); // 'X' button, force reset if needed
         }
 
-
-        // Carregar dados no MODAL
+        // Load user data into the modal
         const loadUsersIntoModal = async () => {
             if (!userList) return;
             userList.innerHTML = `<p class="text-gray-400 text-sm p-2">${i18n.loadingUsers}</p>`;
             try {
-                if (allUsersForSelection.length === 0) { // Carrega do cache se disponível
+                // Use cached user list if available, otherwise fetch
+                if (allUsersForSelection.length === 0) {
                     const result = await fetchAPI(urls.listUsersUrl);
                     if (result.success && result.users) {
                         allUsersForSelection = result.users;
@@ -687,29 +721,30 @@ document.addEventListener('DOMContentLoaded', () => {
                         throw new Error(result.message || i18n.errorLoadingUsers);
                     }
                 }
-                renderModalUserList(allUsersForSelection); // Renderiza a lista completa
+                renderModalUserList(allUsersForSelection); // Render the full list initially
             } catch (error) {
                 userList.innerHTML = `<p class="text-red-400 text-sm p-2">${error.message}</p>`;
             }
         };
-        loadUsersIntoModal();
+        loadUsersIntoModal(); // Initial load for the modal
     }
 
-
+    // Update the main send button's text based on the selected target audience
     function updateSendButtonText() {
         if (!targetOptionsDiv || !sendBulkBtnText) return;
         const selectedTargetInput = targetOptionsDiv.querySelector('input[name="notification_target"]:checked');
-        if (!selectedTargetInput) return; // Sai se nada estiver selecionado
+        if (!selectedTargetInput) return; // Exit if nothing is selected
 
         const selectedTarget = selectedTargetInput.value;
-        let buttonText = i18n.sendToAllActive; // Padrão
+        let buttonText = i18n.sendToAllActive; // Default
 
+        // Update text based on selected radio button value
         if (selectedTarget === 'blocked') {
             buttonText = i18n.sendToAllBlocked;
         } else if (selectedTarget === 'all') {
             buttonText = i18n.sendToAllUsers;
         } else if (selectedTarget === 'specific') {
-            const count = selectedUserIdsState.size; // Lê do estado global
+            const count = selectedUserIdsState.size; // Read from global state
             buttonText = i18n.sendToSpecificUsers.replace('{count}', count);
         }
         sendBulkBtnText.textContent = buttonText;
@@ -722,13 +757,15 @@ document.addEventListener('DOMContentLoaded', () => {
         errorContainer.classList.add('hidden');
 
         try {
-            const summaryPromise = fetchAPI(`${urls.summaryUrl}?force=true`);
+            // Fetch all data concurrently
+            const summaryPromise = fetchAPI(`${urls.summaryUrl}?force=true`); // Force refresh on initial load
             const healthPromise = fetchAPI(urls.healthUrl);
             const streamsPromise = fetchAPI(urls.activeStreamsUrl);
             const auditPromise = fetchAPI(urls.auditLogsUrl);
 
             const [summaryData, healthData, streamsData, auditData] = await Promise.all([summaryPromise, healthPromise, streamsPromise, auditPromise]);
 
+            // Process and render data
             if (summaryData.success) {
                 renderSummaryCards(summaryData.summary);
                 renderCharts(summaryData.summary);
@@ -748,12 +785,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderTerminationLogs(auditData.logs);
             }
 
-            dashboardContainer.classList.remove('hidden');
+            dashboardContainer.classList.remove('hidden'); // Show dashboard content
         } catch (error) {
             errorMessage.textContent = error.message;
-            errorContainer.classList.remove('hidden');
+            errorContainer.classList.remove('hidden'); // Show error message
         } finally {
-            loadingIndicator.style.display = 'none';
+            loadingIndicator.style.display = 'none'; // Hide loading indicator
         }
     }
 
@@ -761,14 +798,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function setupWebSocket() {
         const socket = io('/dashboard', { reconnectionAttempts: 5, transports: ['websocket'] });
 
+        // Update connection status indicator
         const setStatus = (status, text) => {
             if (!realtimeStatus) return;
             const dot = realtimeStatus.querySelector('div');
             const span = realtimeStatus.querySelector('span');
 
+            // Reset classes
             dot.className = 'w-2 h-2 rounded-full';
-            realtimeStatus.classList.remove('bg-green-200', 'text-green-800', 'dark:bg-green-900', 'dark:text-green-200', 'bg-yellow-200', 'text-yellow-800', 'dark:bg-yellow-900', 'dark:text-yellow-200', 'bg-red-200', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
+            realtimeStatus.className = 'flex items-center gap-2 text-sm font-semibold px-3 py-1 rounded-full transition-colors duration-300'; // Reset base classes
 
+            // Apply new classes based on status
             switch (status) {
                 case 'connected':
                     dot.classList.add('bg-green-500');
@@ -786,13 +826,14 @@ document.addEventListener('DOMContentLoaded', () => {
             span.textContent = text;
         };
 
-        setStatus('reconnecting', i18n.connecting);
+        setStatus('reconnecting', i18n.connecting); // Initial status
 
         socket.on('connect', () => {
             console.log('Conectado ao dashboard em tempo real!');
             setStatus('connected', i18n.connected);
         });
 
+        // Update dashboard summary and charts on 'dashboard_update' event
         socket.on('dashboard_update', (data) => {
             if (data.summary) {
                 renderSummaryCards(data.summary);
@@ -800,10 +841,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        // Update active streams on 'active_streams_update' event
         socket.on('active_streams_update', (data) => {
             renderActiveStreamsDashboard(data.sessions);
         });
 
+        // Add new log entry on 'new_termination_log' event
         socket.on('new_termination_log', (log) => {
             prependTerminationLog(log);
         });
@@ -823,71 +866,81 @@ document.addEventListener('DOMContentLoaded', () => {
             setStatus('disconnected', i18n.disconnected);
         });
 
-        const progressContainer = document.getElementById('bulk-progress-container');
-        const progressBar = document.getElementById('bulk-progress-bar');
-        const progressText = document.getElementById('bulk-progress-text');
-        const progressPercent = document.getElementById('bulk-progress-percent');
+        // --- CORREÇÃO: WebSocket handlers for bulk notification progress ---
+        // Ensure progress elements exist before adding listeners
+        if (progressContainer && progressBar && progressText && progressPercent && sendBulkNotificationBtn && sendBulkBtnText) {
+            socket.on('bulk_notification_start', (data) => {
+                progressContainer.classList.remove('hidden'); // Make progress bar visible
+                sendBulkNotificationBtn.disabled = true;
+                sendBulkBtnText.textContent = i18n.sendingBulkNotification;
+                progressBar.style.width = '0%';
+                progressBar.classList.remove('bg-red-600', 'bg-green-600'); // Reset color
+                progressBar.classList.add('bg-blue-600');
+                progressPercent.textContent = '0%';
+                progressText.textContent = i18n.bulkSendProgress.replace('{current}', 0).replace('{total}', data.total);
+            });
 
-        socket.on('bulk_notification_start', (data) => {
-            progressContainer.classList.remove('hidden');
-            sendBulkNotificationBtn.disabled = true;
-            sendBulkBtnText.textContent = i18n.sendingBulkNotification;
-            progressBar.style.width = '0%';
-            progressBar.classList.remove('bg-red-600');
-            progressBar.classList.add('bg-blue-600');
-            progressPercent.textContent = '0%';
-            progressText.textContent = i18n.bulkSendProgress.replace('{current}', 0).replace('{total}', data.total);
-        });
+            socket.on('bulk_notification_progress', (data) => {
+                const percent = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+                progressBar.style.width = `${percent}%`;
+                progressPercent.textContent = `${percent}%`;
+                progressText.textContent = i18n.bulkSendProgress.replace('{current}', data.current).replace('{total}', data.total);
+            });
 
-        socket.on('bulk_notification_progress', (data) => {
-            const percent = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
-            progressBar.style.width = `${percent}%`;
-            progressPercent.textContent = `${percent}%`;
-            progressText.textContent = i18n.bulkSendProgress.replace('{current}', data.current).replace('{total}', data.total);
-        });
+            socket.on('bulk_notification_end', (data) => {
+                progressBar.style.width = '100%';
+                progressBar.classList.remove('bg-blue-600');
+                progressBar.classList.add('bg-green-600'); // Green on success
+                progressPercent.textContent = '100%';
+                progressText.textContent = i18n.bulkSendComplete; // Show completion message
+                showToast(i18n.bulkSendComplete, 'success');
+                // Reset UI after a delay
+                setTimeout(() => {
+                    sendBulkNotificationBtn.disabled = false;
+                    document.getElementById('bulk_message').value = ''; // Clear message
+                    // Reset target selection
+                    const targetActive = document.getElementById('target_active');
+                    if (targetActive) targetActive.checked = true;
+                    selectedUserIdsState.clear();
+                    updateSpecificUserLabel(0);
+                    updateSendButtonText(); // Update main button text
+                    if (openUserSelectionBtn) openUserSelectionBtn.disabled = true; // Disable select button
+                    progressContainer.classList.add('hidden'); // Hide progress bar
+                }, 3000); // 3-second delay before hiding
+            });
 
-        socket.on('bulk_notification_end', (data) => {
-            progressBar.style.width = '100%';
-            progressPercent.textContent = '100%';
-            progressText.textContent = i18n.bulkSendComplete;
-            showToast(i18n.bulkSendComplete, 'success');
-            setTimeout(() => {
-                sendBulkNotificationBtn.disabled = false;
-                document.getElementById('bulk_message').value = '';
-                // Reseta a seleção para 'active' e limpa o estado
-                const targetActive = document.getElementById('target_active');
-                if (targetActive) targetActive.checked = true;
-                selectedUserIdsState.clear();
-                updateSpecificUserLabel(0);
-                updateSendButtonText();
-                if (openUserSelectionBtn) openUserSelectionBtn.disabled = true; // Desabilita o botão
-                progressContainer.classList.add('hidden');
-            }, 3000);
-        });
-
-        socket.on('bulk_notification_error', (data) => {
-            showToast(`${i18n.bulkSendError}: ${data.message}`, 'error');
-            progressText.textContent = i18n.bulkSendError;
-            progressBar.classList.remove('bg-blue-600');
-            progressBar.classList.add('bg-red-600');
-            setTimeout(() => {
-                 sendBulkNotificationBtn.disabled = false;
-                updateSendButtonText(); // Atualiza texto do botão
-                progressContainer.classList.add('hidden');
-            }, 5000);
-        });
+            socket.on('bulk_notification_error', (data) => {
+                showToast(`${i18n.bulkSendError}: ${data.message}`, 'error');
+                progressText.textContent = i18n.bulkSendError;
+                progressBar.classList.remove('bg-blue-600');
+                progressBar.classList.add('bg-red-600'); // Red on error
+                // Reset UI after a delay on error as well
+                setTimeout(() => {
+                     sendBulkNotificationBtn.disabled = false;
+                    updateSendButtonText(); // Reset button text
+                    progressContainer.classList.add('hidden'); // Hide progress bar
+                }, 5000); // 5-second delay on error
+            });
+        } else {
+             console.error("Um ou mais elementos da barra de progresso não foram encontrados no DOM.");
+        }
+        // --- FIM DA CORREÇÃO ---
     }
 
     // --- EVENT LISTENERS ---
     window.addEventListener('themeChanged', () => {
+       // Avoid updating charts if dashboard isn't visible (e.g., during loading error)
        if(dashboardContainer.classList.contains('hidden')) return;
+
         const colors = getChartColors();
+        // Update monthly revenue chart colors
         if (monthlyRevenueChart) {
             monthlyRevenueChart.options.scales.y.ticks.color = colors.textColor;
             monthlyRevenueChart.options.scales.y.grid.color = colors.gridColor;
             monthlyRevenueChart.options.scales.x.ticks.color = colors.textColor;
             monthlyRevenueChart.update();
         }
+        // Update user status chart colors
         if (userStatusChart) {
             userStatusChart.data.datasets[0].borderColor = colors.tooltipBg;
             userStatusChart.options.plugins.legend.labels.color = colors.textColor;
@@ -895,37 +948,37 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Listener para as opções de destinatário
+    // Listener for target audience radio buttons
     if (targetOptionsDiv) {
         targetOptionsDiv.addEventListener('change', (e) => {
             if (e.target.name === 'notification_target') {
                 const selectedValue = e.target.value;
-                // Habilita/desabilita o botão 'Selecionar...'
+                // Enable/disable the 'Select...' button
                 if (openUserSelectionBtn) {
                    openUserSelectionBtn.disabled = (selectedValue !== 'specific');
                 }
-                // Limpa a seleção se mudar para outra opção
+                // Clear specific user selection if another option is chosen
                 if (selectedValue !== 'specific') {
                    selectedUserIdsState.clear();
                    updateSpecificUserLabel(0);
                 }
-                updateSendButtonText(); // Atualiza o texto do botão principal
+                updateSendButtonText(); // Update the main send button's text
             }
         });
     }
-    
-    // Listener para o NOVO botão 'Selecionar...'
+
+    // Listener for the 'Select...' button
     if (openUserSelectionBtn) {
         openUserSelectionBtn.addEventListener('click', () => {
-            // Garante que o radio 'specific' esteja marcado
+            // Ensure the 'specific' radio button is checked when opening the modal
             const targetSpecific = document.getElementById('target_specific');
             if (targetSpecific) targetSpecific.checked = true;
-            // Abre o modal
+            // Open the user selection modal
             openUserSelectionModal();
         });
     }
 
-    // Listener do botão principal de envio
+    // Listener for the main send button
     if (sendBulkNotificationBtn) {
         sendBulkNotificationBtn.addEventListener('click', () => {
             const message = document.getElementById('bulk_message').value;
@@ -934,6 +987,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            // Determine selected target audience
             const selectedTargetInput = document.querySelector('input[name="notification_target"]:checked');
             if (!selectedTargetInput) {
                  showToast('Por favor, selecione um público-alvo.', 'error');
@@ -941,6 +995,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const targetAudience = selectedTargetInput.value;
 
+            // Prepare confirmation modal text and payload
             let title = i18n.sendToAllActive;
             let confirmationMessage = i18n.confirmBulkSendMessage;
             let payload = { message, target_audience: targetAudience };
@@ -949,36 +1004,39 @@ document.addEventListener('DOMContentLoaded', () => {
             if (targetAudience === 'blocked') title = i18n.sendToAllBlocked;
             if (targetAudience === 'all') title = i18n.sendToAllUsers;
             if (targetAudience === 'specific') {
-                selectedUserIds = Array.from(selectedUserIdsState); // Lê do estado global
+                selectedUserIds = Array.from(selectedUserIdsState); // Read from global state
                 if (selectedUserIds.length === 0) {
-                    // Abre o modal se tentar enviar sem selecionar ninguém
+                    // Prompt user to select if none are chosen
                     showToast(i18n.selectAtLeastOneUser, 'warning');
-                    openUserSelectionModal();
+                    openUserSelectionModal(); // Re-open modal
                     return;
                 }
                 title = i18n.sendToSpecificUsers.replace('{count}', selectedUserIds.length);
                 confirmationMessage = i18n.confirmBulkSendSpecificMessage.replace('{count}', selectedUserIds.length);
-                payload.user_ids = selectedUserIds; // Adiciona IDs ao payload
+                payload.user_ids = selectedUserIds; // Add IDs to payload
             }
 
+            // Show confirmation modal before sending
             createModal('confirmationModal', title,
                 `<p>${confirmationMessage}</p>`,
                 `<button id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmSendButton}</button>
                  <button id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
             );
 
-            // Adiciona listeners aos botões do confirmationModal (assumindo que createModal não os fecha)
+            // Add listeners to confirmation modal buttons
             const confirmBtn = document.getElementById('modalConfirm');
             const cancelBtn = document.getElementById('modalCancel');
             const confirmationModal = document.getElementById('confirmationModal');
 
             if (confirmBtn) {
                 confirmBtn.onclick = async () => {
-                   if (confirmationModal) confirmationModal.classList.add('hidden');
+                   if (confirmationModal) confirmationModal.classList.add('hidden'); // Hide modal on confirm
                    try {
-                       // O payload já contém user_ids se targetAudience for 'specific'
+                       // Make the API call to start the bulk notification task
                        const result = await fetchAPI(urls.bulkNotifyUrl, 'POST', payload);
-                       // Não mostramos toast aqui, esperamos o evento do socket 'bulk_notification_start'
+                       // Don't show toast here; wait for the 'bulk_notification_start' socket event
+                       // if (result.success) showToast(result.message, 'info');
+                       // else showToast(result.message, 'error');
                    } catch (error) {
                        showToast(error.message, 'error');
                    }
@@ -986,14 +1044,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (cancelBtn) {
                 cancelBtn.onclick = () => {
-                    if (confirmationModal) confirmationModal.classList.add('hidden');
+                    if (confirmationModal) confirmationModal.classList.add('hidden'); // Hide modal on cancel
                 }
             }
         });
     }
 
+    // Listener for the "Clear All Logs" button
     if (clearAllLogsBtn) {
         clearAllLogsBtn.addEventListener('click', () => {
+            // Show confirmation modal before clearing
             createModal('confirmationModal', i18n.confirmClearLogsTitle,
                 `<p>${i18n.confirmClearLogsMessage}</p>`,
                 `<button id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmClearLogsButton}</button>
@@ -1007,7 +1067,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (confirmBtn) {
                 confirmBtn.onclick = () => {
                     if (confirmationModal) confirmationModal.classList.add('hidden');
-                    handleClearAllLogs();
+                    handleClearAllLogs(); // Call function to clear logs
                 };
             }
             if (cancelBtn) {
@@ -1018,10 +1078,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Event delegation for deleting individual logs
     document.getElementById('auditLogContainer')?.addEventListener('click', (e) => {
         const deleteButton = e.target.closest('.delete-log-btn');
         if (deleteButton) {
-            const logId = deleteButton.parentElement.dataset.logId;
+            const logId = deleteButton.closest('[data-log-id]').dataset.logId;
+            // Show confirmation modal before deleting
             createModal('confirmationModal', i18n.confirmDeleteLogTitle,
                 `<p>${i18n.confirmDeleteLogMessage}</p>`,
                 `<button id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmDeleteLogButton}</button>
@@ -1035,7 +1097,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (confirmBtn) {
                 confirmBtn.onclick = () => {
                     if (confirmationModal) confirmationModal.classList.add('hidden');
-                    handleDeleteLog(logId);
+                    handleDeleteLog(logId); // Call function to delete specific log
                 };
             }
             if (cancelBtn) {
@@ -1047,7 +1109,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- INICIALIZAÇÃO ---
-    loadDashboardData();
-    setupWebSocket();
+    loadDashboardData(); // Initial data load
+    setupWebSocket();    // Start WebSocket connection
 });
-
