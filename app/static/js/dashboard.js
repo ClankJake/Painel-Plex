@@ -10,6 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendBulkNotificationBtn = document.getElementById('send-bulk-notification-btn');
     const sendBulkBtnText = document.getElementById('send-bulk-btn-text');
     const clearAllLogsBtn = document.getElementById('clear-all-logs-btn');
+    const targetOptionsDiv = document.getElementById('target-options');
+    // Novo botão para abrir o modal
+    const openUserSelectionBtn = document.getElementById('open-user-selection-modal-btn');
 
     const scriptTag = document.getElementById('dashboard-script');
     const urls = {};
@@ -31,6 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let userStatusChart = null;
     let activeTimers = {}; // Para controlar os temporizadores de progresso
     let timeAgoInterval = null;
+    let allUsersForSelection = []; // Cache para lista de usuários
+    let selectedUserIdsState = new Set(); // Estado para armazenar IDs selecionados
 
     // --- FUNÇÕES AUXILIARES ---
     function getChartColors() {
@@ -63,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     }
-    
+
     function formatTimeAgo(date) {
         const now = new Date();
         const seconds = Math.floor((now - date) / 1000);
@@ -81,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (seconds < 5) return `agora mesmo`;
         return `${Math.floor(seconds)}s atrás`;
     }
-    
+
     // --- LÓGICA DE RENDERIZAÇÃO ---
     function createSummaryCard(id, icon, label, value, colorClass, isButton = false) {
         const tag = isButton ? 'button' : 'div';
@@ -150,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
         }
-        
+
         if (userStatusCanvas) {
             const data = [summary.active_users, summary.blocked_users];
             if (userStatusChart) {
@@ -263,7 +268,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="platform-icon platform-${platform_icon_name} flex-shrink-0" title="${s.platform}"></div>
                 </div>
-                
+
                 ${streamDetailsHtml}
 
                 <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 pt-1">
@@ -285,9 +290,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const section = document.getElementById('active-streams-section');
         const container = document.getElementById('activeStreamsContainer');
         if (!section || !container) return;
-    
+
         const newSessionKeys = new Set(sessions.map(s => s.session_key));
-    
+
         // 1. Remove cartões de sessões que não existem mais
         container.querySelectorAll('.stream-card').forEach(card => {
             const key = card.dataset.sessionKey;
@@ -297,10 +302,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 delete activeTimers[key];
             }
         });
-    
+
         if (sessions && sessions.length > 0) {
             section.classList.remove('hidden');
-    
+
             // 2. Adiciona ou atualiza os cartões de sessão
             sessions.forEach(s => {
                 let card = container.querySelector(`[data-session-key="${s.session_key}"]`);
@@ -316,17 +321,17 @@ document.addEventListener('DOMContentLoaded', () => {
             section.classList.add('hidden');
             container.innerHTML = '';
         }
-    
+
         // 3. Gerencia os timers para a animação suave
         sessions.forEach(s => {
             const timer = activeTimers[s.session_key];
-    
+
             if (timer) {
                 // Sincroniza com os dados do servidor
                 timer.view_offset = s.view_offset;
                 timer.duration = s.duration;
                 timer.last_updated = Date.now();
-    
+
                 if (s.state !== 'playing' && timer.interval) {
                     clearInterval(timer.interval);
                     timer.interval = null;
@@ -354,13 +359,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 clearInterval(this);
                 return;
             };
-            
+
             const elapsedSinceUpdate = Date.now() - timer.last_updated;
             const current_offset = timer.view_offset + elapsedSinceUpdate;
-            
+
             const timeEl = document.getElementById(`time-${sessionKey}`);
             const progressEl = document.getElementById(`progress-${sessionKey}`);
-            
+
             if (timeEl) timeEl.textContent = `${formatTime(current_offset)}/${formatTime(timer.duration)}`;
             if (progressEl && timer.duration > 0) {
                 progressEl.style.width = `${Math.min(100, (current_offset / timer.duration) * 100)}%`;
@@ -368,7 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
     }
 
-    // --- FUNÇÕES DE LOG DE AUDITORIA COM CORREÇÕES ---
+    // --- FUNÇÕES DE LOG DE AUDITORIA ---
     function updateLogTimestamps() {
         document.querySelectorAll('.log-time-ago').forEach(el => {
             const timestamp = el.dataset.timestamp;
@@ -398,7 +403,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function createTerminationLogRow(log) {
-        const timeAgo = formatTimeAgo(new Date(log.timestamp + 'Z')); 
+        const timeAgo = formatTimeAgo(new Date(log.timestamp + 'Z'));
         const isBlocked = log.reason.startsWith('blocked');
         const icon = isBlocked
             ? `<svg class="w-5 h-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm-2.5 8V5.5a2.5 2.5 0 115 0V9h-5z" clip-rule="evenodd" /></svg>`
@@ -435,7 +440,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         container.innerHTML = logs.map(log => createTerminationLogRow(log)).join('');
         if (clearAllLogsBtn) clearAllLogsBtn.disabled = false;
-        
+
         if (timeAgoInterval) clearInterval(timeAgoInterval);
         timeAgoInterval = setInterval(updateLogTimestamps, 30000);
     }
@@ -443,15 +448,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function prependTerminationLog(log) {
         const container = document.getElementById('auditLogContainer');
         if (!container) return;
-        
+
         const placeholder = container.querySelector('p');
         if (placeholder) {
             placeholder.remove();
         }
-        
+
         const newRowHtml = createTerminationLogRow(log);
         container.insertAdjacentHTML('afterbegin', newRowHtml);
-        
+
         while (container.children.length > 20) {
             container.lastElementChild.remove();
         }
@@ -491,6 +496,226 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- LÓGICA DE SELEÇÃO DE USUÁRIOS (MODAL) ---
+
+    function updateSpecificUserLabel(count) {
+        const countSpan = document.getElementById('target-specific-count');
+        if (!countSpan) return;
+
+        if (count > 0) {
+            countSpan.textContent = ` (${count} ${i18n.selected})`;
+        } else {
+            countSpan.textContent = '';
+        }
+    }
+
+    function openUserSelectionModal() {
+        const modalId = 'userSelectionModal';
+        const modalTitle = i18n.selectUsers;
+
+        // IDs únicos para os elementos internos do modal
+        const searchInputId = 'bulk-notify-search-input';
+        const listId = 'bulk-notify-selection-list';
+        const selectAllId = 'bulk-notify-select-all';
+        const countId = 'bulk-notify-selected-count';
+        const deselectAllId = 'bulk-notify-deselect-all';
+        const confirmBtnId = 'bulk-notify-confirm';
+        const cancelBtnId = 'bulk-notify-cancel';
+
+        const modalBody = `
+            <div class="relative mb-3">
+                <input type="search" id="${searchInputId}" placeholder="${i18n.searchUsers}" class="w-full p-2 pl-8 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                    <svg class="h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" /></svg>
+                </div>
+            </div>
+            <div id="${listId}" class="overflow-y-auto bg-gray-100 dark:bg-gray-900/50 p-2 rounded-lg border border-gray-300 dark:border-gray-600" style="max-height: 40vh;">
+                <!-- Conteúdo será carregado... -->
+            </div>
+            <div class="flex justify-between items-center text-xs mt-2 px-1">
+                <button type="button" id="${selectAllId}" class="text-blue-500 hover:underline">${i18n.selectAll}</button>
+                <span id="${countId}">0 ${i18n.selected}</span>
+                <button type="button" id="${deselectAllId}" class="text-blue-500 hover:underline">${i18n.deselectAll}</button>
+            </div>
+        `;
+        const modalFooter = `
+            <button id="${confirmBtnId}" class="btn bg-yellow-500 text-white">${i18n.confirmSelection}</button>
+            <button id="${cancelBtnId}" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>
+        `;
+
+        // 1. Chama createModal para preencher o HTML
+        createModal(modalId, modalTitle, modalBody, modalFooter);
+
+        // 2. AGORA, obtenha o elemento do modal (que 'createModal' encontrou e mostrou)
+        const modalElement = document.getElementById(modalId);
+        if (!modalElement) {
+            console.error("Falha ao encontrar o elemento do modal preenchido.");
+            return;
+        }
+
+        // 3. Encontre os elementos INTERNOS usando querySelector RELATIVO ao modalElement
+        const searchInput = modalElement.querySelector(`#${searchInputId}`);
+        const userList = modalElement.querySelector(`#${listId}`);
+        const selectAll = modalElement.querySelector(`#${selectAllId}`);
+        const deselectAll = modalElement.querySelector(`#${deselectAllId}`);
+        const countSpan = modalElement.querySelector(`#${countId}`);
+        const confirmBtn = modalElement.querySelector(`#${confirmBtnId}`);
+        const cancelBtn = modalElement.querySelector(`#${cancelBtnId}`);
+        const closeBtn = modalElement.querySelector('.modal-close'); // O botão 'X'
+
+        // Estado temporário para o modal
+        const tempSelectedIds = new Set(selectedUserIdsState);
+
+        const updateModalCount = () => {
+            if (!countSpan) return;
+            const selectedCount = tempSelectedIds.size;
+            countSpan.textContent = `${selectedCount} ${i18n.selected}`;
+        };
+
+        const renderModalUserList = (users) => {
+            if (!userList) return;
+            if (users.length === 0) {
+                userList.innerHTML = `<p class="text-gray-400 text-sm p-2">${i18n.noUsersToSelect}</p>`;
+                return;
+            }
+            userList.innerHTML = users.map(user => {
+                const isChecked = tempSelectedIds.has(user.id);
+                return `
+                    <label class="flex items-center p-2 rounded cursor-pointer gap-2 hover:bg-gray-200 dark:hover:bg-gray-700">
+                        <input type="checkbox" value="${user.id}" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500" ${isChecked ? 'checked' : ''}>
+                        <span class="text-sm text-gray-700 dark:text-gray-300">${user.username}</span>
+                    </label>
+                `;
+            }).join('');
+            updateModalCount();
+        };
+
+        const filterModalUserList = () => {
+            if (!searchInput) return;
+            const searchTerm = searchInput.value.toLowerCase();
+            const filteredUsers = allUsersForSelection.filter(user =>
+                user.username.toLowerCase().includes(searchTerm) ||
+                (user.email && user.email.toLowerCase().includes(searchTerm))
+            );
+            renderModalUserList(filteredUsers);
+        };
+
+        // 4. Adiciona os event listeners (com verificações)
+        if (searchInput) {
+            searchInput.addEventListener('input', filterModalUserList);
+        }
+
+        if (userList) {
+            userList.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const id = parseInt(e.target.value);
+                    if (e.target.checked) {
+                        tempSelectedIds.add(id);
+                    } else {
+                        tempSelectedIds.delete(id);
+                    }
+                    updateModalCount();
+                }
+            });
+        }
+
+        if (selectAll) {
+            selectAll.addEventListener('click', () => {
+                if (!userList) return;
+                userList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    if (!cb.checked) {
+                        cb.checked = true;
+                        tempSelectedIds.add(parseInt(cb.value));
+                    }
+                });
+                updateModalCount();
+            });
+        }
+
+        if (deselectAll) {
+            deselectAll.addEventListener('click', () => {
+                if (!userList) return;
+                userList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    if (cb.checked) {
+                        cb.checked = false;
+                        tempSelectedIds.delete(parseInt(cb.value));
+                    }
+                });
+                updateModalCount();
+            });
+        }
+
+        const closeModal = (forceResetRadio = false) => {
+            modalElement.classList.add('hidden');
+            // Se cancelou e não havia nada selecionado antes, volta para 'active'
+            if (forceResetRadio && selectedUserIdsState.size === 0) {
+                 const targetActive = document.getElementById('target_active');
+                 if (targetActive) targetActive.checked = true;
+                 if (openUserSelectionBtn) openUserSelectionBtn.disabled = true;
+                 updateSendButtonText();
+            }
+        };
+
+        if (confirmBtn) {
+            confirmBtn.onclick = () => {
+                selectedUserIdsState = tempSelectedIds; // Confirma as alterações
+                updateSpecificUserLabel(selectedUserIdsState.size);
+                updateSendButtonText();
+                closeModal();
+            };
+        }
+
+        if (cancelBtn) {
+            cancelBtn.onclick = () => closeModal(true); // Descarta as alterações (tempSelectedIds) e força reset se necessário
+        }
+
+        if (closeBtn) {
+             closeBtn.onclick = () => closeModal(true); // Botão 'X', força reset se necessário
+        }
+
+
+        // Carregar dados no MODAL
+        const loadUsersIntoModal = async () => {
+            if (!userList) return;
+            userList.innerHTML = `<p class="text-gray-400 text-sm p-2">${i18n.loadingUsers}</p>`;
+            try {
+                if (allUsersForSelection.length === 0) { // Carrega do cache se disponível
+                    const result = await fetchAPI(urls.listUsersUrl);
+                    if (result.success && result.users) {
+                        allUsersForSelection = result.users;
+                    } else {
+                        throw new Error(result.message || i18n.errorLoadingUsers);
+                    }
+                }
+                renderModalUserList(allUsersForSelection); // Renderiza a lista completa
+            } catch (error) {
+                userList.innerHTML = `<p class="text-red-400 text-sm p-2">${error.message}</p>`;
+            }
+        };
+        loadUsersIntoModal();
+    }
+
+
+    function updateSendButtonText() {
+        if (!targetOptionsDiv || !sendBulkBtnText) return;
+        const selectedTargetInput = targetOptionsDiv.querySelector('input[name="notification_target"]:checked');
+        if (!selectedTargetInput) return; // Sai se nada estiver selecionado
+
+        const selectedTarget = selectedTargetInput.value;
+        let buttonText = i18n.sendToAllActive; // Padrão
+
+        if (selectedTarget === 'blocked') {
+            buttonText = i18n.sendToAllBlocked;
+        } else if (selectedTarget === 'all') {
+            buttonText = i18n.sendToAllUsers;
+        } else if (selectedTarget === 'specific') {
+            const count = selectedUserIdsState.size; // Lê do estado global
+            buttonText = i18n.sendToSpecificUsers.replace('{count}', count);
+        }
+        sendBulkBtnText.textContent = buttonText;
+    }
+
+    // --- CARREGAMENTO INICIAL ---
     async function loadDashboardData() {
         loadingIndicator.style.display = 'block';
         dashboardContainer.classList.add('hidden');
@@ -518,7 +743,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (streamsData.success) {
                 renderActiveStreamsDashboard(streamsData.sessions);
             }
-            
+
             if (auditData.success) {
                 renderTerminationLogs(auditData.logs);
             }
@@ -540,7 +765,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!realtimeStatus) return;
             const dot = realtimeStatus.querySelector('div');
             const span = realtimeStatus.querySelector('span');
-            
+
             dot.className = 'w-2 h-2 rounded-full';
             realtimeStatus.classList.remove('bg-green-200', 'text-green-800', 'dark:bg-green-900', 'dark:text-green-200', 'bg-yellow-200', 'text-yellow-800', 'dark:bg-yellow-900', 'dark:text-yellow-200', 'bg-red-200', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
 
@@ -574,7 +799,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderCharts(data.summary);
             }
         });
-        
+
         socket.on('active_streams_update', (data) => {
             renderActiveStreamsDashboard(data.sessions);
         });
@@ -587,7 +812,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn('Desconectado do dashboard em tempo real.');
             setStatus('disconnected', i18n.disconnected);
         });
-        
+
         socket.on('reconnect_attempt', () => {
             console.log('Tentando reconectar...');
             setStatus('reconnecting', i18n.reconnecting);
@@ -628,13 +853,18 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast(i18n.bulkSendComplete, 'success');
             setTimeout(() => {
                 sendBulkNotificationBtn.disabled = false;
-                sendBulkBtnText.textContent = i18n.sendToAllActive;
-                progressContainer.classList.add('hidden');
                 document.getElementById('bulk_message').value = '';
-                document.getElementById('target_active').checked = true;
+                // Reseta a seleção para 'active' e limpa o estado
+                const targetActive = document.getElementById('target_active');
+                if (targetActive) targetActive.checked = true;
+                selectedUserIdsState.clear();
+                updateSpecificUserLabel(0);
+                updateSendButtonText();
+                if (openUserSelectionBtn) openUserSelectionBtn.disabled = true; // Desabilita o botão
+                progressContainer.classList.add('hidden');
             }, 3000);
         });
-        
+
         socket.on('bulk_notification_error', (data) => {
             showToast(`${i18n.bulkSendError}: ${data.message}`, 'error');
             progressText.textContent = i18n.bulkSendError;
@@ -642,7 +872,7 @@ document.addEventListener('DOMContentLoaded', () => {
             progressBar.classList.add('bg-red-600');
             setTimeout(() => {
                  sendBulkNotificationBtn.disabled = false;
-                sendBulkBtnText.textContent = i18n.sendToAllActive;
+                updateSendButtonText(); // Atualiza texto do botão
                 progressContainer.classList.add('hidden');
             }, 5000);
         });
@@ -664,19 +894,38 @@ document.addEventListener('DOMContentLoaded', () => {
             userStatusChart.update();
         }
     });
-    
-    document.querySelectorAll('input[name="notification_target"]').forEach((radio) => {
-        radio.addEventListener('change', function() {
-            if (this.value === 'blocked') {
-                sendBulkBtnText.textContent = i18n.sendToAllBlocked;
-            } else if (this.value === 'all') {
-                sendBulkBtnText.textContent = i18n.sendToAllUsers;
-            } else { // active
-                sendBulkBtnText.textContent = i18n.sendToAllActive;
+
+    // Listener para as opções de destinatário
+    if (targetOptionsDiv) {
+        targetOptionsDiv.addEventListener('change', (e) => {
+            if (e.target.name === 'notification_target') {
+                const selectedValue = e.target.value;
+                // Habilita/desabilita o botão 'Selecionar...'
+                if (openUserSelectionBtn) {
+                   openUserSelectionBtn.disabled = (selectedValue !== 'specific');
+                }
+                // Limpa a seleção se mudar para outra opção
+                if (selectedValue !== 'specific') {
+                   selectedUserIdsState.clear();
+                   updateSpecificUserLabel(0);
+                }
+                updateSendButtonText(); // Atualiza o texto do botão principal
             }
         });
-    });
+    }
+    
+    // Listener para o NOVO botão 'Selecionar...'
+    if (openUserSelectionBtn) {
+        openUserSelectionBtn.addEventListener('click', () => {
+            // Garante que o radio 'specific' esteja marcado
+            const targetSpecific = document.getElementById('target_specific');
+            if (targetSpecific) targetSpecific.checked = true;
+            // Abre o modal
+            openUserSelectionModal();
+        });
+    }
 
+    // Listener do botão principal de envio
     if (sendBulkNotificationBtn) {
         sendBulkNotificationBtn.addEventListener('click', () => {
             const message = document.getElementById('bulk_message').value;
@@ -684,32 +933,62 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('Por favor, escreva uma mensagem para enviar.', 'error');
                 return;
             }
-            
-            const targetAudience = document.querySelector('input[name="notification_target"]:checked').value;
+
+            const selectedTargetInput = document.querySelector('input[name="notification_target"]:checked');
+            if (!selectedTargetInput) {
+                 showToast('Por favor, selecione um público-alvo.', 'error');
+                return;
+            }
+            const targetAudience = selectedTargetInput.value;
+
             let title = i18n.sendToAllActive;
+            let confirmationMessage = i18n.confirmBulkSendMessage;
+            let payload = { message, target_audience: targetAudience };
+            let selectedUserIds = [];
+
             if (targetAudience === 'blocked') title = i18n.sendToAllBlocked;
             if (targetAudience === 'all') title = i18n.sendToAllUsers;
+            if (targetAudience === 'specific') {
+                selectedUserIds = Array.from(selectedUserIdsState); // Lê do estado global
+                if (selectedUserIds.length === 0) {
+                    // Abre o modal se tentar enviar sem selecionar ninguém
+                    showToast(i18n.selectAtLeastOneUser, 'warning');
+                    openUserSelectionModal();
+                    return;
+                }
+                title = i18n.sendToSpecificUsers.replace('{count}', selectedUserIds.length);
+                confirmationMessage = i18n.confirmBulkSendSpecificMessage.replace('{count}', selectedUserIds.length);
+                payload.user_ids = selectedUserIds; // Adiciona IDs ao payload
+            }
 
-            createModal('confirmationModal', title, 
-                `<p>${i18n.confirmBulkSendMessage}</p>`,
+            createModal('confirmationModal', title,
+                `<p>${confirmationMessage}</p>`,
                 `<button id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmSendButton}</button>
                  <button id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
             );
-            
-            document.getElementById('modalConfirm').onclick = async () => {
-               document.getElementById('confirmationModal').classList.add('hidden');
-               try {
-                   const payload = { 
-                       message, 
-                       target_audience: targetAudience
-                   };
-                   const result = await fetchAPI(urls.bulkNotifyUrl, 'POST', payload);
-                   showToast(result.message, result.success ? 'success' : 'error');
-               } catch (error) {
-                   showToast(error.message, 'error');
-               }
-            };
-            document.getElementById('modalCancel').onclick = () => document.getElementById('confirmationModal').classList.add('hidden');
+
+            // Adiciona listeners aos botões do confirmationModal (assumindo que createModal não os fecha)
+            const confirmBtn = document.getElementById('modalConfirm');
+            const cancelBtn = document.getElementById('modalCancel');
+            const confirmationModal = document.getElementById('confirmationModal');
+
+            if (confirmBtn) {
+                confirmBtn.onclick = async () => {
+                   if (confirmationModal) confirmationModal.classList.add('hidden');
+                   try {
+                       // O payload já contém user_ids se targetAudience for 'specific'
+                       const result = await fetchAPI(urls.bulkNotifyUrl, 'POST', payload);
+                       // Não mostramos toast aqui, esperamos o evento do socket 'bulk_notification_start'
+                   } catch (error) {
+                       showToast(error.message, 'error');
+                   }
+                };
+            }
+            if (cancelBtn) {
+                cancelBtn.onclick = () => {
+                    if (confirmationModal) confirmationModal.classList.add('hidden');
+                }
+            }
         });
     }
 
@@ -721,11 +1000,21 @@ document.addEventListener('DOMContentLoaded', () => {
                  <button id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
             );
 
-            document.getElementById('modalConfirm').onclick = () => {
-                document.getElementById('confirmationModal').classList.add('hidden');
-                handleClearAllLogs();
-            };
-            document.getElementById('modalCancel').onclick = () => document.getElementById('confirmationModal').classList.add('hidden');
+            const confirmBtn = document.getElementById('modalConfirm');
+            const cancelBtn = document.getElementById('modalCancel');
+            const confirmationModal = document.getElementById('confirmationModal');
+
+            if (confirmBtn) {
+                confirmBtn.onclick = () => {
+                    if (confirmationModal) confirmationModal.classList.add('hidden');
+                    handleClearAllLogs();
+                };
+            }
+            if (cancelBtn) {
+                cancelBtn.onclick = () => {
+                    if (confirmationModal) confirmationModal.classList.add('hidden');
+                };
+            }
         });
     }
 
@@ -739,11 +1028,21 @@ document.addEventListener('DOMContentLoaded', () => {
                  <button id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
             );
 
-            document.getElementById('modalConfirm').onclick = () => {
-                document.getElementById('confirmationModal').classList.add('hidden');
-                handleDeleteLog(logId);
-            };
-            document.getElementById('modalCancel').onclick = () => document.getElementById('confirmationModal').classList.add('hidden');
+            const confirmBtn = document.getElementById('modalConfirm');
+            const cancelBtn = document.getElementById('modalCancel');
+            const confirmationModal = document.getElementById('confirmationModal');
+
+            if (confirmBtn) {
+                confirmBtn.onclick = () => {
+                    if (confirmationModal) confirmationModal.classList.add('hidden');
+                    handleDeleteLog(logId);
+                };
+            }
+            if (cancelBtn) {
+                cancelBtn.onclick = () => {
+                    if (confirmationModal) confirmationModal.classList.add('hidden');
+                };
+            }
         }
     });
 
