@@ -83,9 +83,9 @@ class NotifierManager:
         """Função unificada para substituir placeholders de forma segura."""
         if not template_str:
             return None
-        
+
         safe_placeholders = {k: str(v) if v is not None else '' for k, v in placeholders.items()}
-        
+
         if not is_json:
             try:
                 return template_str.format(**safe_placeholders)
@@ -107,7 +107,7 @@ class NotifierManager:
     def _prepare_and_send(self, event_type, user, user_profile, context):
         config = load_or_create_config()
         request_id = uuid.uuid4()
-        
+
         can_notify_telegram = config.get("TELEGRAM_ENABLED") and user_profile.get('telegram_user')
         can_notify_webhook = config.get("WEBHOOK_ENABLED") and user_profile.get('phone_number')
         can_notify_discord = config.get("DISCORD_ENABLED") and user_profile.get('discord_user_id')
@@ -121,7 +121,7 @@ class NotifierManager:
         renewal_price_str = config.get("RENEWAL_PRICE", "0.00")
         if str(user_screen_limit) in screen_prices:
             renewal_price_str = screen_prices[str(user_screen_limit)]
-        
+
         try:
             price_value = float(renewal_price_str.replace(',', '.'))
             formatted_price = f"R$ {price_value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -129,7 +129,7 @@ class NotifierManager:
             formatted_price = "N/A"
 
         plan_name = ngettext('%(num)d Tela', '%(num)d Telas', user_screen_limit) % {'num': user_screen_limit} if user_screen_limit > 0 else _("Plano Padrão")
-        
+
         payment_link = "#"
         if event_type != 'renewal' and user_profile.get('payment_token'):
             long_url = url_for('main.payment_page', token=user_profile['payment_token'], _external=True)
@@ -139,13 +139,13 @@ class NotifierManager:
             else: payment_link = long_url
 
         placeholders = {**self._build_placeholders('notification', user, user_profile, context), 'payment_link': payment_link, 'price': formatted_price, 'plan_name': plan_name}
-        
+
         if can_notify_telegram:
             template = config.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE")
             message = self._format_template(template, placeholders)
             if message:
                 self._send_telegram_notification(message, user_profile['telegram_user'], request_id)
-        
+
         if can_notify_webhook:
             template_str = config.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE")
             payload = self._format_template(template_str, placeholders, is_json=True)
@@ -166,7 +166,7 @@ class NotifierManager:
     def send_renewal_notification(self, user, new_expiration_date, user_profile):
         formatted_date = new_expiration_date.strftime('%d/%m/%Y')
         self._prepare_and_send('renewal', user, user_profile, {'new_date': formatted_date, 'date': formatted_date})
-        
+
     def send_trial_end_notification(self, user, user_profile):
         self._prepare_and_send('trial_end', user, user_profile, {})
 
@@ -177,13 +177,15 @@ class NotifierManager:
             'telegram_user': user_profile.get('telegram_user', ''), 'discord_user_id': user_profile.get('discord_user_id', ''),
             'phone_number': user_profile.get('phone_number', ''), **context
         }
-        
+
     def process_bulk_notification_task(self, task):
         from .. import extensions
         try:
             payload = json.loads(task.payload or '{}')
             message = payload.get('message')
             target_audience = payload.get('target_audience', 'active')
+            # Novo: Obtém a lista de IDs de utilizadores específicos, se existir
+            target_user_ids = payload.get('user_ids')
 
             if not message:
                 raise ValueError("A mensagem está vazia no payload da tarefa.")
@@ -192,15 +194,27 @@ class NotifierManager:
             if not all_plex_users:
                 raise ValueError("Não foi possível obter a lista de utilizadores do Plex.")
 
-            if target_audience == 'all':
+            # Determina a lista final de utilizadores a notificar
+            if target_audience == 'specific':
+                if target_user_ids:
+                    # Filtra pelos IDs específicos
+                    users_to_notify = [u for u in all_plex_users if u['id'] in target_user_ids]
+                    logger.info(f"A iniciar envio em massa para {len(users_to_notify)} utilizadores selecionados.")
+                else:
+                    logger.warning("Público 'specific' selecionado, mas nenhuma lista de IDs fornecida. Nenhuma notificação será enviada.")
+                    users_to_notify = []
+            elif target_audience == 'all':
                 users_to_notify = all_plex_users
+                logger.info(f"A iniciar envio em massa para todos os {len(users_to_notify)} utilizadores.")
             elif target_audience == 'blocked':
-                target_user_ids = {u['user_plex_id'] for u in extensions.data_manager.get_blocked_users_list()}
-                users_to_notify = [u for u in all_plex_users if u['id'] in target_user_ids]
+                blocked_ids = {u['user_plex_id'] for u in extensions.data_manager.get_blocked_users_list()}
+                users_to_notify = [u for u in all_plex_users if u['id'] in blocked_ids]
+                logger.info(f"A iniciar envio em massa para {len(users_to_notify)} utilizadores bloqueados.")
             else: # 'active' is the default
                 blocked_ids = {u['user_plex_id'] for u in extensions.data_manager.get_blocked_users_list()}
                 users_to_notify = [u for u in all_plex_users if u['id'] not in blocked_ids]
-            
+                logger.info(f"A iniciar envio em massa para {len(users_to_notify)} utilizadores ativos.")
+
             all_profiles = extensions.data_manager.get_all_user_profiles()
             profiles_map = {p['plex_user_id']: p for p in all_profiles}
 
@@ -212,10 +226,11 @@ class NotifierManager:
             processed_count = 0
             for user in users_to_notify:
                 profile = profiles_map.get(user['id'], {})
-                
+
                 has_contact = profile.get('telegram_user') or profile.get('discord_user_id') or profile.get('phone_number')
-                
+
                 if not has_contact:
+                    logger.debug(f"A saltar utilizador '{user['username']}' para notificação em massa - sem método de contacto.")
                     continue
 
                 context = {'message': message}
@@ -226,8 +241,8 @@ class NotifierManager:
                     extensions.data_manager.update_task(task.id, {'progress_current': processed_count})
                     if self.socketio:
                         self.socketio.emit('bulk_notification_progress', {'current': processed_count, 'total': total_users}, namespace='/dashboard')
-                
-                time.sleep(1)
+
+                time.sleep(1) # Pequena pausa para evitar sobrecarga
 
             extensions.data_manager.update_task(task.id, {'status': 'completed', 'completed_at': datetime.now(timezone.utc), 'result': f'{processed_count} notificações enviadas.'})
             if self.socketio:
@@ -242,24 +257,24 @@ class NotifierManager:
     def _prepare_and_send_bulk(self, user, user_profile, context):
         config = load_or_create_config()
         request_id = uuid.uuid4()
-        
+
         base_placeholders = self._build_placeholders('bulk', user, user_profile, {})
         raw_message_from_ui = context.get('message', '')
 
         try:
             formatted_message_from_ui = raw_message_from_ui.format(**base_placeholders)
         except KeyError as e:
-            logger.warning(f"Placeholder {e} inválido na mensagem em massa para '{user.get('username')}'. A usar mensagem sem formatação.")
+            logger.warning(f"Placeholder {e} inválido na mensagem em massa para '{user.get('username')}' (ID: {user.get('id')}). A usar mensagem sem formatação.")
             formatted_message_from_ui = raw_message_from_ui
 
         final_placeholders = {**base_placeholders, 'message': formatted_message_from_ui}
-        
+
         if config.get("TELEGRAM_ENABLED") and user_profile.get('telegram_user'):
             template = config.get("TELEGRAM_BULK_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get("TELEGRAM_BULK_MESSAGE_TEMPLATE")
             final_telegram_message = self._format_template(template, final_placeholders)
             if final_telegram_message:
                 self._send_telegram_notification(final_telegram_message, user_profile['telegram_user'], request_id)
-        
+
         if config.get("WEBHOOK_ENABLED") and user_profile.get('phone_number'):
             template_str = config.get("WEBHOOK_BULK_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get("WEBHOOK_BULK_MESSAGE_TEMPLATE")
             payload = self._format_template(template_str, final_placeholders, is_json=True)
@@ -271,4 +286,3 @@ class NotifierManager:
             payload = self._format_template(template_str, final_placeholders, is_json=True)
             if payload:
                 self._send_discord_notification(payload, request_id)
-
