@@ -2,62 +2,6 @@
 
 {% block title %}{{ _('Minha Conta') }} - {{ app_title }}{% endblock %}
 
-{% block extra_head %}
-<style>
-    .tab-button.active {
-        @apply border-yellow-500 text-yellow-600 dark:text-yellow-400;
-    }
-    .tab-content {
-        display: none;
-    }
-    .tab-content.active {
-        display: block;
-    }
-    .platform-icon {
-        width: 48px;
-        height: 48px;
-        border-radius: 0.5rem;
-        background-size: 60%;
-        background-repeat: no-repeat;
-        background-position: center;
-    }
-    /* Estilos de Plataforma Injetados */
-    .platform-alexa { background-color: #00caff; background-image: url(/static/images/platforms/alexa.svg); }
-    .platform-android { background-color: #3ddc84; background-image: url(/static/images/platforms/android.svg); }
-    .platform-atv { background-color: #a2aaad; background-image: url(/static/images/platforms/atv.svg); }
-    .platform-chrome { background-color: #db4437; background-image: url(/static/images/platforms/chrome.svg); }
-    .platform-chromecast { background-color: #4285f4; background-image: url(/static/images/platforms/chromecast.svg); }
-    .platform-default { background-color: #e5a00d; background-image: url(/static/images/platforms/default.svg); }
-    .platform-dlna { background-color: #4ba32f; background-image: url(/static/images/platforms/dlna.svg); }
-    .platform-firefox { background-color: #ff7139; background-image: url(/static/images/platforms/firefox.svg); }
-    .platform-gtv { background-color: #008bcf; background-image: url(/static/images/platforms/gtv.svg); }
-    .platform-ie { background-color: #18bcef; background-image: url(/static/images/platforms/ie.svg); }
-    .platform-ios { background-color: #a2aaad; background-image: url(/static/images/platforms/ios.svg); }
-    .platform-kodi { background-color: #30aada; background-image: url(/static/images/platforms/kodi.svg); }
-    .platform-lg { background-color: #990033; background-image: url(/static/images/platforms/lg.svg); }
-    .platform-linux { background-color: #0099cc; background-image: url(/static/images/platforms/linux.svg); }
-    .platform-macos { background-color: #a2aaad; background-image: url(/static/images/platforms/macos.svg); }
-    .platform-msedge { background-color: #0078d7; background-image: url(/static/images/platforms/msedge.svg); }
-    .platform-opera { background-color: #fa1e4e; background-image: url(/static/images/platforms/opera.svg); }
-    .platform-playstation { background-color: #003087; background-image: url(/static/images/platforms/playstation.svg); }
-    .platform-plex { background-color: #e5a00d; background-image: url(/static/images/platforms/plex.svg); }
-    .platform-plexamp { background-color: #e5a00d; background-image: url(/static/images/platforms/plexamp.svg); }
-    .platform-roku { background-color: #673293; background-image: url(/static/images/platforms/roku.svg); }
-    .platform-safari { background-color: #00d3f9; background-image: url(/static/images/platforms/safari.svg); }
-    .platform-samsung, .platform-tizen { background-color: #034ea2; background-image: url(/static/images/platforms/samsung.svg); }
-    .platform-synclounge { background-color: #151924; background-image: url(/static/images/platforms/synclounge.svg); }
-    .platform-tivo { background-color: #00a7e1; background-image: url(/static/images/platforms/tivo.svg); }
-    .platform-wiiu { background-color: #03a9f4; background-image: url(/static/images/platforms/wiiu.svg); }
-    .platform-windows { background-color: #0078d7; background-image: url(/static/images/platforms/windows.svg); }
-    .platform-wp { background-color: #68217a; background-image: url(/static/images/platforms/windows.svg); }
-    .platform-xbmc { background-color: #3b4872; background-image: url(/static/images/platforms/kodi.svg); }
-    .platform-xbox { background-color: #107c10; background-image: url(/static/images/platforms/xbox.svg); }
-    .filter-btn.active {
-        @apply bg-yellow-500 text-white dark:bg-yellow-600;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
     <div>
