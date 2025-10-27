@@ -51,6 +51,11 @@
     .animate-fade-in {
       animation: fadeIn 0.5s ease-out forwards;
     }
+    /* Estilos para a lista de seleção de usuários no MODAL */
+    #bulk-notify-selection-list { max-height: 40vh; } /* Corrigido ID */
+    #bulk-notify-selection-list label:hover { background-color: rgba(255, 255, 255, 0.05); } /* Corrigido ID */
+    #bulk-notify-selection-list::-webkit-scrollbar { width: 4px; } /* Corrigido ID */
+    #bulk-notify-selection-list::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 4px; } /* Corrigido ID */
 </style>
 {% endblock %}
 
@@ -91,7 +96,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Nova secção combinada para Avisos e Logs lado a lado -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <!-- Card de Avisos em Massa -->
@@ -105,7 +110,7 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">{{ _('Destinatários') }}</label>
-                    <div class="space-y-2">
+                    <div class="space-y-2" id="target-options">
                         <div class="flex items-center">
                             <input id="target_active" name="notification_target" type="radio" value="active" class="h-4 w-4 border-gray-300 text-yellow-600 focus:ring-yellow-500" checked>
                             <label for="target_active" class="ml-3 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ _('Utilizadores Ativos') }}</label>
@@ -118,8 +123,22 @@
                             <input id="target_all" name="notification_target" type="radio" value="all" class="h-4 w-4 border-gray-300 text-yellow-600 focus:ring-yellow-500">
                             <label for="target_all" class="ml-3 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ _('TODOS os Utilizadores (Ativos e Bloqueados)') }}</label>
                         </div>
+                        <!-- Opção de seleção com botão -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <input id="target_specific" name="notification_target" type="radio" value="specific" class="h-4 w-4 border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                                <label id="target-specific-label" for="target_specific" class="ml-3 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    {{ _('Utilizadores Selecionados') }}
+                                    <span id="target-specific-count" class="text-yellow-500 dark:text-yellow-400 font-semibold"></span>
+                                </label>
+                            </div>
+                            <!-- Botão Selecionar... com tamanho ajustado -->
+                            <button type="button" id="open-user-selection-modal-btn" class="btn bg-yellow-500 text-white ml-4 py-1 px-2 text-xs" disabled>
+                                {{ _('Selecionar...') }}
+                            </button>
+                        </div>
                     </div>
-                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ _('Nota: As mensagens só serão enviadas para utilizadores com um método de contacto registado.') }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ _('Nota: As mensagens só serão enviadas para utilizadores com um método de contacto registado.') }}</p>
                 </div>
 
                 <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -169,6 +188,41 @@
         </div>
     </div>
 </div>
+
+
+<!-- [INÍCIO] Esqueleto do Modal de Seleção de Utilizador -->
+<!-- Este modal é baseado na estrutura do 'confirmationModal' que deve estar em base.html -->
+<div id="userSelectionModal" class="fixed inset-0 z-50 overflow-y-auto hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen p-4 text-center">
+        <!-- Overlay -->
+        <div class="fixed inset-0 bg-gray-500/75 dark:bg-gray-900/75 transition-opacity" aria-hidden="true"></div>
+
+        <!-- Conteúdo do Modal -->
+        <div class="inline-block w-full max-w-lg p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white dark:bg-gray-800 shadow-xl rounded-2xl border border-gray-200 dark:border-gray-700">
+            <!-- Cabeçalho -->
+            <div class="flex justify-between items-center pb-3">
+                <h3 class="modal-title text-lg font-medium leading-6 text-gray-900 dark:text-white">{{ _('Selecionar Utilizadores') }}</h3>
+                <button type="button" class="modal-close p-1 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700">
+                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+
+            <!-- Corpo -->
+            <div class="modal-body mt-2">
+                <!-- O JS irá injetar o conteúdo (pesquisa, lista, etc.) aqui -->
+                <p>{{ _('A carregar...') }}</p>
+            </div>
+
+            <!-- Rodapé -->
+            <div class="modal-footer mt-4 flex justify-end space-x-3">
+                <!-- O JS irá injetar os botões (Confirmar, Cancelar) aqui -->
+            </div>
+        </div>
+    </div>
+</div>
+<!-- [FIM] Esqueleto do Modal -->
+
+
 {% endblock %}
 
 {% block scripts %}
@@ -186,6 +240,7 @@
         data-audit-logs-url="{{ url_for('system_api.get_termination_logs') }}"
         data-delete-log-base-url="{{ url_for('system_api.delete_termination_log', log_id=0) }}"
         data-clear-all-logs-url="{{ url_for('system_api.clear_all_termination_logs') }}"
+        data-list-users-url="{{ url_for('users_api.get_user_list') }}"
         data-i18n-active-streams="{{ _('Streams Ativos') }}"
         data-i18n-total-users="{{ _('Utilizadores Totais') }}"
         data-i18n-monthly-revenue="{{ _('Receita do Mês') }}"
@@ -209,13 +264,15 @@
         data-i18n-reconnecting="{{ _('A reconectar...') }}"
         data-i18n-disconnected="{{ _('Desconectado') }}"
         data-i18n-confirm-bulk-send-title="{{ _('Confirmar Envio em Massa') }}"
-        data-i18n-confirm-bulk-send-message="{{ _('Tem a certeza que deseja enviar esta mensagem? Esta ação não pode ser desfeita.') }}"
+        data-i18n-confirm-bulk-send-message="{{ _('Tem a certeza de que deseja enviar esta mensagem? Esta ação não pode ser desfeita.') }}"
+        data-i18n-confirm-bulk-send-specific-message="{{ _('Tem a certeza de que deseja enviar esta mensagem para os {count} usuários selecionados? Esta ação não pode ser desfeita.') }}"
         data-i18n-confirm-send-button="{{ _('Sim, Enviar') }}"
         data-i18n-cancel="{{ _('Cancelar') }}"
         data-i18n-sending-bulk-notification="{{ _('Enviando...') }}"
         data-i18n-send-to-all-active="{{ _('Enviar para Utilizadores Ativos') }}"
         data-i18n-send-to-all-blocked="{{ _('Enviar para Utilizadores Bloqueados') }}"
         data-i18n-send-to-all-users="{{ _('Enviar para TODOS os Utilizadores') }}"
+        data-i18n-send-to-specific-users="{{ _('Enviar para Selecionados ({count})') }}"
         data-i18n-bulk-send-started="{{ _('O envio em massa foi iniciado.') }}"
         data-i18n-bulk-send-complete="{{ _('Envio em massa concluído!') }}"
         data-i18n-bulk-send-progress="{{ _('Enviando {current} de {total}...') }}"
@@ -235,6 +292,17 @@
         data-i18n-confirm-delete-log-title="{{ _('Confirmar Exclusão') }}"
         data-i18n-confirm-delete-log-message="{{ _('Tem a certeza de que deseja apagar este log?') }}"
         data-i18n-confirm-delete-log-button="{{ _('Sim, Apagar') }}"
+        data-i18n-select-all="{{ _('Selecionar Todos') }}"
+        data-i18n-deselect-all="{{ _('Desmarcar Todos') }}"
+        data-i18n-selected="{{ _('selecionados') }}"
+        data-i18n-no-users-to-select="{{ _('Não há usuários para selecionar.') }}"
+        data-i18n-loading-users="{{ _('Carregando usuários...') }}"
+        data-i18n-error-loading-users="{{ _('Erro ao carregar usuários.') }}"
+        data-i18n-select-at-least-one-user="{{ _('Por favor, selecione pelo menos um usuário.') }}"
+        data-i18n-select-users="{{ _('Selecionar Utilizadores para Notificação') }}"
+        data-i18n-confirm-selection="{{ _('Confirmar Seleção') }}"
+        data-i18n-search-users="{{ _('Pesquisar utilizadores...') }}"
+        data-i18n-select-button-text="{{ _('Selecionar...') }}"
 ></script>
 {% endblock %}
 
