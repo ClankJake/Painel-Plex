@@ -55,7 +55,7 @@ def get_dashboard_summary():
     try:
         active_streams_data = plex_manager.get_active_sessions()
         active_streams = active_streams_data.get('stream_count', 0)
-            
+
         all_users = plex_manager.get_all_plex_users()
         total_users = len(all_users) if all_users else 0
         blocked_users_list = data_manager.get_blocked_users_list()
@@ -64,7 +64,7 @@ def get_dashboard_summary():
 
         now = datetime.now()
         financial_summary = data_manager.get_financial_summary(now.year, now.month, renewal_days=7)
-        
+
         summary_data = {
             "active_streams": active_streams,
             "total_users": total_users,
@@ -74,7 +74,7 @@ def get_dashboard_summary():
             "upcoming_renewals": len(financial_summary.get('upcoming_expirations', [])),
             "daily_revenue": financial_summary.get('daily_revenue', {})
         }
-        
+
         return jsonify({"success": True, "summary": summary_data})
     except Exception as e:
         logger.error(f"Erro ao obter o resumo do dashboard: {e}", exc_info=True)
@@ -162,10 +162,10 @@ def api_settings():
         new_data = request.json
         fields_to_update = [
             'APP_TITLE', 'LOG_LEVEL', 'DAYS_TO_REMOVE_BLOCKED_USER',
-            'EXPIRATION_NOTIFICATION_TIME', 'BLOCK_REMOVAL_TIME', 'WEBHOOK_URL', 'WEBHOOK_ENABLED', 
+            'EXPIRATION_NOTIFICATION_TIME', 'BLOCK_REMOVAL_TIME', 'WEBHOOK_URL', 'WEBHOOK_ENABLED',
             'WEBHOOK_AUTHORIZATION_HEADER', 'WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE', 'WEBHOOK_RENEWAL_MESSAGE_TEMPLATE',
             'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_ENABLED', 'TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE',
-            'TELEGRAM_RENEWAL_MESSAGE_TEMPLATE', 'DAYS_TO_NOTIFY_EXPIRATION', 'APP_BASE_URL', 
+            'TELEGRAM_RENEWAL_MESSAGE_TEMPLATE', 'DAYS_TO_NOTIFY_EXPIRATION', 'APP_BASE_URL',
             'TAUTULLI_URL', 'TAUTULLI_API_KEY',
             'EFI_CLIENT_ID', 'EFI_CLIENT_SECRET', 'EFI_CERTIFICATE', 'EFI_SANDBOX', 'EFI_PIX_KEY',
             'EFI_USE_MTLS', 'EFI_WEBHOOK_HMAC_SECRET',
@@ -190,7 +190,7 @@ def api_settings():
             'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED', 'TERMINATION_MSG_SCREEN_LIMIT'
         ]
         numeric_fields = [
-            'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION', 
+            'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION',
             'CLEANUP_PENDING_PAYMENTS_DAYS', 'IMAGE_CACHE_MAX_AGE_DAYS',
             'PAYMENT_LINK_GRACE_PERIOD_DAYS',
             'ACHIEVEMENT_MOVIE_MARATHON_BRONZE', 'ACHIEVEMENT_MOVIE_MARATHON_SILVER', 'ACHIEVEMENT_MOVIE_MARATHON_GOLD',
@@ -199,7 +199,7 @@ def api_settings():
             'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD',
             'STREAM_CHECK_INTERVAL_SECONDS'
         ]
-        
+
         if 'SCREEN_PRICES' in new_data:
             config_to_update['SCREEN_PRICES'] = new_data['SCREEN_PRICES']
         for field in fields_to_update:
@@ -229,7 +229,7 @@ def api_settings():
             logging.getLogger().setLevel(log_level_map.get(new_log_level, logging.INFO))
             app.logger.setLevel(log_level_map.get(new_log_level, logging.INFO))
             logger.info(f"Nível de log atualizado para {new_log_level}")
-        
+
         def reschedule_job(job_id, config_key, old_config, new_config, trigger_type='cron'):
             new_value = new_config.get(config_key)
             if new_value and new_value != old_config.get(config_key):
@@ -258,7 +258,7 @@ def api_settings():
 
         success, message = plex_manager.reload_connections()
         return jsonify({"success": success, "message": message})
-    
+
     # GET Request Logic
     config_to_send = load_or_create_config()
 
@@ -285,7 +285,7 @@ def api_settings():
     # Pop keys that should absolutely never be sent, even as length
     config_to_send.pop('SECRET_KEY', None)
     config_to_send.pop('INTERNAL_TRIGGER_KEY', None)
-    
+
     return jsonify(config_to_send)
 
 @system_api_bp.route('/setup/servers')
@@ -311,16 +311,16 @@ def get_plex_servers():
                     if http_uri not in processed_uris:
                         server_connections.append({"uri": http_uri, "local": c.local})
                         processed_uris.add(http_uri)
-                
+
                 if server_connections:
                     servers.append({
                         "name": r.name,
                         "connections": server_connections
                     })
-        
+
         if not servers:
             return jsonify({"success": True, "servers": [], "message": _("Nenhum servidor encontrado na sua conta Plex.")})
-            
+
         return jsonify({"success": True, "servers": servers, "token": token, "username": account.username})
     except Exception as e:
         logger.error(f"Erro ao buscar servidores Plex: {e}", exc_info=True)
@@ -343,7 +343,7 @@ def save_setup():
     tautulli_manager.reload_credentials()
     overseerr_manager.reload_config()
     efi_manager.reload_credentials() # Recarrega as credenciais da Efí
-    
+
     # **MELHORIA: Tenta configurar o webhook da Efí após o setup inicial**
     if config.get("EFI_ENABLED"):
         efi_manager.configure_webhook()
@@ -365,7 +365,7 @@ def save_setup():
 def test_tautulli_connection():
     if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
         return jsonify({'success': False, 'message': _('Acesso não autorizado.')}), 403
-    
+
     config = load_or_create_config()
     data = request.get_json()
     url = data.get('url')
@@ -381,16 +381,16 @@ def test_tautulli_connection():
         api_key = config.get('TAUTULLI_API_KEY')
         logger.info("Chave de API do Tautulli recebida como placeholder. A usar a chave guardada na configuração para o teste.")
 
-    if not api_key: 
+    if not api_key:
         return jsonify({'success': False, 'message': _('Chave da API é obrigatória.')}), 400
-    
+
     return jsonify(tautulli_manager.test_connection(url, api_key))
 
 @system_api_bp.route('/test/overseerr-connection', methods=['POST'])
 def test_overseerr_connection():
     if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
         return jsonify({'success': False, 'message': _('Acesso não autorizado.')}), 403
-    
+
     config = load_or_create_config()
     data = request.get_json()
     url = data.get('url')
@@ -416,9 +416,21 @@ def bulk_notify():
     data = request.get_json()
     message = data.get('message')
     target_audience = data.get('target_audience', 'active')
+    # Novo campo: Lista de IDs de utilizadores específicos
+    target_user_ids = data.get('user_ids')
 
     if not message:
         return jsonify({"success": False, "message": _("A mensagem não pode estar vazia.")}), 400
+
+    # Validação adicional se o target for específico
+    if target_audience == 'specific':
+        if not target_user_ids or not isinstance(target_user_ids, list):
+            return jsonify({"success": False, "message": _("Lista de IDs de utilizadores inválida ou ausente para o público 'specific'.")}), 400
+        # Garante que os IDs são inteiros
+        try:
+            target_user_ids = [int(uid) for uid in target_user_ids]
+        except (ValueError, TypeError):
+             return jsonify({"success": False, "message": _("Lista de IDs de utilizadores contém valores inválidos.")}), 400
 
     config = load_or_create_config()
     is_any_notifier_enabled = (
@@ -431,7 +443,8 @@ def bulk_notify():
 
     task_payload = {
         'message': message,
-        'target_audience': target_audience
+        'target_audience': target_audience,
+        'user_ids': target_user_ids if target_audience == 'specific' else None # Inclui IDs apenas se relevante
     }
     task = data_manager.create_task('bulk_notification', task_payload)
 
