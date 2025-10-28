@@ -73,6 +73,7 @@
 
 <div id="dashboardContainer" class="hidden space-y-8">
     <div id="summaryCards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Summary cards content will be injected by JS -->
     </div>
 
     <!-- Secção "Reproduzindo Agora" -->
@@ -80,7 +81,7 @@
         <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 h-full">
             <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Reproduzindo Agora') }}</h3>
             <div id="activeStreamsContainer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                <!-- Conteúdo será injetado pelo JS -->
+                <!-- Active streams content will be injected by JS -->
             </div>
         </div>
     </div>
@@ -129,21 +130,22 @@
                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ _('Nota: As mensagens só serão enviadas para utilizadores com um método de contacto registado.') }}</p>
                 </div>
 
-                <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <button type="button" id="send-bulk-notification-btn" class="btn bg-red-600 hover:bg-red-500 text-white w-full sm:w-auto shadow-lg shadow-red-500/20">
+                <!-- MELHORIA: Movido o container de progresso para aqui, inicialmente escondido -->
+                <div id="bulk-progress-container" class="w-full mt-4 hidden">
+                    <div class="flex justify-between mb-1">
+                        <span id="bulk-progress-text" class="text-sm font-medium text-gray-700 dark:text-white">{{ _('A iniciar...') }}</span>
+                        <span id="bulk-progress-percent" class="text-sm font-medium text-gray-700 dark:text-white">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                        <div id="bulk-progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-linear" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="pt-2 flex justify-end">
+                    <button type="button" id="send-bulk-notification-btn" class="btn bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-500/20">
                         <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086L2.279 16.76a.75.75 0 00.95.826l16-5.333a.75.75 0 000-1.418l-16-5.333z" /></svg>
                         <span id="send-bulk-btn-text">{{ _('Enviar para Utilizadores Ativos') }}</span>
                     </button>
-                    <!-- Barra de Progresso -->
-                    <div id="bulk-progress-container" class="w-full sm:w-1/2 hidden">
-                        <div class="flex justify-between mb-1">
-                            <span id="bulk-progress-text" class="text-sm font-medium text-gray-700 dark:text-white">{{ _('A iniciar...') }}</span>
-                            <span id="bulk-progress-percent" class="text-sm font-medium text-gray-700 dark:text-white">0%</span>
-                        </div>
-                        <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-                            <div id="bulk-progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-linear" style="width: 0%"></div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -155,7 +157,7 @@
                 <button id="clear-all-logs-btn" class="text-xs text-red-600 dark:text-red-400 hover:underline font-semibold" disabled>{{ _('Limpar Tudo') }}</button>
             </div>
             <div id="auditLogContainer" class="space-y-3 max-h-[450px] overflow-y-auto pr-2 flex-grow">
-                <!-- Conteúdo será injetado pelo JS -->
+                <!-- Audit logs content will be injected by JS -->
             </div>
         </div>
     </div>
@@ -163,7 +165,8 @@
     <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
         <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Saúde do Sistema') }}</h3>
         <div id="systemHealthContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            </div>
+            <!-- System health content will be injected by JS -->
+        </div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
@@ -296,5 +299,3 @@
         data-i18n-select-button-text="{{ _('Selecionar...') }}"
 ></script>
 {% endblock %}
-
-
