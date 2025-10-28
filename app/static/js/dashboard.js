@@ -11,13 +11,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendBulkBtnText = document.getElementById('send-bulk-btn-text');
     const clearAllLogsBtn = document.getElementById('clear-all-logs-btn');
     const targetOptionsDiv = document.getElementById('target-options');
-    // Novo botão para abrir o modal
     const openUserSelectionBtn = document.getElementById('open-user-selection-modal-btn');
-    // CORREÇÃO: Referências aos elementos da barra de progresso
-    const progressContainer = document.getElementById('bulk-progress-container');
-    const progressBar = document.getElementById('bulk-progress-bar');
-    const progressText = document.getElementById('bulk-progress-text');
-    const progressPercent = document.getElementById('bulk-progress-percent');
+
+    // CORREÇÃO: Elementos da barra de progresso serão obtidos DENTRO de setupWebSocket
 
     const scriptTag = document.getElementById('dashboard-script');
     const urls = {};
@@ -29,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const i18nKey = key.charAt(4).toLowerCase() + key.slice(5).replace(/-(\w)/g, (_, letter) => letter.toUpperCase());
                 i18n[i18nKey] = scriptTag.dataset[key];
             } else {
-                const urlKey = key.replace(/-(\w)/g, (_, letter) => letter.toUpperCase());
+                const urlKey = key.replace(/-(\w)/g, (match, letter) => letter.toUpperCase());
                 urls[urlKey] = scriptTag.dataset[key];
             }
         }
@@ -471,7 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Remove placeholder if it exists
         const placeholder = container.querySelector('p');
-        if (placeholder) {
+        if (placeholder && placeholder.textContent === i18n.noTerminatedSessions) {
             placeholder.remove();
         }
 
@@ -494,15 +490,21 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.success) {
                 // Animate removal and update UI
                 const logElement = document.querySelector(`[data-log-id="${logId}"]`);
-                logElement.style.opacity = '0';
-                setTimeout(() => {
-                    logElement.remove();
-                    const container = document.getElementById('auditLogContainer');
-                    // If list becomes empty, show placeholder
-                    if (container.children.length === 0) {
-                        renderTerminationLogs([]);
-                    }
-                }, 300); // Wait for animation
+                if (logElement) {
+                    logElement.style.transition = 'opacity 0.3s ease-out, max-height 0.3s ease-out';
+                    logElement.style.opacity = '0';
+                    logElement.style.maxHeight = '0';
+                    logElement.style.padding = '0'; // Remove padding smoothly
+                    logElement.style.margin = '0'; // Remove margin smoothly
+                    setTimeout(() => {
+                        logElement.remove();
+                        const container = document.getElementById('auditLogContainer');
+                        // If list becomes empty, show placeholder
+                        if (container && container.children.length === 0) {
+                            renderTerminationLogs([]);
+                        }
+                    }, 300); // Wait for animation
+                }
             }
         } catch (error) {
             showToast(error.message, 'error');
@@ -514,7 +516,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await fetchAPI(urls.clearAllLogsUrl, 'POST');
             showToast(result.message, result.success ? 'success' : 'error');
             if (result.success) {
-                renderTerminationLogs([]); // Clear the list visually
+                const container = document.getElementById('auditLogContainer');
+                if(container) {
+                    // Animate clearing all logs
+                    Array.from(container.children).forEach((child, index) => {
+                         setTimeout(() => {
+                            child.style.transition = 'opacity 0.2s ease-out';
+                            child.style.opacity = '0';
+                        }, index * 50); // Stagger the animation
+                    });
+                    setTimeout(() => renderTerminationLogs([]), container.children.length * 50 + 200);
+                }
             }
         } catch (error) {
             showToast(error.message, 'error');
@@ -866,13 +878,22 @@ document.addEventListener('DOMContentLoaded', () => {
             setStatus('disconnected', i18n.disconnected);
         });
 
-        // --- CORREÇÃO: WebSocket handlers for bulk notification progress ---
+        // --- MELHORIA: WebSocket handlers for bulk notification progress ---
+
+        // CORREÇÃO: Obter referências aos elementos AQUI, dentro da função.
+        const progressContainer = document.getElementById('bulk-progress-container');
+        const progressBar = document.getElementById('bulk-progress-bar');
+        const progressText = document.getElementById('bulk-progress-text');
+        const progressPercent = document.getElementById('bulk-progress-percent');
+
         // Ensure progress elements exist before adding listeners
+        // O sendBulkNotificationBtn e sendBulkBtnText são verificados pois são do escopo pai
         if (progressContainer && progressBar && progressText && progressPercent && sendBulkNotificationBtn && sendBulkBtnText) {
+
             socket.on('bulk_notification_start', (data) => {
+                console.log('Socket: bulk_notification_start', data); // Log de depuração
+                // O botão já foi desativado no clique do modal de confirmação
                 progressContainer.classList.remove('hidden'); // Make progress bar visible
-                sendBulkNotificationBtn.disabled = true;
-                sendBulkBtnText.textContent = i18n.sendingBulkNotification;
                 progressBar.style.width = '0%';
                 progressBar.classList.remove('bg-red-600', 'bg-green-600'); // Reset color
                 progressBar.classList.add('bg-blue-600');
@@ -881,6 +902,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             socket.on('bulk_notification_progress', (data) => {
+                console.log('Socket: bulk_notification_progress', data); // Log de depuração
                 const percent = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
                 progressBar.style.width = `${percent}%`;
                 progressPercent.textContent = `${percent}%`;
@@ -888,6 +910,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             socket.on('bulk_notification_end', (data) => {
+                console.log('Socket: bulk_notification_end', data); // Log de depuração
                 progressBar.style.width = '100%';
                 progressBar.classList.remove('bg-blue-600');
                 progressBar.classList.add('bg-green-600'); // Green on success
@@ -896,7 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast(i18n.bulkSendComplete, 'success');
                 // Reset UI after a delay
                 setTimeout(() => {
-                    sendBulkNotificationBtn.disabled = false;
+                    sendBulkNotificationBtn.disabled = false; // Re-enable button
                     document.getElementById('bulk_message').value = ''; // Clear message
                     // Reset target selection
                     const targetActive = document.getElementById('target_active');
@@ -910,21 +933,29 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             socket.on('bulk_notification_error', (data) => {
+                console.log('Socket: bulk_notification_error', data); // Log de depuração
                 showToast(`${i18n.bulkSendError}: ${data.message}`, 'error');
                 progressText.textContent = i18n.bulkSendError;
                 progressBar.classList.remove('bg-blue-600');
                 progressBar.classList.add('bg-red-600'); // Red on error
                 // Reset UI after a delay on error as well
                 setTimeout(() => {
-                     sendBulkNotificationBtn.disabled = false;
+                     sendBulkNotificationBtn.disabled = false; // Re-enable button
                     updateSendButtonText(); // Reset button text
                     progressContainer.classList.add('hidden'); // Hide progress bar
                 }, 5000); // 5-second delay on error
             });
         } else {
-             console.error("Um ou mais elementos da barra de progresso não foram encontrados no DOM.");
+             // Log mais detalhado
+             console.error("Elementos da barra de progresso ou botão não encontrados no DOM. Os listeners do Socket.IO não serão anexados.");
+             if (!progressContainer) console.error("Missing: bulk-progress-container");
+             if (!progressBar) console.error("Missing: bulk-progress-bar");
+             if (!progressText) console.error("Missing: bulk-progress-text");
+             if (!progressPercent) console.error("Missing: bulk-progress-percent");
+             if (!sendBulkNotificationBtn) console.error("Missing: send-bulk-notification-btn");
+             if (!sendBulkBtnText) console.error("Missing: send-bulk-btn-text");
         }
-        // --- FIM DA CORREÇÃO ---
+        // --- FIM DA MELHORIA ---
     }
 
     // --- EVENT LISTENERS ---
@@ -1031,14 +1062,30 @@ document.addEventListener('DOMContentLoaded', () => {
             if (confirmBtn) {
                 confirmBtn.onclick = async () => {
                    if (confirmationModal) confirmationModal.classList.add('hidden'); // Hide modal on confirm
+
+                   // --- MELHORIA: Desativa o botão e muda o texto imediatamente ---
+                   sendBulkNotificationBtn.disabled = true;
+                   sendBulkBtnText.textContent = i18n.sendingBulkNotification;
+                   // -----------------------------------------------------------
+
                    try {
                        // Make the API call to start the bulk notification task
                        const result = await fetchAPI(urls.bulkNotifyUrl, 'POST', payload);
-                       // Don't show toast here; wait for the 'bulk_notification_start' socket event
-                       // if (result.success) showToast(result.message, 'info');
-                       // else showToast(result.message, 'error');
+                       // Se a chamada API falhar IMEDIATAMENTE, reative o botão.
+                       // Se for bem-sucedida (tarefa iniciada), o socket tratará de reativá-lo.
+                       if (!result.success) {
+                            showToast(result.message, 'error');
+                            // Re-enable button immediately if API call fails
+                            sendBulkNotificationBtn.disabled = false;
+                            updateSendButtonText(); // Reset button text
+                       }
+                       // Se result.success == true, o botão permanece desativado,
+                       // aguardando os eventos 'bulk_notification_end' ou 'bulk_notification_error'
                    } catch (error) {
                        showToast(error.message, 'error');
+                       // Re-enable button immediately if API call fails
+                       sendBulkNotificationBtn.disabled = false;
+                       updateSendButtonText(); // Reset button text
                    }
                 };
             }
@@ -1112,3 +1159,4 @@ document.addEventListener('DOMContentLoaded', () => {
     loadDashboardData(); // Initial data load
     setupWebSocket();    // Start WebSocket connection
 });
+
