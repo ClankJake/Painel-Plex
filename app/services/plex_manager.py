@@ -64,7 +64,6 @@ class PlexManager:
                 return {"status": "OFFLINE", "message": _("Falha na comunicação com o servidor Plex.")}
         return {"status": "OFFLINE", "message": _("Não configurado ou falha na conexão inicial.")}
 
-    # --- Métodos de Fachada ---
     def get_user_by_id(self, plex_user_id):
         """Método de fachada para obter um utilizador pelo ID."""
         return self.users.get_user_by_id(plex_user_id)
@@ -145,7 +144,16 @@ class PlexManager:
             return {"success": False, "sessions": [], "stream_count": 0}
 
     def get_libraries(self): return self.conn.get_libraries()
-    def get_all_plex_users(self, force_refresh=False): return self.users.get_all_plex_users(force_refresh)
+    
+    def get_all_plex_users(self, force_refresh=False): 
+        """
+        Método de fachada para obter todos os utilizadores.
+        Se 'force_refresh' for True, invalida a cache antes de buscar.
+        """
+        if force_refresh:
+            self.users.invalidate_user_cache()
+        return self.users.get_all_plex_users()
+
     def get_user_libraries(self, plex_user_id): return self.users.get_user_libraries(plex_user_id)
     def update_user_libraries(self, plex_user_id, library_titles): return self.users.update_user_libraries(plex_user_id, library_titles)
     def update_all_users_libraries(self, library_titles): return self.users.update_all_users_libraries(library_titles)
@@ -188,15 +196,12 @@ class PlexManager:
         last_sent_str = profile.get('last_notification_sent')
         if last_sent_str:
             try:
-                # CORREÇÃO: Lógica de verificação mais robusta.
-                # Em vez de comparar apenas a data, verifica se já se passaram pelo menos 23 horas
-                # desde o último envio. Isto evita problemas com fusos horários e pequenos atrasos na tarefa.
+
                 last_sent_dt = datetime.fromisoformat(last_sent_str)
                 if (datetime.now(timezone.utc) - last_sent_dt) < timedelta(hours=23):
                     logger.info(f"Notificação para {user_info['username']} já foi enviada nas últimas 23 horas. A saltar.")
                     return
             except (ValueError, TypeError):
-                # Se o formato da data for inválido, ignora e tenta enviar a notificação.
                 pass
 
         expiration_date_str = profile.get('expiration_date')
@@ -217,11 +222,8 @@ class PlexManager:
             
         blocked_users_data = self.data_manager.get_blocked_users_dict()
         if not blocked_users_data: return []
-            
-        # *** INÍCIO DA CORREÇÃO ***
-        # Obtém apenas a DATA atual no fuso horário local.
+
         today_local = datetime.now(get_localzone()).date()
-        # *** FIM DA CORREÇÃO ***
 
         users_to_remove = []
         for plex_id, block_data in blocked_users_data.items():
@@ -230,15 +232,10 @@ class PlexManager:
                 if not blocked_at_str:
                     continue
 
-                # *** INÍCIO DA CORREÇÃO ***
-                # Converte a data guardada para um objeto datetime e extrai apenas a DATA.
-                # Isto ignora a hora, tornando a comparação mais robusta.
                 blocked_date_local = datetime.fromisoformat(blocked_at_str).date()
                 
-                # Compara a diferença de dias entre as datas.
                 if (today_local - blocked_date_local).days >= days_to_remove:
                     users_to_remove.append(plex_id)
-                # *** FIM DA CORREÇÃO ***
+
             except (ValueError, TypeError, AttributeError): continue
         return users_to_remove
-
