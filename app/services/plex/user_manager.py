@@ -13,6 +13,8 @@ from flask import current_app, url_for
 from urllib.parse import urlparse
 from apscheduler.jobstores.base import JobLookupError
 
+from ...extensions import cache
+
 logger = logging.getLogger(__name__)
 
 class PlexUserManager:
@@ -24,39 +26,35 @@ class PlexUserManager:
         self.data_manager = data_manager
         self.tautulli_manager = tautulli_manager
         self.overseerr_manager = overseerr_manager
-        self._user_cache = None
-        self._user_cache_time = None
-        self._cache_ttl = timedelta(seconds=300)
         self.stream_manager = None
 
     def invalidate_user_cache(self):
         """Invalida a cache de utilizadores."""
-        self._user_cache = None
-        self._user_cache_time = None
+        cache.delete_memoized(self.get_all_plex_users)
         logger.info(_("Cache de utilizadores do Plex invalidado."))
 
     def get_user_by_id(self, plex_user_id):
         """Busca um único utilizador pelo seu ID do Plex, utilizando a cache."""
+
         all_users = self.get_all_plex_users()
+
         if all_users is None:
             return None
         return next((u for u in all_users if u['id'] == plex_user_id), None)
 
-    def get_all_plex_users(self, force_refresh=False):
+    @cache.memoize(timeout=300)
+    def get_all_plex_users(self, force_refresh_signal=None):
         """
         Obtém todos os utilizadores com acesso ao servidor Plex configurado, incluindo a conta do administrador.
+        Utiliza cache centralizado (Flask-Caching).
+        O argumento 'force_refresh_signal' pode ser usado para quebrar o cache se necessário,
+        mas a invalidação é preferida através de `invalidate_user_cache()`.
         """
+
         if not self.conn.account or not self.conn.plex:
             return None
 
-        now = datetime.now()
-        if not force_refresh and self._user_cache and self._user_cache_time and (now - self._user_cache_time < self._cache_ttl):
-            return self._user_cache
-
         try:
-            if force_refresh:
-                self.conn.account.reload()
-
             server_identifier = self.conn.plex.machineIdentifier
             all_friends = self.conn.account.users()
 
@@ -110,9 +108,7 @@ class PlexUserManager:
                             'thumb': admin_thumb_url, 
                             'servers': [self.conn.plex.friendlyName]
                         })
-            
-            self._user_cache = users_with_access
-            self._user_cache_time = now
+
             return users_with_access
         except RequestException as e:
             logger.error(_("Erro de rede ao obter utilizadores do Plex: %(error)s", error=e))
@@ -133,12 +129,11 @@ class PlexUserManager:
 
         if not self.conn.account:
             return {"success": False, "message": _("A conta Plex não está configurada.")}
-            
-        # CORREÇÃO: Adiciona uma verificação para a conta do administrador
+
         if self.conn.account.id == plex_user_id:
             all_libraries = [sec.title for sec in self.conn.plex.library.sections()]
             return {"success": True, "libraries": all_libraries}
-            
+
         try:
             plex_user_obj = self.conn.account.user(email)
             profile = self.data_manager.get_user_profile(plex_user_id)
@@ -150,7 +145,7 @@ class PlexUserManager:
 
             server_resource = next((s for s in plex_user_obj.servers if s.machineIdentifier == self.conn.plex.machineIdentifier), None)
             library_titles = [sec.title for sec in server_resource.sections()] if server_resource else []
-            
+
             profile['libraries'] = json.dumps(library_titles)
             self.data_manager.set_user_profile(plex_user_id, profile)
             return {"success": True, "libraries": library_titles}
@@ -164,11 +159,10 @@ class PlexUserManager:
         user = self.get_user_by_id(plex_user_id)
         if not user:
             return {"success": False, "message": _("Utilizador não encontrado.")}
-        
+
         if not self.conn.account:
             return {"success": False, "message": _("A conta Plex não está configurada.")}
-            
-        # CORREÇÃO: Adiciona uma verificação para a conta do administrador
+
         if self.conn.account.id == plex_user_id:
             return {"success": True, "message": _("O administrador já tem acesso a todas as bibliotecas. Nenhuma alteração é necessária.")}
             
@@ -195,7 +189,6 @@ class PlexUserManager:
             return {"success": False, "message": _("Não foi possível obter a lista de usuário do Plex.")}
 
         for user_data in all_users:
-            # A lógica dentro de update_user_libraries já ignora o admin
             self.update_user_libraries(user_data['id'], library_titles)
 
         return {"success": True, "message": _("Bibliotecas atualizadas para todos os usuário.")}
@@ -240,10 +233,8 @@ class PlexUserManager:
             return {"success": False, "message": str(e)}
 
     def remove_user(self, plex_user_id):
-        # Primeiro, obtemos o perfil local para ter o email/username, mesmo que o utilizador já não exista no Plex
         profile = self.data_manager.get_user_profile(plex_user_id)
         if not profile:
-            # Se não houver nem perfil local, não há nada a fazer
             return {"success": False, "message": _("Utilizador não encontrado na base de dados local.")}
 
         email = profile.get('email')
@@ -254,17 +245,13 @@ class PlexUserManager:
         try:
             from app.extensions import scheduler
 
-            # Interrompe os streams do utilizador, se houver
             if self.stream_manager:
                 self.stream_manager.block_user_sessions(plex_user_id, "A sua conta está a ser removida do servidor.")
-            
-            # Remove do Overseerr, se aplicável
+
             if profile.get('overseerr_access') and email:
                 self.overseerr_manager.remove_user(email)
 
-            # Tenta remover do Plex, mas não falha se já não existir
             try:
-                # Tenta encontrar o utilizador pelo email ou username para remover
                 identifier = email or username
                 if identifier:
                     plex_user_obj = self.conn.account.user(identifier)
@@ -274,8 +261,7 @@ class PlexUserManager:
                     logger.warning(f"Não foi possível tentar remover '{username}' do Plex por falta de email/username.")
             except NotFound:
                 logger.warning(f"Utilizador '{username}' já não era amigo na conta Plex. A continuar com a desativação local.")
-            
-            # Procede com a limpeza local independentemente do resultado do Plex
+
             profile['status'] = 'inactive'
             profile['expiration_date'] = None
 
