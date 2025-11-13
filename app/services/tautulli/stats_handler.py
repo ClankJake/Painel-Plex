@@ -59,7 +59,8 @@ class StatsHandler:
             self.data_manager.add_unlocked_achievements(plex_user_id, username, newly_unlocked)
             if current_user and current_user.id == str(plex_user_id):
                 for ach in newly_unlocked:
-                    self.data_manager.create_notification(message=_("Nova conquista desbloqueada: %(title)s (%(level)s)!", title=ach['title'], level=ach['level']), category='success', link="/statistics", plex_user_id=plex_user_id)
+                    # CORREÇÃO: Alterado 'plex_user_id=' para 'user_plex_id=' para corresponder à definição da função.
+                    self.data_manager.create_notification(message=_("Nova conquista desbloqueada: %(title)s (%(level)s)!", title=ach['title'], level=ach['level']), category='success', link="/statistics", user_plex_id=plex_user_id)
 
         final_achievements = []
         all_unlocked_ever = self.data_manager.get_unlocked_achievements(plex_user_id)
@@ -295,4 +296,3 @@ class StatsHandler:
             return {"success": False, "message": str(e)}
         except Exception as e:
             return {"success": False, "message": str(e)}
-
