@@ -486,6 +486,29 @@ class DataManager:
             if username not in claimed_users: claimed_users.append(username)
             invitation.claimed_by_users = json.dumps(claimed_users)
             db.session.commit()
+            
+    # **NOVO MÉTODO**: Reseta o uso de um convite para reativá-lo.
+    def reset_invitation_usage(self, code):
+        """
+        Reseta a contagem de uso de um convite para zero e remove a expiração se estiver vencida,
+        permitindo que o convite seja reutilizado.
+        """
+        invitation = Invitation.query.get(code)
+        if invitation:
+            invitation.use_count = 0
+            # Se a data de expiração já passou, removemos para que o convite fique válido indefinidamente
+            # ou até ser configurado novamente. Isso garante que ele seja "reativo".
+            if invitation.expires_at:
+                try:
+                    if datetime.fromisoformat(invitation.expires_at) < datetime.now(timezone.utc):
+                        invitation.expires_at = None
+                except (ValueError, TypeError):
+                     invitation.expires_at = None
+            
+            db.session.commit()
+            logger.info(f"Convite '{code}' reativado manualmente (contagem resetada).")
+            return True
+        return False
     
     def delete_invitation(self, code):
         invitation = Invitation.query.get(code)
