@@ -23,11 +23,12 @@ function sanitizeHTML(str) {
 
 
 /**
- * Manipula ações nos cartões de convite (copiar, apagar).
- * @param {string} action - A ação a ser executada ('copy-invite' ou 'delete-invite').
+ * Manipula ações nos cartões de convite (copiar, apagar, detalhes).
+ * @param {string} action - A ação a ser executada.
  * @param {string} code - O código do convite.
+ * @param {object} details - (Opcional) Os detalhes completos do convite para o modal de info.
  */
-export function handleInviteAction(action, code) {
+export function handleInviteAction(action, code, details = null) {
     if (action === 'copy-invite') {
         const inviteUrl = `${window.location.origin}${urls.baseInvitePage}${code}`;
         modals.showInviteLinkModal(inviteUrl);
@@ -48,6 +49,8 @@ export function handleInviteAction(action, code) {
                 }
             }
         });
+    } else if (action === 'details' && details) {
+        modals.showInviteDetailsModal(details);
     }
 }
 

@@ -13,6 +13,7 @@ import { urls } from './config.js';
 export const fetchStatus = (force = false) => fetchAPI(`${urls.apiStatus}?force=${force}`);
 export const listInvites = () => fetchAPI(urls.apiInvitesList);
 export const deleteInvite = (code) => fetchAPI(urls.apiInvitesDelete, 'POST', { code });
+export const reactivateInvite = (code) => fetchAPI(urls.apiInvitesReactivate, 'POST', { code }); 
 export const createInvite = (payload) => fetchAPI(urls.apiInvitesCreate, 'POST', payload);
 export const updateUserLimit = (plexUserId, screens) => fetchAPI(urls.apiUsersUpdateLimit, 'POST', { plex_user_id: plexUserId, screens });
 export const renewSubscription = (plexUserId, payload) => fetchAPI(urls.apiUsersRenewBase.replace('0', plexUserId), 'POST', payload);
