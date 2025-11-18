@@ -34,9 +34,14 @@ export function showConfirmationModal({ title, message, confirmText, confirmClas
 
 // **NOVO**: Modal para exibir detalhes e histórico do convite
 export function showInviteDetailsModal(details) {
-    const { code, created_at, claimed_by_users, use_count, max_uses, libraries, screen_limit } = details;
+    const { code, created_at, claimed_by_users, use_count, max_uses, libraries, screen_limit, expires_at } = details;
     const claimedUsersList = claimed_by_users ? claimed_by_users : [];
     
+    // Verifica se o convite está ativo
+    const isExpired = expires_at && new Date(expires_at) < new Date();
+    const isFull = use_count >= max_uses;
+    const isActive = !isExpired && !isFull;
+
     let historyHtml = '';
     if (claimedUsersList.length > 0) {
         historyHtml = `
@@ -65,16 +70,21 @@ export function showInviteDetailsModal(details) {
         </div>
     `;
 
+    // Renderiza o botão de reativar apenas se o convite NÃO estiver ativo (ou seja, expirou ou esgotou)
+    const reactivateButtonHtml = !isActive ? `
+         <button id="btnReactivateInvite" class="btn bg-blue-600 hover:bg-blue-700 text-white flex-1">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            ${i18n.reactivate || 'Reativar'}
+        </button>
+    ` : '';
+
     const footer = `
         <div class="flex justify-between w-full gap-2">
             <button id="btnDeleteInvite" class="btn bg-red-600 hover:bg-red-700 text-white flex-1">
                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                 ${i18n.deleteInvite}
             </button>
-             <button id="btnReactivateInvite" class="btn bg-blue-600 hover:bg-blue-700 text-white flex-1">
-                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                ${i18n.reactivate || 'Reativar'}
-            </button>
+            ${reactivateButtonHtml}
             <button id="btnCloseDetails" class="btn bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500 flex-1">${i18n.close}</button>
         </div>
     `;
@@ -99,19 +109,22 @@ export function showInviteDetailsModal(details) {
         }
     };
 
-    // Ação de Reativar dentro do modal
-    modal.querySelector('#btnReactivateInvite').onclick = async () => {
-        try {
-            const result = await api.reactivateInvite(code);
-            showToast(result.message, result.success ? 'success' : 'error');
-            if (result.success) {
-                modal.classList.add('hidden');
-                ui.loadInvites(); // Atualiza a lista
+    // Ação de Reativar dentro do modal (Apenas se o botão existir)
+    const btnReactivate = modal.querySelector('#btnReactivateInvite');
+    if (btnReactivate) {
+        btnReactivate.onclick = async () => {
+            try {
+                const result = await api.reactivateInvite(code);
+                showToast(result.message, result.success ? 'success' : 'error');
+                if (result.success) {
+                    modal.classList.add('hidden');
+                    ui.loadInvites(); // Atualiza a lista
+                }
+            } catch (error) {
+                showToast(error.message, 'error');
             }
-        } catch (error) {
-            showToast(error.message, 'error');
-        }
-    };
+        };
+    }
 }
 
 
