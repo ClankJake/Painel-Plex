@@ -171,9 +171,16 @@ def cleanup_job():
     with _app.test_request_context():
         from . import extensions
         config = load_or_create_config()
+        
+        # Limpeza de pagamentos pendentes (já existente)
         if config.get("CLEANUP_PENDING_PAYMENTS_ENABLED", False):
             days = config.get("CLEANUP_PENDING_PAYMENTS_DAYS", 3)
             extensions.data_manager.delete_old_pending_payments(days)
+
+        # --- NOVA LÓGICA: Limpeza de links curtos ---
+        if config.get("SHORT_LINK_CLEANUP_ENABLED", True):
+            days_links = config.get("SHORT_LINK_MAX_AGE_DAYS", 30)
+            extensions.data_manager.delete_old_short_links(days_links)
 
 @single_instance_job('cleanup_image_cache_job')
 def cleanup_image_cache_job():
