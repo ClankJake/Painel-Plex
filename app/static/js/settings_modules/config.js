@@ -23,6 +23,8 @@ export const fieldMap = {
     'IMAGE_CACHE_CLEANUP_ENABLED': { type: 'checkbox', default: true },
     'IMAGE_CACHE_MAX_AGE_DAYS': { type: 'number', default: 30 },
     'IMAGE_CACHE_CLEANUP_TIME': { type: 'text', default: '04:00' },
+    'SHORT_LINK_CLEANUP_ENABLED': { type: 'checkbox', default: true },
+    'SHORT_LINK_MAX_AGE_DAYS': { type: 'number', default: 30 },
     'TELEGRAM_ENABLED': { type: 'checkbox', default: false },
     'DISCORD_ENABLED': { type: 'checkbox', default: false },
     'WEBHOOK_ENABLED': { type: 'checkbox', default: false },
