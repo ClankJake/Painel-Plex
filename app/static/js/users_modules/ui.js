@@ -32,39 +32,99 @@ export const {
 
 
 /**
- * Renderiza a lista de convites pendentes.
+ * Carrega todos os convites e os armazena no estado, depois renderiza a aba ativa.
  * @param {boolean} isPeriodicCheck - Indica se a chamada é de uma verificação periódica.
  */
 export async function loadInvites(isPeriodicCheck = false) {
     try {
-        const invites = await api.listInvites();
-        const pendingInvites = Object.values(invites);
+        // Agora a API retorna TODOS os convites (graças às mudanças no backend)
+        const invitesDict = await api.listInvites();
+        const allInvites = Object.values(invitesDict).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-        if (isPeriodicCheck && state.activeInviteCount > 0 && pendingInvites.length < state.activeInviteCount) {
+        state.setAllInvitesCache(allInvites);
+
+        // Conta apenas os ativos para a lógica de "invite used" toast, se necessário
+        const activeInvitesCount = allInvites.filter(inv => {
+            const isExpired = inv.expires_at && new Date(inv.expires_at) < new Date();
+            const isFull = inv.use_count >= inv.max_uses;
+            return !isExpired && !isFull;
+        }).length;
+
+        if (isPeriodicCheck && state.activeInviteCount > 0 && activeInvitesCount < state.activeInviteCount) {
             showToast(i18n.inviteUsedUpdating, 'info');
             await loadStatus(true); // Força atualização da lista de utilizadores
-            return; // Retorna aqui para evitar renderizar a lista de convites desatualizada
+            // Não retornamos aqui para garantir que a lista de convites (ex: histórico) seja atualizada também
         }
 
-        state.setActiveInviteCount(pendingInvites.length);
-        dom.inviteListDiv.innerHTML = pendingInvites.length > 0
-            ? pendingInvites.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map(renderInviteCard).join('')
-            : `<p class="text-gray-500 dark:text-gray-400">${i18n.noPendingInvites}</p>`;
+        state.setActiveInviteCount(activeInvitesCount);
+        renderInvites(); // Renderiza com base na aba ativa atual no estado
 
-        dom.inviteListDiv.querySelectorAll('button').forEach(button => {
-            // Passa os detalhes completos do convite para o botão de detalhes
-            if (button.dataset.action === 'details') {
-                const code = button.dataset.code;
-                const inviteDetails = pendingInvites.find(inv => inv.code === code);
-                button.onclick = () => handleInviteAction('details', code, inviteDetails);
-            } else {
-                button.onclick = () => handleInviteAction(button.dataset.action, button.dataset.code);
-            }
-        });
     } catch (e) {
         dom.inviteListDiv.innerHTML = `<p class="text-red-500">${i18n.error}: ${e.message}</p>`;
     }
 }
+
+/**
+ * Filtra e renderiza a lista de convites com base na aba selecionada.
+ */
+export function renderInvites() {
+    const currentTab = state.activeInviteTab; // 'active' ou 'history'
+    const allInvites = state.allInvitesCache;
+
+    // Atualiza estilos dos botões das abas
+    if (dom.inviteTabActive && dom.inviteTabHistory) {
+        if (currentTab === 'active') {
+            dom.inviteTabActive.classList.add('bg-white', 'dark:bg-gray-600', 'shadow', 'text-gray-900', 'dark:text-white');
+            dom.inviteTabActive.classList.remove('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-200');
+            
+            dom.inviteTabHistory.classList.remove('bg-white', 'dark:bg-gray-600', 'shadow', 'text-gray-900', 'dark:text-white');
+            dom.inviteTabHistory.classList.add('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-200');
+        } else {
+            dom.inviteTabHistory.classList.add('bg-white', 'dark:bg-gray-600', 'shadow', 'text-gray-900', 'dark:text-white');
+            dom.inviteTabHistory.classList.remove('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-200');
+            
+            dom.inviteTabActive.classList.remove('bg-white', 'dark:bg-gray-600', 'shadow', 'text-gray-900', 'dark:text-white');
+            dom.inviteTabActive.classList.add('text-gray-500', 'dark:text-gray-400', 'hover:text-gray-700', 'dark:hover:text-gray-200');
+        }
+    }
+
+    // Filtra os convites
+    const filteredInvites = allInvites.filter(inv => {
+        const isExpired = inv.expires_at && new Date(inv.expires_at) < new Date();
+        const isFull = inv.use_count >= inv.max_uses;
+        const isActive = !isExpired && !isFull;
+
+        if (currentTab === 'active') {
+            return isActive;
+        } else {
+            return !isActive; // Histórico (Expirados ou Usados)
+        }
+    });
+
+    dom.inviteListDiv.innerHTML = filteredInvites.length > 0
+        ? filteredInvites.map(renderInviteCard).join('')
+        : `<p class="text-gray-500 dark:text-gray-400 text-sm text-center py-4">${i18n.noPendingInvites}</p>`;
+
+    // Reatribui os listeners
+    dom.inviteListDiv.querySelectorAll('button').forEach(button => {
+        if (button.dataset.action === 'details') {
+            const code = button.dataset.code;
+            const inviteDetails = allInvites.find(inv => inv.code === code);
+            button.onclick = () => handleInviteAction('details', code, inviteDetails);
+        } else {
+            button.onclick = () => handleInviteAction(button.dataset.action, button.dataset.code);
+        }
+    });
+}
+
+/**
+ * Função auxiliar para trocar a aba de convites
+ */
+export function handleInviteTabChange(tab) {
+    state.setActiveInviteTab(tab);
+    renderInvites();
+}
+
 
 /**
  * Cria o HTML para um único cartão de convite.
@@ -77,31 +137,45 @@ function renderInviteCard(details) {
     const isFull = use_count >= max_uses;
     const isActive = !isExpired && !isFull;
 
-    let statusHtml = `<span class="px-2 py-1 text-xs font-medium rounded-full ${isActive ? 'text-green-800 bg-green-100 dark:bg-green-900/30 dark:text-green-300' : 'text-red-800 bg-red-100 dark:bg-red-900/30 dark:text-red-300'}">${isActive ? i18n.active : i18n.expired}</span>`;
+    let statusHtml = '';
+    if (isActive) {
+         statusHtml = `<span class="px-2 py-1 text-xs font-medium rounded-full text-green-800 bg-green-100 dark:bg-green-900/30 dark:text-green-300">${i18n.active}</span>`;
+    } else if (isFull) {
+         statusHtml = `<span class="px-2 py-1 text-xs font-medium rounded-full text-gray-800 bg-gray-200 dark:bg-gray-700 dark:text-gray-300">Esgotado</span>`;
+    } else {
+         statusHtml = `<span class="px-2 py-1 text-xs font-medium rounded-full text-red-800 bg-red-100 dark:bg-red-900/30 dark:text-red-300">${i18n.expired}</span>`;
+    }
+
     let usageHtml = `<span class="text-xs text-gray-500 dark:text-gray-400">${use_count}/${max_uses} ${i18n.uses}</span>`;
     let trialHtml = trial_duration_minutes > 0 ? `<span class="px-2 py-1 text-xs font-medium text-purple-800 bg-purple-100 rounded-full dark:bg-purple-900/30 dark:text-purple-300">${i18n.trial}</span>` : '';
     let expirationHtml = '';
 
-    if (details.expires_at && !isExpired) {
-        const expirationDate = new Date(details.expires_at);
-        const diffMs = expirationDate - new Date();
-        if (diffMs > 0) {
-            const diffMinutes = Math.floor(diffMs / 60000);
-            const diffHours = Math.floor(diffMinutes / 60);
-            const diffDays = Math.floor(diffHours / 24);
-            let expiresInText = diffDays > 0 ? i18n.expiresInDays.replace('{days}', diffDays) : (diffHours > 0 ? i18n.expiresInHours.replace('{hours}', diffHours) : i18n.expiresInMinutes.replace('{minutes}', diffMinutes));
-            expirationHtml = `<span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>${expiresInText}</span>`;
+    if (details.expires_at) {
+        if (!isExpired) {
+            const expirationDate = new Date(details.expires_at);
+            const diffMs = expirationDate - new Date();
+            if (diffMs > 0) {
+                const diffMinutes = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMinutes / 60);
+                const diffDays = Math.floor(diffHours / 24);
+                let expiresInText = diffDays > 0 ? i18n.expiresInDays.replace('{days}', diffDays) : (diffHours > 0 ? i18n.expiresInHours.replace('{hours}', diffHours) : i18n.expiresInMinutes.replace('{minutes}', diffMinutes));
+                expirationHtml = `<span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>${expiresInText}</span>`;
+            }
+        } else {
+             // Se expirou, mostra a data
+             const expDate = new Date(details.expires_at).toLocaleDateString();
+             expirationHtml = `<span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1" title="Expirou em ${new Date(details.expires_at).toLocaleString()}"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> ${expDate}</span>`;
         }
     }
 
     return `
-    <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700/50">
+    <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700/50 border border-gray-100 dark:border-gray-700/30">
         <div class="flex items-center gap-3 flex-wrap">
             <span class="font-mono text-sm">${code}</span>
             ${statusHtml} ${trialHtml} ${usageHtml} ${expirationHtml}
         </div>
         <div class="flex items-center gap-2">
-            <button data-action="copy-invite" data-code="${code}" title="${i18n.copyLink}" class="p-2 rounded-full text-gray-500 hover:bg-blue-100 dark:hover:bg-blue-500/20" ${!isActive ? 'disabled' : ''}><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" /><path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" /></svg></button>
+            <button data-action="copy-invite" data-code="${code}" title="${i18n.copyLink}" class="p-2 rounded-full text-gray-500 hover:bg-blue-100 dark:hover:bg-blue-500/20" ${!isActive ? 'disabled style="opacity: 0.5; cursor: default;"' : ''}><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" /><path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" /></svg></button>
             <button data-action="details" data-code="${code}" title="${i18n.inviteDetails || 'Detalhes'}" class="p-2 rounded-full text-gray-500 hover:bg-yellow-100 dark:hover:bg-yellow-500/20"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" /></svg></button>
             <button data-action="delete-invite" data-code="${code}" title="${i18n.deleteInvite}" class="p-2 rounded-full text-gray-500 hover:bg-red-100 dark:hover:bg-red-500/20"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg></button>
         </div>

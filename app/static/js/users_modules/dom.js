@@ -22,3 +22,7 @@ export const countActive = document.getElementById('count-active');
 export const countTrial = document.getElementById('count-trial');
 export const countBlocked = document.getElementById('count-blocked');
 export const countInactive = document.getElementById('count-inactive');
+
+// Abas de convites
+export const inviteTabActive = document.getElementById('tab-invites-active');
+export const inviteTabHistory = document.getElementById('tab-invites-history');

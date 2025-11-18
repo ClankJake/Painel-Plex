@@ -4,6 +4,10 @@ export let allLibraries = [];
 export let allUsersCache = [];
 export let activeInviteCount = 0;
 export let inviteCheckInterval = null;
+// **NOVO**: Estado para controlar a aba ativa dos convites. Default 'active'
+export let activeInviteTab = 'active'; 
+// **NOVO**: Cache para todos os convites
+export let allInvitesCache = [];
 
 const savedViewState = JSON.parse(localStorage.getItem('userListViewState'));
 export let viewState = savedViewState || {
@@ -19,6 +23,9 @@ export function setInviteCheckInterval(intervalId) {
     if (inviteCheckInterval) clearInterval(inviteCheckInterval);
     inviteCheckInterval = intervalId;
 }
+export function setActiveInviteTab(tab) { activeInviteTab = tab; }
+export function setAllInvitesCache(invites) { allInvitesCache = invites; }
+
 export function setViewState(newState) {
     viewState = { ...viewState, ...newState };
     localStorage.setItem('userListViewState', JSON.stringify(viewState));
