@@ -64,6 +64,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         }
+
+        // **NOVO**: Listeners para as abas de convites
+        if (dom.inviteTabActive) {
+            dom.inviteTabActive.addEventListener('click', () => ui.handleInviteTabChange('active'));
+        }
+        if (dom.inviteTabHistory) {
+            dom.inviteTabHistory.addEventListener('click', () => ui.handleInviteTabChange('history'));
+        }
         
         // Listener para o evento de atualização de dados
         document.addEventListener('data-refresh-requested', () => {
