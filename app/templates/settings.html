@@ -88,7 +88,7 @@
                     <input type="time" id="BLOCK_REMOVAL_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A verificação de contas bloqueadas para remoção será executada diariamente a esta hora.')}}</p>
                 </div>
-                 <div>
+                <div>
                     <label for="DAYS_TO_REMOVE_BLOCKED_USER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Usuários Bloqueado Após (dias)') }}</label>
                     <input type="number" id="DAYS_TO_REMOVE_BLOCKED_USER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="0">
                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Defina 0 para desativar.')}}</p>
@@ -118,6 +118,15 @@
                         <input type="number" id="CLEANUP_PENDING_PAYMENTS_DAYS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Isso remove cobranças PIX que não foram pagas para manter o banco de dados limpo.')}}</p>
                     </div>
+                    <div class="flex items-center">
+                        <input id="SHORT_LINK_CLEANUP_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                        <label for="SHORT_LINK_CLEANUP_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar limpeza automática de links curtos') }}</label>
+                    </div>
+                    <div>
+                        <label for="SHORT_LINK_MAX_AGE_DAYS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Links Curtos Após (dias)') }}</label>
+                        <input type="number" id="SHORT_LINK_MAX_AGE_DAYS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Remove links encurtados antigos para manter a base de dados otimizada.')}}</p>
+                    </div>
                     <div>
                         <label for="CLEANUP_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Executar a Limpeza') }}</label>
                         <input type="time" id="CLEANUP_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
@@ -139,7 +148,7 @@
                         <label for="IMAGE_CACHE_CLEANUP_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Executar a Limpeza do Cache') }}</label>
                         <input type="time" id="IMAGE_CACHE_CLEANUP_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A tarefa de limpeza do cache de imagens será executada diariamente a esta hora.')}}</p>
-                    </div>
+                    </div>               
                 </div>
             </div>
         </div>
