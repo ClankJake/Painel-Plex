@@ -128,6 +128,7 @@
 <div id="paymentHistoryModal" class="modal-backdrop hidden"></div>
 <div id="reactivationModal" class="modal-backdrop hidden"></div>
 <div id="extendTrialModal" class="modal-backdrop hidden"></div>
+<div id="inviteDetailsModal" class="modal-backdrop hidden"></div> <!-- NOVO -->
 {% endblock %}
 
 {% block scripts %}
@@ -141,6 +142,7 @@
         data-url-api-invites-create="{{ url_for('invites_api.create_invite_route') }}"
         data-url-api-invites-list="{{ url_for('invites_api.list_invites_route') }}"
         data-url-api-invites-delete="{{ url_for('invites_api.delete_invite_route') }}"
+        data-url-api-invites-reactivate="{{ url_for('invites_api.reactivate_invite_route') }}"
         data-url-api-users-update-limit="{{ url_for('users_api.update_limit_route') }}"
         data-url-api-users-renew-base="{{ url_for('users_api.renew_user_subscription_route', plex_user_id=0) }}"
         data-url-api-users-profile-base="{{ url_for('users_api.user_profile_route', plex_user_id=0) }}"
@@ -167,6 +169,7 @@
         data-i18n-active="{{ _('Ativo') }}"
         data-i18n-trial="{{ _('Teste') }}"
         data-i18n-copy-link="{{ _('Copiar Link') }}"
+        data-i18n-invite-details="{{ _('Detalhes') }}"
         data-i18n-delete-invite="{{ _('Apagar Convite') }}"
         data-i18n-confirm-delete-invite="{{ _('Tem a certeza de que deseja apagar o convite') }}"
         data-i18n-action-cannot-be-undone="{{ _('Esta ação não pode ser desfeita.') }}"
@@ -290,7 +293,7 @@
         data-i18n-extend-trial="{{ _('Estender Teste') }}"
         data-i18n-extending="{{ _('Estendendo...') }}"
         data-i18n-invalid-extension-duration="{{ _('Por favor, insira uma duração válida (pelo menos 1 minuto).') }}"
+        data-i18n-no-uses-yet="{{ _('Nenhum uso registado.') }}"
 >
 </script>
 {% endblock %}
-
