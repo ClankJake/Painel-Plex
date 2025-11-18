@@ -114,7 +114,9 @@ def load_or_create_config():
             "TERMINATION_MSG_SCREEN_LIMIT": "{username}, você excedeu o seu limite de {limit} tela(s) simultânea(s).",
             "IMAGE_CACHE_CLEANUP_ENABLED": True,
             "IMAGE_CACHE_MAX_AGE_DAYS": 30,
-            "IMAGE_CACHE_CLEANUP_TIME": "04:00"
+            "IMAGE_CACHE_CLEANUP_TIME": "04:00",
+            "SHORT_LINK_CLEANUP_ENABLED": True,
+            "SHORT_LINK_MAX_AGE_DAYS": 30
         }
         save_app_config(default_config)
         return default_config
@@ -198,6 +200,8 @@ def load_or_create_config():
                 config.setdefault("IMAGE_CACHE_CLEANUP_ENABLED", True)
                 config.setdefault("IMAGE_CACHE_MAX_AGE_DAYS", 30)
                 config.setdefault("IMAGE_CACHE_CLEANUP_TIME", "04:00")
+                config.setdefault("SHORT_LINK_CLEANUP_ENABLED", True)
+                config.setdefault("SHORT_LINK_MAX_AGE_DAYS", 30)
 
             log_file_path = config.get("LOG_FILE")
             if log_file_path and not os.path.isabs(log_file_path):
