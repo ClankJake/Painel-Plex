@@ -152,6 +152,13 @@ class PlexInviteManager:
         self.data_manager.delete_invitation(code)
         return {"success": True, "message": _("Convite removido com sucesso.")}
 
+    # **NOVO MÉTODO**: Reativa um convite.
+    def reactivate_invitation(self, code):
+        """Reativa um convite, resetando o seu uso e removendo a expiração se necessário."""
+        if self.data_manager.reset_invitation_usage(code):
+             return {"success": True, "message": _("Convite reativado com sucesso (Contador resetado e validade estendida).")}
+        return {"success": False, "message": _("Convite não encontrado.")}
+
     def send_plex_invite(self, identifier, library_titles):
         """
         Método inteligente para convidar ou reativar o acesso de um usuário ao Plex.
