@@ -477,6 +477,14 @@ class DataManager:
         invitations = Invitation.query.filter(Invitation.use_count < Invitation.max_uses).all()
         return [self._row_to_dict(invite, process_json=True) for invite in invitations]
 
+    def get_all_invitations(self):
+        """
+        Retorna todos os convites, sem filtrar por uso, ordenados por data de criação decrescente.
+        Útil para histórico e gestão.
+        """
+        invitations = Invitation.query.order_by(Invitation.created_at.desc()).all()
+        return [self._row_to_dict(invite, process_json=True) for invite in invitations]
+
     def increment_invitation_use(self, code, username):
         invitation = Invitation.query.get(code)
         if invitation:
