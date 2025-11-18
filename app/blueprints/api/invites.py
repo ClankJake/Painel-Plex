@@ -49,6 +49,16 @@ def delete_invite_route():
         return jsonify({"success": False, "message": "Código do convite não fornecido."}), 400
     return jsonify(plex_manager.delete_invitation(code))
 
+# **NOVA ROTA**: Reativar convite (resetar uso)
+@invites_api_bp.route('/reactivate', methods=['POST'])
+@login_required
+@admin_required
+def reactivate_invite_route():
+    code = request.json.get('code')
+    if not code:
+        return jsonify({"success": False, "message": "Código do convite não fornecido."}), 400
+    return jsonify(plex_manager.reactivate_invitation(code))
+
 @invites_api_bp.route('/details/<string:code>', methods=['GET'])
 def get_invite_details_route(code):
     invitation, message = plex_manager.get_invitation_by_code(code)
