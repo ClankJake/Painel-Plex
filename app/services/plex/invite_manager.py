@@ -146,7 +146,8 @@ class PlexInviteManager:
         }
 
     def list_invitations(self):
-        return self.data_manager.get_all_pending_invitations()
+        # Altera para buscar todos os convites (o filtro de pendentes será feito no frontend)
+        return self.data_manager.get_all_invitations()
 
     def delete_invitation(self, code):
         self.data_manager.delete_invitation(code)
