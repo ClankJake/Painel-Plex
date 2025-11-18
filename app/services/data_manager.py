@@ -441,6 +441,28 @@ class DataManager:
             db.session.rollback()
             return 0
 
+    def delete_old_short_links(self, days_old):
+        """Apaga links curtos mais antigos que o número de dias especificado."""
+        if not isinstance(days_old, int) or days_old <= 0:
+            return 0
+        try:
+            # Define a data de corte em UTC
+            cutoff_date_utc = datetime.now(timezone.utc) - timedelta(days=days_old)
+            
+            # Apaga os links onde created_at é mais antigo que a data de corte
+            num_deleted = ShortLink.query.filter(
+                ShortLink.created_at < cutoff_date_utc
+            ).delete(synchronize_session=False)
+            
+            db.session.commit()
+            if num_deleted > 0:
+                logger.info(f"{num_deleted} links curtos com mais de {days_old} dias foram apagados.")
+            return num_deleted
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Erro ao apagar links curtos antigos: {e}", exc_info=True)
+            return 0
+
     # --- MÉTODOS de Convites ---
     def add_invitation(self, code, details):
         invitation = Invitation(code=code, libraries=json.dumps(details.get('libraries', [])), screen_limit=details.get('screen_limit', 0), allow_downloads=details.get('allow_downloads', False), created_at=details.get('created_at'), expires_at=details.get('expires_at'), trial_duration_minutes=details.get('trial_duration_minutes', 0), overseerr_access=details.get('overseerr_access', False), max_uses=details.get('max_uses', 1), use_count=details.get('use_count', 0), claimed_by_users=json.dumps(details.get('claimed_by_users', [])))
