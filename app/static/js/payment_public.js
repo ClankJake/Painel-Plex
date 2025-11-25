@@ -212,7 +212,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function showSuccessState(isReactivation) {
+    function showSuccessState(isReactivation, userStatus) {
         if (paymentSection) paymentSection.style.display = 'none';
         if (pixDisplay) pixDisplay.style.display = 'none';
         if (userInfoHeader) userInfoHeader.style.display = 'none';
@@ -223,8 +223,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (successTitle && successMessage && loginButton && successDisplay) {
             if (isReactivation) {
-                successTitle.textContent = i18n.reactivationSuccessTitle;
-                successMessage.textContent = i18n.reactivationSuccessMessage;
+                
+                // Se o status ainda for 'inactive', significa que o convite está pendente.
+                if (userStatus === 'inactive') {
+                    successTitle.textContent = i18n.reactivationCheckEmailTitle || 'Verifique seu E-mail';
+                    successMessage.textContent = i18n.reactivationCheckEmailMessage || 'O pagamento foi confirmado e um convite foi enviado para o seu e-mail. Por favor, aceite-o para reativar o acesso.';
+                } else {
+                    successTitle.textContent = i18n.reactivationSuccessTitle;
+                    successMessage.textContent = i18n.reactivationSuccessMessage;
+                }
             } else {
                 successTitle.textContent = i18n.renewalSuccessTitle;
                 successMessage.textContent = i18n.renewalSuccessMessage;
@@ -241,6 +248,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function startPaymentStatusPolling(txid) {
         if (pollingIntervalId) clearInterval(pollingIntervalId);
+        const pollingStatus = document.getElementById('polling-status');
 
         pollingIntervalId = setInterval(async () => {
             try {
@@ -248,7 +256,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (statusResult.success && statusResult.status === 'CONCLUIDA') {
                     clearInterval(pollingIntervalId);
                     const isReactivation = container.dataset.isReactivation === 'true';
-                    showSuccessState(isReactivation);
+                    
+                    const confirmedMsg = i18n.paymentConfirmed || 'Pagamento confirmado!';
+                    const pollingMsg = i18n.pollingConfirmed || 'Pagamento confirmado! Atualizando...';
+                    
+                    showToast(confirmedMsg, "success");
+                    if(pollingStatus) pollingStatus.innerHTML = `<div class="text-green-500 font-bold p-4">${pollingMsg}</div>`;
+                    
+                    // LOG para depuração no frontend
+                    console.log('Payment confirmed. User Status:', statusResult.user_status, 'Is Reactivation:', isReactivation);
+
+                    // Passa o status do utilizador para determinar a mensagem correta
+                    setTimeout(() => showSuccessState(isReactivation, statusResult.user_status), 2000);
                 }
             } catch (error) {
                 console.warn(`${i18n.pollingError}:`, error.message);
@@ -324,4 +343,3 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     main();
 });
-
