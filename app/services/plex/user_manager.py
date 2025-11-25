@@ -251,16 +251,36 @@ class PlexUserManager:
             if profile.get('overseerr_access') and email:
                 self.overseerr_manager.remove_user(email)
 
+            # CORREÇÃO: Tenta remover pelo ID primeiro, depois fallback para email/username
+            user_removed = False
             try:
+                # 1. Procura pelo ID na lista de amigos
+                all_friends = self.conn.account.users()
+                friend_to_remove = next((u for u in all_friends if str(u.id) == str(plex_user_id)), None)
+                
+                if friend_to_remove:
+                    self.conn.account.removeFriend(friend_to_remove)
+                    logger.info(f"Utilizador '{friend_to_remove.username}' (ID: {plex_user_id}) removido com sucesso via ID.")
+                    user_removed = True
+                else:
+                    logger.warning(f"Utilizador ID {plex_user_id} não encontrado na lista de amigos. Tentando fallback para identificador.")
+            except Exception as e:
+                 logger.error(f"Erro ao tentar remover utilizador por ID: {e}")
+
+            # 2. Fallback: Tenta remover por email ou username se não encontrou pelo ID
+            if not user_removed:
                 identifier = email or username
                 if identifier:
-                    plex_user_obj = self.conn.account.user(identifier)
-                    self.conn.account.removeFriend(plex_user_obj)
-                    logger.info(f"Acesso ao Plex para '{username}' removido com sucesso.")
+                    try:
+                        # Alguns métodos da lib aceitam string diretamente ou requerem busca prévia
+                        self.conn.account.removeFriend(identifier)
+                        logger.info(f"Acesso ao Plex para '{username}' removido com sucesso via identificador.")
+                    except NotFound:
+                        logger.warning(f"Utilizador '{username}' já não era amigo na conta Plex (NotFound no fallback).")
+                    except Exception as e:
+                        logger.error(f"Erro ao tentar remover '{username}' por identificador: {e}")
                 else:
-                    logger.warning(f"Não foi possível tentar remover '{username}' do Plex por falta de email/username.")
-            except NotFound:
-                logger.warning(f"Utilizador '{username}' já não era amigo na conta Plex. A continuar com a desativação local.")
+                    logger.warning(f"Não foi possível tentar remover '{username}' do Plex por falta de email/username e ID falhou.")
 
             profile['status'] = 'inactive'
             profile['expiration_date'] = None
