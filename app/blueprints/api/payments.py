@@ -100,10 +100,27 @@ def _run_payment_processing_in_thread(app, txid):
                         category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
                     )
 
-                    invite_result = extensions.plex_manager.invites.send_plex_invite(profile['email'], json.loads(profile.get('libraries', '[]')))
-                    if not invite_result.get('success'):
-                        raise Exception(f"Falha ao reconvidar o utilizador inativo '{profile['username']}': {invite_result.get('message')}")
-                    logger.info(f"Convite de reativação enviado para {profile['email']}.")
+                    # Verifica se temos um email para enviar o convite
+                    user_email = profile.get('email')
+                    if not user_email:
+                        # Tenta recuperar o email do Plex novamente antes de falhar
+                        logger.info(f"Email não encontrado no perfil local para reativação de '{profile['username']}'. Tentando buscar no Plex...")
+                        plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
+                        if plex_user and plex_user.get('email'):
+                            user_email = plex_user.get('email')
+                            profile['email'] = user_email
+                            extensions.data_manager.set_user_profile(plex_user_id, profile)
+                            logger.info(f"Email recuperado e salvo: {user_email}")
+
+                    if user_email:
+                        invite_result = extensions.plex_manager.invites.send_plex_invite(user_email, json.loads(profile.get('libraries', '[]')))
+                        if not invite_result.get('success'):
+                            raise Exception(f"Falha ao reconvidar o utilizador inativo '{profile['username']}': {invite_result.get('message')}")
+                        logger.info(f"Convite de reativação enviado para {user_email}.")
+                    else:
+                        logger.error(f"FALHA CRÍTICA: Não foi possível encontrar um email para reativar '{profile['username']}' (ID: {plex_user_id}). O pagamento foi processado, mas o convite não pôde ser enviado.")
+                        # Não fazemos raise Exception aqui para não reverter o status do pagamento,
+                        # mas o utilizador precisará de intervenção manual.
 
                     logger.info(f"Aguardando 8 segundos para a API do Plex processar a reativação de '{profile['username']}'...")
                     time.sleep(8)
@@ -270,11 +287,31 @@ def create_charge_route():
 
     if profile.get('status') == 'inactive':
         logger.info(f"Gerando cobrança para o utilizador inativo '{username}' a partir dos dados locais.")
-        if not profile.get('email'):
-            return jsonify({"success": False, "message": _("Não foi possível encontrar o e-mail do utilizador inativo para processar o pagamento.")}), 500
+        
+        user_email = profile.get('email')
+        
+        # Lógica de Fallback: Tenta recuperar o email do Plex se não existir localmente
+        if not user_email:
+            logger.info(f"E-mail não encontrado localmente para '{username}'. Tentando buscar no Plex pelo ID: {plex_user_id}")
+            try:
+                plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
+                if plex_user and plex_user.get('email'):
+                    user_email = plex_user.get('email')
+                    logger.info(f"E-mail recuperado do Plex para '{username}': {user_email}")
+                    # Salva no perfil local para o futuro
+                    profile['email'] = user_email
+                    extensions.data_manager.set_user_profile(plex_user_id, profile)
+            except Exception as e:
+                logger.warning(f"Falha ao tentar recuperar e-mail do Plex para '{username}': {e}")
+        
+        # Se ainda não tiver e-mail, logamos o aviso mas permitimos prosseguir
+        # Alguns gateways podem não exigir e-mail ou teremos de lidar com isso depois.
+        if not user_email:
+            logger.warning(f"Atenção: A gerar cobrança para '{username}' sem e-mail definido.")
+
         user_info = {
             "plex_user_id": plex_user_id, "username": username,
-            "name": profile.get('name', username), "email": profile.get('email')
+            "name": profile.get('name', username), "email": user_email
         }
     else:
         plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
@@ -300,7 +337,12 @@ def create_charge_route():
             
             if is_reactivation:
                 logger.info(f"Processando reativação gratuita para o utilizador '{username}' (ID: {plex_user_id}).")
-                invite_result = extensions.plex_manager.invites.send_plex_invite(profile['email'], json.loads(profile.get('libraries', '[]')))
+                # Usa o email recuperado ou existente
+                target_email = user_info.get('email')
+                if not target_email:
+                     raise Exception(f"Não foi possível encontrar um e-mail para reativar o utilizador '{username}'.")
+
+                invite_result = extensions.plex_manager.invites.send_plex_invite(target_email, json.loads(profile.get('libraries', '[]')))
                 if not invite_result.get('success'):
                     raise Exception(f"Falha ao reconvidar o utilizador inativo '{username}': {invite_result.get('message')}")
                 
@@ -599,4 +641,3 @@ def export_financial_csv():
     except Exception as e:
         logger.error(f"Erro ao gerar o relatório CSV: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Ocorreu um erro interno ao gerar o relatório."}), 500
-
