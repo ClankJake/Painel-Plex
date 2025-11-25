@@ -82,7 +82,13 @@ class PlexInviteManager:
         if plex_user_account.username in claimed_users:
             return {"success": False, "message": _("Você já resgatou este convite anteriormente.")}
 
-        invite_result = self.send_plex_invite(plex_user_account.email, invitation['libraries'])
+        # Passamos o ID do utilizador para garantir que o convite vai para a conta certa
+        invite_result = self.send_plex_invite(
+            plex_user_account.email, 
+            invitation['libraries'], 
+            plex_user_id=plex_user_account.id
+        )
+        
         if not invite_result.get("success"):
             return invite_result
         if invite_result.get("already_exists"):
@@ -146,58 +152,121 @@ class PlexInviteManager:
         }
 
     def list_invitations(self):
-        # Altera para buscar todos os convites (o filtro de pendentes será feito no frontend)
         return self.data_manager.get_all_invitations()
 
     def delete_invitation(self, code):
         self.data_manager.delete_invitation(code)
         return {"success": True, "message": _("Convite removido com sucesso.")}
 
-    # **NOVO MÉTODO**: Reativa um convite.
     def reactivate_invitation(self, code):
-        """Reativa um convite, resetando o seu uso e removendo a expiração se necessário."""
         if self.data_manager.reset_invitation_usage(code):
              return {"success": True, "message": _("Convite reativado com sucesso (Contador resetado e validade estendida).")}
         return {"success": False, "message": _("Convite não encontrado.")}
 
-    def send_plex_invite(self, identifier, library_titles):
+    def _sync_local_user_data(self, plex_user):
+        """
+        Verifica e atualiza o email e username no banco de dados local
+        com base nos dados mais recentes do Plex.
+        """
+        if not plex_user or not plex_user.id:
+            return
+
+        try:
+            # Obtém o ID e converte para int
+            plex_user_id = int(plex_user.id)
+            # Busca o perfil atual
+            profile = self.data_manager.get_user_profile(plex_user_id)
+            
+            if profile:
+                updates = {}
+                current_email = plex_user.email
+                current_username = plex_user.username
+                
+                # Verifica mudança de email
+                if profile.get('email') != current_email:
+                    logger.info(f"Sincronização (Reativação): Email do utilizador {plex_user_id} alterado. {profile.get('email')} -> {current_email}")
+                    updates['email'] = current_email
+                
+                # Verifica mudança de username
+                if profile.get('username') != current_username:
+                    logger.info(f"Sincronização (Reativação): Username do utilizador {plex_user_id} alterado. {profile.get('username')} -> {current_username}")
+                    updates['username'] = current_username
+                
+                # Aplica as atualizações se houver
+                if updates:
+                    self.data_manager.set_user_profile(plex_user_id, updates)
+                    
+        except Exception as e:
+            logger.error(f"Erro não fatal ao sincronizar dados do utilizador durante o convite: {e}")
+
+    def send_plex_invite(self, identifier, library_titles, plex_user_id=None):
         """
         Método inteligente para convidar ou reativar o acesso de um usuário ao Plex.
-        - Se o usuário não for amigo, envia um novo convite.
-        - Se o usuário já for amigo mas não tiver acesso, atualiza suas permissões.
+        Prioriza o ID do utilizador se fornecido para maior precisão.
+        
+        :param identifier: Email ou username para fallback.
+        :param library_titles: Lista de bibliotecas a partilhar.
+        :param plex_user_id: (Opcional) ID numérico do utilizador Plex.
         """
         if not self.conn.plex:
             return {"success": False, "message": _("O Plex não está configurado.")}
         
+        user_to_invite = None
+
+        # 1. Tenta encontrar o utilizador diretamente pelo ID na lista de amigos atuais
+        # Isso é mais robusto caso o utilizador tenha mudado de nome ou email
+        if plex_user_id:
+            try:
+                all_friends = self.conn.account.users()
+                user_to_invite = next((u for u in all_friends if str(u.id) == str(plex_user_id)), None)
+                if user_to_invite:
+                    logger.info(f"Utilizador encontrado por ID ({plex_user_id}) na lista de amigos. A usar este objeto.")
+            except Exception as e:
+                logger.warning(f"Erro ao tentar encontrar utilizador por ID na lista de amigos: {e}")
+
         try:
             libraries_to_share = [s for s in self.conn.plex.library.sections() if s.title in library_titles]
             if not libraries_to_share:
                 return {"success": False, "message": _("Nenhuma biblioteca válida foi encontrada para compartilhar.")}
 
-            # Tenta encontrar o usuário na conta do Plex
+            # 2. Se o utilizador foi encontrado pelo ID (ou seja, ainda é amigo), usa-o
+            if user_to_invite:
+                # *** ATUALIZAÇÃO *** Sincroniza dados locais (email/username) se mudaram
+                self._sync_local_user_data(user_to_invite)
+                
+                # Verifica se já tem acesso a este servidor
+                if self.conn.plex.machineIdentifier in [s.machineIdentifier for s in user_to_invite.servers]:
+                    logger.info(f"O utilizador '{user_to_invite.username}' (ID: {plex_user_id}) já tem acesso ao servidor. Nenhuma ação necessária.")
+                    return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso.")}
+
+                logger.info(f"Utilizador '{user_to_invite.username}' (ID: {plex_user_id}) encontrado na conta Plex, mas sem acesso a este servidor. A atualizar as partilhas.")
+                self.conn.account.updateFriend(user=user_to_invite, server=self.conn.plex, sections=libraries_to_share)
+                return {"success": True, "message": _("Acesso do utilizador atualizado com sucesso via ID!")}
+
+            # 3. Fallback: Se não encontrou pelo ID, tenta pelo identificador (email/username)
+            # Isto acontece se o utilizador foi removido totalmente dos amigos
+            logger.info(f"Utilizador não encontrado por ID. A tentar convidar por identificador: '{identifier}'")
             user_to_invite = self.conn.account.user(identifier)
             
-            # Verifica se o usuário já tem acesso a este servidor específico
+            # *** ATUALIZAÇÃO *** Sincroniza dados locais aqui também, se o utilizador for encontrado
+            if user_to_invite:
+                 self._sync_local_user_data(user_to_invite)
+
             if self.conn.plex.machineIdentifier in [s.machineIdentifier for s in user_to_invite.servers]:
-                logger.info(f"O utilizador '{identifier}' já tem acesso ao servidor. Nenhuma ação necessária.")
                 return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso.")}
 
-            # Se o usuário é amigo, mas não tem acesso, atualiza as permissões (reativação)
-            logger.info(f"Utilizador '{identifier}' encontrado na conta Plex, mas sem acesso a este servidor. A atualizar as partilhas.")
             self.conn.account.updateFriend(user=user_to_invite, server=self.conn.plex, sections=libraries_to_share)
-            return {"success": True, "message": _("Acesso do utilizador existente atualizado com sucesso para %(identifier)s!", identifier=identifier)}
+            return {"success": True, "message": _("Acesso do utilizador atualizado com sucesso para %(identifier)s!", identifier=identifier)}
 
         except NotFound:
-            # Se o usuário não for encontrado (NotFound), ele não é um amigo. Envia um novo convite.
+            # Se não encontrado em lado nenhum, envia novo convite
             logger.info(f"Utilizador '{identifier}' não encontrado como amigo. A enviar novo convite.")
             self.conn.account.inviteFriend(user=identifier, server=self.conn.plex, sections=libraries_to_share)
             return {"success": True, "message": _("Convite enviado com sucesso para %(identifier)s!", identifier=identifier)}
         
         except BadRequest as e:
-            # Lida com outros erros da API, como convites já pendentes.
             error_str = str(e).lower()
             if 'user is already a friend' in error_str or "already sharing" in error_str or "invite has already been sent" in error_str:
-                logger.warning(f"API do Plex indicou que '{identifier}' já é amigo ou tem um convite pendente, mas a verificação inicial falhou. A considerar como sucesso.")
                 return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso ou um convite pendente.")}
             logger.error(f"Erro 'BadRequest' ao convidar '{identifier}': {e}")
             return {"success": False, "message": str(e)}
