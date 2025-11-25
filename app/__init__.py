@@ -116,7 +116,8 @@ def create_app():
     # CORREÇÃO: Define um ficheiro de base de dados separado para o agendador.
     scheduler_db_path = os.path.join(config_dir_path, 'scheduler_jobs.db')
     log_file_path = os.path.join(config_dir_path, 'app.log')
-    cache_dir_path = os.path.join(config_dir_path, 'cache')
+    # CORREÇÃO: Alterado para um subdiretório para evitar conflitos com a pasta 'images'
+    cache_dir_path = os.path.join(config_dir_path, 'cache', 'web_cache')
 
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=30'
     app.config['LOG_FILE'] = log_file_path
