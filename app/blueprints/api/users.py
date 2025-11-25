@@ -553,6 +553,9 @@ def reactivate_user_route():
         # CORREÇÃO: Passamos agora o ID do plex para garantir que se o utilizador ainda for amigo, seja encontrado corretamente
         invite_result = extensions.plex_manager.invites.send_plex_invite(identifier, libraries, plex_user_id=plex_user_id)
 
+        # CORREÇÃO: Obter o e-mail real usado no convite para garantir que os logs estão corretos
+        actual_email_sent = invite_result.get('email') or identifier
+
         if not invite_result.get('success'):
             error_message = invite_result.get('message', _('Erro desconhecido ao convidar.'))
             logger.warning(f"Tentativa de reativação para '{username}' falhou no envio do convite: {error_message}")
@@ -570,9 +573,15 @@ def reactivate_user_route():
             logger.error(f"Falha ao confirmar reativação de '{username}' no Plex após envio do convite.")
             return jsonify({"success": False, "message": _("Convite enviado, mas falha ao confirmar o acesso no Plex. Verifique o estado do convite no Plex.")})
 
-        profile['status'] = 'active'
-        profile['libraries'] = json.dumps(libraries)
-        extensions.data_manager.set_user_profile(plex_user_id, profile)
+        # CORREÇÃO CRÍTICA: Não reutilizar o objeto 'profile' antigo para atualizar o banco de dados.
+        # O método 'send_plex_invite' pode ter atualizado o email/username em background (via _sync_local_user_data).
+        # Se usarmos o objeto 'profile' antigo aqui, reverteremos essas mudanças.
+        # Enviamos apenas os campos que queremos alterar explicitamente.
+        updates = {
+            'status': 'active',
+            'libraries': json.dumps(libraries)
+        }
+        extensions.data_manager.set_user_profile(plex_user_id, updates)
         extensions.data_manager.remove_blocked_user(plex_user_id)
 
         logger.info(f"Utilizador '{username}' marcado como ativo localmente.")
@@ -582,15 +591,16 @@ def reactivate_user_route():
                 'message': _("O utilizador %(username)s foi reativado.", username=username)
             }, namespace='/dashboard')
 
-        logger.info(f"Convite enviado com sucesso para '{identifier}' para o utilizador reativado '{username}'.")
-        return jsonify({"success": True, "message": _("Utilizador reativado e um novo convite foi enviado para %(identifier)s.", identifier=identifier)})
+        # CORREÇÃO: Logar com o e-mail real para o qual o convite foi enviado
+        logger.info(f"Convite enviado com sucesso para '{actual_email_sent}' para o utilizador reativado '{username}'.")
+        return jsonify({"success": True, "message": _("Utilizador reativado e um novo convite foi enviado para %(identifier)s.", identifier=actual_email_sent)})
 
     except Exception as e:
         logger.error(f"Erro ao reativar o utilizador {plex_user_id}: {e}", exc_info=True)
-        profile = extensions.data_manager.get_user_profile(plex_user_id)
-        if profile:
-            profile['status'] = 'inactive'
-            extensions.data_manager.set_user_profile(plex_user_id, profile)
+        # Em caso de erro, tentamos reverter o status apenas enviando o campo status
+        try:
+             extensions.data_manager.set_user_profile(plex_user_id, {'status': 'inactive'})
+        except: pass
         return jsonify({"success": False, "message": _("Ocorreu um erro ao reativar o utilizador.")}), 500
 
 @users_api_bp.route('/delete-permanently', methods=['POST'])
