@@ -1,324 +1,302 @@
-# app/services/plex/user_manager.py
-
+# app/services/plex/invite_manager.py
 import logging
+import secrets
+import time
 import json
-import base64
-from datetime import datetime, timedelta
-from plexapi.exceptions import NotFound
-from requests.exceptions import RequestException
+import requests
+from datetime import datetime, timezone, timedelta
+from plexapi.myplex import MyPlexAccount
+from plexapi.exceptions import BadRequest, NotFound
 from flask_babel import gettext as _
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Lock
-from flask import current_app, url_for
-from urllib.parse import urlparse
-from apscheduler.jobstores.base import JobLookupError
+from flask import url_for
 
-from ...extensions import cache
+from app.config import load_or_create_config
 
 logger = logging.getLogger(__name__)
 
-class PlexUserManager:
+class PlexInviteManager:
     """
-    Gere todas as operações relacionadas com os utilizadores do Plex.
+    Gere todo o ciclo de vida dos convites de utilizadores.
     """
-    def __init__(self, connection, data_manager, tautulli_manager, overseerr_manager):
+    def __init__(self, connection, user_manager, data_manager, plex_manager, overseerr_manager, notifier_manager):
         self.conn = connection
+        self.user_manager = user_manager
         self.data_manager = data_manager
-        self.tautulli_manager = tautulli_manager
+        self.plex_manager = plex_manager
         self.overseerr_manager = overseerr_manager
-        self.stream_manager = None
+        self.notifier_manager = notifier_manager
 
-    def invalidate_user_cache(self):
-        """Invalida a cache de utilizadores."""
-        cache.delete_memoized(self.get_all_plex_users)
-        logger.info(_("Cache de utilizadores do Plex invalidado."))
+    def create_invitation(self, **kwargs):
+        if not kwargs.get('library_titles'):
+            return {"success": False, "message": _("Pelo menos uma biblioteca deve ser selecionada para o convite.")}
 
-    def get_user_by_id(self, plex_user_id):
-        """Busca um único utilizador pelo seu ID do Plex, utilizando a cache."""
+        custom_code = kwargs.get('custom_code')
+        max_uses = kwargs.get('max_uses', 1)
 
-        all_users = self.get_all_plex_users()
-
-        if all_users is None:
-            return None
-        return next((u for u in all_users if u['id'] == plex_user_id), None)
-
-    @cache.memoize(timeout=300)
-    def get_all_plex_users(self, force_refresh_signal=None):
-        """
-        Obtém todos os utilizadores com acesso ao servidor Plex configurado, incluindo a conta do administrador.
-        Utiliza cache centralizado (Flask-Caching).
-        O argumento 'force_refresh_signal' pode ser usado para quebrar o cache se necessário,
-        mas a invalidação é preferida através de `invalidate_user_cache()`.
-        """
-
-        if not self.conn.account or not self.conn.plex:
-            return None
-
-        try:
-            server_identifier = self.conn.plex.machineIdentifier
-            all_friends = self.conn.account.users()
-
-            with current_app.app_context():
-                users_with_access = []
-                for user in all_friends:
-                    if any(s.machineIdentifier == server_identifier for s in user.servers):
-                        user_thumb_url = None
-                        if user.thumb:
-                            try:
-                                parsed_thumb = urlparse(user.thumb)
-                                path_with_query = parsed_thumb.path
-                                if parsed_thumb.query: path_with_query += "?" + parsed_thumb.query
-                                
-                                payload_str = f"plex_account:{path_with_query}"
-                                b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                                user_thumb_url = url_for('image.proxy_image', source=b64_payload)
-                            except Exception as e:
-                                logger.error(f"Falha ao processar a URL do avatar para o utilizador {user.username}: {e}")
-
-                        users_with_access.append({
-                            'username': user.username, 
-                            'email': user.email, 
-                            'id': user.id, 
-                            'thumb': user_thumb_url, 
-                            'servers': [s.name for s in user.servers]
-                        })
-
-                if self.conn.account:
-                    admin_id = self.conn.account.id
-                    is_admin_in_list = any(u['id'] == admin_id for u in users_with_access)
-                    
-                    if not is_admin_in_list:
-                        admin_thumb_url = None
-                        if self.conn.account.thumb:
-                            try:
-                                parsed_thumb = urlparse(self.conn.account.thumb)
-                                path_with_query = parsed_thumb.path
-                                if parsed_thumb.query: path_with_query += "?" + parsed_thumb.query
-                                
-                                payload_str = f"plex_account:{path_with_query}"
-                                b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                                admin_thumb_url = url_for('image.proxy_image', source=b64_payload)
-                            except Exception as e:
-                                logger.error(f"Falha ao processar a URL do avatar para o administrador: {e}")
-
-                        users_with_access.append({
-                            'username': self.conn.account.username, 
-                            'email': self.conn.account.email, 
-                            'id': admin_id, 
-                            'thumb': admin_thumb_url, 
-                            'servers': [self.conn.plex.friendlyName]
-                        })
-
-            return users_with_access
-        except RequestException as e:
-            logger.error(_("Erro de rede ao obter utilizadores do Plex: %(error)s", error=e))
-            self.invalidate_user_cache()
-            return None
-        except Exception as e:
-            logger.error(_("Erro inesperado ao obter utilizadores do Plex: %(error)s", error=e), exc_info=True)
-            self.invalidate_user_cache()
-            return None
-
-    def get_user_libraries(self, plex_user_id):
-        user = self.get_user_by_id(plex_user_id)
-        if not user:
-            return {"success": False, "message": _("Utilizador não encontrado.")}
+        if custom_code:
+            if self.data_manager.get_invitation(custom_code):
+                return {"success": False, "message": _("Este código personalizado já está em uso.")}
+            code = custom_code
+        else:
+            code = secrets.token_urlsafe(16)
         
-        email = user['email']
-        username = user['username']
+        expires_in_minutes = kwargs.get('expires_in_minutes')
+        
+        invitation_details = {
+            "libraries": kwargs.get('library_titles', []),
+            "screen_limit": kwargs.get('screens', 0),
+            "allow_downloads": kwargs.get('allow_downloads', False),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=int(expires_in_minutes))).isoformat() if expires_in_minutes else None,
+            "trial_duration_minutes": kwargs.get('trial_duration_minutes', 0),
+            "overseerr_access": kwargs.get('overseerr_access', False),
+            "max_uses": max_uses,
+            "use_count": 0,
+            "claimed_by_users": [] 
+        }
 
-        if not self.conn.account:
-            return {"success": False, "message": _("A conta Plex não está configurada.")}
+        self.data_manager.add_invitation(code, invitation_details)
+        return {"success": True, "code": code, "message": _("Código de convite criado com sucesso.")}
 
-        if self.conn.account.id == plex_user_id:
-            all_libraries = [sec.title for sec in self.conn.plex.library.sections()]
-            return {"success": True, "libraries": all_libraries}
+    def get_invitation_by_code(self, code):
+        invitation = self.data_manager.get_invitation(code)
+        if not invitation: return None, _("Convite não encontrado.")
+        
+        if invitation.get('use_count', 0) >= invitation.get('max_uses', 1):
+            return None, _("Este convite já atingiu o seu limite máximo de utilizações.")
 
-        try:
-            plex_user_obj = self.conn.account.user(email)
-            profile = self.data_manager.get_user_profile(plex_user_id)
-            if profile and profile.get('libraries'):
-                try:
-                    return {"success": True, "libraries": json.loads(profile['libraries'])}
-                except (json.JSONDecodeError, TypeError):
-                    pass
-
-            server_resource = next((s for s in plex_user_obj.servers if s.machineIdentifier == self.conn.plex.machineIdentifier), None)
-            library_titles = [sec.title for sec in server_resource.sections()] if server_resource else []
-
-            profile['libraries'] = json.dumps(library_titles)
-            self.data_manager.set_user_profile(plex_user_id, profile)
-            return {"success": True, "libraries": library_titles}
-        except NotFound:
-            return {"success": False, "message": _("Utilizador com o email %(email)s não encontrado na sua conta Plex.", email=email)}
-        except Exception as e:
-            logger.error(_("Erro ao obter bibliotecas para %(email)s: %(error)s", email=email, error=e), exc_info=True)
-            return {"success": False, "message": _("Ocorreu um erro inesperado: %(error)s", error=e)}
-
-    def update_user_libraries(self, plex_user_id, library_titles):
-        user = self.get_user_by_id(plex_user_id)
-        if not user:
-            return {"success": False, "message": _("Utilizador não encontrado.")}
-
-        if not self.conn.account:
-            return {"success": False, "message": _("A conta Plex não está configurada.")}
-
-        if self.conn.account.id == plex_user_id:
-            return {"success": True, "message": _("O administrador já tem acesso a todas as bibliotecas. Nenhuma alteração é necessária.")}
+        if invitation.get('expires_at') and datetime.fromisoformat(invitation['expires_at']) < datetime.now(timezone.utc): 
+            return None, _("Este convite expirou.")
             
-        try:
-            user_to_update = self.conn.account.user(user['email'])
-            libraries_to_share = [s for s in self.conn.plex.library.sections() if s.title in library_titles]
-            
-            self.conn.account.updateFriend(user=user_to_update, server=self.conn.plex, sections=libraries_to_share)
-            
-            profile = self.data_manager.get_user_profile(plex_user_id)
-            profile['libraries'] = json.dumps(library_titles)
-            self.data_manager.set_user_profile(plex_user_id, profile)
-            return {"success": True, "message": _("Bibliotecas de %(username)s atualizadas com sucesso.", username=user['username'])}
-        except Exception as e:
-            logger.error(_("Erro ao atualizar bibliotecas para %(email)s: %(error)s", email=user['email'], error=e), exc_info=True)
-            return {"success": False, "message": str(e)}
+        return invitation, _("Convite válido.")
 
-    def update_all_users_libraries(self, library_titles):
+    def claim_invitation(self, code, plex_user_account):
+        from app.extensions import scheduler
+        from app.scheduler import end_trial_job
+
+        invitation, message = self.get_invitation_by_code(code)
+        if not invitation:
+            return {"success": False, "message": message}
+        
+        claimed_users = invitation.get('claimed_by_users', [])
+        if plex_user_account.username in claimed_users:
+            return {"success": False, "message": _("Você já resgatou este convite anteriormente.")}
+
+        # Passamos o ID do utilizador para garantir que o convite vai para a conta certa
+        invite_result = self.send_plex_invite(
+            plex_user_account.email, 
+            invitation['libraries'], 
+            plex_user_id=plex_user_account.id
+        )
+        
+        if not invite_result.get("success"):
+            return invite_result
+        if invite_result.get("already_exists"):
+            return {"success": False, "message": _("Você já tem acesso a este servidor.")}
+
+        time.sleep(3)
+
+        accept_result = self._accept_invite_v2(plex_user_account)
+        if not accept_result.get("success"):
+            all_current_users = self.user_manager.get_all_plex_users(force_refresh=True)
+            if not any(u['id'] == plex_user_account.id for u in all_current_users):
+                return {"success": False, "message": accept_result.get('message')}
+
+        if invitation['screen_limit'] > 0:
+            self.plex_manager.update_screen_limit(plex_user_account.id, invitation['screen_limit'])
+
+        self.data_manager.increment_invitation_use(code, plex_user_account.username)
+        self.user_manager.invalidate_user_cache()
+        self.data_manager.create_notification(message=f"'{plex_user_account.username}' resgatou um convite.", category='success', link=url_for('main.users_page'))
+
+        profile_data = {
+            'username': plex_user_account.username,
+            'email': plex_user_account.email,
+            'screen_limit': invitation['screen_limit'], 
+            'allow_downloads': invitation.get('allow_downloads', False), 
+            'libraries': json.dumps(invitation.get('libraries', []))
+        }
+        
+        is_trial = False
+        if invitation.get("trial_duration_minutes", 0) > 0:
+            is_trial = True
+            trial_end_utc = datetime.now(timezone.utc) + timedelta(minutes=invitation["trial_duration_minutes"])
+            naive_run_date = trial_end_utc.astimezone(scheduler.timezone).replace(tzinfo=None)
+            job_id = f"trial_end_{plex_user_account.id}"
+            scheduler.add_job(id=job_id, func=end_trial_job, args=[plex_user_account.id], trigger='date', run_date=naive_run_date, replace_existing=True)
+            profile_data.update({"trial_end_date": trial_end_utc.isoformat(), "trial_job_id": job_id})
+
+        if invitation.get('overseerr_access'):
+            self.overseerr_manager.import_from_plex({"id": plex_user_account.id, "email": plex_user_account.email, "username": plex_user_account.username})
+            profile_data['overseerr_access'] = True
+
+        self.data_manager.set_user_profile(plex_user_account.id, profile_data)
+        
+        new_profile = self.data_manager.get_user_profile(plex_user_account.id)
+
+        config = load_or_create_config()
+        overseerr_url = config.get("OVERSEERR_URL", "").rstrip('/')
+        expiration_date = profile_data.get("trial_end_date") or profile_data.get("expiration_date")
+
+        return {
+            "success": True, 
+            "message": _("Convite resgatado e acesso concedido! Bem-vindo, %(username)s.", username=plex_user_account.username),
+            "user_data": {
+                "username": plex_user_account.username,
+                "expiration_date": expiration_date,
+                "is_trial": is_trial,
+                "payment_token": new_profile.get('payment_token'),
+                "overseerr_access": profile_data.get('overseerr_access', False),
+                "overseerr_url": overseerr_url if overseerr_url and profile_data.get('overseerr_access', False) else None
+            }
+        }
+
+    def list_invitations(self):
+        return self.data_manager.get_all_invitations()
+
+    def delete_invitation(self, code):
+        self.data_manager.delete_invitation(code)
+        return {"success": True, "message": _("Convite removido com sucesso.")}
+
+    def reactivate_invitation(self, code):
+        if self.data_manager.reset_invitation_usage(code):
+             return {"success": True, "message": _("Convite reativado com sucesso (Contador resetado e validade estendida).")}
+        return {"success": False, "message": _("Convite não encontrado.")}
+
+    def _sync_local_user_data(self, plex_user):
         """
-        Atualiza as bibliotecas para TODOS os utilizadores com acesso ao servidor.
+        Verifica e atualiza o email e username no banco de dados local
+        com base nos dados mais recentes do Plex.
         """
-        all_users = self.get_all_plex_users()
-        if not all_users:
-            return {"success": False, "message": _("Não foi possível obter a lista de usuário do Plex.")}
-
-        for user_data in all_users:
-            self.update_user_libraries(user_data['id'], library_titles)
-
-        return {"success": True, "message": _("Bibliotecas atualizadas para todos os usuário.")}
-
-    def block_user(self, plex_user_id, reason='manual'):
-        user_to_block = self.get_user_by_id(plex_user_id)
-        if not user_to_block:
-            return {"success": False, "message": _("Utilizador não encontrado.")}
-
-        if not self.conn.account:
-            return {"success": False, "message": _("A conta Plex não está configurada.")}
+        if not plex_user or not plex_user.id:
+            return
 
         try:
-            username = user_to_block['username']
-            self.data_manager.add_blocked_user(plex_user_id, username, reason=reason)
-
-            if self.stream_manager:
-                # Lógica para obter a mensagem de bloqueio
-                if reason == 'expired':
-                    reason_message = "A sua subscrição expirou. Por favor, renove para continuar."
-                elif reason == 'trial_expired':
-                    reason_message = "O seu período de teste terminou. Renove para continuar."
-                else:
-                    reason_message = "O seu acesso ao servidor foi bloqueado pelo administrador."
-                self.stream_manager.block_user_sessions(plex_user_id, reason=reason_message)
+            # Obtém o ID e converte para int
+            plex_user_id = int(plex_user.id)
+            # Busca o perfil atual
+            profile = self.data_manager.get_user_profile(plex_user_id)
             
-            return {"success": True, "message": _("Utilizador %(username)s bloqueado com sucesso.", username=username)}
-        except Exception as e:
-            logger.error(_("Erro ao bloquear o utilizador %(username)s: %(error)s", username=user_to_block['username'], error=e), exc_info=True)
-            return {"success": False, "message": str(e)}
-
-    def unblock_user(self, plex_user_id):
-        user_to_unblock = self.get_user_by_id(plex_user_id)
-        if not user_to_unblock:
-            return {"success": False, "message": _("Utilizador não encontrado.")}
-
-        try:
-            self.data_manager.remove_blocked_user(plex_user_id)
-            return {"success": True, "message": _("Utilizador %(username)s desbloqueado com sucesso.", username=user_to_unblock['username'])}
-        except Exception as e:
-            logger.error(_("Erro ao desbloquear o utilizador %(username)s: %(error)s", username=user_to_unblock['username'], error=e), exc_info=True)
-            return {"success": False, "message": str(e)}
-
-    def remove_user(self, plex_user_id):
-        profile = self.data_manager.get_user_profile(plex_user_id)
-        if not profile:
-            return {"success": False, "message": _("Utilizador não encontrado na base de dados local.")}
-
-        email = profile.get('email')
-        username = profile.get('username')
-
-        if not self.conn.account:
-            return {"success": False, "message": _("O Plex não está configurado.")}
-        try:
-            from app.extensions import scheduler
-
-            if self.stream_manager:
-                self.stream_manager.block_user_sessions(plex_user_id, "A sua conta está a ser removida do servidor.")
-
-            if profile.get('overseerr_access') and email:
-                self.overseerr_manager.remove_user(email)
-
-            # CORREÇÃO: Tenta remover pelo ID primeiro, depois fallback para email/username
-            user_removed = False
-            try:
-                # 1. Procura pelo ID na lista de amigos
-                all_friends = self.conn.account.users()
-                friend_to_remove = next((u for u in all_friends if str(u.id) == str(plex_user_id)), None)
+            if profile:
+                updates = {}
+                current_email = plex_user.email
+                current_username = plex_user.username
                 
-                if friend_to_remove:
-                    self.conn.account.removeFriend(friend_to_remove)
-                    logger.info(f"Utilizador '{friend_to_remove.username}' (ID: {plex_user_id}) removido com sucesso via ID.")
-                    user_removed = True
-                else:
-                    logger.warning(f"Utilizador ID {plex_user_id} não encontrado na lista de amigos. Tentando fallback para identificador.")
-            except Exception as e:
-                 logger.error(f"Erro ao tentar remover utilizador por ID: {e}")
-
-            # 2. Fallback: Tenta remover por email ou username se não encontrou pelo ID
-            if not user_removed:
-                identifier = email or username
-                if identifier:
-                    try:
-                        # Alguns métodos da lib aceitam string diretamente ou requerem busca prévia
-                        self.conn.account.removeFriend(identifier)
-                        logger.info(f"Acesso ao Plex para '{username}' removido com sucesso via identificador.")
-                    except NotFound:
-                        logger.warning(f"Utilizador '{username}' já não era amigo na conta Plex (NotFound no fallback).")
-                    except Exception as e:
-                        logger.error(f"Erro ao tentar remover '{username}' por identificador: {e}")
-                else:
-                    logger.warning(f"Não foi possível tentar remover '{username}' do Plex por falta de email/username e ID falhou.")
-
-            profile['status'] = 'inactive'
-            profile['expiration_date'] = None
-
-            if profile.get('trial_job_id'):
-                try: scheduler.remove_job(profile['trial_job_id'])
-                except JobLookupError: pass
-                profile['trial_job_id'] = None
-            if profile.get('expiration_job_id'):
-                 try: scheduler.remove_job(profile['expiration_job_id'])
-                 except JobLookupError: pass
-                 profile['expiration_job_id'] = None
-
-            self.data_manager.set_user_profile(plex_user_id, profile)
-            self.data_manager.remove_blocked_user(plex_user_id)
-            self.invalidate_user_cache()
-
-            return {"success": True, "message": _("Utilizador %(username)s desativado e acesso removido com sucesso.", username=username), "username": username}
+                # Verifica mudança de email
+                if profile.get('email') != current_email:
+                    logger.info(f"Sincronização (Reativação): Email do utilizador {plex_user_id} alterado. {profile.get('email')} -> {current_email}")
+                    updates['email'] = current_email
+                
+                # Verifica mudança de username
+                if profile.get('username') != current_username:
+                    logger.info(f"Sincronização (Reativação): Username do utilizador {plex_user_id} alterado. {profile.get('username')} -> {current_username}")
+                    updates['username'] = current_username
+                
+                # Aplica as atualizações se houver
+                if updates:
+                    self.data_manager.set_user_profile(plex_user_id, updates)
+                    
         except Exception as e:
-            logger.error(_("Erro ao remover o utilizador %(username)s: %(error)s", username=username, error=e), exc_info=True)
+            logger.error(f"Erro não fatal ao sincronizar dados do utilizador durante o convite: {e}")
+
+    def send_plex_invite(self, identifier, library_titles, plex_user_id=None):
+        """
+        Método inteligente para convidar ou reativar o acesso de um usuário ao Plex.
+        Prioriza o ID do utilizador se fornecido para maior precisão.
+        
+        :param identifier: Email ou username para fallback.
+        :param library_titles: Lista de bibliotecas a partilhar.
+        :param plex_user_id: (Opcional) ID numérico do utilizador Plex.
+        :return: Dict com status, mensagem e 'email' (o email final usado).
+        """
+        if not self.conn.plex:
+            return {"success": False, "message": _("O Plex não está configurado.")}
+        
+        user_to_invite = None
+
+        # 1. Tenta encontrar o utilizador diretamente pelo ID na lista de amigos atuais
+        if plex_user_id:
+            try:
+                all_friends = self.conn.account.users()
+                user_to_invite = next((u for u in all_friends if str(u.id) == str(plex_user_id)), None)
+                if user_to_invite:
+                    logger.info(f"Utilizador encontrado por ID ({plex_user_id}) na lista de amigos. A usar este objeto.")
+            except Exception as e:
+                logger.warning(f"Erro ao tentar encontrar utilizador por ID na lista de amigos: {e}")
+
+        try:
+            libraries_to_share = [s for s in self.conn.plex.library.sections() if s.title in library_titles]
+            if not libraries_to_share:
+                return {"success": False, "message": _("Nenhuma biblioteca válida foi encontrada para compartilhar.")}
+
+            # 2. Se o utilizador foi encontrado pelo ID (ou seja, ainda é amigo), usa-o
+            if user_to_invite:
+                # *** ATUALIZAÇÃO *** Sincroniza dados locais (email/username) se mudaram
+                self._sync_local_user_data(user_to_invite)
+                
+                # Verifica se já tem acesso a este servidor
+                if self.conn.plex.machineIdentifier in [s.machineIdentifier for s in user_to_invite.servers]:
+                    logger.info(f"O utilizador '{user_to_invite.username}' (ID: {plex_user_id}) já tem acesso ao servidor. Nenhuma ação necessária.")
+                    return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso."), "email": user_to_invite.email}
+
+                logger.info(f"Utilizador '{user_to_invite.username}' (ID: {plex_user_id}) encontrado na conta Plex, mas sem acesso a este servidor. A atualizar as partilhas.")
+                self.conn.account.updateFriend(user=user_to_invite, server=self.conn.plex, sections=libraries_to_share)
+                return {"success": True, "message": _("Acesso do utilizador atualizado com sucesso via ID!"), "email": user_to_invite.email}
+
+            # 3. Fallback: Se não encontrou pelo ID, tenta pelo identificador (email/username)
+            logger.info(f"Utilizador não encontrado por ID. A tentar convidar por identificador: '{identifier}'")
+            user_to_invite = self.conn.account.user(identifier)
+            
+            if user_to_invite:
+                 self._sync_local_user_data(user_to_invite)
+
+            if self.conn.plex.machineIdentifier in [s.machineIdentifier for s in user_to_invite.servers]:
+                return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso."), "email": user_to_invite.email}
+
+            self.conn.account.updateFriend(user=user_to_invite, server=self.conn.plex, sections=libraries_to_share)
+            return {"success": True, "message": _("Acesso do utilizador atualizado com sucesso para %(identifier)s!", identifier=identifier), "email": user_to_invite.email}
+
+        except NotFound:
+            # Se não encontrado em lado nenhum, envia novo convite
+            logger.info(f"Utilizador '{identifier}' não encontrado como amigo. A enviar novo convite.")
+            self.conn.account.inviteFriend(user=identifier, server=self.conn.plex, sections=libraries_to_share)
+            return {"success": True, "message": _("Convite enviado com sucesso para %(identifier)s!", identifier=identifier), "email": identifier}
+        
+        except BadRequest as e:
+            error_str = str(e).lower()
+            if 'user is already a friend' in error_str or "already sharing" in error_str or "invite has already been sent" in error_str:
+                return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso ou um convite pendente.")}
+            logger.error(f"Erro 'BadRequest' ao convidar '{identifier}': {e}")
+            return {"success": False, "message": str(e)}
+        
+        except Exception as e:
+            logger.error(f"Erro inesperado ao convidar '{identifier}': {e}", exc_info=True)
             return {"success": False, "message": str(e)}
 
-    def toggle_overseerr_access(self, plex_user_id, access: bool):
-        user_info = self.get_user_by_id(plex_user_id)
-        if not user_info:
-            return {"success": False, "message": _("Utilizador não encontrado no Plex.")}
 
-        profile = self.data_manager.get_user_profile(plex_user_id)
-        
-        if access:
-            result = self.overseerr_manager.import_from_plex(user_info)
-        else:
-            result = self.overseerr_manager.remove_user(user_info['email'])
-        
-        if result.get("success"):
-            profile['overseerr_access'] = access
-            self.data_manager.set_user_profile(plex_user_id, profile)
-            message = _("Acesso ao Overseerr concedido.") if access else _("Acesso ao Overseerr removido.")
-            return {"success": True, "message": message}
-        else:
-            return {"success": False, "message": result.get("message", _("Erro desconhecido."))}
+    def _accept_invite_v2(self, user_account: MyPlexAccount):
+        owner_identifier = self.conn.account.username
+        session = requests.Session()
+        config = load_or_create_config()
+        params = {
+            "X-Plex-Product": config.get("APP_TITLE", "Plex Panel"), "X-Plex-Version": "1.0",
+            "X-Plex-Client-Identifier": f"{secrets.token_hex(8)}-plex-panel-accept",
+            "X-Plex-Platform": "Python", "X-Plex-Device": "Server",
+            "X-Plex-Token": user_account.authToken,
+        }
+        try:
+            resp = session.get("https://clients.plex.tv/api/v2/shared_servers/invites/received/pending", params=params, headers={"Accept": "application/json"}, timeout=20)
+            resp.raise_for_status()
+            invites = resp.json()
+            def _matches(inv):
+                o = inv.get("owner", {})
+                return owner_identifier in (o.get("username"), o.get("email"), o.get("title"))
+            invite = next((i for i in invites if _matches(i)), None)
+            if not invite or not invite.get("sharedServers"):
+                return {"success": False, "message": _("Nenhum convite pendente deste servidor foi encontrado.")}
+            invite_id = invite["sharedServers"][0]["id"]
+            resp = session.post(f"https://clients.plex.tv/api/v2/shared_servers/{invite_id}/accept", params=params, headers={"Accept": "application/json"}, timeout=20)
+            resp.raise_for_status()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "message": _("Ocorreu um erro de rede ao tentar aceitar o convite.")}
