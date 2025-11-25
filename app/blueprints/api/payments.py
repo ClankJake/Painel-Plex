@@ -84,7 +84,8 @@ def _run_payment_processing_in_thread(app, txid):
                 profile = extensions.data_manager.get_user_profile(plex_user_id)
                 
                 is_reactivation = profile.get('status') == 'inactive'
-                
+                user_found_in_plex = False  # Variável de controlo para saber se o utilizador já aceitou o convite
+
                 if is_reactivation:
                     logger.info(f"Processando reativação para o utilizador '{profile['username']}' (ID: {plex_user_id}).")
                     
@@ -119,13 +120,26 @@ def _run_payment_processing_in_thread(app, txid):
                         logger.info(f"Convite de reativação enviado para {user_email}.")
                     else:
                         logger.error(f"FALHA CRÍTICA: Não foi possível encontrar um email para reativar '{profile['username']}' (ID: {plex_user_id}). O pagamento foi processado, mas o convite não pôde ser enviado.")
-                        # Não fazemos raise Exception aqui para não reverter o status do pagamento,
-                        # mas o utilizador precisará de intervenção manual.
 
                     logger.info(f"Aguardando 8 segundos para a API do Plex processar a reativação de '{profile['username']}'...")
                     time.sleep(8)
                     extensions.plex_manager.users.invalidate_user_cache()
-                    logger.info("Cache de utilizadores do Plex invalidado para garantir dados atualizados.")
+                    
+                    # Verifica se o utilizador já aparece no Plex
+                    try:
+                        updated_plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
+                        if updated_plex_user:
+                             # Se o utilizador foi encontrado, significa que a relação de amizade existe.
+                             profile['status'] = 'active'
+                             extensions.data_manager.set_user_profile(plex_user_id, profile)
+                             user_found_in_plex = True
+                             logger.info(f"Utilizador '{profile['username']}' confirmado como ativo no Plex. Status local atualizado para 'active'.")
+                        else:
+                             user_found_in_plex = False
+                             logger.info(f"Utilizador '{profile['username']}' ainda não encontrado na lista de amigos (convite pendente). Mantendo status local como 'inactive'.")
+                    except Exception as check_err:
+                        logger.warning(f"Erro ao verificar status do utilizador no Plex após reativação: {check_err}")
+
 
                 user_info_for_renewal = extensions.plex_manager.get_user_by_id(plex_user_id)
                 if not user_info_for_renewal and is_reactivation:
@@ -137,13 +151,23 @@ def _run_payment_processing_in_thread(app, txid):
                     screens_to_set = payment.get('screens')
                     expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
                     renewal_base_mode = 'today' if is_reactivation else 'expiry_date'
-                    logger.info(f"A renovar subscrição para '{profile['username']}' com o modo base: '{renewal_base_mode}'.")
                     
+                    # A renovação pode, inadvertidamente, definir o status como 'active'
                     new_expiration_date = extensions.plex_manager.renew_subscription(
                         plex_user_id, 1, screens=screens_to_set, base_mode=renewal_base_mode,
                         expiration_time_str=expiration_time, is_reactivation=is_reactivation
                     )
                     
+                    # CORREÇÃO CRÍTICA: Se for reativação e o utilizador NÃO foi encontrado no Plex (convite pendente),
+                    # forçamos o status para 'inactive' novamente, caso a renovação o tenha alterado para 'active'.
+                    if is_reactivation and not user_found_in_plex:
+                        # Recarrega o perfil para ver como ficou após a renovação
+                        post_renewal_profile = extensions.data_manager.get_user_profile(plex_user_id)
+                        if post_renewal_profile.get('status') == 'active':
+                            logger.info(f"CORREÇÃO: A renovação ativou o utilizador '{profile['username']}', mas o convite ainda está pendente. Revertendo status para 'inactive'.")
+                            post_renewal_profile['status'] = 'inactive'
+                            extensions.data_manager.set_user_profile(plex_user_id, post_renewal_profile)
+
                     refreshed_profile = extensions.data_manager.get_user_profile(plex_user_id)
                     extensions.plex_manager.notifier_manager.send_renewal_notification(user_info_for_renewal, new_expiration_date, refreshed_profile)
                     
@@ -169,7 +193,6 @@ def _run_payment_processing_in_thread(app, txid):
                 if extensions.socketio:
                     toast_message = _("O utilizador %(username)s foi reativado após pagamento.", username=profile['username']) if is_reactivation else _("Pagamento de %(username)s confirmado. A lista será atualizada.", username=profile['username'])
                     extensions.socketio.emit('user_list_updated', { 'message': toast_message }, namespace='/dashboard')
-                    logger.info(f"Socket.IO event 'user_list_updated' emitted for user {plex_user_id}.")
                 return
 
         except OperationalError as e:
@@ -349,6 +372,7 @@ def create_charge_route():
                 time.sleep(3)
                 extensions.plex_manager.users.invalidate_user_cache()
                 
+                # Atualiza explicitamente para ativo no caso gratuito, pois não há thread de pagamento
                 user_profile_obj = UserProfile.query.get(plex_user_id)
                 if user_profile_obj:
                     user_profile_obj.status = 'active'
@@ -402,13 +426,28 @@ def create_charge_route():
 
 @payments_api_bp.route('/status/<string:txid>')
 def get_payment_status_route(txid):
+    # CORREÇÃO: Força a expiração da sessão do DB para garantir que lemos dados frescos
+    # que podem ter sido atualizados pela thread de processamento em segundo plano.
+    extensions.db.session.expire_all()
+
     payment = extensions.data_manager.get_pix_payment(txid)
     if not payment:
         return jsonify({"success": False, "status": "NOT_FOUND"}), 404
-        
-    if payment.get('status') == 'CONCLUIDA':
-        return jsonify({"success": True, "status": "CONCLUIDA"})
     
+    # Se já está concluída, retorna o status do pagamento e o status atual do utilizador
+    if payment.get('status') == 'CONCLUIDA':
+        profile = extensions.data_manager.get_user_profile(payment['user_plex_id'])
+        user_status = profile.get('status', 'inactive') if profile else 'unknown'
+        
+        # LOG para depuração
+        logger.info(f"Status check para {txid}: Pagamento CONCLUIDA. Status do utilizador: {user_status}")
+        
+        return jsonify({"success": True, "status": "CONCLUIDA", "user_status": user_status})
+    
+    # Se está processando, retorna para que o frontend continue aguardando
+    if payment.get('status') == 'PROCESSANDO':
+        return jsonify({"success": True, "status": "PROCESSANDO"})
+
     provider = payment.get('provider', 'EFI') 
     is_confirmed = False
     
@@ -428,10 +467,13 @@ def get_payment_status_route(txid):
 
     if is_confirmed:
         _process_successful_payment(txid)
-        return jsonify({"success": True, "status": "CONCLUIDA"})
+        # Retorna PROCESSANDO para que o frontend continue a fazer polling e não mostre
+        # sucesso prematuro antes de sabermos se o utilizador foi ativado ou se precisa aceitar convite.
+        return jsonify({"success": True, "status": "PROCESSANDO"})
         
     return jsonify({"success": True, "status": payment.get('status')})
 
+# ... (webhooks permanecem inalterados) ...
 @payments_api_bp.route('/webhook/efi', methods=['POST'])
 @efi_webhook_security
 def efi_webhook():
