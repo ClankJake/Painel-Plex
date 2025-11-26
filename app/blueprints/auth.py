@@ -156,8 +156,42 @@ def check_plex_pin(client_id, pin_id):
         
         # --- LÓGICA DE LOGIN PARA UTILIZADORES NORMAIS ---
         plex_users = plex_manager.get_all_plex_users()
-        has_plex_access = any(u['username'] == account.username for u in plex_users if u.get('servers'))
-        user_profile = data_manager.get_user_profile_by_username(account.username)
+        
+        # 1. Sincronização: Tenta encontrar o perfil localmente pelo ID do Plex
+        # Isso permite que o utilizador faça login mesmo se mudou o nome de utilizador ou email no Plex
+        user_profile = data_manager.get_user_profile(int(account.id))
+        
+        if user_profile:
+            updates = {}
+            # Verifica se o username mudou
+            if user_profile.get('username') != account.username:
+                logger.info(f"Sincronização: Username alterado de '{user_profile.get('username')}' para '{account.username}' (ID: {account.id}). Atualizando localmente.")
+                updates['username'] = account.username
+            
+            # Verifica se o email mudou
+            if account.email and user_profile.get('email') != account.email:
+                logger.info(f"Sincronização: Email alterado de '{user_profile.get('email')}' para '{account.email}' (ID: {account.id}). Atualizando localmente.")
+                updates['email'] = account.email
+            
+            if updates:
+                data_manager.set_user_profile(int(account.id), updates)
+                user_profile.update(updates) # Atualiza o objeto em memória para o resto da lógica
+        else:
+            # Fallback: Se não encontrou por ID, tenta pelo username (para casos legados)
+            user_profile = data_manager.get_user_profile_by_username(account.username)
+
+        # 2. Verifica acesso ao servidor (se está na lista de amigos/partilhas)
+        has_plex_access = False
+        if plex_users:
+            for u in plex_users:
+                # Verifica por ID (mais robusto)
+                if str(u.get('id')) == str(account.id):
+                    has_plex_access = True
+                    break
+                # Verifica por Username (compatibilidade)
+                if u.get('username') == account.username:
+                    has_plex_access = True
+                    break
 
         if has_plex_access:
             # O utilizador tem acesso ao servidor Plex, procede com o login normal.
@@ -179,12 +213,15 @@ def check_plex_pin(client_id, pin_id):
         else:
             # O utilizador NÃO tem acesso ao servidor Plex.
             if not user_profile:
+                # Se não temos perfil local e não tem acesso ao Plex, nega.
                 error_msg = _("Acesso negado. O usuário %(username)s não tem acesso a este servidor.", username=account.username)
                 return jsonify({"success": False, "message": "auth_denied", "error": error_msg})
 
+            # Se o perfil local existe, verificamos se está inativo (expirado/removido)
             if user_profile.get('status') == 'inactive':
-                logger.info(f"Tentativa de login do utilizador inativo '{account.username}'. A redirecionar para pagamento.")
+                logger.info(f"Tentativa de login do utilizador inativo '{account.username}' (ID: {account.id}). A redirecionar para pagamento.")
                 
+                # Garante que o email está atualizado no perfil inativo para receber o convite
                 if account.email and user_profile.get('email') != account.email:
                     user_profile['email'] = account.email
                     data_manager.set_user_profile(user_profile['plex_user_id'], user_profile)
@@ -194,6 +231,7 @@ def check_plex_pin(client_id, pin_id):
                 reactivation_url = url_for('main.payment_page', token=user_profile.get('payment_token'), _external=False)
                 return jsonify({"success": True, "action": "reactivate", "redirect_url": reactivation_url})
             
+            # Se está marcado como ativo mas não tem acesso ao Plex, algo está errado (ou removido manualmente no Plex)
             if user_profile.get('status') == 'active':
                 latest_payment = data_manager.get_latest_completed_payment(user_profile['plex_user_id'])
                 is_recently_paid = False
