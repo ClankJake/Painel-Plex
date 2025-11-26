@@ -197,7 +197,7 @@ export async function handleSendBulkNotification() {
                             showToast('A tarefa foi enviada, mas não recebemos resposta do servidor. (Timeout)', 'error');
                             resetBulkNotificationUI(0);
                         }
-                    }, 10000);
+                    }, 30000);
                    
                } else {
                     // FALHA IMEDIATA DA API
