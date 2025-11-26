@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="{{ current_locale.language if current_locale else 'pt_BR' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Redireciona automaticamente após 5 segundos -->
+    <meta http-equiv="refresh" content="5;url={{ login_url }}">
+    <title>{{ _('Link Expirado') }} - {{ app_title }}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='gold'><path d='M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z'/></svg>">
+    <link rel="stylesheet" href="{{ url_for('static', filename='dist/output.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        // Aplica o tema escuro/claro conforme preferência salva
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-300 flex items-center justify-center min-h-screen p-4 transition-colors duration-300">
+    <div class="w-full max-w-md text-center">
+        <div class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 transition-all duration-300">
+            <div class="mb-6 flex justify-center">
+                <div class="p-4 bg-yellow-100 dark:bg-yellow-500/20 rounded-full">
+                    <svg class="w-12 h-12 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                </div>
+            </div>
+            
+            <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+                {{ _('Link Não Encontrado') }}
+            </h1>
+            
+            <p class="text-gray-600 dark:text-gray-400 mb-6">
+                {{ _('O link temporário que você tentou acessar não existe mais ou expirou.') }}
+            </p>
+
+            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mb-6 overflow-hidden">
+                <div class="bg-yellow-500 h-1.5 rounded-full animate-[width_5s_linear_forwards]" style="width: 0%"></div>
+            </div>
+            
+            <p class="text-sm text-gray-500 dark:text-gray-500 mb-6">
+                {{ _('Você será redirecionado para a página de login em instantes...') }}
+            </p>
+            
+            <a href="{{ login_url }}" class="inline-flex items-center justify-center px-6 py-3 text-base font-medium text-white bg-yellow-500 hover:bg-yellow-600 rounded-lg transition-colors duration-200 w-full">
+                {{ _('Ir para Login Agora') }}
+            </a>
+        </div>
+        
+        <p class="mt-8 text-xs text-gray-400 dark:text-gray-600">
+            &copy; {{ app_title }}
+        </p>
+    </div>
+
+    <style>
+        @keyframes width {
+            from { width: 0%; }
+            to { width: 100%; }
+        }
+    </style>
+</body>
+</html>
