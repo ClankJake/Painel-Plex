@@ -1,7 +1,7 @@
 # app/blueprints/redirect.py
 
 import logging
-from flask import Blueprint, redirect, abort
+from flask import Blueprint, redirect, render_template, url_for
 from ..extensions import link_shortener
 
 redirect_bp = Blueprint('redirect', __name__)
@@ -18,4 +18,5 @@ def redirect_to_url(code):
         return redirect(original_url)
     else:
         logger.warning(f"Código de link curto não encontrado: '{code}'")
-        abort(404)
+        # Em vez de abort(404), renderizamos uma página amigável que redireciona
+        return render_template('link_expired.html', login_url=url_for('auth.login'))
