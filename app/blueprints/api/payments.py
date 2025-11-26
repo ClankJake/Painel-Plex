@@ -84,7 +84,7 @@ def _run_payment_processing_in_thread(app, txid):
                 profile = extensions.data_manager.get_user_profile(plex_user_id)
                 
                 is_reactivation = profile.get('status') == 'inactive'
-                user_found_in_plex = False  # Variável de controlo para saber se o utilizador já aceitou o convite
+                user_found_in_plex = False
 
                 if is_reactivation:
                     logger.info(f"Processando reativação para o utilizador '{profile['username']}' (ID: {plex_user_id}).")
@@ -101,25 +101,40 @@ def _run_payment_processing_in_thread(app, txid):
                         category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
                     )
 
-                    # Verifica se temos um email para enviar o convite
-                    user_email = profile.get('email')
-                    if not user_email:
-                        # Tenta recuperar o email do Plex novamente antes de falhar
+                    # --- LÓGICA DE ENVIO DE CONVITE (CORRIGIDA) ---
+                    target_identifier = profile.get('email')
+                    
+                    if not target_identifier:
+                        # Tenta recuperar o email do Plex novamente
                         logger.info(f"Email não encontrado no perfil local para reativação de '{profile['username']}'. Tentando buscar no Plex...")
-                        plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
-                        if plex_user and plex_user.get('email'):
-                            user_email = plex_user.get('email')
-                            profile['email'] = user_email
-                            extensions.data_manager.set_user_profile(plex_user_id, profile)
-                            logger.info(f"Email recuperado e salvo: {user_email}")
+                        try:
+                            plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
+                            if plex_user and plex_user.get('email'):
+                                target_identifier = plex_user.get('email')
+                                profile['email'] = target_identifier
+                                extensions.data_manager.set_user_profile(plex_user_id, profile)
+                                logger.info(f"Email recuperado do Plex e salvo: {target_identifier}")
+                        except Exception as e:
+                            logger.warning(f"Erro ao tentar recuperar email do Plex: {e}")
 
-                    if user_email:
-                        invite_result = extensions.plex_manager.invites.send_plex_invite(user_email, json.loads(profile.get('libraries', '[]')))
-                        if not invite_result.get('success'):
-                            raise Exception(f"Falha ao reconvidar o utilizador inativo '{profile['username']}': {invite_result.get('message')}")
-                        logger.info(f"Convite de reativação enviado para {user_email}.")
+                    # Se ainda não temos email, usamos o USERNAME (ID numérico causa erro 500 no Plex)
+                    if not target_identifier:
+                        logger.warning(f"Email não encontrado para '{profile['username']}'. Usando NOME DE UTILIZADOR como fallback.")
+                        target_identifier = profile.get('username')
+
+                    if target_identifier:
+                        try:
+                            invite_result = extensions.plex_manager.invites.send_plex_invite(target_identifier, json.loads(profile.get('libraries', '[]')))
+                            if not invite_result.get('success'):
+                                logger.error(f"Falha ao reconvidar '{profile['username']}' ({target_identifier}): {invite_result.get('message')}")
+                            else:
+                                logger.info(f"Convite de reativação enviado com sucesso para: {target_identifier}")
+                        except Exception as invite_error:
+                            # Captura erro crítico no envio do convite para NÃO falhar o pagamento
+                            logger.error(f"EXCEÇÃO ao enviar convite para '{target_identifier}': {invite_error}")
                     else:
-                        logger.error(f"FALHA CRÍTICA: Não foi possível encontrar um email para reativar '{profile['username']}' (ID: {plex_user_id}). O pagamento foi processado, mas o convite não pôde ser enviado.")
+                        logger.error(f"FALHA CRÍTICA: Não foi possível encontrar identificador válido (email/username) para reativar (ID: {plex_user_id}).")
+                    # -----------------------------------------------
 
                     logger.info(f"Aguardando 8 segundos para a API do Plex processar a reativação de '{profile['username']}'...")
                     time.sleep(8)
@@ -129,7 +144,6 @@ def _run_payment_processing_in_thread(app, txid):
                     try:
                         updated_plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
                         if updated_plex_user:
-                             # Se o utilizador foi encontrado, significa que a relação de amizade existe.
                              profile['status'] = 'active'
                              extensions.data_manager.set_user_profile(plex_user_id, profile)
                              user_found_in_plex = True
@@ -152,19 +166,16 @@ def _run_payment_processing_in_thread(app, txid):
                     expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
                     renewal_base_mode = 'today' if is_reactivation else 'expiry_date'
                     
-                    # A renovação pode, inadvertidamente, definir o status como 'active'
                     new_expiration_date = extensions.plex_manager.renew_subscription(
                         plex_user_id, 1, screens=screens_to_set, base_mode=renewal_base_mode,
                         expiration_time_str=expiration_time, is_reactivation=is_reactivation
                     )
                     
-                    # CORREÇÃO CRÍTICA: Se for reativação e o utilizador NÃO foi encontrado no Plex (convite pendente),
-                    # forçamos o status para 'inactive' novamente, caso a renovação o tenha alterado para 'active'.
+                    # CORREÇÃO CRÍTICA: Mantém status inactive se convite estiver pendente
                     if is_reactivation and not user_found_in_plex:
-                        # Recarrega o perfil para ver como ficou após a renovação
                         post_renewal_profile = extensions.data_manager.get_user_profile(plex_user_id)
                         if post_renewal_profile.get('status') == 'active':
-                            logger.info(f"CORREÇÃO: A renovação ativou o utilizador '{profile['username']}', mas o convite ainda está pendente. Revertendo status para 'inactive'.")
+                            logger.info(f"CORREÇÃO: Revertendo status de '{profile['username']}' para 'inactive' (convite pendente).")
                             post_renewal_profile['status'] = 'inactive'
                             extensions.data_manager.set_user_profile(plex_user_id, post_renewal_profile)
 
@@ -328,7 +339,6 @@ def create_charge_route():
                 logger.warning(f"Falha ao tentar recuperar e-mail do Plex para '{username}': {e}")
         
         # Se ainda não tiver e-mail, logamos o aviso mas permitimos prosseguir
-        # Alguns gateways podem não exigir e-mail ou teremos de lidar com isso depois.
         if not user_email:
             logger.warning(f"Atenção: A gerar cobrança para '{username}' sem e-mail definido.")
 
@@ -360,19 +370,31 @@ def create_charge_route():
             
             if is_reactivation:
                 logger.info(f"Processando reativação gratuita para o utilizador '{username}' (ID: {plex_user_id}).")
-                # Usa o email recuperado ou existente
-                target_email = user_info.get('email')
-                if not target_email:
-                     raise Exception(f"Não foi possível encontrar um e-mail para reativar o utilizador '{username}'.")
-
-                invite_result = extensions.plex_manager.invites.send_plex_invite(target_email, json.loads(profile.get('libraries', '[]')))
-                if not invite_result.get('success'):
-                    raise Exception(f"Falha ao reconvidar o utilizador inativo '{username}': {invite_result.get('message')}")
                 
+                # --- LÓGICA DE ENVIO DE CONVITE (CORRIGIDA) PARA GRATUITO ---
+                target_identifier = user_info.get('email')
+                if not target_identifier:
+                    # Fallback para Username
+                    logger.info(f"Email não encontrado para '{username}'. Usando Username para reativação gratuita.")
+                    target_identifier = username
+
+                if not target_identifier:
+                     raise Exception(f"Não foi possível encontrar identificador (email/username) para reativar o utilizador '{username}'.")
+
+                try:
+                    invite_result = extensions.plex_manager.invites.send_plex_invite(target_identifier, json.loads(profile.get('libraries', '[]')))
+                    if not invite_result.get('success'):
+                        logger.error(f"Falha ao reconvidar o utilizador inativo '{username}' via '{target_identifier}': {invite_result.get('message')}")
+                    else:
+                        logger.info(f"Convite de reativação (gratuita) enviado para {target_identifier}.")
+                except Exception as invite_error:
+                    logger.error(f"Erro ao enviar convite gratuito: {invite_error}")
+                # -----------------------------------------------------
+
                 time.sleep(3)
                 extensions.plex_manager.users.invalidate_user_cache()
                 
-                # Atualiza explicitamente para ativo no caso gratuito, pois não há thread de pagamento
+                # Atualiza explicitamente para ativo no caso gratuito
                 user_profile_obj = UserProfile.query.get(plex_user_id)
                 if user_profile_obj:
                     user_profile_obj.status = 'active'
@@ -426,25 +448,18 @@ def create_charge_route():
 
 @payments_api_bp.route('/status/<string:txid>')
 def get_payment_status_route(txid):
-    # CORREÇÃO: Força a expiração da sessão do DB para garantir que lemos dados frescos
-    # que podem ter sido atualizados pela thread de processamento em segundo plano.
     extensions.db.session.expire_all()
 
     payment = extensions.data_manager.get_pix_payment(txid)
     if not payment:
         return jsonify({"success": False, "status": "NOT_FOUND"}), 404
     
-    # Se já está concluída, retorna o status do pagamento e o status atual do utilizador
     if payment.get('status') == 'CONCLUIDA':
         profile = extensions.data_manager.get_user_profile(payment['user_plex_id'])
         user_status = profile.get('status', 'inactive') if profile else 'unknown'
-        
-        # LOG para depuração
         logger.info(f"Status check para {txid}: Pagamento CONCLUIDA. Status do utilizador: {user_status}")
-        
         return jsonify({"success": True, "status": "CONCLUIDA", "user_status": user_status})
     
-    # Se está processando, retorna para que o frontend continue aguardando
     if payment.get('status') == 'PROCESSANDO':
         return jsonify({"success": True, "status": "PROCESSANDO"})
 
@@ -467,13 +482,11 @@ def get_payment_status_route(txid):
 
     if is_confirmed:
         _process_successful_payment(txid)
-        # Retorna PROCESSANDO para que o frontend continue a fazer polling e não mostre
-        # sucesso prematuro antes de sabermos se o utilizador foi ativado ou se precisa aceitar convite.
         return jsonify({"success": True, "status": "PROCESSANDO"})
         
     return jsonify({"success": True, "status": payment.get('status')})
 
-# ... (webhooks permanecem inalterados) ...
+# ... (Resto do ficheiro permanece inalterado) ...
 @payments_api_bp.route('/webhook/efi', methods=['POST'])
 @efi_webhook_security
 def efi_webhook():
