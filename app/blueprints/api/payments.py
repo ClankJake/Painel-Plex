@@ -486,7 +486,6 @@ def get_payment_status_route(txid):
         
     return jsonify({"success": True, "status": payment.get('status')})
 
-# ... (Resto do ficheiro permanece inalterado) ...
 @payments_api_bp.route('/webhook/efi', methods=['POST'])
 @efi_webhook_security
 def efi_webhook():
