@@ -205,7 +205,8 @@ export function renderUserGrid() {
         const term = state.viewState.searchTerm.toLowerCase();
         usersToRender = usersToRender.filter(u =>
             u.username.toLowerCase().includes(term) ||
-            (u.email && u.email.toLowerCase().includes(term))
+            (u.email && u.email.toLowerCase().includes(term)) ||
+            (u.name && u.name.toLowerCase().includes(term))
         );
     }
 
@@ -321,6 +322,7 @@ function renderUserCard(user) {
                     <div class="w-3 h-3 rounded-full ${isInactive ? 'bg-gray-500' : (user.is_blocked ? 'bg-red-500' : 'bg-green-500')}" title="${isInactive ? i18n.inactiveTitle : (user.is_blocked ? i18n.blockedTitle : i18n.activeTitle)}"></div>
                     <p class="font-semibold text-gray-900 dark:text-white text-lg">${user.username}</p>
                 </div>
+                ${user.name ? `<p class="text-sm text-gray-600 dark:text-gray-300 font-medium truncate">${user.name}</p>` : ''}
                 <p class="text-sm text-gray-500 dark:text-gray-400 truncate">${user.email || ''}</p>
                 ${statusHtml}
                 ${user.screen_limit > 0 ? `<div class="mt-2 text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-500/50 dark:text-blue-200 border border-blue-200 dark:border-blue-400/30 px-2 py-1 rounded-full inline-block">${user.screen_limit} ${user.screen_limit > 1 ? i18n.screenPlural : i18n.screenSingular}</div>` : ''}
