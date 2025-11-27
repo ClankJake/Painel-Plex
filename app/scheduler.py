@@ -215,10 +215,12 @@ def setup_scheduler(app):
     
     tz = extensions.scheduler.timezone
 
+    # Aumentado max_instances para 5 para evitar warnings quando a tarefa demora mais que o intervalo.
+    # O lock interno garante que apenas uma instância corre de verdade.
     extensions.scheduler.add_job(
         id='stream_check_job', func=stream_check_job,
         trigger='interval', seconds=config.get("STREAM_CHECK_INTERVAL_SECONDS", 15),
-        replace_existing=True, max_instances=1, coalesce=True, misfire_grace_time=90
+        replace_existing=True, max_instances=5, coalesce=True, misfire_grace_time=300
     )
     
     exp_time_parts = config.get("EXPIRATION_NOTIFICATION_TIME", "09:00").split(':')
@@ -226,8 +228,7 @@ def setup_scheduler(app):
         id='expiration_notification_job', func=expiration_notification_job,
         trigger=CronTrigger(hour=int(exp_time_parts[0]), minute=int(exp_time_parts[1]), timezone=tz),
         replace_existing=True,
-        # CORREÇÃO: Aumenta a tolerância a atrasos para 300 segundos (5 minutos).
-        # Isto irá suprimir os avisos "was missed by" para esta tarefa.
+        # Aumenta a tolerância a atrasos para 300 segundos (5 minutos) para evitar "was missed by"
         misfire_grace_time=300
     )
 
@@ -256,10 +257,11 @@ def setup_scheduler(app):
             misfire_grace_time=300
         )
 
+    # Aumentado max_instances para 5 e misfire_grace_time para 300
     extensions.scheduler.add_job(
         id='task_processor_job', func=task_processor_job,
         trigger='interval', seconds=20, replace_existing=True,
-        max_instances=1, coalesce=True, misfire_grace_time=120
+        max_instances=5, coalesce=True, misfire_grace_time=300
     )
 
     if not extensions.scheduler.running:
