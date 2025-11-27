@@ -11,6 +11,7 @@ from apscheduler.jobstores.base import JobLookupError
 from pydantic import ValidationError, BaseModel, Field
 import json
 import time
+from sqlalchemy.exc import IntegrityError
 
 from ... import extensions
 from ...config import load_or_create_config
@@ -814,36 +815,54 @@ def finalize_reactivation_route():
     """
     data = request.json
     plex_token = data.get('plex_token')
-    payment_token = data.get('payment_token') # Usado para identificar o perfil local
+    payment_token = data.get('payment_token')
 
     if not plex_token or not payment_token:
         return jsonify({"success": False, "message": _("Dados incompletos.")}), 400
 
     # 1. Tenta aceitar o convite no Plex
-    # Nota: Este método retorna o objeto MyPlexAccount se tiver sucesso
     result = extensions.plex_manager.invites.accept_invite_via_token(plex_token)
     
     if not result.get('success'):
         return jsonify(result), 400
 
-    # 2. Se aceitou (ou já estava aceito), atualiza o banco de dados local
-    plex_user_obj = result.get('user') # Objeto MyPlexAccount retornado
+    plex_user_obj = result.get('user')
     
     try:
-        # Busca o perfil pelo token de pagamento para garantir segurança
         profile = UserProfile.query.filter_by(payment_token=payment_token).first()
         
         if profile:
-            logger.info(f"Finalizando reativação para perfil local '{profile.username}' usando conta Plex '{plex_user_obj.username}'")
+            # 1. Comparação de Plex ID (Segurança Principal)
+            # Verifica se o ID do Plex que aceitou o convite é o mesmo do perfil local
+            if int(profile.plex_user_id) != int(plex_user_obj.id):
+                 logger.warning(f"Tentativa de reativação com conta incorreta. Token pertence a ID {profile.plex_user_id}, login feito com ID {plex_user_obj.id}")
+                 return jsonify({
+                    "success": False, 
+                    "message": _("A conta Plex com que fez login ('%(plex_user)s') não corresponde à conta original deste perfil. Por favor, saia do Plex e entre com a conta original (%(local_user)s).", plex_user=plex_user_obj.username, local_user=profile.username)
+                }), 409
+
+            # 2. Se o ID bater, verificamos se houve mudança de nome de usuário ou e-mail
+            if profile.username != plex_user_obj.username or profile.email != plex_user_obj.email:
+                # Antes de atualizar, verifica se o NOVO nome já está em uso por OUTRO ID (colisão)
+                existing_collision = UserProfile.query.filter_by(username=plex_user_obj.username).first()
+                if existing_collision and existing_collision.plex_user_id != profile.plex_user_id:
+                     logger.error(f"Conflito: O utilizador ID {profile.plex_user_id} mudou o nome para '{plex_user_obj.username}', mas esse nome já pertence ao ID {existing_collision.plex_user_id}.")
+                     return jsonify({
+                        "success": False, 
+                        "message": _("Você alterou seu nome de usuário no Plex para '%(new_name)s', mas esse nome já existe no nosso sistema associado a outra conta. Contate o suporte.", new_name=plex_user_obj.username)
+                    }), 409
+                
+                logger.info(f"Atualizando dados do perfil ID {profile.plex_user_id}: Username '{profile.username}' -> '{plex_user_obj.username}', Email '{profile.email}' -> '{plex_user_obj.email}'")
+                profile.username = plex_user_obj.username
+                profile.email = plex_user_obj.email
+
+            logger.info(f"Finalizando reativação para perfil local '{profile.username}' (ID: {profile.plex_user_id})")
             
             profile.status = 'active'
-            # Atualiza email/username se tiverem mudado
-            profile.username = plex_user_obj.username
-            profile.email = plex_user_obj.email
             
+            # Garantir que salvamos as alterações
             extensions.db.session.commit()
             
-            # Limpa cache para refletir mudança imediata
             extensions.plex_manager.users.invalidate_user_cache()
             
             return jsonify({"success": True, "message": _("Conta reativada com sucesso!"), "redirect_url": url_for('main.account_page')})
@@ -852,10 +871,11 @@ def finalize_reactivation_route():
 
     except IntegrityError:
         extensions.db.session.rollback()
-        logger.warning(f"Conflito de integridade ao reativar: Username '{plex_user_obj.username}' já existe em outro perfil.")
+        # Fallback genérico para erro de integridade, caso passe pela verificação manual acima
+        logger.error(f"Erro de integridade ao reativar: Username '{plex_user_obj.username}' duplicado.")
         return jsonify({
             "success": False, 
-            "message": _("A conta Plex '%(username)s' já está vinculada a outro cadastro no painel. Por favor, contate o administrador para verificar duplicidades.", username=plex_user_obj.username)
+            "message": _("Erro: O nome de usuário Plex '%(username)s' já está sendo usado por outra conta no sistema.", username=plex_user_obj.username)
         }), 409
 
     except Exception as e:
