@@ -97,7 +97,10 @@ class PlexInviteManager:
 
         accept_result = self._accept_invite_v2(plex_user_account)
         if not accept_result.get("success"):
-            all_current_users = self.user_manager.get_all_plex_users(force_refresh=True)
+            # CORREÇÃO: Invalida a cache e depois busca sem argumentos
+            self.user_manager.invalidate_user_cache()
+            all_current_users = self.user_manager.get_all_plex_users()
+            
             if not any(u['id'] == plex_user_account.id for u in all_current_users):
                 return {"success": False, "message": accept_result.get('message')}
 
