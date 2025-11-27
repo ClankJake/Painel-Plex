@@ -805,3 +805,60 @@ def get_user_payments_history(plex_user_id):
 @login_required
 def get_account_devices():
     return jsonify(extensions.tautulli_manager.get_user_devices(int(current_user.id)))
+
+@users_api_bp.route('/public/finalize-reactivation', methods=['POST'])
+def finalize_reactivation_route():
+    """
+    Rota pública chamada pela página de pagamento após o usuário fazer login no Plex.
+    Aceita o convite e atualiza o status local para 'active'.
+    """
+    data = request.json
+    plex_token = data.get('plex_token')
+    payment_token = data.get('payment_token') # Usado para identificar o perfil local
+
+    if not plex_token or not payment_token:
+        return jsonify({"success": False, "message": _("Dados incompletos.")}), 400
+
+    # 1. Tenta aceitar o convite no Plex
+    # Nota: Este método retorna o objeto MyPlexAccount se tiver sucesso
+    result = extensions.plex_manager.invites.accept_invite_via_token(plex_token)
+    
+    if not result.get('success'):
+        return jsonify(result), 400
+
+    # 2. Se aceitou (ou já estava aceito), atualiza o banco de dados local
+    plex_user_obj = result.get('user') # Objeto MyPlexAccount retornado
+    
+    try:
+        # Busca o perfil pelo token de pagamento para garantir segurança
+        profile = UserProfile.query.filter_by(payment_token=payment_token).first()
+        
+        if profile:
+            logger.info(f"Finalizando reativação para perfil local '{profile.username}' usando conta Plex '{plex_user_obj.username}'")
+            
+            profile.status = 'active'
+            # Atualiza email/username se tiverem mudado
+            profile.username = plex_user_obj.username
+            profile.email = plex_user_obj.email
+            
+            extensions.db.session.commit()
+            
+            # Limpa cache para refletir mudança imediata
+            extensions.plex_manager.users.invalidate_user_cache()
+            
+            return jsonify({"success": True, "message": _("Conta reativada com sucesso!"), "redirect_url": url_for('main.account_page')})
+        else:
+             return jsonify({"success": False, "message": _("Perfil local não encontrado.")}), 404
+
+    except IntegrityError:
+        extensions.db.session.rollback()
+        logger.warning(f"Conflito de integridade ao reativar: Username '{plex_user_obj.username}' já existe em outro perfil.")
+        return jsonify({
+            "success": False, 
+            "message": _("A conta Plex '%(username)s' já está vinculada a outro cadastro no painel. Por favor, contate o administrador para verificar duplicidades.", username=plex_user_obj.username)
+        }), 409
+
+    except Exception as e:
+        extensions.db.session.rollback()
+        logger.error(f"Erro ao finalizar reativação local: {e}")
+        return jsonify({"success": False, "message": _("Erro ao atualizar sistema local.")}), 500
