@@ -1,4 +1,3 @@
-# app/services/plex/invite_manager.py
 import logging
 import secrets
 import time
@@ -300,3 +299,31 @@ class PlexInviteManager:
             return {"success": True}
         except Exception as e:
             return {"success": False, "message": _("Ocorreu um erro de rede ao tentar aceitar o convite.")}
+
+    def accept_invite_via_token(self, plex_token):
+        """
+        Permite aceitar um convite pendente usando apenas o token do usuário.
+        Usado na página de pagamento para reativação imediata.
+        """
+        try:
+            user_account = MyPlexAccount(token=plex_token)
+            logger.info(f"Tentativa de aceite manual de convite para o utilizador Plex: {user_account.username}")
+            
+            # 1. Tenta aceitar o convite
+            accept_result = self._accept_invite_v2(user_account)
+            
+            if not accept_result.get('success'):
+                # Se falhar, verificamos se o usuário JÁ está ativo (pode ter aceitado por email nesse meio tempo)
+                # Isso evita erro falso positivo.
+                self.user_manager.invalidate_user_cache()
+                all_users = self.user_manager.get_all_plex_users()
+                if any(str(u['id']) == str(user_account.id) for u in all_users):
+                    return {"success": True, "message": _("Usuário já está ativo no servidor."), "user": user_account}
+                
+                return accept_result
+
+            return {"success": True, "message": _("Convite aceito com sucesso."), "user": user_account}
+            
+        except Exception as e:
+            logger.error(f"Erro ao processar aceite via token: {e}")
+            return {"success": False, "message": str(e)}
