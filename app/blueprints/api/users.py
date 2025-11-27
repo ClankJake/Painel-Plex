@@ -99,6 +99,7 @@ def get_status():
             all_users_to_return.append({
                 'id': plex_id,
                 'username': plex_data['username'],
+                'name': None, # Sem nome definido ainda
                 'email': plex_data.get('email'),
                 'thumb': plex_data.get('thumb'),
                 'is_blocked': False,
@@ -124,6 +125,7 @@ def get_status():
                  all_users_to_return.append({
                      'id': plex_user_id,
                      'username': username,
+                     'name': profile.get('name'), # Inclui o nome do perfil
                      'email': profile.get('email'),
                      'thumb': None,
                      'is_blocked': plex_user_id in blocked_users_data,
@@ -163,6 +165,7 @@ def get_status():
         user_data = {
             'id': plex_user_id,
             'username': username,
+            'name': profile.get('name'), # Inclui o nome do perfil
             'email': plex_data.get('email', profile.get('email')),
             'thumb': plex_data.get('thumb'),
             'is_blocked': is_blocked,
