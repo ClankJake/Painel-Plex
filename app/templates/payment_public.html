@@ -84,7 +84,20 @@
                         </svg>
                         <h2 id="success-title" class="text-2xl font-bold text-gray-900 dark:text-white"></h2>
                         <p id="success-message" class="text-gray-600 dark:text-gray-400"></p>
-                        <div class="mt-8">
+                        
+                        <!-- NOVA ÁREA PARA AÇÃO DE REATIVAÇÃO AUTOMÁTICA -->
+                        <div id="reactivation-action-area" class="hidden mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+                            <p class="text-sm text-blue-800 dark:text-blue-200 mb-4 font-medium">
+                                {{ _('Para finalizar, clique no botão abaixo para aceitar o convite automaticamente:') }}
+                            </p>
+                            <button id="reactivate-plex-login-btn" class="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-sm font-bold rounded-md text-gray-900 bg-yellow-500 hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 transition-all shadow-lg">
+                                <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
+                                {{ _('Entrar com Plex para Ativar') }}
+                            </button>
+                        </div>
+                        <!-- FIM NOVA ÁREA -->
+
+                        <div class="mt-8" id="default-login-btn-container">
                             <a id="login-button" href="#" class="btn bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3">
                                 <!-- O texto do botão será inserido pelo JS -->
                             </a>
@@ -103,6 +116,12 @@
         src="{{ url_for('static', filename='js/payment_public.js') }}"
         data-token="{{ token }}"
         data-username="{{ username }}"
+        
+        data-urls-get-plex-auth-context="{{ url_for('auth.get_plex_auth_context') }}"
+        data-urls-check-plex-pin="{{ url_for('auth.check_plex_pin_for_token', client_id='__CLIENT_ID__', pin_id=999999) }}"
+        data-urls-redirect-to-auth="{{ url_for('auth.redirect_to_auth') }}"
+        data-urls-finalize-reactivation="{{ url_for('users_api.finalize_reactivation_route') }}"
+
         data-get-public-profile-url="{{ url_for('users_api.get_public_user_profile_by_token', token=token) }}"
         data-get-payment-options-url="{{ url_for('payments_api.get_payment_options') }}"
         data-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
@@ -135,8 +154,11 @@
         data-i18n-reactivation-success-message="{{ _('Seu pagamento foi confirmado. Você já pode aceder ao seu painel.') }}"
         data-i18n-renewal-success-title="{{ _('Renovação Confirmada!') }}"
         data-i18n-renewal-success-message="{{ _('Sua assinatura foi estendida com sucesso.') }}"
-        data-i18n-reactivation-check-email-title="{{ _('Verifique seu E-mail') }}"
-        data-i18n-reactivation-check-email-message="{{ _('O pagamento foi confirmado e um convite foi enviado para o seu e-mail. Por favor, aceite-o para reativar o acesso.') }}"
+        data-i18n-reactivation-check-email-title="{{ _('Pagamento Recebido!') }}"
+        data-i18n-reactivation-check-email-message="{{ _('Para completar a reativação, precisamos confirmar o acesso à sua conta Plex.') }}"
+        data-i18n-auth-denied="{{ _('A autenticação foi cancelada ou falhou.') }}"
+        data-i18n-auth-check-error="{{ _('Erro ao verificar autenticação.') }}"
+        data-i18n-activating="{{ _('Ativando...') }}"
     ></script>
 </body>
 </html>
