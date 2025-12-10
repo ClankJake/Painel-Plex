@@ -7,6 +7,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_socketio import SocketIO
 from flask_caching import Cache
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 # --- Classe Personalizada para Utilizadores Anónimos ---
 class MyAnonymousUser(AnonymousUserMixin):
@@ -32,6 +34,10 @@ scheduler = BackgroundScheduler(daemon=True)
 socketio = SocketIO()
 # Adiciona a instância do cache
 cache = Cache()
+
+# Adiciona o Limiter (Rate Limiting)
+# Usa o endereço IP remoto como chave para limitar requisições
+limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
 
 # Os 'managers' dos serviços são inicializados como None
 data_manager = None
