@@ -28,7 +28,8 @@ def create_invite_route(validated_data):
         trial_duration_minutes=data.get('trial_duration_minutes', 0),
         overseerr_access=data.get('overseerr_access', False),
         custom_code=data.get('custom_code'),
-        max_uses=data.get('max_uses', 1)
+        max_uses=data.get('max_uses', 1),
+        telegram_id=data.get('telegram_id') # Adicionado aqui
     )
     if result.get('success'):
         result['invite_url'] = url_for('main.claim_invite_page', code=result['code'], _external=True)
