@@ -6,7 +6,7 @@ from plexapi.myplex import MyPlexAccount
 from flask_babel import gettext as _
 from flask_login import login_required
 
-from ...extensions import plex_manager
+from ...extensions import plex_manager, limiter
 from ..auth import admin_required
 from .decorators import validate_json
 from .schemas import CreateInviteSchema
@@ -29,7 +29,7 @@ def create_invite_route(validated_data):
         overseerr_access=data.get('overseerr_access', False),
         custom_code=data.get('custom_code'),
         max_uses=data.get('max_uses', 1),
-        telegram_id=data.get('telegram_id') # Adicionado aqui
+        telegram_id=data.get('telegram_id') 
     )
     if result.get('success'):
         result['invite_url'] = url_for('main.claim_invite_page', code=result['code'], _external=True)
@@ -38,6 +38,7 @@ def create_invite_route(validated_data):
 @invites_api_bp.route('/list', methods=['GET'])
 @login_required
 @admin_required
+@limiter.exempt # Adicionado para ignorar o limite de requisições nesta rota (polling do frontend)
 def list_invites_route():
     return jsonify(plex_manager.list_invitations())
 
