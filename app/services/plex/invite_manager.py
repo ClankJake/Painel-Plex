@@ -31,6 +31,7 @@ class PlexInviteManager:
 
         custom_code = kwargs.get('custom_code')
         max_uses = kwargs.get('max_uses', 1)
+        telegram_id = kwargs.get('telegram_id')
 
         if custom_code:
             if self.data_manager.get_invitation(custom_code):
@@ -39,6 +40,17 @@ class PlexInviteManager:
         else:
             code = secrets.token_urlsafe(16)
         
+        # Validação de Duplicidade de Telegram ID
+        if telegram_id:
+            # Verifica se já existe um usuário com este ID
+            existing_user = self.data_manager.get_user_profile_by_telegram(telegram_id)
+            if existing_user:
+                 return {"success": False, "message": _("Este Telegram ID já está vinculado ao usuário '%(username)s'.", username=existing_user['username'])}
+            
+            # Verifica se já existe um convite pendente com este ID
+            if self.data_manager.check_telegram_id_exists_in_invites(telegram_id):
+                 return {"success": False, "message": _("Já existe um convite ativo gerado para este Telegram ID.")}
+
         expires_in_minutes = kwargs.get('expires_in_minutes')
         
         invitation_details = {
@@ -51,7 +63,8 @@ class PlexInviteManager:
             "overseerr_access": kwargs.get('overseerr_access', False),
             "max_uses": max_uses,
             "use_count": 0,
-            "claimed_by_users": [] 
+            "claimed_by_users": [],
+            "telegram_id": telegram_id # Salva o Telegram ID no convite
         }
 
         self.data_manager.add_invitation(code, invitation_details)
@@ -80,6 +93,18 @@ class PlexInviteManager:
         claimed_users = invitation.get('claimed_by_users', [])
         if plex_user_account.username in claimed_users:
             return {"success": False, "message": _("Você já resgatou este convite anteriormente.")}
+        
+        # Lógica de Vinculação de Telegram ID
+        telegram_id_from_invite = invitation.get('telegram_id')
+        if telegram_id_from_invite:
+            # Verifica novamente (Double check) se o ID já não foi usado entre a criação e o resgate
+            existing_user = self.data_manager.get_user_profile_by_telegram(telegram_id_from_invite)
+            if existing_user and existing_user['username'] != plex_user_account.username:
+                 # Situação rara: O ID foi vinculado manualmente a outro usuário nesse meio tempo.
+                 # Decisão: Prosseguir com o convite mas SEM vincular o ID para evitar erro, ou falhar?
+                 # Melhor logar e avisar, mas permitir o acesso se o convite for válido.
+                 logger.warning(f"Conflito: O convite tinha Telegram ID {telegram_id_from_invite}, mas ele já está em uso por {existing_user['username']}. O vínculo não será feito.")
+                 telegram_id_from_invite = None
 
         # Passamos o ID do utilizador para garantir que o convite vai para a conta certa
         invite_result = self.send_plex_invite(
@@ -119,6 +144,11 @@ class PlexInviteManager:
             'libraries': json.dumps(invitation.get('libraries', []))
         }
         
+        # Adiciona o Telegram ID ao perfil se estiver presente no convite
+        if telegram_id_from_invite:
+            profile_data['telegram_user'] = telegram_id_from_invite
+            logger.info(f"Telegram ID {telegram_id_from_invite} vinculado automaticamente ao usuário {plex_user_account.username}.")
+
         is_trial = False
         if invitation.get("trial_duration_minutes", 0) > 0:
             is_trial = True
