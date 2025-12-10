@@ -1,17 +1,16 @@
 import os
 import logging
 import atexit
-from logging.handlers import RotatingFileHandler
-from datetime import datetime, timedelta, timezone
-from flask import Flask, request, redirect, url_for, session, jsonify, flash, send_from_directory, render_template, Response, has_request_context
+from datetime import datetime, timedelta
+from urllib.parse import urlparse
+from tzlocal import get_localzone_name
+
+from flask import Flask, request, redirect, url_for, session, jsonify, flash, send_from_directory, render_template, has_request_context
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_login import current_user, logout_user
 from flask_babel import get_locale, gettext as _
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from urllib.parse import urlparse
-from tzlocal import get_localzone_name
 from sqlalchemy import event
-from sqlalchemy.engine import Engine
 
 from . import extensions
 from .config import load_or_create_config, is_configured
@@ -19,6 +18,7 @@ from .scheduler import setup_scheduler
 from . import models
 from . import sockets
 from . import scheduler
+from .logging_config import setup_logging  # Importa a nova configuração de logs
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +27,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
     try:
         cursor.execute("PRAGMA journal_mode=WAL;")
-        cursor.execute("PRAGMA busy_timeout = 5000;") # Espera até 5 segundos se a DB estiver bloqueada
-        logger.debug("Modo WAL do SQLite ativado para a nova conexão.")
+        cursor.execute("PRAGMA busy_timeout = 5000;")
     finally:
         cursor.close()
 
@@ -45,56 +44,15 @@ def shutdown_scheduler():
     if extensions.scheduler.running:
         extensions.scheduler.shutdown()
 
-def setup_logging(app, log_level='INFO'):
-    """Configura o sistema de logging da aplicação."""
-    log_level_map = {
-        'DEBUG': logging.DEBUG, 'INFO': logging.INFO,
-        'WARNING': logging.WARNING, 'ERROR': logging.ERROR, 'CRITICAL': logging.CRITICAL,
-    }
-    level = log_level_map.get(log_level, logging.INFO)
-    
-    log_file = app.config.get('LOG_FILE')
-    
-    if not log_file:
-        logging.critical("CRÍTICO: O caminho do ficheiro de log (LOG_FILE) não está definido ou está vazio no config.json. A aplicação não pode iniciar.")
-        raise ValueError("LOG_FILE não está configurado.")
-
-    log_dir = os.path.dirname(log_file)
-    if log_dir: 
-        os.makedirs(log_dir, exist_ok=True)
-    
-    max_bytes = app.config.get('LOG_MAX_BYTES', 1024 * 1024)
-    backup_count = app.config.get('LOG_BACKUP_COUNT', 5)
-    
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-    file_handler = RotatingFileHandler(log_file, maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8')
-    file_handler.setFormatter(formatter)
-    
-    root_logger = logging.getLogger()
-    
-    for handler in root_logger.handlers[:]:
-        handler.close()
-        root_logger.removeHandler(handler)
-        
-    root_logger.addHandler(file_handler)
-    root_logger.setLevel(level)
-    
-    app.logger.handlers = root_logger.handlers
-    app.logger.setLevel(level)
-    app.logger.propagate = False
-
-    logger.info(f"Logging reconfigurado para nível {log_level} e ficheiro {log_file}.")
-
-
 def create_app():
     """
     Cria e configura uma instância da aplicação Flask (Application Factory).
+    Refatorado para ser mais limpo e modular.
     """
     app = Flask(__name__)
     
+    # --- Configuração de Idioma ---
     def get_user_locale():
-        """Seleciona o idioma a ser usado para a request atual."""
         if has_request_context():
             if 'language' in session:
                 return session['language']
@@ -104,24 +62,25 @@ def create_app():
     app.config['LANGUAGES'] = {'pt_BR': 'Português'}
     app.config['BABEL_DEFAULT_LOCALE'] = 'pt_BR'
     
+    # --- Carregamento de Configurações ---
     app_config = load_or_create_config()
     
+    # Remove chaves que serão redefinidas dinamicamente para evitar conflitos
     app_config.pop('LOG_FILE', None)
     app_config.pop('SQLALCHEMY_DATABASE_URI', None)
     
     app.config.update(app_config)
 
+    # --- Definição de Caminhos ---
     config_dir_path = os.path.join(app.root_path, '..', 'config')
     db_path = os.path.join(config_dir_path, 'app_data.db')
-    # CORREÇÃO: Define um ficheiro de base de dados separado para o agendador.
     scheduler_db_path = os.path.join(config_dir_path, 'scheduler_jobs.db')
     log_file_path = os.path.join(config_dir_path, 'app.log')
-    # CORREÇÃO: Alterado para um subdiretório para evitar conflitos com a pasta 'images'
     cache_dir_path = os.path.join(config_dir_path, 'cache', 'web_cache')
 
+    # --- Configurações do Flask e Extensões ---
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=30'
     app.config['LOG_FILE'] = log_file_path
-    
     app.config['SECRET_KEY'] = app.config.get('SECRET_KEY')
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -129,18 +88,18 @@ def create_app():
     base_url_for_cookie = app.config.get('APP_BASE_URL', '')
     app.config['SESSION_COOKIE_SECURE'] = base_url_for_cookie.startswith('https://')
     
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        "connect_args": {
-            "timeout": 30,
-        }
-    }
-    
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"connect_args": {"timeout": 30}}
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     app.config['CACHE_TYPE'] = 'FileSystemCache'
     app.config['CACHE_DIR'] = cache_dir_path
     app.config['CACHE_DEFAULT_TIMEOUT'] = 300
+    
+    # Rate Limiting
+    app.config['RATELIMIT_DEFAULT'] = "200 per day; 50 per hour"
+    app.config['RATELIMIT_STORAGE_URI'] = "memory://"
 
+    # Configuração de URL Base
     base_url = app.config.get('APP_BASE_URL')
     if base_url:
         parsed_url = urlparse(base_url)
@@ -148,10 +107,10 @@ def create_app():
         app.config['APPLICATION_ROOT'] = parsed_url.path or '/'
         app.config['PREFERRED_URL_SCHEME'] = parsed_url.scheme
 
+    # --- Inicialização de Logs (Refatorado) ---
     setup_logging(app, app.config.get('LOG_LEVEL', 'INFO'))
 
-    logging.getLogger('apscheduler').setLevel(logging.WARNING)
-
+    # --- Inicialização de Extensões ---
     extensions.db.init_app(app)
     with app.app_context():
         event.listen(extensions.db.engine, 'connect', set_sqlite_pragma)
@@ -160,29 +119,25 @@ def create_app():
     extensions.login_manager.init_app(app)
     extensions.babel.init_app(app, locale_selector=get_user_locale)
     extensions.cache.init_app(app)
+    extensions.limiter.init_app(app)
 
+    # Workaround para Flask-Caching
     if 'cache' not in app.extensions:
         app.extensions['cache'] = app.extensions.get('caching')
-        if app.extensions['cache']:
-            logger.debug("Workaround do Flask-Caching aplicado com sucesso.")
     
     extensions.socketio.init_app(app, async_mode='eventlet')
     sockets.app_instance = app
 
+    # --- Configuração do Scheduler ---
     if not extensions.scheduler.running:
-        # CORREÇÃO: Aponta o jobstore do agendador para o seu próprio ficheiro de base de dados.
-        jobstores = {
-            'default': SQLAlchemyJobStore(url=f'sqlite:///{scheduler_db_path}?timeout=30')
-        }
-        logger.info(f"O jobstore do agendador está a usar a base de dados separada: {scheduler_db_path}")
+        jobstores = {'default': SQLAlchemyJobStore(url=f'sqlite:///{scheduler_db_path}?timeout=30')}
         try:
             local_tz_name = get_localzone_name()
         except Exception:
             local_tz_name = 'UTC'
-        
-        logger.info(f"Configurando o fuso horário do agendador para: {local_tz_name}")
         extensions.scheduler.configure(jobstores=jobstores, timezone=local_tz_name)
 
+    # --- Inicialização dos Services (Managers) ---
     from .services import (
         DataManager, TautulliManager, PlexManager, 
         NotifierManager, EfiManager, MercadoPagoManager,
@@ -191,7 +146,7 @@ def create_app():
     )
 
     extensions.data_manager = DataManager()
-    extensions.pricing_manager = PricingManager(data_manager=extensions.data_manager) # NOVO
+    extensions.pricing_manager = PricingManager(data_manager=extensions.data_manager)
     extensions.tautulli_manager = TautulliManager(data_manager=extensions.data_manager)
     extensions.link_shortener = LinkShortener()
     extensions.notifier_manager = NotifierManager(link_shortener_service=extensions.link_shortener, socketio_instance=extensions.socketio)
@@ -216,9 +171,9 @@ def create_app():
     extensions.plex_manager.stream_manager = extensions.stream_manager
     
     scheduler.set_app_for_jobs(app)
-
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
     
+    # Inicia o Scheduler se configurado
     try:
         if is_configured() and not extensions.scheduler.running:
             setup_scheduler(app)
@@ -226,6 +181,7 @@ def create_app():
     except Exception as e:
         logger.error(f"Falha ao iniciar o agendador de tarefas: {e}")
 
+    # --- Context Processors e Error Handlers ---
     @app.context_processor
     def inject_global_vars():
         return {
@@ -233,7 +189,16 @@ def create_app():
             'app_title': app.config.get('APP_TITLE', 'Painel Plex'),
             'cache_buster': int(datetime.now().timestamp())
         }
+    
+    @app.errorhandler(429)
+    def ratelimit_handler(e):
+        if request.path.startswith('/api/') or request.is_json:
+            return jsonify({"success": False, "message": _("Muitas requisições. Aguarde um momento.")}), 429
+        return render_template('payment_unavailable.html', 
+                               reason_title=_("Limite Excedido"),
+                               reason_message=_("Muitas tentativas. Aguarde alguns minutos.")), 429
 
+    # --- Rotas Básicas ---
     @app.route('/language/<lang>')
     def set_language(lang=None):
         if lang in app.config['LANGUAGES'].keys():
@@ -246,10 +211,9 @@ def create_app():
 
     @app.route('/service-worker.js')
     def serve_sw():
-        return send_from_directory(os.path.join(app.root_path, 'static', 'js'),
-                                     'service-worker.js',
-                                     mimetype='application/javascript')
+        return send_from_directory(os.path.join(app.root_path, 'static', 'js'), 'service-worker.js', mimetype='application/javascript')
 
+    # --- Before Request Hook (Verificações de Segurança) ---
     @app.before_request
     def check_configuration_and_user():
         exempt_endpoints = {
@@ -263,8 +227,7 @@ def create_app():
             'set_language', 'main.claim_invite_page', 'serve_manifest', 'serve_sw',
             'main.payment_page', 'users_api.get_public_user_profile_by_token', 'payments_api.get_payment_options',
             'payments_api.create_charge_route', 'payments_api.get_payment_status',
-            'redirect.redirect_to_url',
-            'image.proxy_image'
+            'redirect.redirect_to_url', 'image.proxy_image'
         }
         if request.endpoint in exempt_endpoints or request.path.startswith('/socket.io'):
             return
@@ -273,25 +236,13 @@ def create_app():
             return redirect(url_for('main.setup'))
         
         if current_user.is_authenticated and not current_user.is_admin():
-            try:
-                all_users = extensions.plex_manager.get_all_plex_users(force_refresh=False)
-                if all_users is not None:
-                    plex_usernames = [user['username'] for user in all_users]
-                    if current_user.username not in plex_usernames:
-                        flash(_("O seu acesso a este servidor foi removido. Você foi desconectado."), "warning")
-                        logout_user()
-                        return redirect(url_for('auth.login'))
-            except Exception as e:
-                logger.error(f"Ocorreu uma exceção ao verificar o acesso do utilizador '{current_user.username}': {e}")
-        
-        if current_user.is_authenticated and not current_user.is_admin():
             if request.endpoint in ('main.index', 'main.settings_page', 'main.users_page'):
                 return redirect(url_for('main.statistics_page'))
 
         if current_user.is_authenticated and request.endpoint == 'auth.login':
             return redirect(url_for('main.index'))
 
-    # --- REGISTO DOS BLUEPRINTS ---
+    # --- Registro dos Blueprints ---
     from .blueprints.main import main_bp
     from .blueprints.auth import auth_bp
     from .blueprints.redirect import redirect_bp
