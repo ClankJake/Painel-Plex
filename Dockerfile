@@ -39,12 +39,14 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Instala as dependências de sistema necessárias para a biblioteca Pillow (processamento de imagens)
+# Instala as dependências de sistema necessárias
+# CORREÇÃO SSL: Ajusta o nível de segurança do OpenSSL para evitar erros de decriptação em ambientes containerizados
 RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     zlib1g-dev \
     libwebp-dev \
     --no-install-recommends && \
+    sed -i 's/SECLEVEL=2/SECLEVEL=1/g' /etc/ssl/openssl.cnf && \
     rm -rf /var/lib/apt/lists/*
 
 # Instalação de Dependências Python:
