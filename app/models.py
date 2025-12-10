@@ -83,6 +83,7 @@ class Invitation(db.Model):
     overseerr_access = db.Column(db.Boolean, default=False)
     max_uses = db.Column(db.Integer, nullable=False, default=1)
     use_count = db.Column(db.Integer, nullable=False, default=0)
+    telegram_id = db.Column(db.String, nullable=True)  # Novo campo
 
 class BlockedUser(db.Model):
     __tablename__ = 'blocked_users'
@@ -164,4 +165,3 @@ class StreamTerminationLog(db.Model):
     media_title = db.Column(db.String, nullable=False)
     platform = db.Column(db.String, nullable=True)
     reason = db.Column(db.String, nullable=False)
-
