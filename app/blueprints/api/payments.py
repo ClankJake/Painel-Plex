@@ -19,6 +19,9 @@ from ...config import load_or_create_config
 from ..auth import admin_required
 from ...models import UserProfile
 
+# Importa o limiter
+from ...extensions import limiter
+
 logger = logging.getLogger(__name__)
 payments_api_bp = Blueprint('payments_api', __name__)
 
@@ -233,6 +236,7 @@ def _process_successful_payment(txid):
 
 
 @payments_api_bp.route('/options')
+@limiter.limit("20 per minute") # Limita consultas de opções de pagamento
 def get_payment_options():
     token = request.args.get('token')
     username = None
@@ -266,6 +270,7 @@ def get_payment_options():
     return jsonify({"success": True, "prices": available_prices, "providers": enabled_providers, "can_downgrade": True})
 
 @payments_api_bp.route('/validate-coupon', methods=['POST'])
+@limiter.limit("5 per minute") # Protege contra força bruta em códigos de cupom
 def validate_coupon_route():
     data = request.json
     code = data.get('code')
@@ -291,6 +296,7 @@ def validate_coupon_route():
 
 
 @payments_api_bp.route('/create-charge', methods=['POST'])
+@limiter.limit("3 per minute") # Limita a criação de cobranças PIX para evitar spam/custos
 def create_charge_route():
     data = request.json
     provider = data.get('provider')
@@ -447,6 +453,7 @@ def create_charge_route():
     return jsonify(result)
 
 @payments_api_bp.route('/status/<string:txid>')
+@limiter.limit("60 per minute") # Polling de status a cada 1s (frontend)
 def get_payment_status_route(txid):
     extensions.db.session.expire_all()
 
@@ -488,6 +495,7 @@ def get_payment_status_route(txid):
 
 @payments_api_bp.route('/webhook/efi', methods=['POST'])
 @efi_webhook_security
+@limiter.exempt # Webhooks não devem ser limitados, pois vêm dos provedores
 def efi_webhook():
     notification_data = request.get_json(silent=True)
     
@@ -529,6 +537,7 @@ def efi_webhook():
 
 
 @payments_api_bp.route('/webhook/mercadopago', methods=['POST'])
+@limiter.exempt
 def mercadopago_webhook():
     data = request.json
     logger.info(f"Webhook do Mercado Pago recebido: {data}")
@@ -551,6 +560,7 @@ def mercadopago_webhook():
     return jsonify(status="received"), 200
 
 @payments_api_bp.route('/webhook/bpix', methods=['POST'])
+@limiter.exempt
 def bpix_webhook():
     data = request.json
     logger.info(f"Webhook da BPIX recebido: {data}")
