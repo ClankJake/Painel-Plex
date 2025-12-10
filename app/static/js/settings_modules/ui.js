@@ -126,17 +126,16 @@ export async function fetchAndDisplayPlexServers() {
 function formatLogLine(line) {
     if (!line) return '';
     
-    // Sanitização básica para evitar injeção de HTML indesejado, 
-    // mas mantendo a quebra de linha se necessário.
+    // Sanitização básica
     const escapedLine = line.replace(/&/g, "&amp;")
                             .replace(/</g, "&lt;")
                             .replace(/>/g, "&gt;")
                             .replace(/"/g, "&quot;")
                             .replace(/'/g, "&#039;");
 
-    let className = 'text-gray-300'; // Cor padrão (cinza claro/branco)
+    let className = 'text-white'; // Cor padrão agora é branca
 
-    // Detecção simples baseada em strings comuns de log Python/Flask
+    // Detecção baseada em strings comuns de log Python/Flask
     if (line.includes('CRITICAL')) {
         className = 'text-red-600 font-bold bg-red-900/20 px-1 rounded';
     } else if (line.includes('ERROR')) {
@@ -144,11 +143,11 @@ function formatLogLine(line) {
     } else if (line.includes('WARNING')) {
         className = 'text-yellow-400';
     } else if (line.includes('INFO')) {
-        className = 'text-blue-400';
+        className = 'text-white'; // Branco
     } else if (line.includes('DEBUG')) {
-        className = 'text-gray-500';
+        className = 'text-white'; // Branco
     } else if (line.includes('werkzeug') || line.includes(' 200 ')) {
-        // Logs de acesso HTTP de sucesso (opcional, para diferenciar)
+        // Mantém a cor verde suave para logs de acesso HTTP bem-sucedidos
         className = 'text-green-300/80';
     }
 
@@ -159,11 +158,22 @@ async function fetchLogs() {
     try {
         const data = await api.getLogs();
         if (data.success) {
-            // Processa o log linha por linha para aplicar cores
-            const formattedLogs = data.logs.split('\n').map(formatLogLine).join('\n');
+            // Obtém o nível selecionado no dropdown (INFO ou DEBUG)
+            const currentLevel = dom.logLevelSelector ? dom.logLevelSelector.value : 'INFO';
+            
+            // Filtra as linhas de log com base no nível selecionado
+            const filteredLogs = data.logs.split('\n').filter(line => {
+                // Se o nível selecionado for INFO, esconde linhas que contenham 'DEBUG'
+                if (currentLevel === 'INFO' && line.includes('DEBUG')) {
+                    return false;
+                }
+                return true;
+            });
+
+            // Processa o log filtrado linha por linha para aplicar cores
+            const formattedLogs = filteredLogs.map(formatLogLine).join('\n');
             
             // Usa innerHTML para renderizar as cores
-            // Nota: O elemento pai deve ser um <pre> para manter formatação de espaço/quebra de linha
             dom.logDisplay.innerHTML = formattedLogs;
             dom.logDisplay.scrollTop = dom.logDisplay.scrollHeight;
         } else {
