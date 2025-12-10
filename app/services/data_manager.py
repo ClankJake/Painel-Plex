@@ -381,6 +381,11 @@ class DataManager:
                 profile = UserProfile.query.get(plex_user_id)
                 return self._row_to_dict(profile)
         return {}
+    
+    def get_user_profile_by_telegram(self, telegram_id):
+        """Busca o perfil do usuário pelo Telegram ID."""
+        profile = UserProfile.query.filter_by(telegram_user=telegram_id).first()
+        return self._row_to_dict(profile) if profile else None
 
     def get_user_profiles_by_username(self, usernames):
         if not usernames: return {}
@@ -507,7 +512,20 @@ class DataManager:
 
     # --- MÉTODOS de Convites ---
     def add_invitation(self, code, details):
-        invitation = Invitation(code=code, libraries=json.dumps(details.get('libraries', [])), screen_limit=details.get('screen_limit', 0), allow_downloads=details.get('allow_downloads', False), created_at=details.get('created_at'), expires_at=details.get('expires_at'), trial_duration_minutes=details.get('trial_duration_minutes', 0), overseerr_access=details.get('overseerr_access', False), max_uses=details.get('max_uses', 1), use_count=details.get('use_count', 0), claimed_by_users=json.dumps(details.get('claimed_by_users', [])))
+        invitation = Invitation(
+            code=code, 
+            libraries=json.dumps(details.get('libraries', [])), 
+            screen_limit=details.get('screen_limit', 0), 
+            allow_downloads=details.get('allow_downloads', False), 
+            created_at=details.get('created_at'), 
+            expires_at=details.get('expires_at'), 
+            trial_duration_minutes=details.get('trial_duration_minutes', 0), 
+            overseerr_access=details.get('overseerr_access', False), 
+            max_uses=details.get('max_uses', 1), 
+            use_count=details.get('use_count', 0), 
+            claimed_by_users=json.dumps(details.get('claimed_by_users', [])),
+            telegram_id=details.get('telegram_id') # Novo campo
+        )
         db.session.add(invitation)
         db.session.commit()
 
@@ -526,6 +544,20 @@ class DataManager:
         """
         invitations = Invitation.query.order_by(Invitation.created_at.desc()).all()
         return [self._row_to_dict(invite, process_json=True) for invite in invitations]
+
+    def check_telegram_id_exists_in_invites(self, telegram_id):
+        """Verifica se existe algum convite pendente com este telegram_id."""
+        if not telegram_id:
+            return False
+        # Verifica apenas convites que ainda não expiraram e não estão esgotados
+        now_str = datetime.now(timezone.utc).isoformat()
+        invitation = Invitation.query.filter(
+            Invitation.telegram_id == telegram_id,
+            Invitation.use_count < Invitation.max_uses
+        ).filter(
+            (Invitation.expires_at == None) | (Invitation.expires_at > now_str)
+        ).first()
+        return invitation is not None
 
     def increment_invitation_use(self, code, username):
         invitation = Invitation.query.get(code)
