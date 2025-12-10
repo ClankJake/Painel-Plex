@@ -13,6 +13,7 @@ from sqlalchemy import func, extract, not_
 from sqlalchemy.exc import IntegrityError
 from tzlocal import get_localzone
 from flask_babel import gettext as _, ngettext
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ class DataManager:
     def __init__(self):
         pass
 
+    # ... (Métodos de Tarefas, Cupões, Gamificação, Notificação, Auditoria mantidos sem alterações) ...
     # --- MÉTODOS DE TAREFAS ---
     def create_task(self, name, payload):
         try:
@@ -89,11 +91,6 @@ class DataManager:
         return None
 
     def record_coupon_usage(self, code, plex_user_id):
-        """
-        Incrementa a contagem de uso de um cupão e regista quem o usou.
-        Esta função NÃO faz commit da transação. O chamador é responsável
-        por fazer o commit ou rollback da sessão da base de dados.
-        """
         coupon = Coupon.query.filter_by(code=code).first()
         if not coupon or not plex_user_id:
             logger.warning(f"Tentativa de registar o uso de um cupão inválido ('{code}') ou para um utilizador inválido.")
@@ -106,7 +103,6 @@ class DataManager:
             logger.info(f"Uso do cupão '{code}' registado para o utilizador ID {plex_user_id}. Contagem de uso atual: {coupon.use_count}.")
             return True
         except Exception as e:
-            # Re-lança a exceção para que o chamador possa tratar o rollback da transação.
             logger.error(f"Erro de base de dados ao registar o uso do cupão '{code}' para o utilizador ID {plex_user_id}: {e}", exc_info=True)
             raise
 
@@ -117,7 +113,7 @@ class DataManager:
         ).first()
         return usage is not None
 
-    # --- MÉTODOS DE GAMIFICAÇÃO (CONQUISTAS) ---
+    # --- MÉTODOS DE GAMIFICAÇÃO ---
     def get_unlocked_achievements(self, plex_user_id):
         achievements = UnlockedAchievement.query.filter_by(user_plex_id=plex_user_id).all()
         return {ach.achievement_id for ach in achievements}
@@ -213,7 +209,6 @@ class DataManager:
         return [self._row_to_dict(log) for log in logs]
 
     def delete_stream_termination_log(self, log_id):
-        """Apaga um único log de término pelo seu ID."""
         try:
             log_entry = StreamTerminationLog.query.get(log_id)
             if log_entry:
@@ -227,7 +222,6 @@ class DataManager:
             raise
 
     def clear_all_stream_termination_logs(self):
-        """Apaga todos os logs de término da tabela."""
         try:
             num_rows_deleted = db.session.query(StreamTerminationLog).delete()
             db.session.commit()
@@ -237,33 +231,68 @@ class DataManager:
             logger.error(f"Erro ao limpar todos os logs de término: {e}", exc_info=True)
             raise
 
-    # --- MÉTODOS FINANCEIROS ---
+    # --- MÉTODOS FINANCEIROS OTIMIZADOS ---
     def get_financial_summary(self, year, month, renewal_days=7):
-        summary_query = db.session.query(func.sum(PixPayment.value), func.count(PixPayment.txid)).filter(
-            extract('year', PixPayment.created_at) == year, extract('month', PixPayment.created_at) == month, PixPayment.status == 'CONCLUIDA'
-        ).first()
-        total_revenue, sales_count = (summary_query[0] or 0.0, summary_query[1] or 0)
-        daily_revenue_query = db.session.query(extract('day', PixPayment.created_at).label('day'), func.sum(PixPayment.value).label('total')).filter(
-            extract('year', PixPayment.created_at) == year, extract('month', PixPayment.created_at) == month, PixPayment.status == 'CONCLUIDA'
-        ).group_by('day').all()
-        daily_revenue_dict = {day: total for day, total in daily_revenue_query}
-        weekly_revenue_query = db.session.query(func.strftime('%W', PixPayment.created_at).label('week_num'), func.sum(PixPayment.value).label('total')).filter(
-            extract('year', PixPayment.created_at) == year, extract('month', PixPayment.created_at) == month, PixPayment.status == 'CONCLUIDA'
-        ).group_by('week_num').order_by('week_num').all()
-        weekly_revenue_dict = {f"Semana {i+1}": total for i, (_, total) in enumerate(weekly_revenue_query)}
-        recent_transactions = PixPayment.query.filter(
-            extract('year', PixPayment.created_at) == year, extract('month', PixPayment.created_at) == month, PixPayment.status == 'CONCLUIDA'
-        ).order_by(PixPayment.created_at.desc()).limit(10).all()
+        """
+        Otimizado: Busca todos os pagamentos do mês em uma única consulta e agrega em memória.
+        Também otimiza a busca de utilizadores a expirar usando JOIN.
+        """
+        # 1. Busca TODOS os pagamentos concluídos do mês em UMA ÚNICA consulta
+        payments_in_month = db.session.query(PixPayment).filter(
+            extract('year', PixPayment.created_at) == year, 
+            extract('month', PixPayment.created_at) == month, 
+            PixPayment.status == 'CONCLUIDA'
+        ).order_by(PixPayment.created_at.desc()).all()
 
+        # 2. Agregação em Memória (Python) - muito mais rápido que múltiplas queries para este volume
+        total_revenue = 0.0
+        sales_count = 0
+        daily_revenue_map = defaultdict(float)
+        weekly_revenue_map = defaultdict(float)
+        
+        recent_transactions = []
+        
+        for i, payment in enumerate(payments_in_month):
+            total_revenue += payment.value
+            sales_count += 1
+            
+            # Pega apenas os 10 primeiros para a lista de recentes
+            if i < 10:
+                recent_transactions.append(self._row_to_dict(payment))
+            
+            # Processamento de data seguro
+            try:
+                dt = datetime.fromisoformat(payment.created_at)
+                day = dt.day
+                # Semana do ano para agrupamento (ou semana do mês simplificada)
+                week_num = int(dt.strftime('%W'))
+                
+                daily_revenue_map[day] += payment.value
+                weekly_revenue_map[week_num] += payment.value
+            except (ValueError, TypeError):
+                continue
+        
+        # Formata o dicionário semanal para o gráfico (Semana X)
+        # Nota: A ordenação original pode não ser sequencial, então ordenamos pelas chaves
+        sorted_weeks = sorted(weekly_revenue_map.keys())
+        weekly_revenue_dict = {}
+        for idx, week_num in enumerate(sorted_weeks):
+            weekly_revenue_dict[f"Semana {idx + 1}"] = weekly_revenue_map[week_num]
+
+        # 3. Otimização de Utilizadores a Expirar (Query Única com JOIN)
         today = datetime.now(get_localzone()).date()
         end_date = today + timedelta(days=renewal_days)
-        today_str, end_date_str = today.isoformat(), (end_date + timedelta(days=1)).isoformat()
+        today_str = today.isoformat()
+        end_date_str = (end_date + timedelta(days=1)).isoformat()
         
-        blocked_user_ids = [u.user_plex_id for u in BlockedUser.query.all()]
-        expiring_users_query = db.session.query(UserProfile).filter(
-            UserProfile.expiration_date.isnot(None), UserProfile.expiration_date != '',
-            UserProfile.expiration_date >= today_str, UserProfile.expiration_date < end_date_str,
-            not_(UserProfile.plex_user_id.in_(blocked_user_ids))
+        # Em vez de buscar IDs bloqueados separadamente, usamos um LEFT JOIN/OUTER JOIN
+        # para filtrar utilizadores que NÃO têm um registo correspondente em BlockedUser.
+        expiring_users_query = db.session.query(UserProfile).outerjoin(BlockedUser).filter(
+            BlockedUser.user_plex_id == None,  # Apenas utilizadores que NÃO estão na tabela BlockedUser
+            UserProfile.expiration_date.isnot(None), 
+            UserProfile.expiration_date != '',
+            UserProfile.expiration_date >= today_str, 
+            UserProfile.expiration_date < end_date_str
         ).order_by(UserProfile.expiration_date.asc()).all()
         
         upcoming_expirations = []
@@ -272,10 +301,23 @@ class DataManager:
                 exp_date = datetime.fromisoformat(p.expiration_date).date()
                 days_left = (exp_date - today).days
                 days_text = ngettext('%(num)d dia restante', '%(num)d dias restantes', days_left) % {'num': days_left} if days_left > 0 else (_("Hoje") if days_left == 0 else _("Expirado"))
-                upcoming_expirations.append({'username': p.username, 'expiration_date': exp_date.strftime('%d/%m/%Y'), 'days_left': days_left, 'days_left_text': days_text, 'screen_limit': p.screen_limit})
+                upcoming_expirations.append({
+                    'username': p.username, 
+                    'expiration_date': exp_date.strftime('%d/%m/%Y'), 
+                    'days_left': days_left, 
+                    'days_left_text': days_text, 
+                    'screen_limit': p.screen_limit
+                })
             except (ValueError, TypeError): continue
         
-        return {"total_revenue": total_revenue, "sales_count": sales_count, "recent_transactions": [self._row_to_dict(p) for p in recent_transactions], "daily_revenue": daily_revenue_dict, "weekly_revenue": weekly_revenue_dict, "upcoming_expirations": upcoming_expirations}
+        return {
+            "total_revenue": total_revenue, 
+            "sales_count": sales_count, 
+            "recent_transactions": recent_transactions, 
+            "daily_revenue": dict(daily_revenue_map), 
+            "weekly_revenue": weekly_revenue_dict, 
+            "upcoming_expirations": upcoming_expirations
+        }
 
     def get_payments_for_export(self, start_date_iso, end_date_iso):
         try:
