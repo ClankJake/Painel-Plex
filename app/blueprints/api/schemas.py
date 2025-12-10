@@ -13,6 +13,7 @@ class CreateInviteSchema(BaseModel):
     overseerr_access: bool = False
     custom_code: Optional[str] = None
     max_uses: int = Field(1, ge=1)
+    telegram_id: Optional[str] = None # Novo campo opcional
 
 class RenewSubscriptionSchema(BaseModel):
     months: int = Field(..., gt=0)
