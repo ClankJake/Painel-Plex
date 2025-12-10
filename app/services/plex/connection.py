@@ -34,6 +34,12 @@ class PlexConnectionManager:
         adapter = HTTPAdapter(max_retries=retry_strategy)
         session.mount("http://", adapter)
         session.mount("https://", adapter)
+
+        # CORREÇÃO: Força o fecho da conexão após cada pedido.
+        # Isto previne o erro 'DECRYPTION_FAILED_OR_BAD_RECORD_MAC' causado por
+        # condições de corrida no socket SSL quando usado com Eventlet/Gunicorn.
+        session.headers.update({'Connection': 'close'})
+        
         return session
 
     def reload(self, from_job=False):
