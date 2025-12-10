@@ -6,13 +6,14 @@ from flask import Blueprint, jsonify
 from flask_login import login_required, current_user
 from flask_babel import gettext as _
 
-from ...extensions import data_manager
+from ...extensions import data_manager, limiter
 
 logger = logging.getLogger(__name__)
 notifications_api_bp = Blueprint('notifications_api', __name__)
 
 @notifications_api_bp.route('/')
 @login_required
+@limiter.exempt
 def get_notifications_route():
     try:
         # Admin vê notificações do sistema (user_plex_id=None)
