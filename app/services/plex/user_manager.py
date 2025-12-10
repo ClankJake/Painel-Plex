@@ -42,72 +42,101 @@ class PlexUserManager:
             return None
         return next((u for u in all_users if u['id'] == plex_user_id), None)
 
+    def _process_single_user(self, user, server_identifier):
+        """
+        Processa um único objeto de usuário do Plex.
+        
+        ATENÇÃO: Executado em thread separada. NÃO usar url_for() ou current_app aqui.
+        Retorna apenas dados brutos e payloads para a thread principal processar.
+        """
+        # Verifica se o usuário tem acesso ao servidor atual
+        if any(s.machineIdentifier == server_identifier for s in user.servers):
+            thumb_payload = None
+            if user.thumb:
+                try:
+                    parsed_thumb = urlparse(user.thumb)
+                    path_with_query = parsed_thumb.path
+                    if parsed_thumb.query: path_with_query += "?" + parsed_thumb.query
+                    
+                    payload_str = f"plex_account:{path_with_query}"
+                    # Retorna apenas o payload base64, não a URL completa
+                    thumb_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                except Exception as e:
+                    logger.error(f"Falha ao processar o payload do avatar para o utilizador {user.username}: {e}")
+
+            return {
+                'username': user.username, 
+                'email': user.email, 
+                'id': user.id, 
+                'thumb_payload': thumb_payload,  # Passa o payload, a URL será gerada na main thread
+                'thumb': None, # Placeholder
+                'servers': [s.name for s in user.servers]
+            }
+        return None
+
     @cache.memoize(timeout=300)
     def get_all_plex_users(self, force_refresh_signal=None):
         """
-        Obtém todos os utilizadores com acesso ao servidor Plex configurado, incluindo a conta do administrador.
-        Utiliza cache centralizado (Flask-Caching).
-        O argumento 'force_refresh_signal' pode ser usado para quebrar o cache se necessário,
-        mas a invalidação é preferida através de `invalidate_user_cache()`.
+        Obtém todos os utilizadores com acesso ao servidor Plex configurado.
+        Otimizado com ThreadPoolExecutor.
         """
-
         if not self.conn.account or not self.conn.plex:
             return None
 
         try:
             server_identifier = self.conn.plex.machineIdentifier
             all_friends = self.conn.account.users()
+            users_with_access = []
 
-            with current_app.app_context():
-                users_with_access = []
-                for user in all_friends:
-                    if any(s.machineIdentifier == server_identifier for s in user.servers):
-                        user_thumb_url = None
-                        if user.thumb:
-                            try:
-                                parsed_thumb = urlparse(user.thumb)
-                                path_with_query = parsed_thumb.path
-                                if parsed_thumb.query: path_with_query += "?" + parsed_thumb.query
-                                
-                                payload_str = f"plex_account:{path_with_query}"
-                                b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                                user_thumb_url = url_for('image.proxy_image', source=b64_payload)
-                            except Exception as e:
-                                logger.error(f"Falha ao processar a URL do avatar para o utilizador {user.username}: {e}")
+            # Otimização: Usa threads para processar a lista (chamadas de rede/lazy loading do PlexAPI)
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                # Submete tarefas
+                futures = [
+                    executor.submit(self._process_single_user, user, server_identifier)
+                    for user in all_friends
+                ]
+                
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                        if result:
+                            # AQUI estamos na thread principal com contexto de requisição.
+                            # Geramos a URL final agora.
+                            if result.get('thumb_payload'):
+                                result['thumb'] = url_for('image.proxy_image', source=result['thumb_payload'])
+                            
+                            # Remove a chave temporária para limpar o objeto final
+                            result.pop('thumb_payload', None)
+                            users_with_access.append(result)
+                    except Exception as exc:
+                        logger.error(f"Erro ao processar usuário em thread: {exc}")
 
-                        users_with_access.append({
-                            'username': user.username, 
-                            'email': user.email, 
-                            'id': user.id, 
-                            'thumb': user_thumb_url, 
-                            'servers': [s.name for s in user.servers]
-                        })
+            # Processa o administrador separadamente
+            if self.conn.account:
+                admin_id = self.conn.account.id
+                is_admin_in_list = any(u['id'] == admin_id for u in users_with_access)
+                
+                if not is_admin_in_list:
+                    admin_thumb_url = None
+                    if self.conn.account.thumb:
+                        try:
+                            parsed_thumb = urlparse(self.conn.account.thumb)
+                            path_with_query = parsed_thumb.path
+                            if parsed_thumb.query: path_with_query += "?" + parsed_thumb.query
+                            
+                            payload_str = f"plex_account:{path_with_query}"
+                            b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                            admin_thumb_url = url_for('image.proxy_image', source=b64_payload)
+                        except Exception as e:
+                            logger.error(f"Falha ao processar a URL do avatar para o administrador: {e}")
 
-                if self.conn.account:
-                    admin_id = self.conn.account.id
-                    is_admin_in_list = any(u['id'] == admin_id for u in users_with_access)
-                    
-                    if not is_admin_in_list:
-                        admin_thumb_url = None
-                        if self.conn.account.thumb:
-                            try:
-                                parsed_thumb = urlparse(self.conn.account.thumb)
-                                path_with_query = parsed_thumb.path
-                                if parsed_thumb.query: path_with_query += "?" + parsed_thumb.query
-                                
-                                payload_str = f"plex_account:{path_with_query}"
-                                b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                                admin_thumb_url = url_for('image.proxy_image', source=b64_payload)
-                            except Exception as e:
-                                logger.error(f"Falha ao processar a URL do avatar para o administrador: {e}")
-
-                        users_with_access.append({
-                            'username': self.conn.account.username, 
-                            'email': self.conn.account.email, 
-                            'id': admin_id, 
-                            'thumb': admin_thumb_url, 
-                            'servers': [self.conn.plex.friendlyName]
-                        })
+                    users_with_access.append({
+                        'username': self.conn.account.username, 
+                        'email': self.conn.account.email, 
+                        'id': admin_id, 
+                        'thumb': admin_thumb_url, 
+                        'servers': [self.conn.plex.friendlyName]
+                    })
 
             return users_with_access
         except RequestException as e:
