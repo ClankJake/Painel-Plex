@@ -14,7 +14,7 @@ from flask_babel import gettext as _
 
 from ..models import User
 from ..config import is_configured, load_or_create_config
-from ..extensions import plex_manager, data_manager
+from ..extensions import plex_manager, data_manager, limiter # Importa o limiter
 
 # --- Configurações e Constantes ---
 logger = logging.getLogger(__name__)
@@ -68,6 +68,7 @@ def admin_required(f):
 
 # --- Rotas de Autenticação ---
 @auth_bp.route('/login')
+@limiter.limit("10 per minute") # Protege a página de login contra força bruta
 def login():
     safe_log_request_info()
     if current_user.is_authenticated:
@@ -84,6 +85,7 @@ def logout():
     return redirect(url_for('auth.login'))
 
 @auth_bp.route('/plex/auth-context', methods=['GET'])
+@limiter.limit("15 per minute") # Limita a criação de contextos de autenticação
 def get_plex_auth_context():
     """Fornece o contexto necessário para o cliente iniciar la autenticação Plex."""
     safe_log_request_info()
@@ -110,6 +112,7 @@ def get_plex_auth_context():
 
 
 @auth_bp.route('/plex/check-pin/<string:client_id>/<int:pin_id>', methods=['GET'])
+@limiter.limit("60 per minute") # Permite polling a cada 1s (necessário para o frontend), mas bloqueia excessos
 def check_plex_pin(client_id, pin_id):
     safe_log_request_info()
     try:
@@ -270,6 +273,7 @@ def check_plex_pin(client_id, pin_id):
         return jsonify({"success": False, "message": "error", "error": "Falha ao verificar autenticação."}), 500
 
 @auth_bp.route('/plex/check-pin-for-token/<string:client_id>/<int:pin_id>', methods=['GET'])
+@limiter.limit("60 per minute") # Limite para polling de token na página de convite
 def check_plex_pin_for_token(client_id, pin_id):
     safe_log_request_info()
     try:
@@ -288,6 +292,7 @@ def check_plex_pin_for_token(client_id, pin_id):
         return jsonify({"success": False, "message": "error", "error": "Erro inesperado ao verificar o PIN."}), 500
 
 @auth_bp.route('/plex/redirect-to-auth')
+@limiter.limit("20 per minute")
 def redirect_to_auth():
     """
     Renderiza uma página intermediária que irá gerar o PIN e redirecionar para a autenticação do Plex.
