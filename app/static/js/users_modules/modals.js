@@ -34,7 +34,7 @@ export function showConfirmationModal({ title, message, confirmText, confirmClas
 
 // **NOVO**: Modal para exibir detalhes e histórico do convite
 export function showInviteDetailsModal(details) {
-    const { code, created_at, claimed_by_users, use_count, max_uses, libraries, screen_limit, expires_at } = details;
+    const { code, created_at, claimed_by_users, use_count, max_uses, libraries, screen_limit, expires_at, telegram_id } = details;
     const claimedUsersList = claimed_by_users ? claimed_by_users : [];
     
     // Verifica se o convite está ativo
@@ -62,6 +62,7 @@ export function showInviteDetailsModal(details) {
                 <div><span class="font-bold block text-gray-500 dark:text-gray-400">Uso:</span> ${use_count} / ${max_uses}</div>
                 <div><span class="font-bold block text-gray-500 dark:text-gray-400">Limite Telas:</span> ${screen_limit || 'Padrão'}</div>
                 <div><span class="font-bold block text-gray-500 dark:text-gray-400">Bibliotecas:</span> <span class="truncate block" title="${libList}">${libList}</span></div>
+                ${telegram_id ? `<div><span class="font-bold block text-gray-500 dark:text-gray-400">Telegram ID:</span> ${telegram_id}</div>` : ''}
             </div>
             <div class="border-t border-gray-200 dark:border-gray-700 pt-3">
                 <h4 class="text-sm font-bold text-gray-900 dark:text-white mb-2">Histórico de Utilização:</h4>
@@ -141,6 +142,11 @@ export function showCreateInviteModal() {
                         </div>
                     </div>
                     <div>
+                        <label for="inviteTelegramId" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">Telegram ID (Opcional)</label>
+                        <input type="text" id="inviteTelegramId" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Ex: 123456789">
+                        <p class="text-xs text-gray-400 mt-1">Se informado, o usuário será criado automaticamente com este ID.</p>
+                    </div>
+                    <div>
                         <label for="inviteScreenLimit" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.screenLimit}</label>
                         <select id="inviteScreenLimit" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                             <option value="0">${i18n.noLimit}</option><option value="1">1 ${i18n.screenSingular}</option><option value="2">2 ${i18n.screenPlural}</option><option value="3">3 ${i18n.screenPlural}</option><option value="4">4 ${i18n.screenPlural}</option>
@@ -204,6 +210,7 @@ export function showCreateInviteModal() {
                 overseerr_access: modal.querySelector('#inviteOverseerrAccess').checked,
                 custom_code: modal.querySelector('#inviteCustomCode').value.trim() || null,
                 max_uses: parseInt(modal.querySelector('#inviteMaxUses').value) || 1,
+                telegram_id: modal.querySelector('#inviteTelegramId').value.trim() || null // Novo campo
             });
 
             if (result && result.success) {
