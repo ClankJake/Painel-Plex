@@ -9,7 +9,8 @@ from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 from datetime import datetime
 
-from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager
+# ADICIONADO: Importa 'limiter' das extensões
+from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter
 from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
 from ..auth import admin_required, login_required
@@ -20,6 +21,7 @@ system_api_bp = Blueprint('system_api', __name__)
 @system_api_bp.route('/logs')
 @login_required
 @admin_required
+@limiter.exempt # ADICIONADO: Isenta a rota de logs do rate limit para permitir atualizações em tempo real
 def get_logs():
     try:
         log_file = current_app.config.get('LOG_FILE', 'app.log')
