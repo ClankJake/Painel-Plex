@@ -10,7 +10,8 @@ from flask import Blueprint, request, Response, abort, current_app, send_from_di
 from urllib.parse import urlparse
 
 # Importa os gestores para aceder às configurações e tokens de forma segura
-from ..extensions import plex_manager, tautulli_manager
+# ADICIONADO: 'limiter' importado das extensions
+from ..extensions import plex_manager, tautulli_manager, limiter
 
 logger = logging.getLogger(__name__)
 image_bp = Blueprint('image', __name__)
@@ -31,6 +32,7 @@ def get_cache_filepath(unique_identifier):
     return os.path.join(IMAGE_CACHE_DIR, url_hash)
 
 @image_bp.route('/')
+@limiter.exempt # ADICIONADO: Isenta esta rota do limite de requisições global
 def proxy_image():
     """
     Atua como um proxy seguro para imagens do Plex e Tautulli.
