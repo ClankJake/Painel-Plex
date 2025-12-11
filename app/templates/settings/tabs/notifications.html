@@ -1,0 +1,127 @@
+<div id="tab-notificacoes" class="tab-content">
+    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Configurações de Notificações') }}</h2>
+            <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Configure e habilite agentes de notificação.') }}</p>
+        </div>
+        <div class="mt-4 pt-3 border-b border-gray-200 dark:border-gray-700 mb-6">
+             <!-- Esta barra de abas tem poucas abas, por isso mantemos o overflow-x-auto -->
+             <nav id="notification-tabs" class="flex space-x-1 sm:space-x-2 overflow-x-auto no-scrollbar">
+                <button type="button" data-subtab="telegram" class="tab-button active">{{ _('Telegram') }}</button>
+                <button type="button" data-subtab="discord" class="tab-button">{{ _('Discord') }}</button>
+                <button type="button" data-subtab="webhook" class="tab-button">{{ _('Webhook') }}</button>
+            </nav>
+        </div>
+        <div id="notification-tab-content" class="space-y-6">
+            <div id="subtab-telegram" class="sub-tab-content active space-y-4 input-group">
+                <div class="flex items-center">
+                    <input id="TELEGRAM_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                    <label for="TELEGRAM_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar Agente Telegram') }}</label>
+                </div>
+                <div>
+                    <label for="TELEGRAM_BOT_TOKEN" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Token do Bot do Telegram') }}</label>
+                    <input type="password" id="TELEGRAM_BOT_TOKEN" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha para alterar') }}">
+                </div>
+                <div>
+                    <label for="TELEGRAM_CHAT_ID" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID do Chat/Canal de Admin') }}</label>
+                    <input type="text" id="TELEGRAM_CHAT_ID" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Opcional') }}">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Opcional. ID para onde as notificações GERAIS serão enviadas. As notificações pessoais são enviadas para o ID no perfil do usuário.')}}</p>
+                </div>
+                 <div>
+                    <label for="TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                        {{ _('Modelo de Mensagem de Vencimento') }}
+                        <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                    </label>
+                    <textarea id="TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE" rows="3" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
+                </div>
+                <div>
+                    <label for="TELEGRAM_RENEWAL_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                        {{ _('Modelo de Mensagem de Renovação') }}
+                        <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                    </label>
+                    <textarea id="TELEGRAM_RENEWAL_MESSAGE_TEMPLATE" rows="3" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
+                </div>
+                <div>
+                    <label for="TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                        {{ _('Modelo de Mensagem de Fim de Teste') }}
+                        <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                    </label>
+                    <textarea id="TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE" rows="3" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
+                </div>
+            </div>
+            <div id="subtab-discord" class="sub-tab-content space-y-4 input-group">
+                <div class="flex items-center">
+                   <input id="DISCORD_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                   <label for="DISCORD_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar Agente Discord') }}</label>
+               </div>
+               <div>
+                   <label for="DISCORD_WEBHOOK_URL" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL do Webhook do Discord') }}</label>
+                   <input type="url" id="DISCORD_WEBHOOK_URL" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                   <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Insira o ID do utilizador do Discord no perfil do utilizador para que as notificações pessoais funcionem.')}}</p>
+               </div>
+                <div>
+                   <label for="DISCORD_EXPIRATION_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                       {{ _('Modelo de Mensagem de Vencimento (JSON)') }}
+                       <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                   </label>
+                   <textarea id="DISCORD_EXPIRATION_MESSAGE_TEMPLATE" rows="4" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"></textarea>
+               </div>
+                <div>
+                   <label for="DISCORD_RENEWAL_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                       {{ _('Modelo de Mensagem de Renovação (JSON)') }}
+                       <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                   </label>
+                   <textarea id="DISCORD_RENEWAL_MESSAGE_TEMPLATE" rows="4" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"></textarea>
+               </div>
+                <div>
+                   <label for="DISCORD_TRIAL_END_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                       {{ _('Modelo de Mensagem de Fim de Teste (JSON)') }}
+                       <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                   </label>
+                   <textarea id="DISCORD_TRIAL_END_MESSAGE_TEMPLATE" rows="4" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"></textarea>
+               </div>
+           </div>
+            <div id="subtab-webhook" class="sub-tab-content space-y-4 input-group">
+                 <div class="flex items-center">
+                    <input id="WEBHOOK_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                    <label for="WEBHOOK_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar Agente Webhook') }}</label>
+                </div>
+                <div>
+                    <label for="WEBHOOK_URL" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL do Webhook (Discord, etc.)') }}</label>
+                    <input type="url" id="WEBHOOK_URL" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                </div>
+                 <div>
+                    <label for="WEBHOOK_AUTHORIZATION_HEADER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Cabeçalho de Autorização (Opcional)') }}</label>
+                    <input type="text" id="WEBHOOK_AUTHORIZATION_HEADER" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Authorization: Bearer my-secret-token">
+                </div>
+                 <div>
+                    <label for="WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                        {{ _('Modelo de Mensagem de Vencimento (JSON)') }}
+                        <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                    </label>
+                    <textarea id="WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE" rows="4" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"></textarea>
+                </div>
+                 <div>
+                    <label for="WEBHOOK_RENEWAL_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                        {{ _('Modelo de Mensagem de Renovação (JSON)') }}
+                        <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                    </label>
+                    <textarea id="WEBHOOK_RENEWAL_MESSAGE_TEMPLATE" rows="4" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"></textarea>
+                </div>
+                 <div>
+                    <label for="WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                        {{ _('Modelo de Mensagem de Fim de Teste (JSON)') }}
+                        <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+                    </label>
+                    <textarea id="WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE" rows="4" class="disablable-input mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"></textarea>
+                </div>
+            </div>
+             <div class="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                <div>
+                    <label for="DAYS_TO_NOTIFY_EXPIRATION" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Avisar Vencimento com (dias de antecedência)') }}</label>
+                    <input type="number" id="DAYS_TO_NOTIFY_EXPIRATION" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

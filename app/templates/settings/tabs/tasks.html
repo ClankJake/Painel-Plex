@@ -1,0 +1,81 @@
+<div id="tab-tarefas" class="tab-content">
+     <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-6">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Configurações de Tarefas Agendadas') }}</h2>
+            <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Configure e habilite para executar tarefas regulares de manutenção de forma automática.') }}</p>
+        </div>
+        <div class="mt-4 pt-3 space-y-2">
+            <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Envio de Notificações e Bloqueio') }}</h4>
+            <label for="EXPIRATION_NOTIFICATION_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Enviar Notificações de Vencimento') }}</label>
+            <input type="time" id="EXPIRATION_NOTIFICATION_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A verificação de vencimentos será executada diariamente a esta hora.')}}</p>
+        </div>
+        <div>
+            <label for="BLOCK_REMOVAL_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Remover Usuários Bloqueados') }}</label>
+            <input type="time" id="BLOCK_REMOVAL_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A verificação de contas bloqueadas para remoção será executada diariamente a esta hora.')}}</p>
+        </div>
+        <div>
+            <label for="DAYS_TO_REMOVE_BLOCKED_USER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Usuários Bloqueado Após (dias)') }}</label>
+            <input type="number" id="DAYS_TO_REMOVE_BLOCKED_USER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="0">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Defina 0 para desativar.')}}</p>
+        </div>
+        <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
+            <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Vencimento Universal') }}</h4>
+            <div class="input-group space-y-4">
+                <div class="flex items-center">
+                    <input id="UNIVERSAL_EXPIRATION_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                    <label for="UNIVERSAL_EXPIRATION_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar horário de vencimento universal') }}</label>
+                </div>
+                <div class="disablable-input">
+                    <label for="UNIVERSAL_EXPIRATION_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Horário Universal de Vencimento') }}</label>
+                    <input type="time" id="UNIVERSAL_EXPIRATION_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Se ativado, todas as assinaturas expirarão neste horário, ignorando as configurações individuais.')}}</p>
+                </div>
+            </div>
+        </div>
+        <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
+            <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Limpeza Automática de Dados') }}</h4>
+             <div class="flex items-center">
+                <input id="CLEANUP_PENDING_PAYMENTS_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                <label for="CLEANUP_PENDING_PAYMENTS_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar limpeza de pagamentos pendentes') }}</label>
+            </div>
+            <div>
+                <label for="CLEANUP_PENDING_PAYMENTS_DAYS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Pagamentos Pendentes (não concluídos) Após (dias)') }}</label>
+                <input type="number" id="CLEANUP_PENDING_PAYMENTS_DAYS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Isso remove cobranças PIX que não foram pagas para manter o banco de dados limpo.')}}</p>
+            </div>
+            <div class="flex items-center">
+                <input id="SHORT_LINK_CLEANUP_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                <label for="SHORT_LINK_CLEANUP_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar limpeza automática de links curtos') }}</label>
+            </div>
+            <div>
+                <label for="SHORT_LINK_MAX_AGE_DAYS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Links Curtos Após (dias)') }}</label>
+                <input type="number" id="SHORT_LINK_MAX_AGE_DAYS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Remove links encurtados antigos para manter a base de dados otimizada.')}}</p>
+            </div>
+            <div>
+                <label for="CLEANUP_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Executar a Limpeza') }}</label>
+                <input type="time" id="CLEANUP_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A tarefa de limpeza será executada diariamente a esta hora.')}}</p>
+            </div>
+        </div>
+         <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
+            <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Limpeza do Cache de Imagens') }}</h4>
+             <div class="flex items-center">
+                <input id="IMAGE_CACHE_CLEANUP_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                <label for="IMAGE_CACHE_CLEANUP_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar limpeza do cache de imagens') }}</label>
+            </div>
+            <div>
+                <label for="IMAGE_CACHE_MAX_AGE_DAYS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Imagens em Cache Após (dias)') }}</label>
+                <input type="number" id="IMAGE_CACHE_MAX_AGE_DAYS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Isto apaga ficheiros de imagem antigos para poupar espaço em disco.')}}</p>
+            </div>
+            <div>
+                <label for="IMAGE_CACHE_CLEANUP_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Executar a Limpeza do Cache') }}</label>
+                <input type="time" id="IMAGE_CACHE_CLEANUP_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A tarefa de limpeza do cache de imagens será executada diariamente a esta hora.')}}</p>
+            </div>               
+        </div>
+    </div>
+</div>

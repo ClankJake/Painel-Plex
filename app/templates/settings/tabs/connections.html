@@ -1,0 +1,57 @@
+<div id="tab-conexoes" class="tab-content">
+    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Configurações Conexões') }}</h2>
+            <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Configure os dados de conexão com servidor Plex, Tautulli e Overseerr/Jellyseerr.') }}</p>
+        </div>
+        <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600 space-y-4">
+            <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ _('Plex') }}</h4>
+            <div>
+                <label for="plex_url_display" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL do Servidor Plex') }}</label>
+                <input type="text" id="plex_url_display" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Não definido') }}" readonly>
+            </div>
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ _('Para alterar o servidor Plex ou atualizar seu token, refaça a autenticação.') }}</p>
+            <button type="button" id="reauth-plex-button" class="btn bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-semibold">
+                 <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
+                 {{ _('Autenticar para Buscar Servidores') }}
+            </button>
+            <div id="server-selection-container" class="hidden space-y-2 mt-4"></div>
+        </div>
+
+        <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600 space-y-4">
+             <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ _('Tautulli') }}</h4>
+             <p class="text-sm text-gray-500 dark:text-gray-400">{{_('Necessário para o ranking de estatísticas e controle de sessões.')}}</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="TAUTULLI_URL" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL do Tautulli') }}</label>
+                    <input type="text" id="TAUTULLI_URL" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="http://127.0.0.1:8181">
+                </div>
+                <div>
+                    <label for="TAUTULLI_API_KEY" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Chave da API do Tautulli') }}</label>
+                    <input type="password" id="TAUTULLI_API_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha para alterar') }}">
+                </div>
+            </div>
+            <button type="button" id="testTautulliButton" class="btn bg-blue-600 hover:bg-blue-500 text-white mt-4">{{ _('Testar Conexão') }}</button>
+        </div>
+
+        <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600 space-y-4">
+             <h4 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Overseerr / Jellyseerr') }}</h4>
+             <p class="text-sm text-gray-500 dark:text-gray-400">{{_('Necessário para suporte servidor de pedidos.')}}</p>
+            <div class="space-y-4">
+               <div class="flex items-center">
+                   <input id="OVERSEERR_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                   <label for="OVERSEERR_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar integração') }}</label>
+               </div>
+                <div>
+                    <label for="OVERSEERR_URL" class="block text-sm font-medium text-gray-600 dark:text-gray-300">URL</label>
+                    <input type="url" id="OVERSEERR_URL" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="http://127.0.0.1:5055">
+                </div>
+                <div>
+                    <label for="OVERSEERR_API_KEY" class="block text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('Chave da API') }}</label>
+                    <input type="password" id="OVERSEERR_API_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha à chave API') }}">
+                </div>
+            </div>
+            <button type="button" id="testOverseerrButton" class="btn bg-blue-600 hover:bg-blue-500 text-white">{{ _('Testar Conexão') }}</button>
+        </div>
+    </div>
+</div>

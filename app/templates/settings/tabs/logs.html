@@ -1,0 +1,21 @@
+<div id="tab-logs" class="tab-content">
+    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <div class="flex flex-wrap gap-4 justify-between items-center mb-4">
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Logs do Sistema') }}</h3>
+            <div class="flex items-center gap-4">
+                <div>
+                    <label for="log_level_selector" class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Nível de Log:') }}</label>
+                    <select id="log_level_selector" class="p-1 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        <option value="INFO">INFO</option>
+                        <option value="DEBUG">DEBUG</option>
+                    </select>
+                </div>
+                <button type="button" id="toggle-logs" class="btn text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1.5">{{ _('Parar Atualização') }}</button>
+                <button type="button" id="clear-logs" class="btn text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-1.5">{{ _('Limpar') }}</button>
+            </div>
+        </div>
+        <div class="bg-gray-900 text-white p-4 rounded-lg h-96 overflow-y-auto">
+            <pre id="log-display">{{ _('Carregando logs...') }}</pre>
+        </div>
+    </div>
+</div>

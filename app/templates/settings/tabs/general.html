@@ -1,0 +1,38 @@
+<div id="tab-geral" class="tab-content active">
+    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-6">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Configurações Gerais') }}</h2>
+            <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Ajuste as configurações gerais e padrões.') }}</p>
+        </div>
+        <div>
+            <label for="APP_TITLE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Título da Aplicação') }}</label>
+            <input type="text" id="APP_TITLE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+        </div>
+         <div>
+            <label for="APP_BASE_URL" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL Base da Aplicação') }}</label>
+            <input type="url" id="APP_BASE_URL" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="https://seuservidor.com">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('O endereço público que aponta para a sua aplicação. Necessário para webhooks de pagamento e links curtos.')}}</p>
+        </div>
+        <div class="pt-6 border-t border-gray-200 dark:border-gray-700 space-y-4">
+            <div>
+                <label for="languageSelector" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Idioma da Interface') }}</label>
+                <select id="languageSelector" class="mt-1 max-w-sm block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    {% for lang, name in config.LANGUAGES.items() %}
+                        <option value="{{ lang }}" {% if lang == current_locale.language %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex flex-col items-start">
+                <div class="flex items-center">
+                    <input id="ENABLE_LINK_SHORTENER" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
+                    <label for="ENABLE_LINK_SHORTENER" class="ml-2 text-sm font-medium text-gray-900 dark:text-gray-300">
+                        {{ _('Habilitar Encurtador de Links') }}
+                    </label>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 ml-6">
+                    {{ _('Marque essa caixa caso deseje link curto nas notificações.') }}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
