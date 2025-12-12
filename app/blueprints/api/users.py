@@ -195,7 +195,8 @@ def get_status():
 
     return jsonify({
         'users': sorted(all_users_to_return, key=lambda u: u['username'].lower()),
-        'libraries': extensions.plex_manager.conn.get_libraries()
+        'libraries': extensions.plex_manager.conn.get_libraries(),
+        'telegram_enabled': config.get("TELEGRAM_ENABLED", False) # Retorna se o Telegram está habilitado
     })
 
 @users_api_bp.route('/account/details')
