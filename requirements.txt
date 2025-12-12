@@ -26,3 +26,4 @@ cachelib
 bleach==6.1.0
 filelock
 Pillow
+pyTelegramBotAPI
