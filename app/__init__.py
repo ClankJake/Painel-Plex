@@ -18,7 +18,8 @@ from .scheduler import setup_scheduler
 from . import models
 from . import sockets
 from . import scheduler
-from .logging_config import setup_logging  # Importa a nova configuração de logs
+from .logging_config import setup_logging
+from .services.telegram_bot import TelegramBotService
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,6 @@ def shutdown_scheduler():
 def create_app():
     """
     Cria e configura uma instância da aplicação Flask (Application Factory).
-    Refatorado para ser mais limpo e modular.
     """
     app = Flask(__name__)
     
@@ -65,7 +65,6 @@ def create_app():
     # --- Carregamento de Configurações ---
     app_config = load_or_create_config()
     
-    # Remove chaves que serão redefinidas dinamicamente para evitar conflitos
     app_config.pop('LOG_FILE', None)
     app_config.pop('SQLALCHEMY_DATABASE_URI', None)
     
@@ -107,7 +106,7 @@ def create_app():
         app.config['APPLICATION_ROOT'] = parsed_url.path or '/'
         app.config['PREFERRED_URL_SCHEME'] = parsed_url.scheme
 
-    # --- Inicialização de Logs (Refatorado) ---
+    # --- Inicialização de Logs ---
     setup_logging(app, app.config.get('LOG_LEVEL', 'INFO'))
 
     # --- Inicialização de Extensões ---
@@ -121,7 +120,6 @@ def create_app():
     extensions.cache.init_app(app)
     extensions.limiter.init_app(app)
 
-    # Workaround para Flask-Caching
     if 'cache' not in app.extensions:
         app.extensions['cache'] = app.extensions.get('caching')
     
@@ -173,6 +171,15 @@ def create_app():
     scheduler.set_app_for_jobs(app)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
     
+    # --- Inicialização do Bot do Telegram ---
+    # Inicia apenas se não estivermos no modo debug/reloader do Flask para evitar duplicação (parcialmente tratado pelo FileLock)
+    if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        try:
+            telegram_service = TelegramBotService(app)
+            telegram_service.start()
+        except Exception as e:
+            logger.error(f"Erro ao iniciar serviço do Telegram: {e}")
+
     # Inicia o Scheduler se configurado
     try:
         if is_configured() and not extensions.scheduler.running:
