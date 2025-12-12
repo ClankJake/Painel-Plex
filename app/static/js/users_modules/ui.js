@@ -348,6 +348,7 @@ export async function loadStatus(force = false) {
         const data = await api.fetchStatus(force);
         state.setAllUsersCache(data.users || []);
         state.setAllLibraries(data.libraries || []);
+        state.setTelegramEnabled(data.telegram_enabled); // ATUALIZADO: Salva o estado do Telegram
         updateTabCounts();
         renderUserGrid();
         await loadInvites(); // Recarrega convites após atualizar utilizadores

@@ -130,6 +130,15 @@ export function showInviteDetailsModal(details) {
 
 
 export function showCreateInviteModal() {
+    // Renderiza o campo Telegram ID apenas se a funcionalidade estiver ativada
+    const telegramIdField = state.telegramEnabled ? `
+        <div>
+            <label for="inviteTelegramId" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">Telegram ID (Opcional)</label>
+            <input type="text" id="inviteTelegramId" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Ex: 123456789">
+            <p class="text-xs text-gray-400 mt-1">Se informado, o usuário será criado automaticamente com este ID.</p>
+        </div>
+    ` : '';
+
     const body = `<div class="space-y-4">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -141,11 +150,7 @@ export function showCreateInviteModal() {
                             <input type="number" id="inviteMaxUses" value="1" min="1" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                         </div>
                     </div>
-                    <div>
-                        <label for="inviteTelegramId" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">Telegram ID (Opcional)</label>
-                        <input type="text" id="inviteTelegramId" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Ex: 123456789">
-                        <p class="text-xs text-gray-400 mt-1">Se informado, o usuário será criado automaticamente com este ID.</p>
-                    </div>
+                    ${telegramIdField}
                     <div>
                         <label for="inviteScreenLimit" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">${i18n.screenLimit}</label>
                         <select id="inviteScreenLimit" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
@@ -200,6 +205,10 @@ export function showCreateInviteModal() {
         button.disabled = true;
         button.textContent = i18n.generating;
 
+        // Recupera o valor do Telegram ID com segurança
+        const telegramInput = modal.querySelector('#inviteTelegramId');
+        const telegramId = telegramInput ? telegramInput.value.trim() || null : null;
+
         try {
             const result = await api.createInvite({
                 libraries: selectedLibraries,
@@ -210,7 +219,7 @@ export function showCreateInviteModal() {
                 overseerr_access: modal.querySelector('#inviteOverseerrAccess').checked,
                 custom_code: modal.querySelector('#inviteCustomCode').value.trim() || null,
                 max_uses: parseInt(modal.querySelector('#inviteMaxUses').value) || 1,
-                telegram_id: modal.querySelector('#inviteTelegramId').value.trim() || null // Novo campo
+                telegram_id: telegramId
             });
 
             if (result && result.success) {

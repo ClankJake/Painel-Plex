@@ -8,6 +8,8 @@ export let inviteCheckInterval = null;
 export let activeInviteTab = 'active'; 
 // **NOVO**: Cache para todos os convites
 export let allInvitesCache = [];
+// **NOVO**: Estado para controlar se o Telegram está habilitado
+export let telegramEnabled = false;
 
 const savedViewState = JSON.parse(localStorage.getItem('userListViewState'));
 export let viewState = savedViewState || {
@@ -25,6 +27,7 @@ export function setInviteCheckInterval(intervalId) {
 }
 export function setActiveInviteTab(tab) { activeInviteTab = tab; }
 export function setAllInvitesCache(invites) { allInvitesCache = invites; }
+export function setTelegramEnabled(enabled) { telegramEnabled = enabled; }
 
 export function setViewState(newState) {
     viewState = { ...viewState, ...newState };
