@@ -32,6 +32,10 @@ def load_or_create_config():
             "APP_TITLE": "Painel Plex",
             "APP_BASE_URL": "",
             "LOG_LEVEL": "INFO",
+            "LOG_FILE": os.path.join(CONFIG_DIR, "app.log"),
+            "LOG_MAX_BYTES": 1024 * 1024, # 1 MB
+            "LOG_BACKUP_COUNT": 5,
+            "LAST_NOTIFICATION_CHECK": "1970-01-01T00:00:00",
             "ADMIN_USER": "",
             "PLEX_URL": "",
             "PLEX_TOKEN": "",
@@ -46,29 +50,24 @@ def load_or_create_config():
             "WEBHOOK_URL": "",
             "WEBHOOK_AUTHORIZATION_HEADER": "",
             "WEBHOOK_ENABLED": False,
-            "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": "{\"content\": \"Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}\"}",
-            "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": "{\"content\": \"✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}.\"}",
+            "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
+            "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
+            "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}',
+            "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}',
             "TELEGRAM_BOT_TOKEN": "",
             "TELEGRAM_CHAT_ID": "", 
             "TELEGRAM_ENABLED": False,
-            "TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}",
-            "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ Olá {username}! A sua subscrição foi renovada com sucesso. O seu novo vencimento é em {new_date}.",
-            "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "Seu período de teste para {username} terminou. Para continuar com o acesso, renove sua assinatura em: {payment_link}",
-            "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": "{\"content\": \"O período de teste para {username} terminou. Para renovar, acesse: {payment_link}\"}",
+            "TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nEste é um lembrete de que sua fatura está com o vencimento próximo.\nVencimento: *{date}*\nValor: *{price}*\nPlano: *{plan_name}*\nAcesso: `{email}`\n\nNa data do vencimento o sistema poderá bloquear o acesso. Para evitar a interrupção, realize o pagamento clicando no botão abaixo:",
+            "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\n\nOlá {name}!\nA sua subscrição foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
+            "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n\n{name}, o seu período de teste terminou.\nPara manter o seu acesso, realize a renovação no botão abaixo:",
+            "TELEGRAM_BULK_MESSAGE_TEMPLATE": "📢 *Aviso do Servidor*\n\nOlá {name},\n\n{message}",
             "DISCORD_ENABLED": False,
             "DISCORD_WEBHOOK_URL": "",
-            "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Aviso de Vencimento\", \"description\": \"Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).\", \"color\": 16776960}]}",
-            "DISCORD_RENEWAL_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Renovação Confirmada!\", \"description\": \"Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!\", \"color\": 65280}]}",
-            "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Período de Teste Terminou\", \"description\": \"Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).\", \"color\": 16711680}]}",
-            "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Período de Teste Terminou\", \"description\": \"Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).\", \"color\": 16711680}]}",
-            "TELEGRAM_BULK_MESSAGE_TEMPLATE": "Olá {name}, um aviso do servidor: {message}",
-            "DISCORD_BULK_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Aviso do Servidor\", \"description\": \"{message}\", \"color\": 3447003}]}",
-            "WEBHOOK_BULK_MESSAGE_TEMPLATE": "{\"phone\": \"{phone_number}@s.whatsapp.net\", \"message\": \"{message}\"}",
+            "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
+            "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!\", "color": 65280}]}',
+            "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
+            "DISCORD_BULK_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}',
             "DAYS_TO_NOTIFY_EXPIRATION": 2,
-            "LOG_FILE": os.path.join(CONFIG_DIR, "app.log"),
-            "LOG_MAX_BYTES": 1024 * 1024, # 1 MB
-            "LOG_BACKUP_COUNT": 5,
-            "LAST_NOTIFICATION_CHECK": "1970-01-01T00:00:00",
             "EFI_ENABLED": False,
             "EFI_CLIENT_ID": "",
             "EFI_CLIENT_SECRET": "",
@@ -149,18 +148,26 @@ def load_or_create_config():
                 config.setdefault("BLOCK_REMOVAL_TIME", "02:00")
                 config.setdefault("UNIVERSAL_EXPIRATION_ENABLED", False)
                 config.setdefault("UNIVERSAL_EXPIRATION_TIME", "23:59")
+                config.setdefault("WEBHOOK_URL", "")
                 config.setdefault("WEBHOOK_AUTHORIZATION_HEADER", "")
-                config.setdefault("WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE", "{\"content\": \"Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}\"}")
-                config.setdefault("WEBHOOK_RENEWAL_MESSAGE_TEMPLATE", "{\"content\": \"✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}.\"}")
-                config.setdefault("TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE", "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}")
-                config.setdefault("TELEGRAM_RENEWAL_MESSAGE_TEMPLATE", "✅ Olá {username}! A sua subscrição foi renovada com sucesso. O seu novo vencimento é em {new_date}.")
-                config.setdefault("TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE", "Seu período de teste para {username} terminou. Para continuar com o acesso, renove sua assinatura em: {payment_link}")
-                config.setdefault("WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE", "{\"content\": \"O período de teste para {username} terminou. Para renovar, acesse: {payment_link}\"}")
+                config.setdefault("WEBHOOK_ENABLED", False)
+                config.setdefault("WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE", '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}')
+                config.setdefault("WEBHOOK_RENEWAL_MESSAGE_TEMPLATE", '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}')
+                config.setdefault("WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE", '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}')
+                config.setdefault("WEBHOOK_BULK_MESSAGE_TEMPLATE", '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}')
+                config.setdefault("TELEGRAM_BOT_TOKEN", "")
+                config.setdefault("TELEGRAM_CHAT_ID", "")
+                config.setdefault("TELEGRAM_ENABLED", False)
+                config.setdefault("TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE", "Olá {name}, {greeting}!\n\nEste é um lembrete de que sua fatura está com o vencimento próximo.\nVencimento: *{date}*\nValor: *{price}*\nPlano: *{plan_name}*\nAcesso: `{email}`\n\nNa data do vencimento o sistema poderá bloquear o acesso. Para evitar a interrupção, realize o pagamento clicando no botão abaixo:")
+                config.setdefault("TELEGRAM_RENEWAL_MESSAGE_TEMPLATE", "✅ *Renovação Confirmada*\n\nOlá {name}!\nA sua subscrição foi renovada com sucesso.\nNovo vencimento: *{new_date}*.")
+                config.setdefault("TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE", "⌛ *Fim do Período de Teste*\n\n{name}, o seu período de teste terminou.\nPara manter o seu acesso, realize a renovação no botão abaixo:")
+                config.setdefault("TELEGRAM_BULK_MESSAGE_TEMPLATE", "📢 *Aviso do Servidor*\n\nOlá {name},\n\n{message}")
                 config.setdefault("DISCORD_ENABLED", False)
                 config.setdefault("DISCORD_WEBHOOK_URL", "")
-                config.setdefault("DISCORD_EXPIRATION_MESSAGE_TEMPLATE", "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Aviso de Vencimento\", \"description\": \"Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).\", \"color\": 16776960}]}")
-                config.setdefault("DISCORD_RENEWAL_MESSAGE_TEMPLATE", "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Renovação Confirmada!\", \"description\": \"Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!\", \"color\": 65280}]}")
-                config.setdefault("DISCORD_TRIAL_END_MESSAGE_TEMPLATE", "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Período de Teste Terminou\", \"description\": \"Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).\", \"color\": 16711680}]}")
+                config.setdefault("DISCORD_EXPIRATION_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}')
+                config.setdefault("DISCORD_RENEWAL_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!\", "color": 65280}]}')
+                config.setdefault("DISCORD_TRIAL_END_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}')
+                config.setdefault("DISCORD_BULK_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}')
                 config.setdefault("LAST_NOTIFICATION_CHECK", "1970-01-01T00:00:00")
                 config.setdefault("EFI_ENABLED", False)
                 config.setdefault("EFI_CLIENT_ID", "")
@@ -194,9 +201,6 @@ def load_or_create_config():
                 config.setdefault("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3)
                 config.setdefault("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5)
                 config.setdefault("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7)
-                config.setdefault("TELEGRAM_BULK_MESSAGE_TEMPLATE", "Olá {name}, um aviso do servidor: {message}")
-                config.setdefault("DISCORD_BULK_MESSAGE_TEMPLATE", "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Aviso do Servidor\", \"description\": \"{message}\", \"color\": 3447003}]}")
-                config.setdefault("WEBHOOK_BULK_MESSAGE_TEMPLATE", "{\"phone\": \"{phone_number}@s.whatsapp.net\", \"message\": \"{message}\"}")
                 config.setdefault("IMAGE_CACHE_CLEANUP_ENABLED", True)
                 config.setdefault("IMAGE_CACHE_MAX_AGE_DAYS", 30)
                 config.setdefault("IMAGE_CACHE_CLEANUP_TIME", "04:00")
