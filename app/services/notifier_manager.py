@@ -1,5 +1,3 @@
-# app/services/notifier_manager.py
-
 import json
 import logging
 import uuid
@@ -99,7 +97,7 @@ class NotifierManager:
             if e.error_code == 403 and plex_user_id:
                 logger.warning(f"[ID: {request_id}] Bot bloqueado pelo utilizador {plex_user_id}. A remover contacto.")
                 from .. import extensions
-                extensions.data_manager.update_user_profile(plex_user_id, {'telegram_user': None})
+                extensions.data_manager.update_user_profile(plex_user_id, {'telegram_id': None, 'telegram_user': None})
             else:
                 logger.error(f"[ID: {request_id}] Erro Telegram: {e.description}")
         except Exception as e:
@@ -161,9 +159,14 @@ class NotifierManager:
     def _prepare_and_send(self, event_type, user, user_profile, context):
         config = load_or_create_config()
         request_id = uuid.uuid4()
-        can_notify_telegram = config.get("TELEGRAM_ENABLED") and user_profile.get('telegram_user')
+        
+        # Correção: Verificar tanto telegram_id quanto telegram_user
+        telegram_chat_id = user_profile.get('telegram_id') or user_profile.get('telegram_user')
+        can_notify_telegram = config.get("TELEGRAM_ENABLED") and telegram_chat_id
+        
         can_notify_webhook = config.get("WEBHOOK_ENABLED") and user_profile.get('phone_number')
         can_notify_discord = config.get("DISCORD_ENABLED") and user_profile.get('discord_user_id')
+        
         if not (can_notify_telegram or can_notify_webhook or can_notify_discord): return
 
         user_screen_limit = user_profile.get('screen_limit', 0)
@@ -211,7 +214,7 @@ class NotifierManager:
             if message:
                 self._send_telegram_notification(
                     message, 
-                    user_profile['telegram_user'], 
+                    telegram_chat_id, 
                     request_id, 
                     reply_markup=markup, 
                     plex_user_id=user_profile.get('plex_user_id'),
@@ -247,6 +250,7 @@ class NotifierManager:
             'email': user.get('email') or user_profile.get('email') or "",
             'greeting': get_greeting(),
             'telegram_user': user_profile.get('telegram_user', ''), 
+            'telegram_id': user_profile.get('telegram_id', ''),
             'phone_number': user_profile.get('phone_number', ''),
             **context
         }
@@ -273,7 +277,14 @@ class NotifierManager:
             processed_count = 0
             for user in users_to_notify:
                 profile = profiles_map.get(user['id'], {})
-                if not (profile.get('telegram_user') or profile.get('phone_number') or profile.get('discord_user_id')): continue
+                
+                # Correção: Verificar se existe telegram_id ou telegram_user
+                has_telegram = profile.get('telegram_id') or profile.get('telegram_user')
+                has_whatsapp = profile.get('phone_number')
+                has_discord = profile.get('discord_user_id')
+                
+                if not (has_telegram or has_whatsapp or has_discord): continue
+                
                 self._prepare_and_send_bulk(user, profile, {'message': message})
                 processed_count += 1
                 if processed_count % 5 == 0: extensions.data_manager.update_task(task.id, {'progress_current': processed_count})
