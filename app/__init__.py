@@ -19,7 +19,6 @@ from . import models
 from . import sockets
 from . import scheduler
 from .logging_config import setup_logging
-from .services.telegram_bot import TelegramBotService
 
 logger = logging.getLogger(__name__)
 
@@ -170,15 +169,6 @@ def create_app():
     
     scheduler.set_app_for_jobs(app)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-    
-    # --- Inicialização do Bot do Telegram ---
-    # Inicia apenas se não estivermos no modo debug/reloader do Flask para evitar duplicação (parcialmente tratado pelo FileLock)
-    if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-        try:
-            telegram_service = TelegramBotService(app)
-            telegram_service.start()
-        except Exception as e:
-            logger.error(f"Erro ao iniciar serviço do Telegram: {e}")
 
     # Inicia o Scheduler se configurado
     try:
