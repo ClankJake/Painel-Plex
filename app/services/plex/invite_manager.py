@@ -94,6 +94,32 @@ class PlexInviteManager:
         if plex_user_account.username in claimed_users:
             return {"success": False, "message": _("Você já resgatou este convite anteriormente.")}
         
+        # --- BLOQUEIO DE MÚLTIPLOS TESTES ---
+        # Verifica se o convite atual é um teste (tem duração de trial definida e maior que 0)
+        is_trial_invite = invitation.get("trial_duration_minutes", 0) > 0
+
+        if is_trial_invite:
+            try:
+                # Busca todos os convites para verificar o histórico
+                all_invites = self.data_manager.get_all_invitations()
+                # Verifica se o retorno é dict ou lista e normaliza
+                invites_list = all_invites.values() if isinstance(all_invites, dict) else all_invites
+                
+                for past_invite in invites_list:
+                    # Verifica se o convite passado TAMBÉM era um teste
+                    if past_invite.get("trial_duration_minutes", 0) > 0:
+                        # Verifica se o usuário já está na lista de quem usou aquele teste anterior
+                        if plex_user_account.username in past_invite.get('claimed_by_users', []):
+                            logger.warning(f"Bloqueio de Abuso: O usuário {plex_user_account.username} tentou resgatar um segundo convite de teste.")
+                            return {
+                                "success": False, 
+                                "message": _("Você já utilizou um período de teste anteriormente. Para continuar utilizando o serviço, por favor adquira um plano.")
+                            }
+            except Exception as e:
+                logger.error(f"Erro ao verificar histórico de testes do usuário: {e}")
+                # Em caso de erro na verificação, prossegue com cautela ou bloqueia. Aqui deixamos passar mas logamos o erro.
+        # ------------------------------------
+        
         # Lógica de Vinculação de Telegram ID
         telegram_id_from_invite = invitation.get('telegram_id')
         if telegram_id_from_invite:
