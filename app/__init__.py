@@ -10,7 +10,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_login import current_user, logout_user
 from flask_babel import get_locale, gettext as _
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from sqlalchemy import event
+from sqlalchemy import event, text
 
 from . import extensions
 from .config import load_or_create_config, is_configured
@@ -23,11 +23,28 @@ from .logging_config import setup_logging
 logger = logging.getLogger(__name__)
 
 def set_sqlite_pragma(dbapi_connection, connection_record):
-    """Ativa o modo WAL para o SQLite para melhorar a concorrência."""
+    """
+    Configurações avançadas do SQLite para alta concorrência.
+    Ativa WAL, ajusta sincronização e timeouts.
+    """
     cursor = dbapi_connection.cursor()
     try:
+        # Ativa o modo WAL (permite leitura e escrita simultâneas)
         cursor.execute("PRAGMA journal_mode=WAL;")
-        cursor.execute("PRAGMA busy_timeout = 5000;")
+        
+        # NORMAL é mais rápido que FULL e seguro o suficiente em modo WAL
+        cursor.execute("PRAGMA synchronous=NORMAL;")
+        
+        # Aumenta o tempo de espera por bloqueio para 30 segundos (evita 'database is locked')
+        cursor.execute("PRAGMA busy_timeout=30000;")
+        
+        # Aumenta o cache em memória para aprox. 64MB (valor negativo = pages * 1024 bytes)
+        cursor.execute("PRAGMA cache_size=-64000;")
+        
+        # Otimiza arquivos temporários na memória RAM
+        cursor.execute("PRAGMA temp_store=MEMORY;")
+    except Exception as e:
+        logger.warning(f"Erro ao definir PRAGMAS do SQLite: {e}")
     finally:
         cursor.close()
 
@@ -86,7 +103,14 @@ def create_app():
     base_url_for_cookie = app.config.get('APP_BASE_URL', '')
     app.config['SESSION_COOKIE_SECURE'] = base_url_for_cookie.startswith('https://')
     
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"connect_args": {"timeout": 30}}
+    # --- Otimização do Engine SQLAlchemy ---
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        "connect_args": {
+            "timeout": 30  # Timeout de conexão a nível de driver
+        },
+        "pool_pre_ping": True, # Verifica se a conexão é válida antes de usar (evita erros de desconexão)
+        "pool_recycle": 300,   # Recicla conexões a cada 5 minutos
+    }
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     app.config['CACHE_TYPE'] = 'FileSystemCache'
@@ -110,6 +134,8 @@ def create_app():
 
     # --- Inicialização de Extensões ---
     extensions.db.init_app(app)
+    
+    # Registra o evento de conexão para aplicar as otimizações do SQLite
     with app.app_context():
         event.listen(extensions.db.engine, 'connect', set_sqlite_pragma)
 
@@ -127,7 +153,11 @@ def create_app():
 
     # --- Configuração do Scheduler ---
     if not extensions.scheduler.running:
-        jobstores = {'default': SQLAlchemyJobStore(url=f'sqlite:///{scheduler_db_path}?timeout=30')}
+        # Usa as mesmas otimizações para o banco do Scheduler se possível,
+        # mas aqui definimos via URL string pois o JobStore cria sua própria engine
+        jobstores = {
+            'default': SQLAlchemyJobStore(url=f'sqlite:///{scheduler_db_path}?timeout=30')
+        }
         try:
             local_tz_name = get_localzone_name()
         except Exception:
