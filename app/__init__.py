@@ -148,7 +148,7 @@ def create_app():
     if 'cache' not in app.extensions:
         app.extensions['cache'] = app.extensions.get('caching')
     
-    extensions.socketio.init_app(app, async_mode='eventlet')
+    extensions.socketio.init_app(app, async_mode='gevent')
     sockets.app_instance = app
 
     # --- Configuração do Scheduler ---
