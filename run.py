@@ -81,7 +81,7 @@ if __name__ == '__main__':
             extensions.socketio.run(app, host=host, port=port)
         else:
             # Para outros sistemas (Linux, etc.), continua a usar a configuração de produção com Gunicorn
-            logging.info("A executar em modo de produção com Gunicorn e Eventlet.")
+            logging.info("A executar em modo de produção com Gunicorn e Gevent.")
             # O Gunicorn é iniciado através do comando no Dockerfile, 
             # portanto, ao executar 'python run.py' diretamente num ambiente Linux,
             # usamos o socketio.run para consistência.
@@ -89,4 +89,5 @@ if __name__ == '__main__':
 
     else:
         logging.critical("A aplicação não será iniciada devido a uma falha na migração da base de dados.")
+
 
