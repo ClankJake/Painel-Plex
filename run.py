@@ -1,15 +1,18 @@
+from gevent import monkey
+monkey.patch_all()
+
 import logging
 import subprocess
 import sys
 import os
+import platform  # Adicionado pois é usado na verificação do sistema
 
 # NOVO: Cria o diretório de cache de imagens antes de tudo, se necessário
-from app.config import CONFIG_DIR
+from app.config import CONFIG_DIR, load_or_create_config
+from app import create_app, extensions
+
 IMAGE_CACHE_DIR = os.path.join(CONFIG_DIR, 'cache', 'images')
 os.makedirs(IMAGE_CACHE_DIR, exist_ok=True)
-
-from app import create_app, extensions
-from app.config import load_or_create_config
 
 # Carrega a configuração antes de criar a aplicação
 config = load_or_create_config()
@@ -60,7 +63,7 @@ if __name__ == '__main__':
     if run_db_upgrade():
         # Obtém o host e a porta do ficheiro de configuração
         host = config.get('APP_HOST', '0.0.0.0')
-        port = config.get('APP_PORT', 5000)
+        port = int(config.get('APP_PORT', 5000))
 
         logging.info(f"A iniciar o servidor em http://{host}:{port}")
         
@@ -79,6 +82,3 @@ if __name__ == '__main__':
 
     else:
         logging.critical("A aplicação não será iniciada devido a uma falha na migração da base de dados.")
-
-
-
