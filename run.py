@@ -1,13 +1,3 @@
-# Importa o socket nativo primeiro para contornar problemas de DNS com eventlet
-import socket
-import platform
-
-# Aplica o monkey-patch apenas se não estiver no Windows,
-# onde causa conflitos com o FileSystemCache.
-if platform.system() != "Windows":
-    import eventlet
-    eventlet.monkey_patch()
-
 import logging
 import subprocess
 import sys
@@ -89,5 +79,6 @@ if __name__ == '__main__':
 
     else:
         logging.critical("A aplicação não será iniciada devido a uma falha na migração da base de dados.")
+
 
 
