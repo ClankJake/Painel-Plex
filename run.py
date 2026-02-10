@@ -5,7 +5,13 @@ import logging
 import subprocess
 import sys
 import os
-import platform  # Adicionado pois é usado na verificação do sistema
+import platform
+
+# --- CONFIGURAÇÃO DE LIMPEZA DE LOGS ---
+# Define o nível para WARNING para evitar que requisições HTTP (INFO) poluam o console
+logging.getLogger('geventwebsocket.handler').setLevel(logging.WARNING)
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
+# ---------------------------------------
 
 # NOVO: Cria o diretório de cache de imagens antes de tudo, se necessário
 from app.config import CONFIG_DIR, load_or_create_config
@@ -70,15 +76,13 @@ if __name__ == '__main__':
         # Usa o servidor de desenvolvimento padrão no Windows para evitar o conflito com eventlet
         if platform.system() == "Windows":
             logging.warning("A executar em modo de desenvolvimento no Windows. O monkey-patch do eventlet foi ignorado.")
-            # CORREÇÃO: Removido o 'debug=True' para evitar que os logs apareçam no console.
             extensions.socketio.run(app, host=host, port=port)
         else:
             # Para outros sistemas (Linux, etc.), continua a usar a configuração de produção com Gunicorn
             logging.info("A executar em modo de produção com Gunicorn e Gevent.")
-            # O Gunicorn é iniciado através do comando no Dockerfile, 
-            # portanto, ao executar 'python run.py' diretamente num ambiente Linux,
-            # usamos o socketio.run para consistência.
-            extensions.socketio.run(app, host=host, port=port)
+            
+            # log_output=False instrui o servidor WSGI a não logar cada requisição no stdout
+            extensions.socketio.run(app, host=host, port=port, log_output=False)
 
     else:
         logging.critical("A aplicação não será iniciada devido a uma falha na migração da base de dados.")
