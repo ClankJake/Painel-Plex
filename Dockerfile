@@ -74,4 +74,4 @@ EXPOSE ${APP_PORT}
 # Comando de Execução: Executa a migração da base de dados e depois inicia o Gunicorn.
 # O Gunicorn agora usa a variável de ambiente $APP_PORT para definir a porta de escuta.
 # ADICIONADO: --preload flag para inicializar a app antes de fazer fork dos workers.
-CMD ["sh", "-c", "flask db upgrade && gunicorn --worker-class eventlet -w 4 --timeout 120 --preload --bind 0.0.0.0:${APP_PORT} run:app"]
+CMD ["sh", "-c", "flask db upgrade && gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 4 --worker-connections 1000 --timeout 120 --preload --bind 0.0.0.0:${APP_PORT} run:app"]
