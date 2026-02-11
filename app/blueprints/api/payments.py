@@ -17,7 +17,7 @@ from sqlalchemy.exc import OperationalError
 from ... import extensions
 from ...config import load_or_create_config
 from ..auth import admin_required
-from ...models import UserProfile
+from ...models import UserProfile, PixPayment
 
 # Importa o limiter
 from ...extensions import limiter
@@ -74,14 +74,31 @@ def _run_payment_processing_in_thread(app, txid):
                         logger.warning(f"Pagamento com TXID {txid} não encontrado na tentativa {attempt + 1}. A ignorar.")
                         return
                     
-                    if payment.get('status') != 'ATIVA':
-                        logger.warning(f"Pagamento {txid} já está a ser processado ou foi concluído (estado: {payment.get('status')}). A ignorar processamento duplicado.")
+                    # MELHORIA: Aceita 'PROCESSANDO' também, pois o main thread agora faz a atualização atômica.
+                    # Se for 'ATIVA', atualizamos aqui por segurança (caso venha de outro fluxo).
+                    # Se for 'CONCLUIDA', ignoramos.
+                    current_status = payment.get('status')
+
+                    if current_status == 'CONCLUIDA':
+                        logger.warning(f"Pagamento {txid} já foi concluído. A ignorar processamento duplicado.")
                         return
                     
-                    extensions.data_manager.update_pix_payment_status(txid, 'PROCESSANDO')
+                    if current_status == 'ATIVA':
+                        extensions.data_manager.update_pix_payment_status(txid, 'PROCESSANDO')
+                        logger.info(f"Pagamento {txid} marcado como 'PROCESSANDO' na thread.")
+                    elif current_status == 'PROCESSANDO':
+                        # Se já está processando, assumimos que esta thread ganhou o direito de processar
+                        # através do check atômico no _process_successful_payment.
+                        # Continuamos normalmente.
+                        pass
+                    else:
+                        logger.warning(f"Pagamento {txid} com estado inesperado '{current_status}'. A ignorar.")
+                        return
+
                 extensions.db.session.commit()
                 
-                logger.info(f"Pagamento {txid} marcado como 'PROCESSANDO'. A iniciar a lógica de renovação.")
+                # Início da Lógica de Renovação
+                logger.info(f"A iniciar a lógica de renovação para o pagamento {txid}.")
 
                 plex_user_id = payment['user_plex_id']
                 profile = extensions.data_manager.get_user_profile(plex_user_id)
@@ -228,11 +245,46 @@ def _run_payment_processing_in_thread(app, txid):
             break
 
 def _process_successful_payment(txid):
+    """
+    Inicia o processamento do pagamento em background, com verificação atômica
+    para evitar múltiplas threads.
+    """
     app = current_app._get_current_object()
+    
+    # --- MELHORIA: ATUALIZAÇÃO ATÔMICA ---
+    try:
+        # Tenta mudar de 'ATIVA' para 'PROCESSANDO' atomicamente.
+        # Se retornar > 0, esta thread ganhou a corrida.
+        affected_rows = extensions.db.session.query(PixPayment).filter(
+            PixPayment.txid == txid,
+            PixPayment.status == 'ATIVA'
+        ).update({"status": "PROCESSANDO"}, synchronize_session=False)
+        
+        extensions.db.session.commit()
+        
+        if affected_rows == 0:
+            # Verifica o status atual para logar corretamente
+            current = extensions.db.session.query(PixPayment.status).filter_by(txid=txid).first()
+            current_status = current.status if current else 'UNKNOWN'
+            
+            # Se não afetou linhas, ou não existe ou já não está ATIVA (já processando/concluído)
+            if current_status in ['PROCESSANDO', 'CONCLUIDA']:
+                logger.info(f"Pagamento {txid} ignorado (Status atual: {current_status}). Já está a ser processado ou foi concluído.")
+            else:
+                logger.warning(f"Tentativa de processar pagamento {txid} falhou na verificação atômica. Status atual: {current_status}")
+            return
+
+    except Exception as e:
+        logger.error(f"Erro ao tentar realizar lock atômico no pagamento {txid}: {e}")
+        extensions.db.session.rollback()
+        # Em caso de erro no banco, abortamos para não causar inconsistência
+        return
+
+    # Se chegamos aqui, o status agora é 'PROCESSANDO' e podemos iniciar a thread
     thread = threading.Thread(target=_run_payment_processing_in_thread, args=(app, txid))
     thread.daemon = True
     thread.start()
-    logger.info(f"Thread iniciada para processar o pagamento do TXID {txid}.")
+    logger.info(f"Thread iniciada para processar o pagamento do TXID {txid} (Lock adquirido).")
 
 
 @payments_api_bp.route('/options')
