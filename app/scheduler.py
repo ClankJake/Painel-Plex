@@ -148,7 +148,14 @@ def removal_job():
         logger.info(f"Encontrados {len(users_to_remove)} utilizador(es) para remover.")
         
         removed_count = 0
+        
+        from app.models import User
+        
         for plex_user_id in users_to_remove:
+            db_user = User.query.get(plex_user_id)
+            if db_user and getattr(db_user, 'is_admin', False):
+                continue
+
             user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
             user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
             
