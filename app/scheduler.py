@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
+from app.extensions import db
 
 from .config import load_or_create_config
 from .locks import single_instance_job
@@ -274,4 +275,5 @@ def setup_scheduler(app):
     if not extensions.scheduler.running:
         extensions.scheduler.start()
         logger.info(f"Agendador de tarefas iniciado com PID: {os.getpid()}.")
+
 
