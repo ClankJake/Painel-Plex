@@ -4,12 +4,17 @@ import logging
 import time
 import os
 import json
-import fcntl
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 from app.extensions import db
+
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 from .config import load_or_create_config
 from .locks import single_instance_job
@@ -25,28 +30,21 @@ def set_app_for_jobs(app):
     global _app
     _app = app
 
-# ==============================================================================
-# NOVO: Bloqueio Multi-Processo (Cross-Process Lock)
-# Garante que apenas 1 worker execute a tarefa, mesmo com múltiplos processos.
-# ==============================================================================
 @contextmanager
 def cross_process_lock(lock_name):
+    if fcntl is None:
+        yield True
+        return
+
     lock_fd = None
     try:
-        # Cria um ficheiro de lock na raiz do projeto ou /tmp
         lock_file_path = os.path.abspath(f"{lock_name}.lock")
         lock_fd = open(lock_file_path, "w")
-        # Tenta adquirir um bloqueio exclusivo não-bloqueante no sistema operativo
         fcntl.lockf(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        yield True  # Bloqueio adquirido com sucesso
-    except ImportError:
-        # Fallback para Windows (não suporta fcntl perfeitamente)
-        yield True 
+        yield True  
     except (BlockingIOError, IOError):
-        # Outro worker já adquiriu o bloqueio
         yield False
     finally:
-        # Limpeza e libertação do bloqueio no final da tarefa
         if lock_fd:
             try:
                 fcntl.lockf(lock_fd, fcntl.LOCK_UN)
@@ -293,13 +291,12 @@ def setup_scheduler(app):
     # Mantivemos a sua proteção inicial, mas a proteção real multi-processo
     # agora ocorre dentro de cada tarefa na hora de execução usando cross_process_lock
     try:
-        lock_file = open("scheduler.lock", "w")
-        fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        
-        global _scheduler_lock
-        _scheduler_lock = lock_file
-    except ImportError:
-        pass 
+        if fcntl:
+            lock_file = open("scheduler.lock", "w")
+            fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            
+            global _scheduler_lock
+            _scheduler_lock = lock_file
     except (BlockingIOError, IOError):
         logger.debug(f"Agendador ignorado no PID: {os.getpid()} (Já em execução noutro processo).")
         # Dependendo da configuração do Gunicorn, o return aqui pode não ser o suficiente,
