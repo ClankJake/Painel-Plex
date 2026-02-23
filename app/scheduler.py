@@ -147,7 +147,7 @@ def removal_job():
         logger.info(f"Encontrados {len(users_to_remove)} utilizador(es) para remover.")
         
         removed_count = 0
-        # CORREÇÃO: Limpa espaços em branco e converte para minúsculas para evitar problemas de formatação no Docker/Linux
+        # Limpa espaços em branco e converte para minúsculas para evitar problemas no Docker
         admin_user = str(config.get("ADMIN_USER", "")).strip().lower()
         
         for plex_user_id in users_to_remove:
@@ -250,18 +250,19 @@ def cleanup_image_cache_job():
 def setup_scheduler(app):
     """Configura e inicia o agendador com as tarefas recorrentes da aplicação."""
     
-    # 1. TENTA ADQUIRIR O BLOQUEIO PRIMEIRO
-    # Garante que, mesmo com 4 workers do servidor, apenas 1 avança e regista as tarefas
+    # 1. TENTA ADQUIRIR O BLOQUEIO PRIMEIRO (MÉTODO SOCKET - 100% FIÁVEL EM DOCKER)
+    # Garante que, mesmo com 4 workers do Gunicorn, apenas 1 avança e regista as tarefas.
+    import socket
     try:
-        import fcntl
-        lock_file = open("scheduler.lock", "w")
-        fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 47200)) # Porta arbitrária
         
-        global _scheduler_lock
-        _scheduler_lock = lock_file
-    except ImportError:
-        pass # Fallback seguro para Windows
-    except (BlockingIOError, IOError):
+        # Salvar no escopo global para que o Garbage Collector não feche o socket 
+        # e não liberte o bloqueio prematuramente.
+        global _scheduler_lock_socket
+        _scheduler_lock_socket = sock
+    except socket.error:
+        # Se ocorrer um erro no bind, significa que outro worker já reservou a porta.
         logger.debug(f"Agendador ignorado no PID: {os.getpid()} (Já em execução noutro processo).")
         return # <-- MUITO IMPORTANTE: Sai imediatamente sem adicionar as tarefas se não for o principal
 
