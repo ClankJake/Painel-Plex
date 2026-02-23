@@ -152,7 +152,7 @@ def removal_job():
         from app.models import User
         
         for plex_user_id in users_to_remove:
-            db_user = User.query.get(plex_user_id)
+            db_user = db.session.get(User, plex_user_id)
             if db_user and getattr(db_user, 'is_admin', False):
                 continue
 
@@ -274,3 +274,4 @@ def setup_scheduler(app):
     if not extensions.scheduler.running:
         extensions.scheduler.start()
         logger.info(f"Agendador de tarefas iniciado com PID: {os.getpid()}.")
+
