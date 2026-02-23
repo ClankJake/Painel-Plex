@@ -147,18 +147,23 @@ def removal_job():
         logger.info(f"Encontrados {len(users_to_remove)} utilizador(es) para remover.")
         
         removed_count = 0
-        admin_user = config.get("ADMIN_USER", "")
+        # CORREÇÃO: Limpa espaços em branco e converte para minúsculas para evitar problemas de formatação no Docker/Linux
+        admin_user = str(config.get("ADMIN_USER", "")).strip().lower()
         
         for plex_user_id in users_to_remove:
             is_admin = False
             
-            # 1. Obtém os dados do utilizador do Plex para logs e verificação de username
+            # 1. Obtém os dados do utilizador do Plex para logs e verificação
             user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
-            user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
+            user_identifier = user_info['username'] if user_info and 'username' in user_info else f"ID '{plex_user_id}'"
             
-            # TENTATIVA 1: Proteção por username (ADMIN_USER) configurado no config.json
-            if user_info:
-                if admin_user and user_info.get('username') == admin_user:
+            # TENTATIVA 1: Proteção por username/email configurado no config.json
+            if user_info and admin_user:
+                plex_username = str(user_info.get('username', '')).strip().lower()
+                plex_email = str(user_info.get('email', '')).strip().lower()
+                
+                # Compara à prova de falhas com o username ou email
+                if admin_user in (plex_username, plex_email) and admin_user != "":
                     is_admin = True
                     
             # TENTATIVA 2: Proteção pelo Data Manager (Testando ID como Int e String para evitar falhas de tipo)
@@ -176,8 +181,12 @@ def removal_job():
             if not is_admin:
                 try:
                     from app.models import User
-                    # Garantir que passamos um Integer caso plex_user_id seja string
-                    db_user = db.session.get(User, int(plex_user_id))
+                    # Tenta procurar como inteiro; se falhar (ex: UUID longo em texto), tenta como string
+                    try:
+                        db_user = db.session.get(User, int(plex_user_id))
+                    except ValueError:
+                        db_user = db.session.get(User, str(plex_user_id))
+                        
                     if db_user and getattr(db_user, 'is_admin', False):
                         is_admin = True
                 except Exception as e:
