@@ -150,11 +150,30 @@ def removal_job():
         
         removed_count = 0
         
-        from app.models import User
-        
         for plex_user_id in users_to_remove:
-            db_user = db.session.get(User, plex_user_id)
-            if db_user and getattr(db_user, 'is_admin', False):
+            is_admin = False
+            
+            # TENTATIVA 1: Usar o Data Manager (Mais seguro em novas versões do projeto)
+            try:
+                profile = extensions.data_manager.get_user_profile(plex_user_id)
+                if profile and isinstance(profile, dict) and profile.get('is_admin'):
+                    is_admin = True
+            except Exception:
+                pass
+                
+            # TENTATIVA 2: Fallback para SQLAlchemy com proteção de erros
+            if not is_admin:
+                try:
+                    from app.models import User
+                    db_user = db.session.get(User, plex_user_id)
+                    if db_user and getattr(db_user, 'is_admin', False):
+                        is_admin = True
+                except Exception as e:
+                    # Se não houver classe mapeada (NoInspectionAvailable), ignoramos sem crashar a thread
+                    db.session.rollback()
+
+            if is_admin:
+                logger.info(f"O utilizador {plex_user_id} é admin. Ignorando a remoção.")
                 continue
 
             user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
@@ -275,5 +294,3 @@ def setup_scheduler(app):
     if not extensions.scheduler.running:
         extensions.scheduler.start()
         logger.info(f"Agendador de tarefas iniciado com PID: {os.getpid()}.")
-
-
