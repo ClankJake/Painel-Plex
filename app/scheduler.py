@@ -4,6 +4,8 @@ import logging
 import time
 import os
 import json
+import fcntl
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
@@ -22,6 +24,35 @@ _app = None
 def set_app_for_jobs(app):
     global _app
     _app = app
+
+# ==============================================================================
+# NOVO: Bloqueio Multi-Processo (Cross-Process Lock)
+# Garante que apenas 1 worker execute a tarefa, mesmo com múltiplos processos.
+# ==============================================================================
+@contextmanager
+def cross_process_lock(lock_name):
+    lock_fd = None
+    try:
+        # Cria um ficheiro de lock na raiz do projeto ou /tmp
+        lock_file_path = os.path.abspath(f"{lock_name}.lock")
+        lock_fd = open(lock_file_path, "w")
+        # Tenta adquirir um bloqueio exclusivo não-bloqueante no sistema operativo
+        fcntl.lockf(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield True  # Bloqueio adquirido com sucesso
+    except ImportError:
+        # Fallback para Windows (não suporta fcntl perfeitamente)
+        yield True 
+    except (BlockingIOError, IOError):
+        # Outro worker já adquiriu o bloqueio
+        yield False
+    finally:
+        # Limpeza e libertação do bloqueio no final da tarefa
+        if lock_fd:
+            try:
+                fcntl.lockf(lock_fd, fcntl.LOCK_UN)
+                lock_fd.close()
+            except Exception:
+                pass
 
 def _execute_with_retry(action, description):
     for attempt in range(MAX_RETRIES):
@@ -46,34 +77,38 @@ def task_processor_job():
     O processamento de pagamentos foi movido para uma thread dedicada.
     """
     if not _app: return
-    with _app.test_request_context():
-        from . import extensions
-        
-        task_obj = extensions.data_manager.get_next_pending_task('bulk_notification')
-        if task_obj:
-            extensions.data_manager.update_task(task_obj.id, {'status': 'running', 'started_at': datetime.now(timezone.utc)})
-            extensions.notifier_manager.process_bulk_notification_task(task_obj)
+    with cross_process_lock('task_processor'):
+        with _app.test_request_context():
+            from . import extensions
+            
+            task_obj = extensions.data_manager.get_next_pending_task('bulk_notification')
+            if task_obj:
+                extensions.data_manager.update_task(task_obj.id, {'status': 'running', 'started_at': datetime.now(timezone.utc)})
+                extensions.notifier_manager.process_bulk_notification_task(task_obj)
 
 @single_instance_job('stream_check_job')
 def stream_check_job():
     if not _app: return
-    with _app.test_request_context():
-        from . import extensions
-        extensions.stream_manager.check_and_enforce_streams()
+    with cross_process_lock('stream_check'):
+        with _app.test_request_context():
+            from . import extensions
+            extensions.stream_manager.check_and_enforce_streams()
 
 @single_instance_job('expiration_notification_job')
 def expiration_notification_job():
     if not _app: return
-    with _app.test_request_context():
-        from . import extensions
-        users_to_check = extensions.plex_manager.get_users_within_notification_window()
-        for plex_user_id in users_to_check:
-            user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
-            if user_info:
-                extensions.plex_manager.send_expiration_notification_if_needed(user_info)
+    with cross_process_lock('expiration_notification'):
+        with _app.test_request_context():
+            from . import extensions
+            users_to_check = extensions.plex_manager.get_users_within_notification_window()
+            for plex_user_id in users_to_check:
+                user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+                if user_info:
+                    extensions.plex_manager.send_expiration_notification_if_needed(user_info)
 
 def end_trial_job(plex_user_id):
     if not _app: return
+    # Aqui não aplicamos o cross_process_lock pois é uma tarefa pontual dinâmica e o ID varia
     with _app.test_request_context():
         from . import extensions
         
@@ -96,7 +131,6 @@ def end_trial_job(plex_user_id):
                     extensions.data_manager.set_user_profile(plex_user_id, profile)
         else:
             logger.warning(f"Utilizador com ID '{plex_user_id}' não encontrado durante a tarefa de fim de teste.")
-
 
 def end_subscription_job(plex_user_id):
     """Tarefa individual acionada no fim exato da subscrição de um utilizador."""
@@ -132,139 +166,145 @@ def end_subscription_job(plex_user_id):
 @single_instance_job('removal_job')
 def removal_job():
     if not _app: return
-    with _app.test_request_context():
-        from . import extensions
-        config = load_or_create_config()
-        
-        logger.info("A iniciar a tarefa 'removal_job' para remover utilizadores bloqueados há muito tempo.")
-        
-        users_to_remove = extensions.plex_manager.get_users_to_remove()
-        
-        if not users_to_remove:
-            logger.info("Nenhum utilizador bloqueado atingiu o prazo para remoção. A tarefa foi concluída.")
+    
+    # Adicionada proteção rigorosa. Se outro processo já estiver a executar, sai silenciosamente.
+    with cross_process_lock('removal_job') as acquired:
+        if not acquired:
+            logger.debug("A tarefa 'removal_job' já está a ser executada por outro worker. Cancelando esta execução duplicada.")
             return
 
-        logger.info(f"Encontrados {len(users_to_remove)} utilizador(es) para remover.")
-        
-        removed_count = 0
-        # Limpa espaços em branco e converte para minúsculas para evitar problemas no Docker
-        admin_user = str(config.get("ADMIN_USER", "")).strip().lower()
-        
-        for plex_user_id in users_to_remove:
-            is_admin = False
+        with _app.test_request_context():
+            from . import extensions
+            config = load_or_create_config()
             
-            # 1. Obtém os dados do utilizador do Plex para logs e verificação
-            user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
-            user_identifier = user_info['username'] if user_info and 'username' in user_info else f"ID '{plex_user_id}'"
+            logger.info("A iniciar a tarefa 'removal_job' para remover utilizadores bloqueados há muito tempo.")
             
-            # TENTATIVA 1: Proteção por username/email configurado no config.json
-            if user_info and admin_user:
-                plex_username = str(user_info.get('username', '')).strip().lower()
-                plex_email = str(user_info.get('email', '')).strip().lower()
+            users_to_remove = extensions.plex_manager.get_users_to_remove()
+            
+            if not users_to_remove:
+                logger.info("Nenhum utilizador bloqueado atingiu o prazo para remoção. A tarefa foi concluída.")
+                return
+
+            logger.info(f"Encontrados {len(users_to_remove)} utilizador(es) para remover.")
+            
+            removed_count = 0
+            admin_user = str(config.get("ADMIN_USER", "")).strip().lower()
+            
+            for plex_user_id in users_to_remove:
+                is_admin = False
                 
-                # Compara à prova de falhas com o username ou email
-                if admin_user in (plex_username, plex_email) and admin_user != "":
-                    is_admin = True
+                user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+                user_identifier = user_info['username'] if user_info and 'username' in user_info else f"ID '{plex_user_id}'"
+                
+                if user_info and admin_user:
+                    plex_username = str(user_info.get('username', '')).strip().lower()
+                    plex_email = str(user_info.get('email', '')).strip().lower()
                     
-            # TENTATIVA 2: Proteção pelo Data Manager (Testando ID como Int e String para evitar falhas de tipo)
-            if not is_admin:
-                for pid in (plex_user_id, str(plex_user_id)):
-                    try:
-                        profile = extensions.data_manager.get_user_profile(pid)
-                        if profile and isinstance(profile, dict) and profile.get('is_admin'):
-                            is_admin = True
-                            break
-                    except Exception:
-                        pass
-                
-            # TENTATIVA 3: Proteção via SQLAlchemy
-            if not is_admin:
-                try:
-                    from app.models import User
-                    # Tenta procurar como inteiro; se falhar (ex: UUID longo em texto), tenta como string
-                    try:
-                        db_user = db.session.get(User, int(plex_user_id))
-                    except ValueError:
-                        db_user = db.session.get(User, str(plex_user_id))
-                        
-                    if db_user and getattr(db_user, 'is_admin', False):
+                    if admin_user in (plex_username, plex_email) and admin_user != "":
                         is_admin = True
-                except Exception as e:
-                    db.session.rollback()
+                        
+                if not is_admin:
+                    for pid in (plex_user_id, str(plex_user_id)):
+                        try:
+                            profile = extensions.data_manager.get_user_profile(pid)
+                            if profile and isinstance(profile, dict) and profile.get('is_admin'):
+                                is_admin = True
+                                break
+                        except Exception:
+                            pass
+                
+                if not is_admin:
+                    try:
+                        from app.models import User
+                        try:
+                            db_user = db.session.get(User, int(plex_user_id))
+                        except ValueError:
+                            db_user = db.session.get(User, str(plex_user_id))
+                            
+                        if db_user and getattr(db_user, 'is_admin', False):
+                            is_admin = True
+                    except Exception as e:
+                        db.session.rollback()
 
-            if is_admin:
-                logger.info(f"O utilizador {user_identifier} ({plex_user_id}) é protegido (admin). Ignorando a remoção.")
-                continue
+                if is_admin:
+                    logger.info(f"O utilizador {user_identifier} ({plex_user_id}) é protegido (admin). Ignorando a remoção.")
+                    continue
 
-            success = _execute_with_retry(
-                action=lambda: extensions.plex_manager.remove_user(plex_user_id),
-                description=f"remover utilizador bloqueado '{user_identifier}'"
-            )
-            if success:
-                removed_count += 1
-        
-        if removed_count > 0:
-            logger.info(f"Tarefa 'removal_job' concluída. {removed_count} de {len(users_to_remove)} utilizador(es) foram removidos com sucesso.")
-        else:
-            logger.info("Tarefa 'removal_job' concluída. Nenhum utilizador foi removido (poderiam ser administradores protegidos).")
+                success = _execute_with_retry(
+                    action=lambda: extensions.plex_manager.remove_user(plex_user_id),
+                    description=f"remover utilizador bloqueado '{user_identifier}'"
+                )
+                if success:
+                    removed_count += 1
+            
+            if removed_count > 0:
+                logger.info(f"Tarefa 'removal_job' concluída. {removed_count} de {len(users_to_remove)} utilizador(es) foram removidos com sucesso.")
+            else:
+                logger.info("Tarefa 'removal_job' concluída. Nenhum utilizador foi removido (poderiam ser administradores protegidos).")
 
 
 @single_instance_job('cleanup_job')
 def cleanup_job():
     if not _app: return
-    with _app.test_request_context():
-        from . import extensions
-        config = load_or_create_config()
+    with cross_process_lock('cleanup_job') as acquired:
+        if not acquired: return
         
-        if config.get("CLEANUP_PENDING_PAYMENTS_ENABLED", False):
-            days = config.get("CLEANUP_PENDING_PAYMENTS_DAYS", 3)
-            extensions.data_manager.delete_old_pending_payments(days)
+        with _app.test_request_context():
+            from . import extensions
+            config = load_or_create_config()
+            
+            if config.get("CLEANUP_PENDING_PAYMENTS_ENABLED", False):
+                days = config.get("CLEANUP_PENDING_PAYMENTS_DAYS", 3)
+                extensions.data_manager.delete_old_pending_payments(days)
 
-        if config.get("SHORT_LINK_CLEANUP_ENABLED", True):
-            days_links = config.get("SHORT_LINK_MAX_AGE_DAYS", 30)
-            extensions.data_manager.delete_old_short_links(days_links)
+            if config.get("SHORT_LINK_CLEANUP_ENABLED", True):
+                days_links = config.get("SHORT_LINK_MAX_AGE_DAYS", 30)
+                extensions.data_manager.delete_old_short_links(days_links)
 
 @single_instance_job('cleanup_image_cache_job')
 def cleanup_image_cache_job():
     if not _app: return
-    with _app.app_context():
-        from .config import load_or_create_config
-        from .blueprints.image import IMAGE_CACHE_DIR
+    with cross_process_lock('cleanup_image_cache') as acquired:
+        if not acquired: return
+        
+        with _app.app_context():
+            from .config import load_or_create_config
+            from .blueprints.image import IMAGE_CACHE_DIR
 
-        config = load_or_create_config()
-        if not config.get("IMAGE_CACHE_CLEANUP_ENABLED", False): return
-        
-        max_age_days = config.get("IMAGE_CACHE_MAX_AGE_DAYS", 30)
-        cutoff_time = time.time() - (max_age_days * 86400)
-        
-        try:
-            if not os.path.exists(IMAGE_CACHE_DIR): return
-            for filename in os.listdir(IMAGE_CACHE_DIR):
-                filepath = os.path.join(IMAGE_CACHE_DIR, filename)
-                if os.path.isfile(filepath) and os.path.getmtime(filepath) < cutoff_time:
-                    os.remove(filepath)
-        except Exception as e:
-            logger.error(f"Erro durante a limpeza do cache de imagens: {e}", exc_info=True)
+            config = load_or_create_config()
+            if not config.get("IMAGE_CACHE_CLEANUP_ENABLED", False): return
+            
+            max_age_days = config.get("IMAGE_CACHE_MAX_AGE_DAYS", 30)
+            cutoff_time = time.time() - (max_age_days * 86400)
+            
+            try:
+                if not os.path.exists(IMAGE_CACHE_DIR): return
+                for filename in os.listdir(IMAGE_CACHE_DIR):
+                    filepath = os.path.join(IMAGE_CACHE_DIR, filename)
+                    if os.path.isfile(filepath) and os.path.getmtime(filepath) < cutoff_time:
+                        os.remove(filepath)
+            except Exception as e:
+                logger.error(f"Erro durante a limpeza do cache de imagens: {e}", exc_info=True)
 
 
 def setup_scheduler(app):
     """Configura e inicia o agendador com as tarefas recorrentes da aplicação."""
     
-    # 1. TENTA ADQUIRIR O BLOQUEIO PRIMEIRO (MÉTODO SOCKET - 100% FIÁVEL EM DOCKER)
-    # Garante que, mesmo com 4 workers do Gunicorn, apenas 1 avança e regista as tarefas.
-    import socket
+    # Mantivemos a sua proteção inicial, mas a proteção real multi-processo
+    # agora ocorre dentro de cada tarefa na hora de execução usando cross_process_lock
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 47200)) # Porta arbitrária
+        lock_file = open("scheduler.lock", "w")
+        fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
         
-        # Salvar no escopo global para que o Garbage Collector não feche o socket 
-        # e não liberte o bloqueio prematuramente.
-        global _scheduler_lock_socket
-        _scheduler_lock_socket = sock
-    except socket.error:
-        # Se ocorrer um erro no bind, significa que outro worker já reservou a porta.
+        global _scheduler_lock
+        _scheduler_lock = lock_file
+    except ImportError:
+        pass 
+    except (BlockingIOError, IOError):
         logger.debug(f"Agendador ignorado no PID: {os.getpid()} (Já em execução noutro processo).")
-        return # <-- MUITO IMPORTANTE: Sai imediatamente sem adicionar as tarefas se não for o principal
+        # Dependendo da configuração do Gunicorn, o return aqui pode não ser o suficiente,
+        # daí a necessidade das proteções individuais dentro das funções acima.
+        return 
 
     from . import extensions
     config = load_or_create_config()
