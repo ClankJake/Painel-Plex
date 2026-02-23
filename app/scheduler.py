@@ -112,9 +112,6 @@ def end_subscription_job(plex_user_id):
 
         logger.info(f"Fim da subscrição para '{user_identifier}'. A acionar o bloqueio.")
         
-        # CORREÇÃO: Limpa o ID da tarefa do perfil do utilizador ANTES de tentar o bloqueio.
-        # Isto garante que o ID seja limpo mesmo que a operação de bloqueio falhe,
-        # prevenindo erros de "JobLookupError" em futuras renovações.
         try:
             profile = extensions.data_manager.get_user_profile(plex_user_id)
             if profile and profile.get('expiration_job_id'):
@@ -137,6 +134,7 @@ def removal_job():
     if not _app: return
     with _app.test_request_context():
         from . import extensions
+        config = load_or_create_config()
         
         logger.info("A iniciar a tarefa 'removal_job' para remover utilizadores bloqueados há muito tempo.")
         
@@ -149,36 +147,46 @@ def removal_job():
         logger.info(f"Encontrados {len(users_to_remove)} utilizador(es) para remover.")
         
         removed_count = 0
+        admin_user = config.get("ADMIN_USER", "")
         
         for plex_user_id in users_to_remove:
             is_admin = False
             
-            # TENTATIVA 1: Usar o Data Manager (Mais seguro em novas versões do projeto)
-            try:
-                profile = extensions.data_manager.get_user_profile(plex_user_id)
-                if profile and isinstance(profile, dict) and profile.get('is_admin'):
-                    is_admin = True
-            except Exception:
-                pass
-                
-            # TENTATIVA 2: Fallback para SQLAlchemy com proteção de erros
-            if not is_admin:
-                try:
-                    from app.models import User
-                    db_user = db.session.get(User, plex_user_id)
-                    if db_user and getattr(db_user, 'is_admin', False):
-                        is_admin = True
-                except Exception as e:
-                    # Se não houver classe mapeada (NoInspectionAvailable), ignoramos sem crashar a thread
-                    db.session.rollback()
-
-            if is_admin:
-                logger.info(f"O utilizador {plex_user_id} é admin. Ignorando a remoção.")
-                continue
-
+            # 1. Obtém os dados do utilizador do Plex para logs e verificação de username
             user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
             user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
             
+            # TENTATIVA 1: Proteção por username (ADMIN_USER) configurado no config.json
+            if user_info:
+                if admin_user and user_info.get('username') == admin_user:
+                    is_admin = True
+                    
+            # TENTATIVA 2: Proteção pelo Data Manager (Testando ID como Int e String para evitar falhas de tipo)
+            if not is_admin:
+                for pid in (plex_user_id, str(plex_user_id)):
+                    try:
+                        profile = extensions.data_manager.get_user_profile(pid)
+                        if profile and isinstance(profile, dict) and profile.get('is_admin'):
+                            is_admin = True
+                            break
+                    except Exception:
+                        pass
+                
+            # TENTATIVA 3: Proteção via SQLAlchemy
+            if not is_admin:
+                try:
+                    from app.models import User
+                    # Garantir que passamos um Integer caso plex_user_id seja string
+                    db_user = db.session.get(User, int(plex_user_id))
+                    if db_user and getattr(db_user, 'is_admin', False):
+                        is_admin = True
+                except Exception as e:
+                    db.session.rollback()
+
+            if is_admin:
+                logger.info(f"O utilizador {user_identifier} ({plex_user_id}) é protegido (admin). Ignorando a remoção.")
+                continue
+
             success = _execute_with_retry(
                 action=lambda: extensions.plex_manager.remove_user(plex_user_id),
                 description=f"remover utilizador bloqueado '{user_identifier}'"
@@ -189,7 +197,7 @@ def removal_job():
         if removed_count > 0:
             logger.info(f"Tarefa 'removal_job' concluída. {removed_count} de {len(users_to_remove)} utilizador(es) foram removidos com sucesso.")
         else:
-            logger.warning("Tarefa 'removal_job' concluída, mas nenhum utilizador foi efetivamente removido (verifique os logs de erro).")
+            logger.info("Tarefa 'removal_job' concluída. Nenhum utilizador foi removido (poderiam ser administradores protegidos).")
 
 
 @single_instance_job('cleanup_job')
@@ -199,12 +207,10 @@ def cleanup_job():
         from . import extensions
         config = load_or_create_config()
         
-        # Limpeza de pagamentos pendentes (já existente)
         if config.get("CLEANUP_PENDING_PAYMENTS_ENABLED", False):
             days = config.get("CLEANUP_PENDING_PAYMENTS_DAYS", 3)
             extensions.data_manager.delete_old_pending_payments(days)
 
-        # --- NOVA LÓGICA: Limpeza de links curtos ---
         if config.get("SHORT_LINK_CLEANUP_ENABLED", True):
             days_links = config.get("SHORT_LINK_MAX_AGE_DAYS", 30)
             extensions.data_manager.delete_old_short_links(days_links)
@@ -234,6 +240,22 @@ def cleanup_image_cache_job():
 
 def setup_scheduler(app):
     """Configura e inicia o agendador com as tarefas recorrentes da aplicação."""
+    
+    # 1. TENTA ADQUIRIR O BLOQUEIO PRIMEIRO
+    # Garante que, mesmo com 4 workers do servidor, apenas 1 avança e regista as tarefas
+    try:
+        import fcntl
+        lock_file = open("scheduler.lock", "w")
+        fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        
+        global _scheduler_lock
+        _scheduler_lock = lock_file
+    except ImportError:
+        pass # Fallback seguro para Windows
+    except (BlockingIOError, IOError):
+        logger.debug(f"Agendador ignorado no PID: {os.getpid()} (Já em execução noutro processo).")
+        return # <-- MUITO IMPORTANTE: Sai imediatamente sem adicionar as tarefas se não for o principal
+
     from . import extensions
     config = load_or_create_config()
     
@@ -242,8 +264,6 @@ def setup_scheduler(app):
     
     tz = extensions.scheduler.timezone
 
-    # Aumentado max_instances para 5 para evitar warnings quando a tarefa demora mais que o intervalo.
-    # O lock interno garante que apenas uma instância corre de verdade.
     extensions.scheduler.add_job(
         id='stream_check_job', func=stream_check_job,
         trigger='interval', seconds=config.get("STREAM_CHECK_INTERVAL_SECONDS", 15),
@@ -255,7 +275,6 @@ def setup_scheduler(app):
         id='expiration_notification_job', func=expiration_notification_job,
         trigger=CronTrigger(hour=int(exp_time_parts[0]), minute=int(exp_time_parts[1]), timezone=tz),
         replace_existing=True,
-        # Aumenta a tolerância a atrasos para 300 segundos (5 minutos) para evitar "was missed by"
         misfire_grace_time=300
     )
 
@@ -284,7 +303,6 @@ def setup_scheduler(app):
             misfire_grace_time=300
         )
 
-    # Aumentado max_instances para 5 e misfire_grace_time para 300
     extensions.scheduler.add_job(
         id='task_processor_job', func=task_processor_job,
         trigger='interval', seconds=20, replace_existing=True,
@@ -293,4 +311,4 @@ def setup_scheduler(app):
 
     if not extensions.scheduler.running:
         extensions.scheduler.start()
-        logger.info(f"Agendador de tarefas iniciado com PID: {os.getpid()}.")
+        logger.info(f"Agendador de tarefas iniciado com PID: {os.getpid()}")
