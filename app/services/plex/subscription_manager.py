@@ -1,17 +1,16 @@
 # app/services/plex/subscription_manager.py
 
 import logging
+import secrets
+import calendar
 from datetime import datetime, date, timedelta
+from tzlocal import get_localzone
+
 from flask import current_app
 from flask_babel import gettext as _
-from tzlocal import get_localzone
-import secrets
-import calendar  # Importa o módulo calendar
-# Importa JobLookupError para lidar com a remoção de tarefas de forma segura
 from apscheduler.jobstores.base import JobLookupError
-# CORREÇÃO: Importa a exceção de erro operacional para lidar com bloqueios de DB
 from sqlalchemy.exc import OperationalError
-# Importar a função para carregar a configuração
+
 from ...config import load_or_create_config
 
 logger = logging.getLogger(__name__)
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 class PlexSubscriptionManager:
     """
     Gere as tarefas agendadas relacionadas com as subscrições dos utilizadores,
-    como notificações de expiração e o fim dos períodos de teste.
+    como renovações, notificações de expiração e o fim dos períodos de teste.
     """
     def __init__(self, data_manager, user_manager=None):
         self.data_manager = data_manager
@@ -30,116 +29,142 @@ class PlexSubscriptionManager:
         Renova a subscrição de um utilizador, calcula a nova data de vencimento
         e reagenda a sua tarefa de expiração.
         """
-        from ... import extensions # Prevenção de importação circular
-        from ...scheduler import end_subscription_job
-
         profile = self.data_manager.get_user_profile(plex_user_id)
         if not profile:
             raise ValueError("Perfil de utilizador não encontrado.")
 
+        # 1. Atualizar o estado básico do perfil (Status e Limite de Telas)
+        self._update_basic_profile_state(profile, plex_user_id, screens, is_reactivation)
+
+        # 2. Calcular as Datas de Renovação
+        now = datetime.now(get_localzone())
+        base_date = self._calculate_base_date(profile, base_mode, base_date_str, now)
+        new_expiration_date = self._calculate_new_expiration_date(base_date, months_to_add, expiration_time_str)
+        profile['expiration_date'] = new_expiration_date.isoformat()
+
+        # 3. Limpar Testes (Trials) Anteriores e Reagendar Expiração
+        self._clear_trial_data(profile, plex_user_id)
+        self._replace_expiration_job(profile, plex_user_id, new_expiration_date)
+
+        # 4. Desbloquear Utilizador (Se estava bloqueado por falta de pagamento)
+        self._unblock_user_if_needed(plex_user_id)
+
+        # 5. Salvar na Base de Dados
+        self.data_manager.set_user_profile(plex_user_id, profile)
+
+        return new_expiration_date
+
+    # --- MÉTODOS AUXILIARES (SRP) ---
+
+    def _update_basic_profile_state(self, profile, plex_user_id, screens, is_reactivation):
+        """Atualiza estado e limites de ecrã do perfil do utilizador."""
         if is_reactivation:
-            logger.info(f"A reativar o perfil do utilizador '{profile['username']}' (ID: {plex_user_id}).")
+            logger.info(f"A reativar o perfil do utilizador '{profile.get('username')}' (ID: {plex_user_id}).")
             profile['status'] = 'active'
 
         if screens is not None and screens >= 0:
             profile['screen_limit'] = screens
-            logger.info(f"Limite de telas para '{profile['username']}' definido para {screens} durante a renovação.")
+            logger.info(f"Limite de telas para '{profile.get('username')}' definido para {screens} durante a renovação.")
 
-        now = datetime.now(get_localzone())
+    def _calculate_base_date(self, profile, base_mode, base_date_str, now):
+        """Determina a data de início (data base) para adicionar os meses da renovação."""
         base_date = now
 
-        # 1. Define a data base para a renovação
         if base_mode == 'expiry_date':
             current_expiration_str = profile.get('expiration_date')
             if current_expiration_str:
                 try:
                     expiration_date = datetime.fromisoformat(current_expiration_str)
-                    # CORREÇÃO: Se a data de expiração já passou, a nova assinatura
-                    # começa a contar a partir de hoje. Caso contrário, a partir da data de expiração.
-                    if expiration_date < now:
-                        base_date = now
-                    else:
+                    # Se a data de expiração não passou, adiciona a partir dessa data (Acumula meses)
+                    if expiration_date >= now:
                         base_date = expiration_date
                 except ValueError:
-                    logger.warning(f"Formato de data de expiração inválido '{current_expiration_str}' para o utilizador {plex_user_id}. A renovar a partir da data atual.")
-                    base_date = now # Fallback para a data atual em caso de erro no formato
-            else:
-                # Se não houver data de expiração (primeira assinatura), usa a data atual.
-                base_date = now
+                    logger.warning(f"Formato de data de expiração inválido '{current_expiration_str}'. A renovar a partir de hoje.")
 
         if base_date_str:
             try:
                 base_time = base_date.time()
-                base_date = datetime.fromisoformat(base_date_str).replace(hour=base_time.hour, minute=base_time.minute, second=base_time.second, microsecond=0, tzinfo=get_localzone())
+                parsed_base = datetime.fromisoformat(base_date_str)
+                # Preserva a hora calculada, mas atualiza os componentes da data com o timezone local
+                base_date = parsed_base.replace(
+                    hour=base_time.hour, minute=base_time.minute, 
+                    second=base_time.second, microsecond=0, tzinfo=get_localzone()
+                )
                 if base_date < now:
                     base_date = now
             except ValueError:
-                 logger.warning(f"Formato de data base inválido '{base_date_str}'. A renovar a partir da data atual.")
+                 logger.warning(f"Formato de data base inválido '{base_date_str}'. A renovar a partir de hoje.")
 
-        # 2. CORREÇÃO: Calcula a nova data de vencimento de forma precisa, adicionando meses de calendário.
-        # Isto substitui a lógica imprecisa de `timedelta(days=30)`.
+        return base_date
+
+    def _calculate_new_expiration_date(self, base_date, months_to_add, expiration_time_str):
+        """Adiciona os meses de forma precisa usando o calendário e aplica a hora de expiração."""
+        # 1. Adicionar Meses Precisamente (Lida com anos bissextos e fins de mês)
         months_total = base_date.month - 1 + int(months_to_add)
         new_year = base_date.year + months_total // 12
         new_month = months_total % 12 + 1
-        # Garante que o dia seja válido para o novo mês (ex: lida com 31 de Janeiro -> 28/29 de Fevereiro)
         new_day = min(base_date.day, calendar.monthrange(new_year, new_month)[1])
         new_expiration_date = base_date.replace(year=new_year, month=new_month, day=new_day)
 
-        # 3. Aplica a hora de vencimento, dando prioridade à configuração universal
+        # 2. Aplicar a Hora de Vencimento
         config = load_or_create_config()
         universal_enabled = config.get("UNIVERSAL_EXPIRATION_ENABLED", False)
         universal_time_str = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59")
 
-        final_expiration_time_str = None
-        if universal_enabled:
-            final_expiration_time_str = universal_time_str
-        elif expiration_time_str:
-            final_expiration_time_str = expiration_time_str
+        final_time_str = universal_time_str if universal_enabled else expiration_time_str
 
-        if final_expiration_time_str:
+        if final_time_str:
             try:
-                time_parts = list(map(int, final_expiration_time_str.split(':')))
-                new_expiration_date = new_expiration_date.replace(hour=time_parts[0], minute=time_parts[1], second=0, microsecond=0)
+                time_parts = list(map(int, final_time_str.split(':')))
+                new_expiration_date = new_expiration_date.replace(
+                    hour=time_parts[0], minute=time_parts[1], second=0, microsecond=0
+                )
             except (ValueError, IndexError):
-                logger.warning(f"Formato de hora de expiração inválido '{final_expiration_time_str}'. A ignorar.")
+                logger.warning(f"Formato de hora de expiração inválido '{final_time_str}'. A ignorar.")
 
-        profile['expiration_date'] = new_expiration_date.isoformat()
+        return new_expiration_date
 
-        # CORREÇÃO: Limpa os dados do período de teste ao renovar/definir uma subscrição regular.
-        if 'trial_end_date' in profile and profile['trial_end_date']:
-            profile['trial_end_date'] = None
-            logger.info(f"Data de fim de teste limpa para o utilizador {plex_user_id} devido à renovação/definição da subscrição.")
-        if 'trial_job_id' in profile and profile['trial_job_id']:
+    def _clear_trial_data(self, profile, plex_user_id):
+        """Remove rastros de um período de teste (trial) anterior e cancela a sua tarefa."""
+        if not profile.get('trial_end_date') and not profile.get('trial_job_id'):
+            return
+
+        # Importação no escopo local para evitar dependências circulares na inicialização
+        from ... import extensions 
+
+        profile['trial_end_date'] = None
+        logger.info(f"Data de fim de teste limpa para o utilizador {plex_user_id} devido à renovação.")
+
+        job_id = profile.get('trial_job_id')
+        if job_id:
             try:
-                extensions.scheduler.remove_job(profile['trial_job_id'])
-                logger.info(f"Tarefa de teste '{profile['trial_job_id']}' removida para o utilizador {plex_user_id} após renovação/definição da subscrição.")
+                extensions.scheduler.remove_job(job_id)
+                logger.info(f"Tarefa de teste '{job_id}' removida.")
             except JobLookupError:
-                logger.warning(f"Não foi possível encontrar a tarefa de teste '{profile['trial_job_id']}' para remover para o utilizador {plex_user_id}.")
+                pass
             profile['trial_job_id'] = None
-        # --- FIM DA CORREÇÃO ---
 
-        # Garante que o utilizador seja desbloqueado se estava bloqueado por expiração
-        blocked_user_info = self.data_manager.get_blocked_user(plex_user_id)
-        if blocked_user_info:
-            block_reason = blocked_user_info.get('block_reason')
-            if block_reason in ['expired', 'trial_expired']:
-                self.plex_manager.unblock_user(plex_user_id)
+    def _replace_expiration_job(self, profile, plex_user_id, new_expiration_date):
+        """Cancela a tarefa de suspensão antiga e agenda uma nova no APScheduler."""
+        # Importação no escopo local para evitar dependências circulares
+        from ... import extensions
+        from ...scheduler import end_subscription_job
 
-        # Remove a tarefa de expiração antiga, se existir
-        if profile.get('expiration_job_id'):
+        # 1. Remover a tarefa antiga
+        old_job_id = profile.get('expiration_job_id')
+        if old_job_id:
             try:
-                extensions.scheduler.remove_job(profile['expiration_job_id'])
+                extensions.scheduler.remove_job(old_job_id)
             except JobLookupError:
-                logger.warning(f"Não foi possível encontrar a tarefa de expiração antiga '{profile['expiration_job_id']}' para remover para o utilizador {plex_user_id}.")
+                pass
             except OperationalError as e:
                 if "database is locked" in str(e):
-                    logger.warning(f"A base de dados estava bloqueada ao tentar remover a tarefa antiga '{profile['expiration_job_id']}' para o utilizador {plex_user_id}. A nova tarefa será agendada, mas a antiga pode permanecer. Isto geralmente resolve-se sozinho.")
+                    logger.warning(f"A base de dados estava bloqueada ao tentar remover a tarefa antiga '{old_job_id}'. A ignorar.")
                 else:
                     raise
-            # CORREÇÃO: Garante que o job_id é limpo mesmo se a remoção falhar (ex: DB bloqueada)
             profile['expiration_job_id'] = None
 
-        # Agenda a nova tarefa para o dia da expiração
+        # 2. Agendar a nova tarefa
         new_job_id = f"sub_end_{plex_user_id}_{secrets.token_hex(4)}"
         extensions.scheduler.add_job(
             id=new_job_id,
@@ -147,17 +172,21 @@ class PlexSubscriptionManager:
             args=[plex_user_id],
             trigger='date',
             run_date=new_expiration_date,
-            misfire_grace_time=3600 # 1 hora de tolerância para execução
+            misfire_grace_time=3600 # 1 hora de tolerância
         )
+        
         profile['expiration_job_id'] = new_job_id
-        logger.info(f"Tarefa de expiração para '{profile['username']}' agendada para {new_expiration_date.strftime('%Y-%m-%d %H:%M:%S')} com ID '{new_job_id}'.")
+        logger.info(f"Tarefa de expiração '{new_job_id}' agendada para {new_expiration_date.strftime('%Y-%m-%d %H:%M:%S')}.")
 
-        # Salva o perfil atualizado
-        self.data_manager.set_user_profile(plex_user_id, profile)
+    def _unblock_user_if_needed(self, plex_user_id):
+        """Desbloqueia o utilizador no Plex se ele estivesse inativo devido a falta de pagamento."""
+        blocked_user_info = self.data_manager.get_blocked_user(plex_user_id)
+        if blocked_user_info and self.plex_manager:
+            block_reason = blocked_user_info.get('block_reason')
+            if block_reason in ['expired', 'trial_expired']:
+                self.plex_manager.unblock_user(plex_user_id)
 
-        return new_expiration_date
-
-    # Manter as outras funções da classe para evitar quebrar outras partes do código
+    # --- MÉTODOS PENDENTES (Mantidos para evitar quebrar interfaces externas) ---
     def schedule_user_expiration(self, plex_user_id, expiration_date):
         pass
 
