@@ -4,64 +4,93 @@
 
 {% block extra_head %}
 <style>
-    /* Apenas estilos que não podem ser feitos com classes do Tailwind permanecem, como a barra de scroll. */
-    .horizontal-scroll::-webkit-scrollbar { display: none; /* Chrome, Safari, Opera */ }
-    .horizontal-scroll { -ms-overflow-style: none;  /* IE and Edge */ scrollbar-width: none;  /* Firefox */ }
+    /* Utilitário para esconder a barra de scroll padrão mas manter a funcionalidade */
+    .horizontal-scroll {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;     /* Firefox */
+    }
+    .horizontal-scroll::-webkit-scrollbar {
+        display: none; /* Chrome, Safari, Opera */
+    }
     
-    /* Estilos para as Conquistas */
+    /* Estilos das Conquistas (Achievements) */
     .achievement-badge {
-        @apply flex flex-col items-center justify-center p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg border-2 border-transparent text-center transition-all duration-300 relative;
+        @apply flex flex-col items-center justify-center p-4 rounded-xl border-2 border-transparent text-center transition-all duration-300 relative cursor-default;
     }
     .achievement-badge .icon {
-        @apply text-4xl mb-1;
+        @apply text-4xl mb-2 transform transition-transform duration-300 group-hover:scale-110;
     }
     .achievement-badge .title {
         @apply font-bold text-sm text-gray-800 dark:text-gray-200 leading-tight;
     }
     .achievement-badge .tooltip {
-        @apply invisible opacity-0 absolute bottom-full mb-2 w-48 p-2 text-xs bg-gray-800 text-white rounded-md shadow-lg transition-opacity duration-300 z-10;
+        @apply invisible opacity-0 absolute bottom-full mb-3 w-56 p-3 text-xs font-medium bg-gray-900 dark:bg-gray-800 text-white rounded-lg shadow-xl transition-all duration-300 z-10 text-center pointer-events-none;
     }
+    /* Seta do tooltip */
+    .achievement-badge .tooltip::after {
+        content: '';
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -6px;
+        border-width: 6px;
+        border-style: solid;
+        border-color: #111827 transparent transparent transparent;
+    }
+    .dark .achievement-badge .tooltip::after {
+        border-color: #1F2937 transparent transparent transparent;
+    }
+    
     .achievement-badge:hover .tooltip {
-        @apply visible opacity-100;
+        @apply visible opacity-100 mb-4;
     }
-    /* Níveis de Conquista */
+    
+    /* Cores dos Níveis de Conquista */
     .achievement-badge.unlocked-bronze {
-        @apply border-yellow-600/50 dark:border-yellow-700/80 bg-yellow-50 dark:bg-yellow-900/20 shadow-inner;
+        @apply border-orange-400/50 dark:border-orange-500/50 bg-gradient-to-b from-orange-50 to-orange-100/50 dark:from-orange-900/20 dark:to-orange-900/10 shadow-sm;
     }
     .achievement-badge.unlocked-silver {
-        @apply border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-gray-700/50 shadow-md;
+        @apply border-gray-400/50 dark:border-gray-500/50 bg-gradient-to-b from-gray-50 to-gray-100/50 dark:from-gray-800/40 dark:to-gray-800/20 shadow-sm;
     }
     .achievement-badge.unlocked-gold {
-        @apply border-yellow-400 dark:border-yellow-500 bg-yellow-100 dark:bg-yellow-500/20 shadow-lg shadow-yellow-500/20;
+        @apply border-yellow-400/70 dark:border-yellow-500/70 bg-gradient-to-b from-yellow-50 to-yellow-100/50 dark:from-yellow-900/30 dark:to-yellow-900/10 shadow-md;
     }
     .achievement-badge.unlocked-gold .icon {
-        filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.7));
+        filter: drop-shadow(0 4px 6px rgba(250, 204, 21, 0.4));
     }
 
-    /* Estilos para os botões de scroll */
+    /* Estilos para os botões de scroll de itens recentes */
     .scroll-button {
-        @apply bg-gray-800/50 text-white rounded-md w-8 h-8 flex items-center justify-center transition-opacity opacity-0 group-hover/container:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed z-20 backdrop-blur-sm;
-    }
-    .scroll-button:hover:not(:disabled) {
-        @apply bg-gray-800;
+        @apply bg-white/80 dark:bg-gray-800/80 text-gray-800 dark:text-white rounded-full w-9 h-9 flex items-center justify-center transition-all duration-200 opacity-0 group-hover/container:opacity-100 disabled:opacity-0 shadow-md border border-gray-200 dark:border-gray-700 backdrop-blur-sm z-20 hover:bg-gray-100 dark:hover:bg-gray-700 hover:scale-105;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-     <div>
-        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">
-            {% if current_user.is_admin() %}{{ _('Estatísticas de Uso') }}{% else %}{{ _('Suas Estatísticas') }}{% endif %}
+<!-- Cabeçalho Principal -->
+<header class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+            <svg class="w-8 h-8 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+            {% if current_user.is_admin() %}{{ _('Estatísticas de Uso') }}{% else %}{{ _('As Suas Estatísticas') }}{% endif %}
         </h2>
-        <p class="text-gray-500 dark:text-gray-400 mt-1">
-            {% if current_user.is_admin() %}{{ _('Analise os padrões de visualização dos seus usuários.') }}{% else %}{{ _('Veja seu desempenho e histórico de visualização.') }}{% endif %}
+        <p class="text-gray-500 dark:text-gray-400 mt-2 text-sm md:text-base">
+            {% if current_user.is_admin() %}
+                {{ _('Analise os padrões de visualização dos seus utilizadores.') }}
+            {% else %}
+                {{ _('Veja o seu desempenho e histórico de visualização ao longo do tempo.') }}
+            {% endif %}
         </p>
     </div>
-    <div class="flex-shrink-0 flex items-center gap-2">
-         <div class="bg-white dark:bg-gray-800/50 p-1 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center gap-2">
-            <label for="daysFilter" class="text-sm font-medium text-gray-600 dark:text-gray-300 pl-2">{{ _('Período:') }}</label>
-            <select id="daysFilter" class="bg-gray-50 dark:bg-gray-700 border-0 focus:ring-0 text-gray-900 dark:text-white text-sm rounded-lg block w-full p-2">
+    
+    <!-- Filtro de Tempo Otimizado Visualmente e Compacto -->
+    <div class="flex-shrink-0 w-full sm:w-auto">
+         <div class="relative bg-white dark:bg-gray-800 p-0.5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex items-center focus-within:ring-1 focus-within:ring-yellow-500 transition-all">
+            <div class="pl-2 pr-1 text-gray-400 pointer-events-none">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            </div>
+            <!-- Devolvemos o controlo ao navegador nativo (sem seta customizada, sem conflitos) -->
+            <select id="daysFilter" class="bg-transparent bg-none border-none focus:ring-0 text-gray-900 dark:text-white font-medium text-sm w-full py-1.5 pl-1 pr-6 cursor-pointer">
                 <option value="7" selected>{{ _('Últimos 7 dias') }}</option>
                 <option value="15">{{ _('Últimos 15 dias') }}</option>
                 <option value="30">{{ _('Últimos 30 dias') }}</option>
@@ -71,108 +100,141 @@
     </div>
 </header>
 
-<div id="loadingIndicator" class="text-center py-20">
-    <svg class="animate-spin h-10 w-10 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-    <p class="text-lg text-gray-500 dark:text-gray-400 mt-4">{{ _('Carregando dados das estatísticas...') }}</p>
+<!-- Indicador de Carregamento -->
+<div id="loadingIndicator" class="flex flex-col items-center justify-center py-24">
+    <div class="relative w-16 h-16">
+        <div class="absolute inset-0 rounded-full border-t-2 border-yellow-500 animate-spin"></div>
+        <div class="absolute inset-2 rounded-full border-r-2 border-blue-500 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
+    </div>
+    <p class="text-lg font-medium text-gray-600 dark:text-gray-300 mt-6 animate-pulse">{{ _('A processar os dados do Plex...') }}</p>
 </div>
 
-<div id="statsContainer" class="hidden space-y-8">
+<!-- Container Principal de Estatísticas -->
+<div id="statsContainer" class="hidden space-y-8 animate-fade-in">
     
     {% if current_user.is_admin() %}
-    <!-- ########## Visão do Administrador ########## -->
-    <div id="admin-view">
+    <!-- ########## VISÃO DO ADMINISTRADOR ########## -->
+    <div id="admin-view" class="space-y-8">
+        
         <!-- Cartões de Destaque -->
-        <div id="admin-summary-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"></div>
+        <div id="admin-summary-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6"></div>
 
-        <!-- Pódio -->
-        <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-            <h2 class="text-2xl font-semibold mb-6 text-center text-gray-900 dark:text-gray-100">{{ _('Pódio dos Campeões') }}</h2>
-            <div id="podiumContainer" class="flex justify-center items-end gap-4 min-h-[200px]"></div>
+        <!-- Pódio de Campeões -->
+        <div class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50">
+            <div class="flex items-center justify-center gap-3 mb-8">
+                <span class="text-2xl">🏆</span>
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Pódio dos Campeões') }}</h2>
+                <span class="text-2xl">🏆</span>
+            </div>
+            <div id="podiumContainer" class="flex justify-center items-end gap-2 sm:gap-6 min-h-[220px]"></div>
         </div>
 
-        <!-- Tabela de Demais Utilizadores -->
-        <div id="otherUsersSection" class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mt-8 hidden">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Ranking Completo') }}</h3>
-                <div class="flex items-center gap-2">
-                    <label for="itemsPerPage" class="text-sm text-gray-600 dark:text-gray-300">{{ _('Itens por pág:') }}</label>
-                    <select id="itemsPerPage" class="bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm p-1">
-                        <option value="10">10</option><option value="20">20</option><option value="50">50</option>
+        <!-- Tabela de Classificação Global -->
+        <div id="otherUsersSection" class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 hidden">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <h3 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+                    {{ _('Ranking Completo') }}
+                </h3>
+                <div class="flex items-center gap-3 bg-gray-50 dark:bg-gray-900/50 p-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <label for="itemsPerPage" class="text-sm font-medium text-gray-600 dark:text-gray-400 pl-2">{{ _('Mostrar:') }}</label>
+                    <select id="itemsPerPage" class="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white rounded-md text-sm py-1 pl-2 pr-6 focus:ring-yellow-500 focus:border-yellow-500">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
                     </select>
                 </div>
             </div>
-            <div class="overflow-x-auto">
+            
+            <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead class="bg-gray-50 dark:bg-gray-700/50">
+                    <!-- CORREÇÃO DA TABELA: Fundo sólido reconhecido pelo Tailwind -->
+                    <thead class="bg-gray-100 dark:bg-gray-800">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">#</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{{ _('Utilizador') }}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{{ _('Tempo Assistido') }}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{{ _('Reproduções') }}</th>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">#</th>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Utilizador') }}</th>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Tempo Assistido') }}</th>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Reproduções') }}</th>
                         </tr>
                     </thead>
-                    <tbody id="userList" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                        <!-- Linhas da tabela serão inseridas aqui -->
+                    <!-- Tbody transparente para herdar o dark mode sem bloquear com bg-white -->
+                    <tbody id="userList" class="divide-y divide-gray-200 dark:divide-gray-700">
+                        <!-- Linhas geradas por JS -->
                     </tbody>
                 </table>
             </div>
-            <div id="paginationControls" class="flex justify-center items-center mt-4 text-sm gap-4"></div>
+            <div id="paginationControls" class="flex justify-center items-center mt-6 text-sm font-medium text-gray-600 dark:text-gray-400 gap-4"></div>
         </div>
 
-        <!-- Gráfico Principal -->
-        <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mt-8">
-            <h2 class="text-2xl font-semibold mb-4 text-gray-900 dark:text-gray-100">{{ _('Horas Assistidas por Utilizador (Top 15)') }}</h2>
-            <div class="h-96"><canvas id="mainBarChart"></canvas></div>
+        <!-- Gráfico Principal Bar Chart -->
+        <div class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50">
+            <h2 class="text-xl font-bold mb-6 text-gray-900 dark:text-white">{{ _('Horas Assistidas (Top 15)') }}</h2>
+            <div class="h-96 w-full relative"><canvas id="mainBarChart"></canvas></div>
         </div>
+        
     </div>
+    
     {% else %}
-    <!-- ########## Visão do Utilizador Comum ########## -->
+    <!-- ########## VISÃO DO UTILIZADOR COMUM ########## -->
     <div id="user-view" class="space-y-8">
-        <div id="newly-added-section" class="hidden bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-             <div class="flex justify-between items-center mb-4 group/container">
-                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('O que há de novo?') }}</h3>
+        
+        <!-- Secção Adicionados Recentemente -->
+        <div id="newly-added-section" class="hidden bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50">
+             <div class="flex justify-between items-center mb-6 group/container">
+                <h3 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <span class="text-yellow-500">✨</span> {{ _('Novidades no Servidor') }}
+                </h3>
                 <div class="flex items-center space-x-2">
-                    <button id="scroll-left-btn" class="scroll-button">
+                    <button id="scroll-left-btn" class="scroll-button" aria-label="Anterior">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
                     </button>
-                    <button id="scroll-right-btn" class="scroll-button">
+                    <button id="scroll-right-btn" class="scroll-button" aria-label="Seguinte">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
                     </button>
                 </div>
             </div>
-            <div class="relative">
-                <div id="newly-added-container" class="flex space-x-4 overflow-x-auto py-2 horizontal-scroll scroll-smooth">
-                    <!-- Conteúdo será injetado aqui -->
+            <div class="relative -mx-2 px-2">
+                <div id="newly-added-container" class="flex space-x-4 overflow-x-auto py-4 horizontal-scroll scroll-smooth snap-x">
+                    <!-- Posters injetados via JS -->
                 </div>
             </div>
         </div>
         
-        <!-- Análise Pessoal do Utilizador -->
-        <div id="personal-analysis">
-            <!-- Conteúdo será preenchido por JS -->
-        </div>
+        <!-- Análise Pessoal do Utilizador (Gráficos e Conquistas) -->
+        <div id="personal-analysis"></div>
 
-        <!-- Ranking Geral -->
-        <div id="leaderboard-section" class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Sua Posição no Ranking') }}</h3>
-            <div id="leaderboard-list" class="space-y-3"></div>
+        <!-- Ranking Rápido -->
+        <div id="leaderboard-section" class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50">
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                {{ _('A Sua Posição no Ranking Global') }}
+            </h3>
+            <div id="leaderboard-list" class="space-y-2"></div>
         </div>
+        
     </div>
     {% endif %}
 
 </div>
 
- <div id="errorContainer" class="hidden text-center py-10 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg">
-    <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar as estatísticas.') }}</p>
-    <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
+<!-- Contentor de Erro -->
+<div id="errorContainer" class="hidden text-center py-12 px-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/50 rounded-2xl max-w-2xl mx-auto mt-8">
+    <svg class="w-12 h-12 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+    <p class="text-lg font-bold text-red-800 dark:text-red-400">{{ _('Ocorreu um erro ao carregar as estatísticas.') }}</p>
+    <p id="errorMessage" class="text-sm text-red-600 dark:text-red-300 mt-2 font-mono bg-red-100/50 dark:bg-red-900/30 p-2 rounded inline-block"></p>
 </div>
 
-<!-- Modal para Detalhes do Utilizador (apenas para Admin) -->
-<div id="userDetailsModal" class="modal-backdrop hidden"></div>
+<!-- Modal para Detalhes do Utilizador -->
+<!-- Usar fixed inset-0 z-50 para garantir que o Modal cobre toda a janela independentemente da classe "modal-backdrop" no base.css -->
+<div id="userDetailsModal" class="hidden fixed inset-0 z-50 bg-gray-900/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <!-- O conteúdo do modal será injetado pelo JS, mas a classe principal acima garante que não foge do ecrã -->
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='dist/chart.umd.js') }}"></script>
+<!-- A injeção de variáveis continua igual para compatibilidade total com o seu statistics.js -->
 <script id="statistics-script"
         type="module" 
         src="{{ url_for('static', filename='js/statistics.js') }}"
@@ -182,18 +244,18 @@
         data-recently-added-url="{{ url_for('stats_api.get_recently_added_route') }}"
         data-i18n-loading-failed="{{ _('Falha ao comunicar com o servidor.') }}"
         data-i18n-no-data="{{ _('Nenhum dado de visualização encontrado.') }}"
-        data-i18n-user-analysis-error="{{ _('Não foi possível carregar sua análise pessoal:') }}"
-        data-i18n-no-recent-activity="{{ _('Nenhuma atividade recente.') }}"
+        data-i18n-user-analysis-error="{{ _('Não foi possível carregar a análise deste utilizador:') }}"
+        data-i18n-no-recent-activity="{{ _('Nenhuma atividade recente encontrada neste período.') }}"
         data-i18n-viewed-on="{{ _('Visto em:') }}"
         data-i18n-no-art="{{ _('Sem Arte') }}"
         data-i18n-activity-by-weekday="{{ _('Atividade por Dia da Semana') }}"
-        data-i18n-consumed-content="{{ _('Conteúdo Consumido') }}"
+        data-i18n-consumed-content="{{ _('Distribuição de Conteúdo') }}"
         data-i18n-total-time="{{ _('Tempo Total') }}"
         data-i18n-movies="{{ _('Filmes') }}"
         data-i18n-episodes="{{ _('Episódios') }}"
-        data-i18n-favorite-genre="{{ _('Gênero Favorito') }}"
+        data-i18n-favorite-genre="{{ _('Género Favorito') }}"
         data-i18n-not-available="{{ _('N/D') }}"
-        data-i18n-most-recent-items="{{ _('Itens Mais Recentes') }}"
+        data-i18n-most-recent-items="{{ _('Itens Vistos Recentemente') }}"
         data-i18n-hours-watched="{{ _('Horas Assistidas') }}"
         data-i18n-duration="{{ _('Duração') }}"
         data-i18n-hours="{{ _('horas') }}"
@@ -204,29 +266,28 @@
         data-i18n-thu="{{ _('Qui') }}"
         data-i18n-fri="{{ _('Sex') }}"
         data-i18n-sat="{{ _('Sáb') }}"
-        data-i18n-analysis-of="{{ _('Análise de') }}"
-        data-i18n-analyzing-history="{{ _('Analisando o histórico...') }}"
+        data-i18n-analysis-of="{{ _('Análise de Perfil:') }}"
+        data-i18n-analyzing-history="{{ _('A analisar milhões de bits de dados espaciais...') }}"
         data-i18n-previous="{{ _('Anterior') }}"
-        data-i18n-next="{{ _('Próxima') }}"
+        data-i18n-next="{{ _('Próximo') }}"
         data-i18n-page-of="{{ _('Página {currentPage} de {totalPages}') }}"
-        data-i18n-no-one-watched="{{ _('Ninguém assistiu nada ainda. Seja o primeiro!') }}"
+        data-i18n-no-one-watched="{{ _('Ainda ninguém assistiu nada neste período.') }}"
         data-i18n-you="{{ _('Você') }}"
         data-i18n-total-time-watched="{{ _('Tempo Total Assistido') }}"
         data-i18n-total-plays="{{ _('Total de Reproduções') }}"
         data-i18n-active-users="{{ _('Utilizadores Ativos') }}"
         data-i18n-period-champion="{{ _('Campeão do Período') }}"
-        data-i18n-my-achievements="{{ _('Minha(s) Conquista(s)') }}"
-        data-i18n-user-achievements="{{ _('Conquista(s) de {username}') }}"
-        data-i18n-loading-newly-added="{{ _('Carregando novidades...') }}"
+        data-i18n-my-achievements="{{ _('As Minhas Conquistas') }}"
+        data-i18n-user-achievements="{{ _('Conquistas de {username}') }}"
+        data-i18n-loading-newly-added="{{ _('A carregar novidades quentinhas...') }}"
         data-i18n-no-newly-added="{{ _('Nenhum item adicionado recentemente no período selecionado.') }}"
-        data-i18n-added="{{ _('Adicionado') }}"
-        data-i18n-years-ago="{{ _('há {count} anos') }}"
-        data-i18n-months-ago="{{ _('há {count} meses') }}"
-        data-i18n-days-ago="{{ _('há {count} dias') }}"
-        data-i18n-hours-ago="{{ _('há {count} horas') }}"
-        data-i18n-minutes-ago="{{ _('há {count} minutos') }}"
+        data-i18n-added="{{ _('Adicionado há') }}"
+        data-i18n-years-ago="{{ _('{count} anos') }}"
+        data-i18n-months-ago="{{ _('{count} meses') }}"
+        data-i18n-days-ago="{{ _('{count} dias') }}"
+        data-i18n-hours-ago="{{ _('{count} horas') }}"
+        data-i18n-minutes-ago="{{ _('{count} min') }}"
         data-i18n-just-now="{{ _('agora mesmo') }}"
         >
 </script>
 {% endblock %}
-
