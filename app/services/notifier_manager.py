@@ -5,14 +5,14 @@ import time
 import html
 import re
 from datetime import datetime, timezone
+from tzlocal import get_localzone
+
 import requests
 import telebot
 from telebot import types
-from flask_babel import gettext as _, ngettext
-from flask import url_for
+from flask_babel import gettext as _
 
 from ..config import load_or_create_config
-from ..models import UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +33,16 @@ DEFAULT_TEMPLATES = {
 }
 
 def get_greeting():
-    current_hour = datetime.now().hour
+    """Retorna a saudação baseada na hora local real do servidor."""
+    current_hour = datetime.now(get_localzone()).hour
     if 5 <= current_hour < 12: return _("Bom dia")
     elif 12 <= current_hour < 18: return _("Boa tarde")
     else: return _("Boa noite")
 
 class NotifierManager:
+    """
+    Gere o envio de notificações assíncronas para os utilizadores (Telegram, Discord, Webhooks).
+    """
     def __init__(self, link_shortener_service=None, socketio_instance=None):
         self.link_shortener = link_shortener_service
         self.socketio = socketio_instance
@@ -48,10 +52,14 @@ class NotifierManager:
         """Inicializa o bot apenas para envio de mensagens (Push)."""
         config = load_or_create_config()
         token = config.get("TELEGRAM_BOT_TOKEN")
-        if not token: return None
+        if not token: 
+            return None
+            
         if self._bot is None or self._bot.token != token:
             self._bot = telebot.TeleBot(token, threaded=False)
         return self._bot
+
+    # --- PROCESSAMENTO DE TEMPLATES ---
 
     def _convert_md_to_html(self, text):
         """Converte Markdown básico para HTML do Telegram para evitar erros de parsing."""
@@ -61,8 +69,37 @@ class NotifierManager:
         text = re.sub(r'`(.*?)`', r'<code>\1</code>', text)
         return text
 
+    def _format_template(self, template_str, placeholders, is_json=False, use_html_escape=False):
+        """Preenche o template com as variáveis, aplicando escapes necessários."""
+        if not template_str: return None
+        
+        safe_placeholders = {}
+        for k, v in placeholders.items():
+            val = str(v) if v is not None else ''
+            if use_html_escape and not any(sub in k.lower() for sub in ['link', 'url']):
+                val = html.escape(val)
+            safe_placeholders[k] = val
+            
+        if not is_json:
+            try: 
+                return template_str.format(**safe_placeholders)
+            except KeyError as e:
+                logger.error(f"Placeholder {e} ausente na string de template.")
+                return template_str
+        else:
+            output = template_str
+            for key, value in safe_placeholders.items():
+                json_escaped_value = json.dumps(value)[1:-1]
+                output = output.replace(f"{{{key}}}", json_escaped_value)
+            try: 
+                return json.loads(output)
+            except Exception as e: 
+                logger.error(f"Falha ao processar template JSON: {e}")
+                return None
+
+    # --- DESPACHO DE MENSAGENS (DISPATCHERS) ---
+
     def _send_telegram_notification(self, message, chat_id, request_id, reply_markup=None, plex_user_id=None, photo_url=None):
-        """Envia uma notificação via Telegram (Texto ou Foto com Legenda)."""
         bot = self._get_bot()
         if not bot: return
         
@@ -71,29 +108,23 @@ class NotifierManager:
         try:
             if photo_url:
                 bot.send_photo(
-                    chat_id=chat_id,
-                    photo=photo_url,
-                    caption=html_message,
-                    parse_mode='HTML',
-                    reply_markup=reply_markup
+                    chat_id=chat_id, photo=photo_url, caption=html_message,
+                    parse_mode='HTML', reply_markup=reply_markup
                 )
             else:
                 bot.send_message(
-                    chat_id=chat_id,
-                    text=html_message,
-                    parse_mode='HTML',
-                    reply_markup=reply_markup,
-                    disable_web_page_preview=True
+                    chat_id=chat_id, text=html_message, parse_mode='HTML',
+                    reply_markup=reply_markup, disable_web_page_preview=True
                 )
         except telebot.apihelper.ApiTelegramException as e:
-            # Melhoria: Tratamento de Rate Limit (429)
+            # Tratamento de Rate Limit (429)
             if e.error_code == 429:
                 retry_after = e.result_json.get('parameters', {}).get('retry_after', 5)
                 logger.warning(f"Telegram Rate Limit atingido. A aguardar {retry_after}s...")
                 time.sleep(retry_after + 1)
                 return self._send_telegram_notification(message, chat_id, request_id, reply_markup, plex_user_id, photo_url)
                 
-            # Se o utilizador bloqueou o bot (403), removemos o contacto do perfil
+            # Tratamento de Bloqueio do Bot (403)
             if e.error_code == 403 and plex_user_id:
                 logger.warning(f"[ID: {request_id}] Bot bloqueado pelo utilizador {plex_user_id}. A remover contacto.")
                 from .. import extensions
@@ -103,12 +134,13 @@ class NotifierManager:
         except Exception as e:
             logger.error(f"[ID: {request_id}] Erro inesperado ao enviar Telegram: {e}")
 
-    def _send_webhook_notification(self, payload, request_id):
-        config = load_or_create_config()
+    def _send_webhook_notification(self, payload, request_id, config):
         webhook_url = config.get("WEBHOOK_URL")
         if not webhook_url: return
+        
         headers = {'Content-Type': 'application/json'}
         auth_header = config.get("WEBHOOK_AUTHORIZATION_HEADER")
+        
         if auth_header:
             if ":" in auth_header:
                 try:
@@ -118,79 +150,77 @@ class NotifierManager:
                     headers['Authorization'] = auth_header.strip()
             else:
                 headers['Authorization'] = auth_header.strip()
+                
         try:
             response = requests.post(webhook_url, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            # Melhoria: Log detalhado da resposta do Webhook
             error_response = e.response.text if e.response else "Sem resposta do servidor"
             logger.error(f"[ID: {request_id}] Falha no Webhook: {e} | Resposta: {error_response}")
 
-    def _send_discord_notification(self, payload, request_id):
-        config = load_or_create_config()
+    def _send_discord_notification(self, payload, request_id, config):
         webhook_url = config.get("DISCORD_WEBHOOK_URL")
         if not webhook_url: return
+        
         try:
             requests.post(webhook_url, json=payload, headers={'Content-Type': 'application/json'}, timeout=30).raise_for_status()
         except requests.exceptions.RequestException as e:
             logger.error(f"[ID: {request_id}] Falha no Discord: {e}")
 
-    def _format_template(self, template_str, placeholders, is_json=False, use_html_escape=False):
-        if not template_str: return None
-        safe_placeholders = {}
-        for k, v in placeholders.items():
-            val = str(v) if v is not None else ''
-            if use_html_escape and not any(sub in k.lower() for sub in ['link', 'url']):
-                val = html.escape(val)
-            safe_placeholders[k] = val
-        if not is_json:
-            try: return template_str.format(**safe_placeholders)
-            except KeyError as e:
-                logger.error(f"Placeholder {e} ausente.")
-                return template_str
-        else:
-            output = template_str
-            for key, value in safe_placeholders.items():
-                json_escaped_value = json.dumps(value)[1:-1]
-                output = output.replace(f"{{{key}}}", json_escaped_value)
-            try: return json.loads(output)
-            except: return None
+    # --- LÓGICA DE PREPARAÇÃO DA MENSAGEM (SRP) ---
 
-    def _prepare_and_send(self, event_type, user, user_profile, context):
-        config = load_or_create_config()
-        request_id = uuid.uuid4()
+    def _get_price_and_plan(self, config, user_screen_limit):
+        """Determina o preço correto e o nome do plano do utilizador."""
+        from flask_babel import ngettext, gettext as _
         
-        # Correção: Verificar tanto telegram_id quanto telegram_user
-        telegram_chat_id = user_profile.get('telegram_id') or user_profile.get('telegram_user')
-        can_notify_telegram = config.get("TELEGRAM_ENABLED") and telegram_chat_id
-        
-        can_notify_webhook = config.get("WEBHOOK_ENABLED") and user_profile.get('phone_number')
-        can_notify_discord = config.get("DISCORD_ENABLED") and user_profile.get('discord_user_id')
-        
-        if not (can_notify_telegram or can_notify_webhook or can_notify_discord): return
-
-        user_screen_limit = user_profile.get('screen_limit', 0)
         screen_prices = config.get("SCREEN_PRICES", {})
-        renewal_price_str = config.get("RENEWAL_PRICE", "0.00")
-        if str(user_screen_limit) in screen_prices: renewal_price_str = screen_prices[str(user_screen_limit)]
+        renewal_price_str = screen_prices.get(str(user_screen_limit), config.get("RENEWAL_PRICE", "0.00"))
+        
         try:
             price_value = float(renewal_price_str.replace(',', '.'))
             formatted_price = f"R$ {price_value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        except: formatted_price = "N/A"
+        except ValueError: 
+            formatted_price = "N/A"
+            
         plan_name = ngettext('%(num)d Tela', '%(num)d Telas', user_screen_limit) % {'num': user_screen_limit} if user_screen_limit > 0 else _("Plano Padrão")
+        return formatted_price, plan_name
 
-        payment_link = None
-        if event_type != 'renewal' and user_profile.get('payment_token'):
+    def _get_payment_link(self, config, event_type, user_profile):
+        """Gera o link de pagamento (curto se ativado)."""
+        from flask import url_for
+        if event_type == 'renewal' or not user_profile.get('payment_token'):
+            return None
+            
+        try:
             long_url = url_for('main.payment_page', token=user_profile['payment_token'], _external=True)
             if config.get("ENABLE_LINK_SHORTENER") and self.link_shortener:
-                try: payment_link = self.link_shortener.create_short_link(long_url)
-                except: payment_link = long_url
-            else: payment_link = long_url
+                return self.link_shortener.create_short_link(long_url)
+            return long_url
+        except RuntimeError:
+            return None
+        except Exception as e:
+            logger.warning(f"Erro ao gerar link curto: {e}")
+            return long_url if 'long_url' in locals() else None
 
-        # Novos placeholders úteis
-        now = datetime.now()
+    def _prepare_and_send(self, event_type, user, user_profile, context):
+        """Orquestra a montagem e o envio da notificação."""
+        config = load_or_create_config()
+        request_id = str(uuid.uuid4())
+        
+        telegram_chat_id = user_profile.get('telegram_id') or user_profile.get('telegram_user')
+        can_notify_telegram = config.get("TELEGRAM_ENABLED") and telegram_chat_id
+        can_notify_webhook = config.get("WEBHOOK_ENABLED") and user_profile.get('phone_number')
+        can_notify_discord = config.get("DISCORD_ENABLED") and user_profile.get('discord_user_id')
+        
+        if not (can_notify_telegram or can_notify_webhook or can_notify_discord): 
+            return
+
+        formatted_price, plan_name = self._get_price_and_plan(config, user_profile.get('screen_limit', 0))
+        payment_link = self._get_payment_link(config, event_type, user_profile)
+
+        now = datetime.now(get_localzone())
         placeholders = {
-            **self._build_placeholders('notification', user, user_profile, context),
+            **self._build_placeholders(user, user_profile, context),
             'payment_link': payment_link or "#",
             'paymentlink': payment_link or "#",
             'price': formatted_price,
@@ -203,33 +233,32 @@ class NotifierManager:
         if can_notify_telegram:
             template = config.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE")
             message = self._format_template(template, placeholders, use_html_escape=True)
-            
-            # Melhoria: Suporte a Banner do Telegram
             photo_url = config.get(f"TELEGRAM_{event_type.upper()}_BANNER_URL")
             
             markup = None
             if payment_link and event_type in ['expiration', 'trial_end']:
                 markup = types.InlineKeyboardMarkup()
                 markup.add(types.InlineKeyboardButton(text="💳 Pagar Agora / Renovar", url=payment_link))
+                
             if message:
                 self._send_telegram_notification(
-                    message, 
-                    telegram_chat_id, 
-                    request_id, 
-                    reply_markup=markup, 
-                    plex_user_id=user_profile.get('plex_user_id'),
-                    photo_url=photo_url
+                    message, telegram_chat_id, request_id, 
+                    reply_markup=markup, plex_user_id=user_profile.get('plex_user_id'), photo_url=photo_url
                 )
 
         if can_notify_webhook:
             template_str = config.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE")
             payload = self._format_template(template_str, placeholders, is_json=True)
-            if payload: self._send_webhook_notification(payload, request_id)
+            if payload: 
+                self._send_webhook_notification(payload, request_id, config)
 
         if can_notify_discord:
             template_str = config.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE")
             payload = self._format_template(template_str, placeholders, is_json=True)
-            if payload: self._send_discord_notification(payload, request_id)
+            if payload: 
+                self._send_discord_notification(payload, request_id, config)
+
+    # --- API PÚBLICA DE EVENTOS ---
 
     def send_expiration_notification(self, user, days_left, user_profile):
         expiration_date_str = user_profile.get('expiration_date')
@@ -243,7 +272,7 @@ class NotifierManager:
     def send_trial_end_notification(self, user, user_profile):
         self._prepare_and_send('trial_end', user, user_profile, {})
 
-    def _build_placeholders(self, event_type, user, user_profile, context):
+    def _build_placeholders(self, user, user_profile, context):
         return {
             'username': user.get('username'), 
             'name': user_profile.get('name') or user.get('username'),
@@ -255,44 +284,80 @@ class NotifierManager:
             **context
         }
 
+    # --- PROCESSAMENTO DE MENSAGENS EM MASSA (BULK) ---
+
     def process_bulk_notification_task(self, task):
+        """Processa a tarefa de envio em massa (background job)."""
         from .. import extensions
         try:
             payload = json.loads(task.payload or '{}')
             message = payload.get('message')
-            target_audience = payload.get('target_audience', 'active')
-            target_user_ids = payload.get('user_ids')
-            if not message: raise ValueError("Mensagem vazia.")
-            all_plex_users = extensions.plex_manager.get_all_plex_users()
-            if not all_plex_users: raise ValueError("Erro Plex.")
-            if target_audience == 'specific': users_to_notify = [u for u in all_plex_users if u['id'] in (target_user_ids or [])]
-            elif target_audience == 'all': users_to_notify = all_plex_users
-            else:
-                blocked_ids = {u['user_plex_id'] for u in extensions.data_manager.get_blocked_users_list()}
-                users_to_notify = [u for u in all_plex_users if (u['id'] in blocked_ids if target_audience == 'blocked' else u['id'] not in blocked_ids)]
-            all_profiles = extensions.data_manager.get_all_user_profiles()
-            profiles_map = {p['plex_user_id']: p for p in all_profiles}
+            if not message: 
+                raise ValueError("Mensagem vazia.")
+
+            users_to_notify = self._get_bulk_target_users(payload, extensions)
+            
             total_users = len(users_to_notify)
             extensions.data_manager.update_task(task.id, {'status': 'running', 'progress_total': total_users})
+            
+            # --- CORREÇÃO: Avisa o frontend que a contagem REAL começou ---
+            if extensions.socketio:
+                extensions.socketio.emit('bulk_notification_start', {'total': total_users}, namespace='/dashboard')
+            
+            all_profiles = {p['plex_user_id']: p for p in extensions.data_manager.get_all_user_profiles()}
             processed_count = 0
+            
             for user in users_to_notify:
-                profile = profiles_map.get(user['id'], {})
+                profile = all_profiles.get(user['id'], {})
                 
-                # Correção: Verificar se existe telegram_id ou telegram_user
-                has_telegram = profile.get('telegram_id') or profile.get('telegram_user')
-                has_whatsapp = profile.get('phone_number')
-                has_discord = profile.get('discord_user_id')
+                has_contact = profile.get('telegram_id') or profile.get('telegram_user') or profile.get('phone_number') or profile.get('discord_user_id')
+                if not has_contact: 
+                    continue
                 
-                if not (has_telegram or has_whatsapp or has_discord): continue
-                
-                self._prepare_and_send_bulk(user, profile, {'message': message})
+                self._prepare_and_send('bulk', user, profile, {'message': message})
                 processed_count += 1
-                if processed_count % 5 == 0: extensions.data_manager.update_task(task.id, {'progress_current': processed_count})
-                time.sleep(0.4)
-            extensions.data_manager.update_task(task.id, {'status': 'completed', 'completed_at': datetime.now(timezone.utc), 'result': f'{processed_count} enviadas.'})
-        except Exception as e:
-            logger.error(f"Erro Bulk: {e}")
-            extensions.data_manager.update_task(task.id, {'status': 'failed', 'result': str(e)})
+                
+                if processed_count % 5 == 0: 
+                    extensions.data_manager.update_task(task.id, {'progress_current': processed_count})
+                    # --- CORREÇÃO: Avisa o frontend de que a barra deve mexer ---
+                    if extensions.socketio:
+                        extensions.socketio.emit('bulk_notification_progress', {'current': processed_count, 'total': total_users}, namespace='/dashboard')
 
-    def _prepare_and_send_bulk(self, user, user_profile, context):
-        self._prepare_and_send('bulk', user, user_profile, context)
+                time.sleep(0.4)
+                
+            extensions.data_manager.update_task(task.id, {
+                'status': 'completed', 
+                'completed_at': datetime.now(timezone.utc), 
+                'result': f'{processed_count} notificações enviadas.'
+            })
+            
+            # --- CORREÇÃO: Avisa o frontend que o processo terminou e a UI deve ficar verde ---
+            if extensions.socketio:
+                extensions.socketio.emit('bulk_notification_end', {'message': f'{processed_count} enviadas.'}, namespace='/dashboard')
+            
+        except Exception as e:
+            logger.error(f"Erro no processamento Bulk: {e}", exc_info=True)
+            extensions.data_manager.update_task(task.id, {'status': 'failed', 'result': str(e)})
+            
+            if extensions.socketio:
+                extensions.socketio.emit('bulk_notification_error', {'message': str(e)}, namespace='/dashboard')
+
+    def _get_bulk_target_users(self, payload, extensions):
+        """Filtra quais os utilizadores devem receber a mensagem em massa."""
+        target_audience = payload.get('target_audience', 'active')
+        target_user_ids = payload.get('user_ids', [])
+        
+        all_plex_users = extensions.plex_manager.get_all_plex_users()
+        if not all_plex_users: 
+            raise ValueError("Não foi possível obter a lista de utilizadores do Plex.")
+
+        if target_audience == 'specific': 
+            return [u for u in all_plex_users if str(u['id']) in map(str, target_user_ids)]
+        elif target_audience == 'all': 
+            return all_plex_users
+        else:
+            blocked_ids = {str(u['user_plex_id']) for u in extensions.data_manager.get_blocked_users_list()}
+            if target_audience == 'blocked':
+                return [u for u in all_plex_users if str(u['id']) in blocked_ids]
+            else: # 'active'
+                return [u for u in all_plex_users if str(u['id']) not in blocked_ids]
