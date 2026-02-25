@@ -9,36 +9,78 @@ import { showToast } from '../utils.js';
 
 /**
  * Módulo de Handlers (Manipuladores de Eventos)
- * * Contém a lógica que é executada em resposta às interações do usuário,
- * como cliques em botões. Ele atua como um intermediário, chamando
- * funções da API e da UI conforme necessário.
+ * Contém a lógica que é executada em resposta às interações do usuário,
+ * atuando como intermediário entre a UI e a API.
  */
 
-// CORREÇÃO: Função de sanitização para prevenir XSS
-function sanitizeHTML(str) {
+// ==========================================
+// HELPERS E UTILITÁRIOS
+// ==========================================
+
+/**
+ * Sanitiza entradas de texto para prevenir ataques de XSS (Cross-Site Scripting).
+ */
+const sanitizeHTML = (str) => {
+    if (!str) return '';
     const temp = document.createElement('div');
     temp.textContent = str;
     return temp.innerHTML;
-}
+};
 
+/**
+ * Helper universal para copiar texto, contornando bloqueios de segurança
+ * do navigator.clipboard em ambientes sem HTTPS estrito ou iFrames.
+ */
+const copyToClipboardFallback = (text) => {
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.setAttribute('readonly', '');
+    el.style.position = 'absolute';
+    el.style.left = '-9999px';
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+};
+
+/**
+ * Determina se a renovação deve ser a partir de hoje ou da data de expiração.
+ */
+const _determineRenewalBase = (expirationDateStr) => {
+    if (!expirationDateStr) return 'today';
+    try {
+        const expDate = new Date(expirationDateStr);
+        return expDate < new Date() ? 'today' : 'expiry_date';
+    } catch (e) {
+        return 'today';
+    }
+};
+
+// ==========================================
+// HANDLERS PRINCIPAIS
+// ==========================================
 
 /**
  * Manipula ações nos cartões de convite (copiar, apagar, detalhes).
- * @param {string} action - A ação a ser executada.
- * @param {string} code - O código do convite.
- * @param {object} details - (Opcional) Os detalhes completos do convite para o modal de info.
  */
 export function handleInviteAction(action, code, details = null) {
     if (action === 'copy-invite') {
         const inviteUrl = `${window.location.origin}${urls.baseInvitePage}${code}`;
         modals.showInviteLinkModal(inviteUrl);
-    } else if (action === 'delete-invite') {
-        const message = `${i18n.confirmDeleteInvite} <strong>${sanitizeHTML(code)}</strong>? ${i18n.actionCannotBeUndone}`;
+        return;
+    } 
+    
+    if (action === 'details' && details) {
+        modals.showInviteDetailsModal(details);
+        return;
+    }
+
+    if (action === 'delete-invite') {
         modals.showConfirmationModal({
             title: i18n.deleteInvite,
-            message: message,
+            message: `${i18n.confirmDeleteInvite} <strong>${sanitizeHTML(code)}</strong>? ${i18n.actionCannotBeUndone}`,
             confirmText: i18n.confirmDeleteButton,
-            confirmClass: 'bg-red-600 text-white',
+            confirmClass: 'bg-red-600 hover:bg-red-500 text-white',
             onConfirm: async () => {
                 try {
                     const result = await api.deleteInvite(code);
@@ -49,38 +91,24 @@ export function handleInviteAction(action, code, details = null) {
                 }
             }
         });
-    } else if (action === 'details' && details) {
-        modals.showInviteDetailsModal(details);
     }
 }
 
 /**
  * Manipula a renovação rápida de assinatura (+1 mês).
- * @param {object} user - O objeto do usuário.
  */
 async function handleQuickRenewal(user) {
-    const message = `${i18n.confirmAddOneMonth} <strong>${sanitizeHTML(user.username)}</strong>?`;
     modals.showConfirmationModal({
         title: i18n.addOneMonth,
-        message: message,
+        message: `${i18n.confirmAddOneMonth} <strong>${sanitizeHTML(user.username)}</strong>?`,
         confirmText: i18n.confirm,
-        confirmClass: 'bg-green-600 text-white',
+        confirmClass: 'bg-green-600 hover:bg-green-500 text-white',
         onConfirm: async () => {
             try {
-                // Tenta renovar a partir da data de expiração, se existir e for futura
-                const payload = { months: 1, base: 'expiry_date' };
-                if (user.expiration_date) {
-                    try {
-                        const expDate = new Date(user.expiration_date);
-                        if (expDate < new Date()) {
-                            payload.base = 'today'; // Se já expirou, renova a partir de hoje
-                        }
-                    } catch (e) {
-                         payload.base = 'today'; // Fallback se a data for inválida
-                    }
-                } else {
-                    payload.base = 'today'; // Se não há data, renova a partir de hoje
-                }
+                const payload = { 
+                    months: 1, 
+                    base: _determineRenewalBase(user.expiration_date) 
+                };
 
                 const result = await api.renewSubscription(user.id, payload);
                 showToast(result.message, result.success ? 'success' : 'error');
@@ -93,9 +121,7 @@ async function handleQuickRenewal(user) {
 }
 
 /**
- * Manipula todas as ações nos cartões de usuário.
- * @param {string} action - A ação a ser executada.
- * @param {object} user - O objeto do usuário.
+ * Roteador principal: Mapeia a ação do botão para a respetiva função no cartão do utilizador.
  */
 export function handleUserAction(action, user) {
     if (action === 'reactivate') {
@@ -103,21 +129,25 @@ export function handleUserAction(action, user) {
         return;
     }
 
+    // Ações que abrem Modais ou executam ações instantâneas simples
     const modalActions = {
-        'manage-profile': () => modals.showUserProfileModal(user),
-        'manage-limit': () => modals.showScreenLimitModal(user),
-        'manage-libraries': () => modals.showLibraryManagementModal(user),
-        'payment-history': () => modals.showPaymentHistoryModal(user),
-        'renew-month': () => handleQuickRenewal(user),
-        'extend-trial': () => modals.showExtendTrialModal(user), // NOVO: Chama o novo modal
+        'manage-profile':    () => modals.showUserProfileModal(user),
+        'manage-limit':      () => modals.showScreenLimitModal(user),
+        'manage-libraries':  () => modals.showLibraryManagementModal(user),
+        'payment-history':   () => modals.showPaymentHistoryModal(user),
+        'renew-month':       () => handleQuickRenewal(user),
+        'extend-trial':      () => modals.showExtendTrialModal(user),
         'copy-payment-link': () => {
             if (user.payment_token) {
                 const paymentUrl = `${window.location.origin}/pay/${user.payment_token}`;
-                navigator.clipboard.writeText(paymentUrl)
-                    .then(() => showToast(i18n.paymentLinkCopied, 'success'))
-                    .catch(() => showToast(i18n.copyFailed, 'error'));
+                try {
+                    copyToClipboardFallback(paymentUrl);
+                    showToast(i18n.paymentLinkCopied || 'Link de pagamento copiado!', 'success');
+                } catch (err) {
+                    showToast(i18n.copyFailed || 'Falha ao copiar o link.', 'error');
+                }
             } else {
-                showToast('Token de pagamento não encontrado para este usuário.', 'error');
+                showToast('Token de pagamento não gerado para este utilizador.', 'error');
             }
         }
     };
@@ -127,33 +157,34 @@ export function handleUserAction(action, user) {
         return;
     }
 
+    // Ações destrutivas ou de estado que exigem confirmação de segurança (Modais de Confirmação)
     const confirmationActions = {
         'remove': {
             title: i18n.removeUserTitle,
             message: `${i18n.confirmRemoveUser} <strong>${sanitizeHTML(user.username)}</strong>?`,
             confirmText: i18n.confirmRemoveButton,
-            confirmClass: 'bg-red-600 text-white',
+            confirmClass: 'bg-red-600 hover:bg-red-500 text-white',
             apiCall: () => api.removeUser(user.id),
         },
         'block': {
             title: i18n.blockUserTitle,
             message: `${i18n.confirmBlockUser} <strong>${sanitizeHTML(user.username)}</strong>?`,
             confirmText: i18n.confirmBlockButton,
-            confirmClass: 'bg-red-600 text-white',
+            confirmClass: 'bg-red-600 hover:bg-red-500 text-white',
             apiCall: () => api.blockUser(user.id),
         },
         'unblock': {
             title: i18n.unblockUserTitle,
             message: `${i18n.confirmUnblockUser} <strong>${sanitizeHTML(user.username)}</strong>?`,
             confirmText: i18n.confirmUnblockButton,
-            confirmClass: 'bg-yellow-500 text-black',
+            confirmClass: 'bg-yellow-500 hover:bg-yellow-400 text-black',
             apiCall: () => api.unblockUser(user.id),
         },
         'delete-permanently': {
             title: i18n.deletePermanentlyTitle,
             message: `${i18n.confirmDeletePermanently} <strong>${sanitizeHTML(user.username)}</strong>? ${i18n.actionCannotBeUndone}`,
             confirmText: i18n.confirmDeleteButton,
-            confirmClass: 'bg-red-800 text-white',
+            confirmClass: 'bg-red-800 hover:bg-red-700 text-white',
             apiCall: () => api.deleteUserPermanently(user.id),
         }
     };
@@ -169,12 +200,12 @@ export function handleUserAction(action, user) {
                 try {
                     const result = await config.apiCall();
                     showToast(result.message, result.success ? 'success' : 'error');
-                    if (result.success) {
-                        ui.loadStatus(true); // Always refresh on success
-                    }
+                    
+                    // Atualiza a UI independentemente do resultado (sincroniza o estado)
+                    ui.loadStatus(true); 
                 } catch (error) {
                     showToast(error.message, 'error');
-                    ui.loadStatus(true); // Refresh on error too
+                    ui.loadStatus(true);
                 }
             }
         });
