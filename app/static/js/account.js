@@ -1,809 +1,685 @@
 import { fetchAPI, showToast, createModal } from './utils.js';
 
-// MELHORIA DE SEGURANÇA: Função para sanitizar entradas de texto no frontend
-function sanitizeHTML(str) {
+// ==========================================
+// SEGURANÇA E UTILITÁRIOS
+// ==========================================
+
+/**
+ * Sanitiza entradas do utilizador para prevenir XSS (Cross-Site Scripting).
+ */
+const sanitizeHTML = (str) => {
+    if (!str) return '';
     const temp = document.createElement('div');
     temp.textContent = str;
     return temp.innerHTML;
-}
+};
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // --- ELEMENTOS E DADOS GLOBAIS ---
-    const loadingIndicator = document.getElementById('loadingIndicator');
-    const container = document.getElementById('accountDetailsContainer');
-    const errorContainer = document.getElementById('errorContainer');
-    const errorMessage = document.getElementById('errorMessage');
-    const statusBanner = document.getElementById('status-banner');
-    const paymentSection = document.getElementById('payment-section');
-    const pixDisplay = document.getElementById('pix-display');
+// ==========================================
+// CONFIGURAÇÃO, ESTADO E CACHE DOM
+// ==========================================
+
+const state = {
+    currentUser: null,
+    urls: {},
+    i18n: {},
+    pollingIntervalId: null,
+    validatedCouponCode: null,
+    historySearchTimeout: null,
+    currentRequestFilter: 'all',
+    currentPage: 1
+};
+
+const dom = {};
+
+const initializeConfigAndDOM = () => {
+    // Cache de Elementos Principais
+    Object.assign(dom, {
+        loadingIndicator: document.getElementById('loadingIndicator'),
+        container: document.getElementById('accountDetailsContainer'),
+        errorContainer: document.getElementById('errorContainer'),
+        errorMessage: document.getElementById('errorMessage'),
+        statusBanner: document.getElementById('status-banner'),
+        paymentSection: document.getElementById('payment-section'),
+        pixDisplay: document.getElementById('pix-display'),
+        privacyToggle: document.getElementById('hide-leaderboard-toggle'),
+        accountContent: document.getElementById('main-account-content'),
+        tabContainer: document.getElementById('account-tabs'),
+        contentContainer: document.getElementById('account-tab-content')
+    });
+
+    // Extração de URLs e Traduções injetados pelo backend no script tag
     const scriptTag = document.getElementById('account-script');
-    const privacyToggle = document.getElementById('hide-leaderboard-toggle');
-    const accountContent = document.getElementById('main-account-content');
-
-    const urls = {};
-    const i18n = {};
-    let currentUser = null; 
-
-    if (scriptTag) {
-        for (const key in scriptTag.dataset) {
+    if (scriptTag && scriptTag.dataset) {
+        for (const [key, value] of Object.entries(scriptTag.dataset)) {
             if (key.startsWith('i18n')) {
                 const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
-                i18n[i18nKey] = scriptTag.dataset[key];
+                state.i18n[i18nKey] = value;
             } else {
-                const urlKey = key.replace(/-(\w)/g, (match, letter) => letter.toUpperCase());
-                urls[urlKey] = scriptTag.dataset[key];
+                const urlKey = key.replace(/-(\w)/g, (_, letter) => letter.toUpperCase());
+                state.urls[urlKey] = value;
             }
         }
     }
+};
+
+// ==========================================
+// FORMATAÇÃO E HELPERS DE UI
+// ==========================================
+
+const formatTimeAgo = (date) => {
+    const seconds = Math.floor((new Date() - date) / 1000);
+    const intervals = [
+        { label: state.i18n.yearsAgo, s: 31536000 },
+        { label: state.i18n.monthsAgo, s: 2592000 },
+        { label: state.i18n.daysAgo, s: 86400 },
+        { label: state.i18n.hoursAgo, s: 3600 },
+        { label: state.i18n.minutesAgo, s: 60 }
+    ];
+    for (const int of intervals) {
+        const count = seconds / int.s;
+        if (count >= 1) return int.label.replace('{count}', Math.floor(count));
+    }
+    return state.i18n.justNow || 'agora mesmo';
+};
+
+// ==========================================
+// RENDERIZADORES DE COMPONENTES (UI)
+// ==========================================
+
+const renderStatusBanner = (data, expiration) => {
+    if (!dom.statusBanner) return;
+    const { i18n } = state;
+    let bannerHtml = '';
+
+    if (data.is_blocked) {
+        switch (data.block_reason) {
+            case 'trial_expired':
+                bannerHtml = `<div class="bg-orange-100 dark:bg-orange-900/30 border-l-4 border-orange-500 text-orange-700 dark:text-orange-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.testEnded}</h3><p>${i18n.testEndedMessage}</p></div>`;
+                break;
+            case 'expired':
+                bannerHtml = `<div class="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiredSignature}</h3><p>${i18n.expiredSignatureMessage}</p></div>`;
+                break;
+            default: // Bloqueio manual
+                bannerHtml = `<div class="bg-red-800/80 border-l-4 border-red-400 text-white p-6 rounded-lg shadow-lg"><h3 class="font-bold text-xl mb-2">${i18n.accessBlocked}</h3><p>${i18n.accessBlockedMessage}</p><p class="mt-2">${i18n.accessBlockedContact}</p></div>`;
+                if (dom.accountContent) dom.accountContent.style.display = 'none';
+                break;
+        }
+    } else if (expiration.status === 'expired') {
+        bannerHtml = `<div class="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiredSignature}</h3><p>${i18n.expiredSignatureMessage}</p></div>`;
+    } else if (expiration.status === 'expiring') {
+        const expiringMessage = expiration.days_left === 0 
+            ? i18n.expiresTodayMessage.replace('{date}', `<strong>${expiration.date}</strong>`)
+            : i18n.expiringAccessMessage.replace('{days}', `<strong>${expiration.days_left}</strong>`).replace('{date}', `<strong>${expiration.date}</strong>`);
+        bannerHtml = `<div class="bg-yellow-100 dark:bg-yellow-500/20 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiringAccess}</h3><p>${expiringMessage}</p></div>`;
+    }
+
+    if (bannerHtml) {
+        dom.statusBanner.innerHTML = bannerHtml;
+        dom.statusBanner.classList.remove('hidden');
+    }
+};
+
+const renderProfileBaseInfo = (data, expiration) => {
+    document.getElementById('user-thumb').src = data.thumb || 'https://placehold.co/96x96/1F2937/E5E7EB?text=?';
+    document.getElementById('user-username').textContent = data.username;
+    document.getElementById('user-email').textContent = data.email;
+    document.getElementById('user-join-date').textContent = data.join_date;
+    document.getElementById('user-screen-limit').textContent = data.screen_limit;
     
-    let pollingIntervalId = null;
-    let validatedCouponCode = null;
-    let historySearchTimeout = null;
-    let currentRequestFilter = 'all';
-
-    // --- LÓGICA DE NAVEGAÇÃO POR SEPARADORES ---
-    function initializeTabs() {
-        const tabContainer = document.getElementById('account-tabs');
-        const contentContainer = document.getElementById('account-tab-content');
-        const requestsTabButton = tabContainer.querySelector('[data-tab="requests"]');
-
-        if (!tabContainer || !contentContainer) return;
-
-        // Mostra a aba de pedidos se o utilizador tiver acesso
-        if (currentUser && !currentUser.is_admin && currentUser.profile_details.overseerr_access) {
-            requestsTabButton.classList.remove('hidden');
-        }
-
-        // Oculta abas que não se aplicam ao utilizador atual
-        if (!currentUser || currentUser.is_admin) {
-            tabContainer.querySelector('[data-tab="overview"]').style.display = 'none';
-            tabContainer.querySelector('[data-tab="payment"]').style.display = 'none';
-        }
-
-        tabContainer.addEventListener('click', (e) => {
-            const button = e.target.closest('button');
-            if (!button || !button.dataset.tab) return;
-
-            const tabId = button.dataset.tab;
-
-            tabContainer.querySelectorAll('.tab-button').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            button.classList.add('active');
-
-            contentContainer.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-            document.getElementById(`tab-${tabId}`).classList.add('active');
-            
-            if (tabId === 'history') {
-                fetchAndRenderHistory();
-            } else if (tabId === 'requests') {
-                fetchAndRenderRequests();
-            }
-        });
+    if (dom.privacyToggle) dom.privacyToggle.checked = data.hide_from_leaderboard;
+    
+    const expContainer = document.getElementById('user-expiration-container');
+    if (expiration.date && expContainer) {
+        expContainer.innerHTML = `${state.i18n.expiresOn} <span class="font-semibold">${expiration.date}</span>`;
+        expContainer.classList.remove('hidden');
     }
 
-    // --- LÓGICA DO HISTÓRICO DE VISUALIZAÇÃO ---
-    async function fetchAndRenderHistory(page = 1, search = '') {
-        const container = document.getElementById('history-container');
-        const paginationContainer = document.getElementById('history-pagination');
-        if (!container || !paginationContainer) return;
+    const libraryList = document.getElementById('library-list');
+    if (libraryList) {
+        libraryList.innerHTML = (data.libraries && data.libraries.length > 0)
+            ? data.libraries.map(lib => `<span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800">${lib}</span>`).join(' ')
+            : `<p class="text-gray-500 dark:text-gray-400 text-sm">${state.i18n.noSharedLibrary}</p>`;
+    }
+};
 
-        container.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.loadingHistory}</p>`;
-        paginationContainer.innerHTML = '';
+const renderDeviceList = (devices) => {
+    const container = document.getElementById('device-list-container');
+    if (!container) return;
 
-        try {
-            const data = await fetchAPI(`${urls.getWatchHistoryUrl}?page=${page}&search=${encodeURIComponent(search)}`);
-            if (data.success) {
-                renderWatchHistoryTable(data.history, data.pagination);
-            } else {
-                throw new Error(data.message);
-            }
-        } catch (error) {
-            container.innerHTML = `<p class="text-center text-red-500 dark:text-red-400">${error.message}</p>`;
-        }
+    if (!devices || devices.length === 0) {
+        container.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-4">${state.i18n.noDevicesFound}</p>`;
+        return;
     }
 
-    function renderWatchHistoryTable(history, pagination) {
-        const container = document.getElementById('history-container');
-        const paginationContainer = document.getElementById('history-pagination');
-        
-        if (history.length === 0) {
-            container.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.noHistoryFound}</p>`;
-            paginationContainer.innerHTML = '';
-            return;
-        }
+    const platformMap = ['alexa', 'android', 'atv', 'chrome', 'chromecast', 'dlna', 'firefox', 'gtv', 'ie', 'ios', 'kodi', 'lg', 'linux', 'macos', 'msedge', 'opera', 'playstation', 'plex', 'plexamp', 'roku', 'safari', 'samsung', 'tivo', 'windows', 'xbox'];
 
-        container.innerHTML = `
+    container.innerHTML = devices.map(device => {
+        const lastSeen = new Date(device.last_seen * 1000);
+        const platform = (device.platform || '').toLowerCase().split(' ')[0];
+        const platformClass = platformMap.includes(platform) ? `platform-${platform}` : 'platform-default';
+
+        return `
+            <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-600/50">
+                <div class="flex items-center gap-4">
+                    <div class="platform-icon ${platformClass} flex-shrink-0"></div>
+                    <div>
+                        <p class="font-semibold text-gray-800 dark:text-gray-200 text-sm">${device.player}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">${device.platform}</p>
+                    </div>
+                </div>
+                <div class="text-right flex-shrink-0">
+                    <p class="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">${state.i18n.lastSeen}</p>
+                    <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">${formatTimeAgo(lastSeen)}</p>
+                </div>
+            </div>
+        `;
+    }).join('');
+};
+
+const renderPaymentHistory = (payments) => {
+    const container = document.getElementById('payment-history-container');
+    if (!container) return;
+
+    if (!payments || payments.length === 0) {
+        container.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-4">${state.i18n.noPaymentsFound}</p>`;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-700/50">
+                <thead class="bg-gray-50 dark:bg-gray-800/80">
                     <tr>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.title}</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.date}</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.player}</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.progress}</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${state.i18n.date}</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${state.i18n.description}</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${state.i18n.value}</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${state.i18n.status}</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    ${history.map(item => `
-                        <tr>
-                            <td class="px-4 py-2 whitespace-nowrap">
-                                <div class="flex items-center">
-                                    <img src="${item.poster_url}" class="w-10 h-14 object-cover rounded-md mr-4" alt="Poster" onerror="this.style.display='none'">
-                                    <div>
-                                        <div class="text-sm font-semibold text-gray-900 dark:text-white">${item.title}</div>
-                                        <div class="text-xs text-gray-500 dark:text-gray-400">${item.subtitle}</div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${item.date}</td>
-                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${item.player}</td>
-                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${item.percent_complete}%</td>
-                        </tr>
-                    `).join('')}
+                    ${payments.map(p => {
+                        const isOk = p.status === 'CONCLUIDA';
+                        const badgeClass = isOk ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300';
+                        const couponHtml = p.coupon_code ? `<span class="ml-2 px-2 py-0.5 text-[10px] uppercase font-bold rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800" title="Cupão: ${p.coupon_code}">🏷️ ${p.coupon_code}</span>` : '';
+                        
+                        return `
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${new Date(p.created_at).toLocaleString('pt-BR')}</td>
+                                <td class="px-4 py-3 text-sm text-gray-800 dark:text-gray-200">
+                                    <span class="font-medium">${p.description || `${p.provider} - ${p.screens > 0 ? `${p.screens} Telas` : 'Padrão'}`}</span>
+                                    ${couponHtml}
+                                </td>
+                                <td class="px-4 py-3 text-sm font-mono font-bold text-gray-900 dark:text-white">${p.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                                <td class="px-4 py-3 text-sm"><span class="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${badgeClass}">${p.status}</span></td>
+                            </tr>
+                        `;
+                    }).join('')}
                 </tbody>
             </table>
-        `;
+        </div>
+    `;
+};
 
-        // Render Pagination
-        const { current_page: currentPage, total_pages: totalPages } = pagination;
-        const pageOfText = i18n.pageOf.replace('{currentPage}', currentPage).replace('{totalPages}', totalPages);
-        paginationContainer.innerHTML = `
-            <button id="historyPrevPage" class="px-3 py-1 bg-gray-200 dark:bg-gray-600 rounded-md disabled:opacity-50" ${currentPage === 1 ? 'disabled' : ''}>${i18n.previous}</button>
-            <span>${pageOfText}</span>
-            <button id="historyNextPage" class="px-3 py-1 bg-gray-200 dark:bg-gray-600 rounded-md disabled:opacity-50" ${currentPage === totalPages ? 'disabled' : ''}>${i18n.next}</button>
-        `;
-        
-        const searchInput = document.getElementById('historySearchInput');
-        document.getElementById('historyPrevPage').onclick = () => fetchAndRenderHistory(currentPage - 1, searchInput.value);
-        document.getElementById('historyNextPage').onclick = () => fetchAndRenderHistory(currentPage + 1, searchInput.value);
+// ==========================================
+// LÓGICA DE PAGAMENTOS E PIX
+// ==========================================
+
+const setupPaymentSection = (prices, providers, canDowngrade) => {
+    const paymentCard = document.getElementById('payment-card');
+    if (!dom.paymentSection || !paymentCard) return;
+
+    const anyProviderEnabled = providers && Object.values(providers).some(enabled => enabled);
+    if (!anyProviderEnabled) {
+        paymentCard.style.display = 'none';
+        return;
     }
 
-    function initializeHistorySearch() {
-        const searchInput = document.getElementById('historySearchInput');
-        if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
-                clearTimeout(historySearchTimeout);
-                historySearchTimeout = setTimeout(() => {
-                    // MELHORIA DE SEGURANÇA: Sanitiza a entrada do utilizador no frontend
-                    const searchTerm = sanitizeHTML(e.target.value);
-                    fetchAndRenderHistory(1, searchTerm);
-                }, 500); // Debounce de 500ms
-            });
-        }
+    if (!prices || Object.keys(prices).length === 0) {
+        dom.paymentSection.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${state.i18n.noProvider}</p>`;
+        return;
     }
 
-    // --- LÓGICA DE PEDIDOS (OVERSEERR) ---
-    async function fetchAndRenderRequests() {
-        const container = document.getElementById('requests-container');
-        if (!container) return;
+    // Gerar Planos
+    let optionsHtml = '<div class="space-y-3">';
+    Object.keys(prices).sort((a,b) => parseInt(a) - parseInt(b)).forEach(screens => {
+        const priceStr = parseFloat(prices[screens]).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const planText = screens === "0" ? "Plano Padrão" : `${screens} ${parseInt(screens) > 1 ? state.i18n.screenPlural : state.i18n.screenSingular}`;
 
-        container.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.loadingRequests}</p>`;
+        optionsHtml += `
+            <label class="flex items-center justify-between p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 has-[:checked]:border-yellow-500 has-[:checked]:bg-yellow-50/30 dark:has-[:checked]:bg-yellow-900/10 has-[:checked]:ring-1 has-[:checked]:ring-yellow-500 cursor-pointer transition-all hover:border-yellow-400">
+                <div class="flex items-center">
+                    <input type="radio" name="payment-plan" value="${screens}" data-price="${prices[screens]}" class="h-5 w-5 text-yellow-500 focus:ring-yellow-500 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700">
+                    <span class="ml-3 font-bold text-gray-800 dark:text-gray-200">${planText}</span>
+                </div>
+                <span class="font-black text-lg text-gray-900 dark:text-white">${priceStr}</span>
+            </label>
+        `;
+    });
+    optionsHtml += '</div>';
+    
+    if (!canDowngrade && Object.keys(prices).length > 1) {
+        optionsHtml += `<div class="mt-4 p-3 text-sm text-blue-800 bg-blue-50 rounded-lg dark:bg-blue-900/20 dark:text-blue-300 border border-blue-100 dark:border-blue-800/50 flex gap-2 items-start"><span class="text-lg leading-none">ℹ️</span> <span>A troca para um plano com menos telas só fica disponível perto da data de vencimento.</span></div>`;
+    }
+
+    // Injetar HTML Final
+    dom.paymentSection.innerHTML = `
+        ${optionsHtml}
+        <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
+            <label for="couponCodeInput" class="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Código de Desconto</label>
+            <div class="flex gap-2 mt-2">
+                <input type="text" id="couponCodeInput" class="w-full p-3 text-sm font-mono uppercase tracking-wider rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" placeholder="INSERIR CUPÃO">
+                <button id="applyCouponBtn" class="btn bg-gray-800 hover:bg-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 text-white px-6 font-semibold" disabled>Aplicar</button>
+            </div>
+            <div id="coupon-status" class="text-xs font-medium mt-2 min-h-[20px]"></div>
+        </div>
+        <button id="initiatePixButton" class="w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white text-lg py-3 shadow-lg shadow-green-500/30 disabled:opacity-50 disabled:shadow-none transition-all" disabled>${state.i18n.generatePix}</button>
+    `;
+
+    bindPaymentEvents(providers);
+};
+
+const bindPaymentEvents = (providers) => {
+    const pixBtn = document.getElementById('initiatePixButton');
+    const applyCouponBtn = document.getElementById('applyCouponBtn');
+    const couponInput = document.getElementById('couponCodeInput');
+    const statusDiv = document.getElementById('coupon-status');
+
+    // Mudança de plano selecionado
+    document.querySelectorAll('input[name="payment-plan"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            const price = parseFloat(radio.dataset.price).toFixed(2).replace('.', ',');
+            pixBtn.textContent = state.i18n.generatePixForPrice.replace('{price}', price);
+            pixBtn.disabled = false;
+            applyCouponBtn.disabled = false;
+            
+            // Reset Cupão
+            statusDiv.innerHTML = '';
+            couponInput.value = '';
+            state.validatedCouponCode = null;
+        });
+    });
+
+    // Validar Cupão
+    applyCouponBtn?.addEventListener('click', async () => {
+        const code = sanitizeHTML(couponInput.value.trim().toUpperCase());
+        const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
+        if (!code || !selectedPlan || !state.currentUser) return;
 
         try {
-            const data = await fetchAPI(`${urls.getAccountRequestsUrl}?filter=${currentRequestFilter}`);
-            if (data.success) {
-                renderRequests(data.requests);
-            } else if (data.overseerr_disabled) {
-                container.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.overseerrDisabled}</p>`;
-                document.getElementById('request-filters').style.display = 'none';
+            applyCouponBtn.disabled = true;
+            applyCouponBtn.textContent = '...';
+            const result = await fetchAPI(state.urls.validateCouponUrl, 'POST', { code, screens: selectedPlan.value, username: state.currentUser.username });
+            
+            if (result.success) {
+                statusDiv.innerHTML = `<span class="text-green-600 dark:text-green-400 flex items-center gap-1"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg> ${result.message}</span>`;
+                state.validatedCouponCode = code;
+                
+                if (result.discounted_price <= 0) {
+                    pixBtn.textContent = state.i18n.activateFreeSubscription;
+                    pixBtn.classList.replace('bg-green-600', 'bg-yellow-500');
+                    pixBtn.classList.replace('hover:bg-green-500', 'hover:bg-yellow-400');
+                    pixBtn.classList.replace('shadow-green-500/30', 'shadow-yellow-500/30');
+                } else {
+                    pixBtn.textContent = state.i18n.generatePixForPrice.replace('{price}', result.discounted_price.toFixed(2).replace('.', ','));
+                }
             } else {
-                throw new Error(data.message);
+                throw new Error(result.message);
             }
         } catch (error) {
-            container.innerHTML = `<p class="text-center text-red-500 dark:text-red-400">${error.message}</p>`;
+            statusDiv.innerHTML = `<span class="text-red-500 flex items-center gap-1">❌ ${error.message}</span>`;
+            state.validatedCouponCode = null;
+            pixBtn.textContent = state.i18n.generatePixForPrice.replace('{price}', parseFloat(selectedPlan.dataset.price).toFixed(2).replace('.', ','));
+        } finally {
+            applyCouponBtn.disabled = false;
+            applyCouponBtn.textContent = 'Aplicar';
         }
+    });
+
+    // Iniciar Pagamento
+    pixBtn?.addEventListener('click', () => {
+        const plan = document.querySelector('input[name="payment-plan"]:checked');
+        if (plan) handlePixGenerationRequest({ screens: plan.value, coupon_code: state.validatedCouponCode }, providers);
+    });
+};
+
+const handlePixGenerationRequest = async (payload, providers) => {
+    const activeProviders = Object.keys(providers).filter(p => providers[p]).map(p => p.toUpperCase());
+    const isFree = document.getElementById('initiatePixButton').textContent === state.i18n.activateFreeSubscription;
+
+    if (isFree) {
+        await executePixGeneration(payload); // Ignora provedores se for gratuito
+        return;
     }
 
-    function renderRequests(requests) {
-        const container = document.getElementById('requests-container');
-        if (requests.length === 0) {
-            container.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.noRequestsFound}</p>`;
-            return;
-        }
-
-        const statusColorMap = {
-            green: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-            yellow: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
-            blue: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-            red: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
-            teal: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300',
-            gray: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
-        };
-
-        container.innerHTML = requests.map(req => {
-            const requestedDate = new Date(req.requested_at).toLocaleDateString('pt-BR');
-            return `
-                <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg flex items-center space-x-4">
-                    <img src="${req.poster_url || 'https://placehold.co/64x96/1F2937/E5E7EB?text=?'}" alt="Poster" class="w-16 h-24 object-cover rounded-md flex-shrink-0">
-                    <div class="flex-grow">
-                        <h4 class="font-bold text-gray-900 dark:text-white">${req.title} (${req.year})</h4>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">${i18n.requestedOn} ${requestedDate}</p>
-                    </div>
-                    <div class="flex-shrink-0">
-                        <span class="px-3 py-1 text-xs font-medium rounded-full ${statusColorMap[req.status_color] || statusColorMap.gray}">
-                            ${req.status_text}
-                        </span>
-                    </div>
-                </div>
-            `;
+    if (activeProviders.length === 1) {
+        payload.provider = activeProviders[0];
+        await executePixGeneration(payload);
+    } else if (activeProviders.length > 1) {
+        // Modal de escolha se houver +1 gateway configurado
+        const buttonsHtml = activeProviders.map(p => {
+            const colors = p === 'MERCADOPAGO' ? 'bg-blue-600 hover:bg-blue-500' : p === 'BPIX' ? 'bg-purple-600 hover:bg-purple-500' : 'bg-green-600 hover:bg-green-500';
+            const name = p === 'MERCADOPAGO' ? state.i18n.payWithMp : p === 'BPIX' ? 'Pagar com BPIX' : state.i18n.payWithEfi;
+            return `<button data-provider="${p}" class="btn ${colors} text-white w-full mb-2 shadow-md">${name}</button>`;
         }).join('');
-    }
 
-    function initializeRequestFilters() {
-        const filterContainer = document.getElementById('request-filters');
-        if (filterContainer) {
-            filterContainer.addEventListener('click', (e) => {
-                const button = e.target.closest('button');
-                if (button && button.dataset.filter) {
-                    filterContainer.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-                    button.classList.add('active');
-                    currentRequestFilter = button.dataset.filter;
-                    fetchAndRenderRequests();
-                }
-            });
-        }
-    }
-
-
-    // --- LÓGICA DE PAGAMENTO ---
-
-    function renderPaymentOptions(prices, providers, canDowngrade) {
-        const paymentCard = document.getElementById('payment-card');
-        if (!paymentSection || !paymentCard) return;
-
-        const anyProviderEnabled = providers && Object.values(providers).some(enabled => enabled);
-
-        if (!anyProviderEnabled) {
-            paymentCard.style.display = 'none';
-            return;
-        }
-
-        if (!prices || Object.keys(prices).length === 0) {
-            paymentSection.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${i18n.noProvider}</p>`;
-            return;
-        }
-
-        let optionsHtml = '<div class="space-y-3">';
-        Object.keys(prices).sort((a,b) => parseInt(a) - parseInt(b)).forEach(screens => {
-            const price = parseFloat(prices[screens]).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            
-            let planText = "Plano Padrão";
-            if (screens !== "0") {
-                const screenText = parseInt(screens) > 1 ? i18n.screenPlural : i18n.screenSingular;
-                planText = `${screens} ${screenText}`;
-            }
-
-            optionsHtml += `
-                <label class="flex items-center justify-between p-4 rounded-lg border-2 border-gray-300 dark:border-gray-600 has-[:checked]:border-yellow-500 has-[:checked]:ring-2 has-[:checked]:ring-yellow-500 cursor-pointer transition-all">
-                    <div class="flex items-center">
-                        <input type="radio" name="payment-plan" value="${screens}" data-price="${prices[screens]}" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300">
-                        <span class="ml-3 font-semibold text-gray-800 dark:text-gray-200">${planText}</span>
-                    </div>
-                    <span class="font-bold text-lg text-gray-900 dark:text-white">${price}</span>
-                </label>
-            `;
-        });
-        optionsHtml += '</div>';
+        const modal = createModal('providerChoiceModal', state.i18n.chooseProvider, `<div class="pt-2">${buttonsHtml}</div>`, `<button id="cancel-provider" class="btn bg-gray-200 dark:bg-gray-700 w-full mt-2">${state.i18n.cancel}</button>`);
         
-        if (!canDowngrade && Object.keys(prices).length > 1) {
-            optionsHtml += `
-                <div class="mt-4 p-3 text-sm text-blue-700 bg-blue-100 rounded-lg dark:bg-blue-900/30 dark:text-blue-300" role="alert">
-                  <span class="font-medium">Info:</span> A troca para um plano com menos telas só fica disponível perto da data de vencimento da sua assinatura atual.
-                </div>
-            `;
-        }
-        
-        // Adiciona o campo de cupão
-        optionsHtml += `
-            <div class="mt-4">
-                <label for="couponCodeInput" class="text-sm font-medium text-gray-500 dark:text-gray-400">Código de Desconto</label>
-                <div class="flex gap-2 mt-1">
-                    <input type="text" id="couponCodeInput" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Insira o cupão">
-                    <button id="applyCouponBtn" class="btn bg-gray-600 hover:bg-gray-500 text-white px-4" disabled>Aplicar</button>
-                </div>
-                <div id="coupon-status" class="text-xs mt-1 h-4"></div>
-            </div>
-        `;
-
-        paymentSection.innerHTML = `
-            ${optionsHtml}
-            <button id="initiatePixButton" class="w-full mt-4 btn bg-green-600 hover:bg-green-500 text-white disabled:opacity-50" disabled>${i18n.generatePix}</button>
-        `;
-
-        const pixButton = document.getElementById('initiatePixButton');
-        const applyCouponBtn = document.getElementById('applyCouponBtn');
-        const couponCodeInput = document.getElementById('couponCodeInput');
-        
-        document.querySelectorAll('input[name="payment-plan"]').forEach(radio => {
-            radio.addEventListener('change', () => {
-                const selectedPrice = parseFloat(radio.dataset.price).toFixed(2);
-                pixButton.textContent = i18n.generatePixForPrice.replace('{price}', selectedPrice.replace('.', ','));
-                pixButton.disabled = false;
-                applyCouponBtn.disabled = false;
-                // Limpa o estado do cupão ao mudar de plano
-                document.getElementById('coupon-status').innerHTML = '';
-                couponCodeInput.value = '';
-                validatedCouponCode = null;
-            });
-        });
-
-        if (pixButton) {
-            pixButton.addEventListener('click', () => {
-                const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
-                if (selectedPlan) {
-                    const screens = selectedPlan.value;
-                    initiatePixPayment({ screens, coupon_code: validatedCouponCode }, providers);
-                }
-            });
-        }
-
-        if (applyCouponBtn) {
-            applyCouponBtn.addEventListener('click', async () => {
-                const code = couponCodeInput.value.trim();
-                const statusDiv = document.getElementById('coupon-status');
-                const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
-                if (!code || !selectedPlan || !currentUser) return;
-
-                const screens = selectedPlan.value;
-
-                try {
-                    const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens, username: currentUser.username });
-                    if (result.success) {
-                        statusDiv.innerHTML = `<span class="text-green-500">${result.message}</span>`;
-                        validatedCouponCode = code;
-                        const newPriceText = result.discounted_price.toFixed(2).replace('.', ',');
-                        
-                        if (result.discounted_price <= 0) {
-                            pixButton.textContent = i18n.activateFreeSubscription;
-                        } else {
-                            pixButton.textContent = i18n.generatePixForPrice.replace('{price}', newPriceText);
-                        }
-                    } else {
-                        statusDiv.innerHTML = `<span class="text-red-500">${result.message}</span>`;
-                        validatedCouponCode = null;
-                        const originalPriceText = parseFloat(selectedPlan.dataset.price).toFixed(2).replace('.', ',');
-                        pixButton.textContent = i18n.generatePixForPrice.replace('{price}', originalPriceText);
-                    }
-                } catch (error) {
-                    statusDiv.innerHTML = `<span class="text-red-500">${error.message}</span>`;
-                    validatedCouponCode = null;
-                    const originalPriceText = parseFloat(selectedPlan.dataset.price).toFixed(2).replace('.', ',');
-                    pixButton.textContent = i18n.generatePixForPrice.replace('{price}', originalPriceText);
-                }
-            });
-        }
-    }
-
-    async function initiatePixPayment(payload, providers) {
-        const activeProviders = Object.keys(providers).filter(p => providers[p]).map(p => p.toUpperCase());
-        
-        const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
-        const price = selectedPlan ? parseFloat(selectedPlan.dataset.price) : -1;
-
-        if (validatedCouponCode && price > 0) {
-            const statusDivText = document.getElementById('coupon-status')?.textContent || '';
-            if (statusDivText.includes(i18n.couponAppliedSuccess)) {
-                const discountedPriceText = document.getElementById('initiatePixButton').textContent;
-                if (!discountedPriceText.includes('R$')) {
-                    await generatePix(payload);
-                    return;
-                }
-            }
-        }
-        
-        if (activeProviders.length === 1) {
-            payload.provider = activeProviders[0];
-            await generatePix(payload);
-        } else if (activeProviders.length > 1) {
-            showProviderChoiceModal(payload, activeProviders);
-        } else {
-             showToast(i18n.noProvider, "error");
-        }
-    }
-    
-    function showProviderChoiceModal(payload, providers) {
-        let buttonsHtml = '';
-        if (providers.includes('EFI')) {
-            buttonsHtml += `<button data-provider="EFI" class="btn bg-green-600 hover:bg-green-500 text-white w-full">${i18n.payWithEfi}</button>`;
-        }
-        if (providers.includes('MERCADOPAGO')) {
-            buttonsHtml += `<button data-provider="MERCADOPAGO" class="btn bg-blue-600 hover:bg-blue-500 text-white w-full mt-2">${i18n.payWithMp}</button>`;
-        }
-        if (providers.includes('BPIX')) {
-            buttonsHtml += `<button data-provider="BPIX" class="btn bg-purple-600 hover:bg-purple-500 text-white w-full mt-2">Pagar com BPIX</button>`;
-        }
-
-        const body = `<div class="space-y-3">${buttonsHtml}</div>`;
-        const modal = createModal('providerChoiceModal', i18n.chooseProvider, body, `<button id="cancel-provider" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`);
-
-        if(modal){
-            modal.querySelectorAll('button[data-provider]').forEach(button => {
-                button.onclick = async () => {
+        if (modal) {
+            modal.querySelectorAll('button[data-provider]').forEach(btn => {
+                btn.onclick = async () => {
                     modal.classList.add('hidden');
-                    payload.provider = button.dataset.provider;
-                    await generatePix(payload);
+                    payload.provider = btn.dataset.provider;
+                    await executePixGeneration(payload);
                 };
             });
             modal.querySelector('#cancel-provider').onclick = () => modal.classList.add('hidden');
         }
+    } else {
+        showToast(state.i18n.noProvider, "error");
     }
-    
-    async function generatePix(payload) {
-        const button = document.getElementById('initiatePixButton');
-        const originalText = button.textContent;
-        button.disabled = true;
-        button.textContent = i18n.wait;
-        let result = null;
+};
 
-        try {
-            const result = await fetchAPI(urls.createChargeUrl, 'POST', payload);
-            
-            if (result && result.success && result.free_renewal) {
+const executePixGeneration = async (payload) => {
+    const btn = document.getElementById('initiatePixButton');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2 inline-block" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> A processar...`;
+
+    try {
+        const result = await fetchAPI(state.urls.createChargeUrl, 'POST', payload);
+        
+        if (result && result.success) {
+            if (result.free_renewal) {
                 showToast(result.message, 'success');
-                setTimeout(() => window.location.reload(), 3000);
-                return; 
-            }
-            
-            if(result && result.success) {
-                paymentSection.style.display = 'none';
-                pixDisplay.style.display = 'block';
+                setTimeout(() => window.location.reload(), 2500);
+            } else {
+                dom.paymentSection.style.display = 'none';
+                dom.pixDisplay.style.display = 'block';
                 document.getElementById('pix-qr-code').src = result.qr_code_image;
                 document.getElementById('pix-copy-paste').value = result.pix_copy_paste;
-                startPaymentStatusPolling(result.payment_id || result.txid);
-            } else {
-                showToast(result.message, 'error');
+                startPaymentPolling(result.payment_id || result.txid);
+            }
+        } else {
+            throw new Error(result?.message || 'Erro desconhecido ao gerar pagamento.');
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+};
+
+const startPaymentPolling = (txid) => {
+    if (state.pollingIntervalId) clearInterval(state.pollingIntervalId);
+    const pollingStatus = document.getElementById('polling-status');
+
+    state.pollingIntervalId = setInterval(async () => {
+        try {
+            const result = await fetchAPI(`/api/payments/status/${txid}`);
+            if (result.success && result.status === 'CONCLUIDA') {
+                clearInterval(state.pollingIntervalId);
+                showToast(state.i18n.paymentConfirmed, "success");
+                
+                if (pollingStatus) {
+                    pollingStatus.innerHTML = `
+                        <div class="flex flex-col items-center justify-center p-4 bg-green-50 dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
+                            <svg class="w-12 h-12 text-green-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span class="text-green-700 dark:text-green-400 font-bold text-lg">${state.i18n.pollingConfirmed}</span>
+                        </div>`;
+                }
+                setTimeout(() => window.location.reload(), 3000);
             }
         } catch (error) {
-            showToast(error.message, 'error');
-        } finally {
-            if (!(result && result.success && result.free_renewal)) {
-                button.disabled = false;
-                button.textContent = originalText;
-            }
+            console.warn(`Polling silencioso falhou:`, error.message);
         }
-    }
+    }, 4000); // 4 segundos é ideal para APIs de pagamento
+};
 
-    function startPaymentStatusPolling(txid) {
-        if (pollingIntervalId) clearInterval(pollingIntervalId);
-        const pollingStatus = document.getElementById('polling-status');
+// ==========================================
+// FORMULÁRIO DE CONTACTOS
+// ==========================================
 
-        pollingIntervalId = setInterval(async () => {
-            try {
-                const statusResult = await fetchAPI(`/api/payments/status/${txid}`);
-                if (statusResult.success && statusResult.status === 'CONCLUIDA') {
-                    clearInterval(pollingIntervalId);
-                    showToast(i18n.paymentConfirmed, "success");
-                    if(pollingStatus) pollingStatus.innerHTML = `<div class="text-green-500 font-bold p-4">${i18n.pollingConfirmed}</div>`;
-                    setTimeout(() => window.location.reload(), 3000);
-                }
-            } catch (error) {
-                console.warn(`${i18n.pollingError}:`, error.message);
-            }
-        }, 5000);
-    }
-    
-    const copyButton = document.getElementById('copy-pix-code');
-    if (copyButton) {
-        copyButton.onclick = () => {
-            const input = document.getElementById('pix-copy-paste');
-            input.select();
-            document.execCommand('copy');
-            showToast(i18n.codeCopied, 'success');
-        };
-    }
+const initContactForm = (details) => {
+    if (!document.getElementById('contact-details-form')) return;
 
-    async function handlePrivacyToggle() {
-        if (!privacyToggle) return;
+    const countries = [
+        { name: 'Brasil', code: '+55' }, { name: 'Portugal', code: '+351' },
+        { name: 'Angola', code: '+244' }, { name: 'Moçambique', code: '+258' },
+        { name: 'Cabo Verde', code: '+238' }, { name: 'EUA/Canadá', code: '+1' },
+        { name: 'Reino Unido', code: '+44' }, { name: 'Espanha', code: '+34' },
+        { name: 'França', code: '+33' }, { name: 'Alemanha', code: '+49' }
+    ];
+
+    const select = document.getElementById('countryCode');
+    select.innerHTML = countries.map(c => `<option value="${c.code}">${c.name} (${c.code})</option>`).join('');
+
+    if (details) {
+        document.getElementById('profileName').value = details.name || '';
+        document.getElementById('profileTelegram').value = details.telegram_user || '';
+        document.getElementById('profileDiscord').value = details.discord_user_id || '';
         
-        privacyToggle.addEventListener('change', async (event) => {
-            const isHidden = event.target.checked;
-            try {
-                await fetchAPI(urls.updatePrivacyUrl, 'POST', { hide: isHidden });
-                showToast('Configuração de privacidade atualizada!', 'success');
-            } catch (error) {
-                showToast(error.message, 'error');
-                event.target.checked = !isHidden;
-            }
-        });
-    }
-
-    function formatTimeAgo(date) {
-        const now = new Date();
-        const seconds = Math.floor((now - date) / 1000);
-
-        let interval = seconds / 31536000;
-        if (interval > 1) return i18n.yearsAgo.replace('{count}', Math.floor(interval));
-        interval = seconds / 2592000;
-        if (interval > 1) return i18n.monthsAgo.replace('{count}', Math.floor(interval));
-        interval = seconds / 86400;
-        if (interval > 1) return i18n.daysAgo.replace('{count}', Math.floor(interval));
-        interval = seconds / 3600;
-        if (interval > 1) return i18n.hoursAgo.replace('{count}', Math.floor(interval));
-        interval = seconds / 60;
-        if (interval > 1) return i18n.minutesAgo.replace('{count}', Math.floor(interval));
-        return i18n.justNow;
-    }
-
-    function renderDeviceList(devices) {
-        const container = document.getElementById('device-list-container');
-        if (!container) return;
-
-        function getPlatformClass(platformString) {
-            const platform = (platformString || '').toLowerCase().split(' ')[0];
-            const platformMap = [
-                'alexa', 'android', 'atv', 'chrome', 'chromecast', 'dlna', 'firefox',
-                'gtv', 'ie', 'ios', 'kodi', 'lg', 'linux', 'macos', 'msedge', 'opera',
-                'playstation', 'plex', 'plexamp', 'roku', 'safari', 'samsung',
-                'synclounge', 'tivo', 'wiiu', 'windows', 'wp', 'xbmc', 'xbox'
-            ];
-            if (platformMap.includes(platform)) {
-                return `platform-${platform}`;
-            }
-            return 'platform-default';
-        }
-    
-        if (devices && devices.length > 0) {
-            container.innerHTML = devices.map(device => {
-                const lastSeen = new Date(device.last_seen * 1000);
-                const timeAgo = formatTimeAgo(lastSeen);
-                const platformClass = getPlatformClass(device.platform);
-    
-                return `
-                    <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                        <div class="flex items-center gap-4">
-                            <div class="platform-icon ${platformClass}"></div>
-                            <div>
-                                <p class="font-semibold text-gray-800 dark:text-gray-200">${device.player}</p>
-                                <p class="text-xs text-gray-500 dark:text-gray-400">${device.platform}</p>
-                            </div>
-                        </div>
-                        <div class="text-right flex-shrink-0">
-                            <p class="text-xs text-gray-500 dark:text-gray-400">${i18n.lastSeen}</p>
-                            <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">${timeAgo}</p>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+        const fullPhone = details.phone_number || '';
+        const phoneInput = document.getElementById('profilePhone');
+        
+        const match = countries.slice().sort((a, b) => b.code.length - a.code.length).find(c => fullPhone.startsWith(c.code));
+        if (match) {
+            select.value = match.code;
+            phoneInput.value = fullPhone.substring(match.code.length);
         } else {
-            container.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-4">${i18n.noDevicesFound}</p>`;
+            phoneInput.value = fullPhone.replace(/\D/g, '');
+            select.value = '+55'; // Default fallback
         }
     }
 
-    function renderPaymentHistory(payments) {
-        const container = document.getElementById('payment-history-container');
-        if (!container) return;
-
-        if (payments && payments.length > 0) {
-            container.innerHTML = `
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead class="bg-gray-50 dark:bg-gray-700/50">
-                            <tr>
-                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.date}</th>
-                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.description}</th>
-                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.value}</th>
-                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">${i18n.status}</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            ${payments.map(p => {
-                                const couponHtml = p.coupon_code 
-                                    ? `<span class="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300" title="Cupom: ${p.coupon_code}">🏷️</span>` 
-                                    : '';
-                                return `
-                                    <tr>
-                                        <td class="px-4 py-2 whitespace-nowrap text-sm">${new Date(p.created_at).toLocaleString('pt-BR')}</td>
-                                        <td class="px-4 py-2 text-sm">
-                                            <span>${p.description || `${p.provider} - ${p.screens > 0 ? `${p.screens} Telas` : 'Padrão'}`}</span>
-                                            ${couponHtml}
-                                        </td>
-                                        <td class="px-4 py-2 text-sm font-mono">${p.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                                        <td class="px-4 py-2 text-sm"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${p.status === 'CONCLUIDA' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'}">${p.status}</span></td>
-                                    </tr>
-                                `
-                            }).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            `;
-        } else {
-            container.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-4">${i18n.noPaymentsFound}</p>`;
-        }
-    }
-
-    async function handleSaveContactDetails() {
-        const button = document.getElementById('saveContactDetails');
-        if (!button) return;
-
-        const originalText = button.textContent;
-        button.disabled = true;
-        button.textContent = i18n.saving;
+    document.getElementById('saveContactDetails').addEventListener('click', async (e) => {
+        const btn = e.target;
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = state.i18n.saving;
 
         try {
-            const countryCode = document.getElementById('countryCode').value;
             const phone = document.getElementById('profilePhone').value.replace(/\D/g, '');
-            const fullPhoneNumber = phone ? `${countryCode}${phone}` : '';
-
             const payload = {
-                name: document.getElementById('profileName').value,
-                telegram_user: document.getElementById('profileTelegram').value,
-                discord_user_id: document.getElementById('profileDiscord').value,
-                phone_number: fullPhoneNumber,
+                name: sanitizeHTML(document.getElementById('profileName').value),
+                telegram_user: sanitizeHTML(document.getElementById('profileTelegram').value),
+                discord_user_id: sanitizeHTML(document.getElementById('profileDiscord').value),
+                phone_number: phone ? `${document.getElementById('countryCode').value}${phone}` : '',
             };
-            const result = await fetchAPI(urls.updateAccountProfileUrl, 'POST', payload);
+            const result = await fetchAPI(state.urls.updateAccountProfileUrl, 'POST', payload);
             showToast(result.message, result.success ? 'success' : 'error');
         } catch (error) {
             showToast(error.message, 'error');
         } finally {
-            button.disabled = false;
-            button.textContent = originalText;
+            btn.disabled = false;
+            btn.textContent = origText;
         }
+    });
+};
+
+// ==========================================
+// HISTÓRICO E TABS DE NAVEGAÇÃO
+// ==========================================
+
+const initTabs = () => {
+    if (!dom.tabContainer || !dom.contentContainer) return;
+
+    // Mostrar aba Requests apenas se permitido e não for admin
+    if (state.currentUser && !state.currentUser.is_admin && state.currentUser.profile_details?.overseerr_access) {
+        dom.tabContainer.querySelector('[data-tab="requests"]')?.classList.remove('hidden');
     }
 
-    function populateCountryCodes() {
-        const select = document.getElementById('countryCode');
-        if (!select) return;
-
-        const countries = [
-            { name: 'Brasil', code: '+55' },
-            { name: 'Portugal', code: '+351' },
-            { name: 'Angola', code: '+244' },
-            { name: 'Moçambique', code: '+258' },
-            { name: 'Cabo Verde', code: '+238' },
-            { name: 'Guiné-Bissau', code: '+245' },
-            { name: 'São Tomé e Príncipe', code: '+239' },
-            { name: 'Timor-Leste', code: '+670' },
-            { name: 'EUA/Canadá', code: '+1' },
-            { name: 'Reino Unido', code: '+44' },
-            { name: 'Espanha', code: '+34' },
-            { name: 'França', code: '+33' },
-            { name: 'Alemanha', code: '+49' },
-            { name: 'Itália', code: '+39' },
-            { name: 'Japão', code: '+81' }
-        ];
-
-        select.innerHTML = countries.map(c => `<option value="${c.code}">${c.name} (${c.code})</option>`).join('');
+    // Admins não veem Overview e Pagamento na sua própria conta
+    if (!state.currentUser || state.currentUser.is_admin) {
+        ['overview', 'payment'].forEach(t => {
+            const el = dom.tabContainer.querySelector(`[data-tab="${t}"]`);
+            if(el) el.style.display = 'none';
+        });
+        // Se a default estava oculta, muda para history
+        dom.tabContainer.querySelector('[data-tab="history"]')?.click();
     }
 
-    async function main() {
-        try {
-            const data = await fetchAPI(urls.getAccountDetailsUrl);
-            currentUser = { 
-                username: data.username, 
-                is_admin: data.role === 'admin',
-                profile_details: data.profile_details
-            };
-            
-            const paymentOptions = await fetchAPI(urls.getPaymentOptionsUrl);
-            if(paymentOptions.success && paymentSection) {
-                renderPaymentOptions(paymentOptions.prices, paymentOptions.providers, paymentOptions.can_downgrade);
-            }
-            
-            const expiration = data.expiration_info;
-            
-            // --- CORREÇÃO INICIA AQUI ---
-            // Lógica do Banner de Status
-            if (data.is_blocked) {
-                switch (data.block_reason) {
-                    case 'trial_expired':
-                        statusBanner.innerHTML = `<div class="bg-orange-100 dark:bg-orange-900/30 border-l-4 border-orange-500 text-orange-700 dark:text-orange-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.testEnded}</h3><p>${i18n.testEndedMessage}</p></div>`;
-                        break;
-                    case 'expired':
-                        statusBanner.innerHTML = `<div class="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiredSignature}</h3><p>${i18n.expiredSignatureMessage}</p></div>`;
-                        break;
-                    default: // Bloqueio manual
-                        statusBanner.innerHTML = `<div class="bg-red-800/80 border-l-4 border-red-400 text-white p-6 rounded-lg shadow-lg"><h3 class="font-bold text-xl mb-2">${i18n.accessBlocked}</h3><p>${i18n.accessBlockedMessage}</p><p class="mt-2">${i18n.accessBlockedContact}</p></div>`;
-                        if (accountContent) accountContent.style.display = 'none'; // Esconde o conteúdo principal
-                        break;
-                }
-            } else if (expiration.status === 'expired') {
-                statusBanner.innerHTML = `<div class="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiredSignature}</h3><p>${i18n.expiredSignatureMessage}</p></div>`;
-            } else if (expiration.status === 'expiring') {
-                let expiringMessage;
-                if (expiration.days_left === 0) {
-                    expiringMessage = i18n.expiresTodayMessage.replace('{date}', `<strong>${expiration.date}</strong>`);
-                } else {
-                    expiringMessage = i18n.expiringAccessMessage.replace('{days}', `<strong>${expiration.days_left}</strong>`).replace('{date}', `<strong>${expiration.date}</strong>`);
-                }
-                 statusBanner.innerHTML = `<div class="bg-yellow-100 dark:bg-yellow-500/20 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiringAccess}</h3><p>${expiringMessage}</p></div>`;
-            }
-            // --- CORREÇÃO TERMINA AQUI ---
-            
-            if (statusBanner && statusBanner.innerHTML) {
-                statusBanner.classList.remove('hidden');
-            }
+    dom.tabContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.tab-button');
+        if (!btn || !btn.dataset.tab) return;
 
-            document.getElementById('user-thumb').src = data.thumb || 'https://placehold.co/96x96/1F2937/E5E7EB?text=?';
-            document.getElementById('user-username').textContent = data.username;
-            document.getElementById('user-email').textContent = data.email;
-            document.getElementById('user-join-date').textContent = data.join_date;
-            document.getElementById('user-screen-limit').textContent = data.screen_limit;
-            
-            if (privacyToggle) {
-                privacyToggle.checked = data.hide_from_leaderboard;
-            }
-            
-            const expirationContainer = document.getElementById('user-expiration-container');
-            if (expiration.date && expirationContainer) {
-                expirationContainer.innerHTML = `${i18n.expiresOn} <span class="font-semibold">${expiration.date}</span>`;
-                expirationContainer.classList.remove('hidden');
-            }
+        dom.tabContainer.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
 
-            const libraryList = document.getElementById('library-list');
-            if (libraryList) {
-                if (data.libraries && data.libraries.length > 0) {
-                    libraryList.innerHTML = data.libraries.map(lib => `<span class="bg-blue-100 text-blue-800 text-sm font-medium me-2 px-2.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">${lib}</span>`).join('');
-                } else {
-                    libraryList.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${i18n.noSharedLibrary}</p>`;
-                }
-            }
-            
-            if (document.getElementById('contact-details-form')) {
-                populateCountryCodes();
-                if (data.profile_details) {
-                    document.getElementById('profileName').value = data.profile_details.name || '';
-                    document.getElementById('profileTelegram').value = data.profile_details.telegram_user || '';
-                    document.getElementById('profileDiscord').value = data.profile_details.discord_user_id || '';
-                    
-                    const fullPhone = data.profile_details.phone_number || '';
-                    const countryCodeSelect = document.getElementById('countryCode');
-                    const phoneInput = document.getElementById('profilePhone');
-                    let countryCodeFound = false;
+        dom.contentContainer.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+        
+        if (btn.dataset.tab === 'history') fetchWatchHistory();
+    });
+};
 
-                    const options = Array.from(countryCodeSelect.options);
-                    options.sort((a, b) => b.value.length - a.value.length);
+const fetchWatchHistory = async (page = 1, search = '') => {
+    const hc = document.getElementById('history-container');
+    const pc = document.getElementById('history-pagination');
+    if (!hc) return;
 
-                    for (const option of options) {
-                        if (fullPhone.startsWith(option.value)) {
-                            countryCodeSelect.value = option.value;
-                            phoneInput.value = fullPhone.substring(option.value.length);
-                            countryCodeFound = true;
-                            break;
-                        }
-                    }
-
-                    if (!countryCodeFound) {
-                        phoneInput.value = fullPhone.replace(/\D/g, '');
-                        if (countryCodeSelect.querySelector('option[value="+55"]')) {
-                            countryCodeSelect.value = '+55';
-                        }
-                    }
-                }
-                if (data.notification_settings) {
-                    if (data.notification_settings.telegram_enabled) document.getElementById('telegram-field-container').classList.remove('hidden');
-                    if (data.notification_settings.discord_enabled) document.getElementById('discord-field-container').classList.remove('hidden');
-                    if (data.notification_settings.webhook_enabled) document.getElementById('phone-field-container').classList.remove('hidden');
-                }
-                document.getElementById('saveContactDetails').addEventListener('click', handleSaveContactDetails);
-            }
-
-            const paymentHistory = await fetchAPI(urls.getPaymentHistoryUrl);
-            if (paymentHistory.success) {
-                renderPaymentHistory(paymentHistory.payments);
-            }
-            
-            const devicesResponse = await fetchAPI(urls.getAccountDevicesUrl);
-            if (devicesResponse.success) {
-                renderDeviceList(devicesResponse.devices);
-            }
-
-            if (loadingIndicator) loadingIndicator.style.display = 'none';
-            if (container) container.classList.remove('hidden');
-
-            initializeTabs();
-            initializeHistorySearch();
-            initializeRequestFilters();
-
-        } catch (error) {
-            if (loadingIndicator) loadingIndicator.style.display = 'none';
-            if (errorMessage) errorMessage.textContent = error.message;
-            if (errorContainer) errorContainer.classList.remove('hidden');
-            showToast(error.message, 'error');
-        }
-    }
+    hc.innerHTML = `<div class="flex justify-center p-8"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500"></div></div>`;
     
-    main();
-    handlePrivacyToggle();
+    try {
+        const data = await fetchAPI(`${state.urls.getWatchHistoryUrl}?page=${page}&search=${encodeURIComponent(search)}`);
+        if (!data.success) throw new Error(data.message);
+
+        if (data.history.length === 0) {
+            hc.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 py-8">${state.i18n.noHistoryFound}</p>`;
+            pc.innerHTML = '';
+            return;
+        }
+
+        hc.innerHTML = `
+            <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-800/80">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">${state.i18n.title}</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">${state.i18n.date}</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">${state.i18n.player}</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">${state.i18n.progress}</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        ${data.history.map(item => `
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <img src="${item.poster_url}" class="w-10 h-14 object-cover rounded shadow-sm mr-4" alt="Poster" onerror="this.src='https://placehold.co/80x120/1F2937/E5E7EB?text=NO+ART'">
+                                        <div>
+                                            <div class="text-sm font-bold text-gray-900 dark:text-white">${sanitizeHTML(item.title)}</div>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400">${sanitizeHTML(item.subtitle)}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${item.date}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${sanitizeHTML(item.player)}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm font-mono font-medium ${item.percent_complete === 100 ? 'text-green-500' : 'text-yellow-600'}">${item.percent_complete}%</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        pc.innerHTML = `
+            <button id="hist-prev" class="btn bg-gray-200 dark:bg-gray-700 text-xs px-3 py-1 disabled:opacity-50" ${data.pagination.current_page === 1 ? 'disabled' : ''}>Anterior</button>
+            <span class="text-sm text-gray-600 dark:text-gray-400">Pág ${data.pagination.current_page} de ${data.pagination.total_pages}</span>
+            <button id="hist-next" class="btn bg-gray-200 dark:bg-gray-700 text-xs px-3 py-1 disabled:opacity-50" ${data.pagination.current_page === data.pagination.total_pages ? 'disabled' : ''}>Próxima</button>
+        `;
+
+        const searchInput = document.getElementById('historySearchInput');
+        document.getElementById('hist-prev').onclick = () => fetchWatchHistory(data.pagination.current_page - 1, searchInput.value);
+        document.getElementById('hist-next').onclick = () => fetchWatchHistory(data.pagination.current_page + 1, searchInput.value);
+
+    } catch (error) {
+        hc.innerHTML = `<p class="text-center text-red-500 py-8">❌ ${error.message}</p>`;
+    }
+};
+
+const initGlobalEventListeners = () => {
+    // Busca do histórico (Debounce)
+    const searchInput = document.getElementById('historySearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(state.historySearchTimeout);
+            state.historySearchTimeout = setTimeout(() => {
+                fetchWatchHistory(1, sanitizeHTML(e.target.value));
+            }, 500);
+        });
+    }
+
+    // Cópia de chave PIX
+    document.getElementById('copy-pix-code')?.addEventListener('click', () => {
+        const input = document.getElementById('pix-copy-paste');
+        input.select();
+        document.execCommand('copy');
+        showToast(state.i18n.codeCopied, 'success');
+    });
+
+    // Toggle de Privacidade (Leaderboard)
+    dom.privacyToggle?.addEventListener('change', async (e) => {
+        const isHidden = e.target.checked;
+        try {
+            await fetchAPI(state.urls.updatePrivacyUrl, 'POST', { hide: isHidden });
+            showToast('Privacidade atualizada com sucesso!', 'success');
+        } catch (error) {
+            showToast(error.message, 'error');
+            e.target.checked = !isHidden; // Reverte visualmente
+        }
+    });
+};
+
+// ==========================================
+// INICIALIZAÇÃO PRINCIPAL (ORQUESTRADOR)
+// ==========================================
+
+document.addEventListener('DOMContentLoaded', async () => {
+    initializeConfigAndDOM();
+
+    try {
+        // Obtenção Paralela dos Dados Fundamentais
+        const [accountData, paymentOptions] = await Promise.all([
+            fetchAPI(state.urls.getAccountDetailsUrl),
+            fetchAPI(state.urls.getPaymentOptionsUrl)
+        ]);
+
+        state.currentUser = { 
+            username: accountData.username, 
+            is_admin: accountData.role === 'admin',
+            profile_details: accountData.profile_details
+        };
+
+        // Renderizações Sequenciais
+        renderStatusBanner(accountData, accountData.expiration_info);
+        renderProfileBaseInfo(accountData, accountData.expiration_info);
+        
+        if(paymentOptions.success) {
+            setupPaymentSection(paymentOptions.prices, paymentOptions.providers, paymentOptions.can_downgrade);
+        }
+
+        initContactForm(accountData.profile_details);
+
+        // Fetch secundários e pesados não bloqueiam a UI primária
+        fetchAPI(state.urls.getPaymentHistoryUrl).then(res => {
+            if (res.success) renderPaymentHistory(res.payments);
+        });
+
+        fetchAPI(state.urls.getAccountDevicesUrl).then(res => {
+            if (res.success) renderDeviceList(res.devices);
+        });
+
+        initTabs();
+        initGlobalEventListeners();
+
+        // Reveal Interface
+        if (dom.loadingIndicator) dom.loadingIndicator.style.display = 'none';
+        if (dom.container) dom.container.classList.remove('hidden');
+
+    } catch (error) {
+        if (dom.loadingIndicator) dom.loadingIndicator.style.display = 'none';
+        if (dom.errorMessage) dom.errorMessage.textContent = error.message;
+        if (dom.errorContainer) dom.errorContainer.classList.remove('hidden');
+        showToast(error.message, 'error');
+    }
 });
