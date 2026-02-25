@@ -7,7 +7,6 @@ from flask import current_app, url_for
 from flask_babel import gettext as _
 from requests.exceptions import ConnectTimeout, ReadTimeout, ConnectionError, RequestException
 from datetime import date, datetime, timezone, timedelta
-from tzlocal import get_localzone
 
 from .plex.connection import PlexConnectionManager
 from .plex.user_manager import PlexUserManager
@@ -18,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class PlexManager:
     """
-    Atua como uma fachada, a coordenar vários serviços relacionados com o Plex.
+    Atua como uma fachada (Facade), a coordenar vários serviços relacionados com o Plex.
     """
     def __init__(self, data_manager, tautulli_manager, notifier_manager, overseerr_manager):
         self.conn = PlexConnectionManager()
@@ -64,16 +63,16 @@ class PlexManager:
                 return {"status": "OFFLINE", "message": _("Falha na comunicação com o servidor Plex.")}
         return {"status": "OFFLINE", "message": _("Não configurado ou falha na conexão inicial.")}
 
+    # --- DELEGAÇÕES SIMPLES ---
     def get_user_by_id(self, plex_user_id):
-        """Método de fachada para obter um utilizador pelo ID."""
         return self.users.get_user_by_id(plex_user_id)
         
     def update_screen_limit(self, plex_user_id, screens):
-        """Atualiza o limite de telas para um utilizador no banco de dados."""
         profile = self.data_manager.get_user_profile(plex_user_id)
-        profile['screen_limit'] = screens
-        self.data_manager.set_user_profile(plex_user_id, profile)
-        logger.info(f"Limite de telas para o utilizador ID '{plex_user_id}' atualizado para {screens}.")
+        if profile:
+            profile['screen_limit'] = screens
+            self.data_manager.set_user_profile(plex_user_id, profile)
+            logger.info(f"Limite de telas para o utilizador ID '{plex_user_id}' atualizado para {screens}.")
 
     def block_user(self, plex_user_id, reason='manual'):
         if self.stream_manager and not self.users.stream_manager:
@@ -83,73 +82,120 @@ class PlexManager:
     def unblock_user(self, plex_user_id):
         return self.users.unblock_user(plex_user_id)
 
+    def remove_user(self, plex_user_id):
+        if self.stream_manager and not getattr(self.users, 'stream_manager', None):
+            self.users.stream_manager = self.stream_manager
+        return self.users.remove_user(plex_user_id)
+
+    # --- SESSÕES E STREAMING ---
     def get_active_sessions(self):
+        """Obtém todas as sessões ativas do Plex e formata os dados."""
         if not self.conn.plex:
             return {"success": False, "sessions": [], "stream_count": 0}
         
         try:
             all_users = self.users.get_all_plex_users() or []
             user_thumb_map = {user['id']: user['thumb'] for user in all_users}
+            
             sessions = self.conn.plex.sessions()
-            session_details = []
-            for s in sessions:
-                progress = 0
-                view_offset = getattr(s, 'viewOffset', 0)
-                duration = getattr(s, 'duration', 0)
-                if view_offset and duration and duration > 0:
-                    progress = (view_offset / duration) * 100
-                state = "stopped"
-                if s.players:
-                    player_state = getattr(s.players[0], "state", "stopped")
-                    state = {"paused": "paused", "playing": "playing", "buffering": "buffering"}.get(player_state, "stopped")
-                is_transcoding = False
-                video_decision, audio_decision = "Direct Play", "Direct Play"
-                transcode_progress = None
-                if transcode_session := getattr(s, "transcodeSession", None):
-                    if getattr(transcode_session, 'videoDecision', 'copy') == "transcode": is_transcoding, video_decision = True, "Transcode"
-                    if getattr(transcode_session, 'audioDecision', 'copy') == "transcode": is_transcoding, audio_decision = True, "Transcode"
-                    if is_transcoding and (t_progress := getattr(transcode_session, "progress", None)) is not None:
-                        try: transcode_progress = int(t_progress)
-                        except (ValueError, TypeError): pass
-
-                media = s.media[0] if s.media else None
-                video_codec = (getattr(media, "videoCodec", None) or "N/A").upper()
-                audio_codec = (getattr(media, "audioCodec", None) or "N/A").upper()
-                container = (getattr(media, "container", None) or "N/A").upper()
-                video_resolution = getattr(media, "videoResolution", "N/A")
-                try: video_resolution = f"{int(video_resolution)}p"
-                except (ValueError, TypeError): pass
-                
-                title, subtitle = s.title, str(s.year) if hasattr(s, 'year') and s.year else ''
-                if s.type == 'episode':
-                    title, subtitle = s.grandparentTitle, f"S{s.parentIndex:02d} · E{s.index:02d} - {s.title}"
-                
-                thumb_key = s.grandparentThumb if s.type == 'episode' and hasattr(s, 'grandparentThumb') and s.grandparentThumb else s.thumb
-                thumb_url = None
-                if thumb_key:
-                    b64_payload = base64.urlsafe_b64encode(f"plex:{thumb_key}".encode('utf-8')).decode('utf-8')
-                    thumb_url = url_for('image.proxy_image', source=b64_payload)
-                
-                session_details.append({
-                    "session_key": s.sessionKey, "user": s.user.title, "user_thumb": user_thumb_map.get(s.user.id),
-                    "player": s.player.title, "platform": s.player.platform, "type": s.type,
-                    "title": title, "subtitle": subtitle, "progress": round(progress, 2),
-                    "view_offset": view_offset, "duration": duration, "thumb_url": thumb_url, "state": state,
-                    "stream_details": { "video_decision": video_decision, "audio_decision": audio_decision, "video_codec": video_codec, "audio_codec": audio_codec, "video_resolution": video_resolution, "stream": "Transcode" if is_transcoding else "Direct Play", "container": container, "is_transcoding": is_transcoding, "transcode_progress": transcode_progress }
-                })
+            session_details = [self._parse_session_data(s, user_thumb_map) for s in sessions]
+            
             return {"success": True, "sessions": session_details, "stream_count": len(sessions)}
+            
         except (ConnectionError, ReadTimeout, RequestException) as e:
+            logger.warning(f"Erro de rede ao obter sessões do Plex: {e}")
             return {"success": False, "sessions": [], "stream_count": 0}
         except Exception as e:
+            logger.error(f"Erro inesperado ao parsear sessões do Plex: {e}", exc_info=True)
             return {"success": False, "sessions": [], "stream_count": 0}
 
+    def _parse_session_data(self, s, user_thumb_map):
+        """Método auxiliar para tratar os dados de uma única sessão."""
+        progress = 0
+        view_offset = getattr(s, 'viewOffset', 0)
+        duration = getattr(s, 'duration', 0)
+        
+        if view_offset and duration and duration > 0:
+            progress = (view_offset / duration) * 100
+            
+        state = "stopped"
+        if s.players:
+            player_state = getattr(s.players[0], "state", "stopped")
+            state = {"paused": "paused", "playing": "playing", "buffering": "buffering"}.get(player_state, "stopped")
+            
+        is_transcoding = False
+        video_decision, audio_decision = "Direct Play", "Direct Play"
+        transcode_progress = None
+        
+        if transcode_session := getattr(s, "transcodeSession", None):
+            if getattr(transcode_session, 'videoDecision', 'copy') == "transcode": 
+                is_transcoding, video_decision = True, "Transcode"
+            if getattr(transcode_session, 'audioDecision', 'copy') == "transcode": 
+                is_transcoding, audio_decision = True, "Transcode"
+            if is_transcoding and (t_progress := getattr(transcode_session, "progress", None)) is not None:
+                try: 
+                    transcode_progress = int(t_progress)
+                except (ValueError, TypeError): 
+                    pass
+
+        media = s.media[0] if s.media else None
+        video_codec = (getattr(media, "videoCodec", None) or "N/A").upper()
+        audio_codec = (getattr(media, "audioCodec", None) or "N/A").upper()
+        container = (getattr(media, "container", None) or "N/A").upper()
+        
+        video_resolution = getattr(media, "videoResolution", "N/A")
+        try: 
+            video_resolution = f"{int(video_resolution)}p"
+        except (ValueError, TypeError): 
+            pass
+        
+        title, subtitle = s.title, str(getattr(s, 'year', ''))
+        if s.type == 'episode':
+            title = s.grandparentTitle
+            subtitle = f"S{s.parentIndex:02d} · E{s.index:02d} - {s.title}"
+        
+        thumb_key = s.grandparentThumb if s.type == 'episode' and getattr(s, 'grandparentThumb', None) else s.thumb
+        thumb_url = None
+        
+        if thumb_key:
+            # FALLBACK DUPLO: Se o context falhar por algum motivo bizarro, monta a string manual!
+            b64_payload = base64.urlsafe_b64encode(f"plex:{thumb_key}".encode('utf-8')).decode('utf-8')
+            try:
+                thumb_url = url_for('image.proxy_image', source=b64_payload)
+            except RuntimeError:
+                thumb_url = f"/image/proxy?source={b64_payload}"
+        
+        return {
+            "session_key": s.sessionKey, 
+            "user": s.user.title, 
+            "user_thumb": user_thumb_map.get(s.user.id),
+            "player": s.player.title, 
+            "platform": s.player.platform, 
+            "type": s.type,
+            "title": title, 
+            "subtitle": subtitle, 
+            "progress": round(progress, 2),
+            "view_offset": view_offset, 
+            "duration": duration, 
+            "thumb_url": thumb_url, 
+            "state": state,
+            "stream_details": { 
+                "video_decision": video_decision, 
+                "audio_decision": audio_decision, 
+                "video_codec": video_codec, 
+                "audio_codec": audio_codec, 
+                "video_resolution": video_resolution, 
+                "stream": "Transcode" if is_transcoding else "Direct Play", 
+                "container": container, 
+                "is_transcoding": is_transcoding, 
+                "transcode_progress": transcode_progress 
+            }
+        }
+
+    # --- BIBLIOTECAS E ACESSOS ---
     def get_libraries(self): return self.conn.get_libraries()
     
     def get_all_plex_users(self, force_refresh=False): 
-        """
-        Método de fachada para obter todos os utilizadores.
-        Se 'force_refresh' for True, invalida a cache antes de buscar.
-        """
         if force_refresh:
             self.users.invalidate_user_cache()
         return self.users.get_all_plex_users()
@@ -157,16 +203,17 @@ class PlexManager:
     def get_user_libraries(self, plex_user_id): return self.users.get_user_libraries(plex_user_id)
     def update_user_libraries(self, plex_user_id, library_titles): return self.users.update_user_libraries(plex_user_id, library_titles)
     def update_all_users_libraries(self, library_titles): return self.users.update_all_users_libraries(library_titles)
-    def remove_user(self, plex_user_id): return self.users.remove_user(plex_user_id) if not self.stream_manager or not setattr(self.users, 'stream_manager', self.stream_manager) else self.users.remove_user(plex_user_id)
     def toggle_overseerr_access(self, plex_user_id, access: bool): return self.users.toggle_overseerr_access(plex_user_id, access)
+    
+    # --- CONVITES ---
     def create_invitation(self, **kwargs): return self.invites.create_invitation(**kwargs)
     def get_invitation_by_code(self, code): return self.invites.get_invitation_by_code(code)
     def claim_invitation(self, code, plex_user_account): return self.invites.claim_invitation(code, plex_user_account)
     def list_invitations(self): return self.invites.list_invitations()
     def delete_invitation(self, code): return self.invites.delete_invitation(code)
-    # ADICIONADO: Método de reativação que faltava
     def reactivate_invitation(self, code): return self.invites.reactivate_invitation(code)
 
+    # --- ASSINATURAS E RENOVAÇÕES ---
     def renew_subscription(self, plex_user_id, months_to_add, screens=None, base_mode='today', base_date_str=None, expiration_time_str=None, is_reactivation=False):
         return self.subscriptions.renew_subscription(
             plex_user_id, months_to_add, screens=screens, base_mode=base_mode, 
@@ -174,33 +221,43 @@ class PlexManager:
             is_reactivation=is_reactivation
         )
 
+    # --- NOTIFICAÇÕES E EXPIRAÇÕES ---
     def get_users_within_notification_window(self):
         from app.config import load_or_create_config
         config = load_or_create_config()
         days_to_notify = config.get("DAYS_TO_NOTIFY_EXPIRATION", 0)
-        if not days_to_notify > 0: return []
+        
+        if not days_to_notify > 0: 
+            return []
         
         user_expirations = self.data_manager.get_all_user_expirations()
-        today = datetime.now(get_localzone()).date()
+        today = datetime.now(timezone.utc).date()
         users_to_check = []
+        
         for plex_id, data in user_expirations.items():
             try:
                 if data.get('expiration_date'):
                     exp_date = datetime.fromisoformat(data['expiration_date']).date()
                     if 0 <= (exp_date - today).days < days_to_notify:
                         users_to_check.append(plex_id)
-            except (ValueError, TypeError): continue
+            except (ValueError, TypeError): 
+                continue
+                
         return users_to_check
 
     def send_expiration_notification_if_needed(self, user_info):
         plex_user_id = user_info['id']
         profile = self.data_manager.get_user_profile(plex_user_id)
+        if not profile:
+            return
         
         last_sent_str = profile.get('last_notification_sent')
         if last_sent_str:
             try:
-
                 last_sent_dt = datetime.fromisoformat(last_sent_str)
+                if last_sent_dt.tzinfo is None:
+                    last_sent_dt = last_sent_dt.replace(tzinfo=timezone.utc)
+
                 if (datetime.now(timezone.utc) - last_sent_dt) < timedelta(hours=23):
                     logger.info(f"Notificação para {user_info['username']} já foi enviada nas últimas 23 horas. A saltar.")
                     return
@@ -210,8 +267,7 @@ class PlexManager:
         expiration_date_str = profile.get('expiration_date')
         if expiration_date_str:
             try:
-                # A lógica para calcular os dias restantes permanece a mesma.
-                days_left = (datetime.fromisoformat(expiration_date_str).date() - date.today()).days
+                days_left = (datetime.fromisoformat(expiration_date_str).date() - datetime.now(timezone.utc).date()).days
                 self.notifier_manager.send_expiration_notification(user_info, days_left, profile)
                 self.data_manager.update_user_notification_timestamp(plex_user_id)
             except (ValueError, TypeError) as e:
@@ -221,24 +277,29 @@ class PlexManager:
         from app.config import load_or_create_config
         config = load_or_create_config()
         days_to_remove = config.get("DAYS_TO_REMOVE_BLOCKED_USER", 0)
-        if not days_to_remove > 0: return []
+        
+        if not days_to_remove > 0: 
+            return []
             
         blocked_users_data = self.data_manager.get_blocked_users_dict()
-        if not blocked_users_data: return []
+        if not blocked_users_data: 
+            return []
 
-        today_local = datetime.now(get_localzone()).date()
-
+        today = datetime.now(timezone.utc).date()
         users_to_remove = []
+        
         for plex_id, block_data in blocked_users_data.items():
             try:
                 blocked_at_str = block_data.get('blocked_at')
                 if not blocked_at_str:
                     continue
 
-                blocked_date_local = datetime.fromisoformat(blocked_at_str).date()
+                blocked_date = datetime.fromisoformat(blocked_at_str).date()
                 
-                if (today_local - blocked_date_local).days >= days_to_remove:
+                if (today - blocked_date).days >= days_to_remove:
                     users_to_remove.append(plex_id)
 
-            except (ValueError, TypeError, AttributeError): continue
+            except (ValueError, TypeError, AttributeError): 
+                continue
+                
         return users_to_remove
