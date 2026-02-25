@@ -1,9 +1,12 @@
 # app/services/data_manager.py
+
 import os
 import json
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
+from functools import wraps
+
 from ..extensions import db
 from ..models import (
     Invitation, BlockedUser, UserProfile, PixPayment, Notification, 
@@ -11,11 +14,29 @@ from ..models import (
 )
 from sqlalchemy import func, extract, not_
 from sqlalchemy.exc import IntegrityError
-from tzlocal import get_localzone
 from flask_babel import gettext as _, ngettext
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
+
+# --- DECORADOR PARA TRANSAÇÕES DA BASE DE DADOS ---
+def db_transaction(f):
+    """
+    Decorador para gerir transações da base de dados de forma automática.
+    Efetua o commit em caso de sucesso ou o rollback em caso de erro.
+    """
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        try:
+            result = f(*args, **kwargs)
+            db.session.commit()
+            return result
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Erro na transação da base de dados em {f.__name__}: {e}", exc_info=True)
+            raise
+    return wrapper
+
 
 class DataManager:
     """Responsável por carregar e salvar dados da aplicação usando SQLAlchemy ORM."""
@@ -23,48 +44,34 @@ class DataManager:
     def __init__(self):
         pass
 
-    # ... (Métodos de Tarefas, Cupões, Gamificação, Notificação, Auditoria mantidos sem alterações) ...
     # --- MÉTODOS DE TAREFAS ---
+    @db_transaction
     def create_task(self, name, payload):
-        try:
-            task = Task(name=name, payload=json.dumps(payload))
-            db.session.add(task)
-            db.session.commit()
-            logger.info(f"Tarefa '{name}' criada com ID: {task.id}")
-            return self._row_to_dict(task)
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Erro ao criar tarefa '{name}': {e}")
-            raise
+        task = Task(name=name, payload=json.dumps(payload))
+        db.session.add(task)
+        logger.info(f"Tarefa '{name}' criada na base de dados.")
+        return self._row_to_dict(task)
 
     def get_next_pending_task(self, name):
-        task = Task.query.filter_by(name=name, status='pending').order_by(Task.created_at).with_for_update().first()
-        return task
+        # with_for_update não deve estar num wrapper genérico, por isso lidamos com ele diretamente
+        return Task.query.filter_by(name=name, status='pending').order_by(Task.created_at).with_for_update().first()
 
+    @db_transaction
     def update_task(self, task_id, updates):
-        try:
-            task = Task.query.get(task_id)
-            if task:
-                for key, value in updates.items():
-                    if hasattr(task, key):
-                        setattr(task, key, value)
-                db.session.commit()
-                return self._row_to_dict(task)
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Erro ao atualizar a tarefa {task_id}: {e}")
+        task = Task.query.get(task_id)
+        if task:
+            for key, value in updates.items():
+                if hasattr(task, key):
+                    setattr(task, key, value)
+            return self._row_to_dict(task)
         return None
 
     # --- MÉTODOS DE CUPÕES ---
+    @db_transaction
     def create_coupon(self, details):
-        try:
-            new_coupon = Coupon(**details)
-            db.session.add(new_coupon)
-            db.session.commit()
-            return self._row_to_dict(new_coupon)
-        except Exception as e:
-            db.session.rollback()
-            raise
+        new_coupon = Coupon(**details)
+        db.session.add(new_coupon)
+        return self._row_to_dict(new_coupon)
 
     def get_coupon_by_code(self, code):
         coupon = Coupon.query.filter_by(code=code).first()
@@ -74,37 +81,34 @@ class DataManager:
         coupons = Coupon.query.order_by(Coupon.created_at.desc()).all()
         return [self._row_to_dict(c) for c in coupons]
 
+    @db_transaction
     def delete_coupon(self, coupon_id):
         coupon = Coupon.query.get(coupon_id)
         if coupon:
             db.session.delete(coupon)
-            db.session.commit()
             return True
         return False
 
+    @db_transaction
     def toggle_coupon_active(self, coupon_id):
         coupon = Coupon.query.get(coupon_id)
         if coupon:
             coupon.is_active = not coupon.is_active
-            db.session.commit()
             return self._row_to_dict(coupon)
         return None
 
+    @db_transaction
     def record_coupon_usage(self, code, plex_user_id):
         coupon = Coupon.query.filter_by(code=code).first()
         if not coupon or not plex_user_id:
             logger.warning(f"Tentativa de registar o uso de um cupão inválido ('{code}') ou para um utilizador inválido.")
             return False
         
-        try:
-            coupon.use_count += 1
-            new_usage = CouponUsage(user_plex_id=plex_user_id, coupon_id=coupon.id)
-            db.session.add(new_usage)
-            logger.info(f"Uso do cupão '{code}' registado para o utilizador ID {plex_user_id}. Contagem de uso atual: {coupon.use_count}.")
-            return True
-        except Exception as e:
-            logger.error(f"Erro de base de dados ao registar o uso do cupão '{code}' para o utilizador ID {plex_user_id}: {e}", exc_info=True)
-            raise
+        coupon.use_count += 1
+        new_usage = CouponUsage(user_plex_id=plex_user_id, coupon_id=coupon.id)
+        db.session.add(new_usage)
+        logger.info(f"Uso do cupão '{code}' registado para o utilizador ID {plex_user_id}. Contagem: {coupon.use_count}.")
+        return True
 
     def has_user_used_coupon(self, plex_user_id, code):
         usage = db.session.query(CouponUsage).join(Coupon).filter(
@@ -118,37 +122,28 @@ class DataManager:
         achievements = UnlockedAchievement.query.filter_by(user_plex_id=plex_user_id).all()
         return {ach.achievement_id for ach in achievements}
 
+    @db_transaction
     def add_unlocked_achievements(self, plex_user_id, username, achievements_to_add):
-        try:
-            for ach_data in achievements_to_add:
-                new_achievement = UnlockedAchievement(
-                    user_plex_id=plex_user_id,
-                    username=username,
-                    achievement_id=ach_data['id']
-                )
-                db.session.add(new_achievement)
-            db.session.commit()
-        except Exception as e:
-            db.session.rollback()
+        for ach_data in achievements_to_add:
+            new_achievement = UnlockedAchievement(
+                user_plex_id=plex_user_id,
+                username=username,
+                achievement_id=ach_data['id']
+            )
+            db.session.add(new_achievement)
 
     # --- MÉTODOS DE NOTIFICAÇÃO ---
+    @db_transaction
     def create_notification(self, message, category='info', link=None, user_plex_id=None):
-        from .. import extensions
-        try:
-            notification = Notification(
-                message=message, category=category, link=link,
-                user_plex_id=user_plex_id, timestamp=datetime.utcnow()
-            )
-            db.session.add(notification)
-            db.session.commit()
-            
-            if extensions.socketio:
-                logger.info(f"Emitindo evento 'new_notification' via Socket.IO para acionar a atualização da UI.")
-                extensions.socketio.emit('new_notification', namespace='/')
-            
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Erro ao criar notificação: {e}", exc_info=True)
+        """
+        Guarda a notificação. A emissão de WebSockets deve ser feita pela Rota/Serviço que chamou este método.
+        """
+        notification = Notification(
+            message=message, category=category, link=link,
+            user_plex_id=user_plex_id, timestamp=datetime.now(timezone.utc)
+        )
+        db.session.add(notification)
+        return self._row_to_dict(notification)
 
     def get_notifications(self, user_plex_id=None, limit=10, include_read=False):
         query = Notification.query.filter_by(user_plex_id=user_plex_id).order_by(Notification.timestamp.desc())
@@ -160,83 +155,56 @@ class DataManager:
     def get_unread_notification_count(self, user_plex_id=None):
         return Notification.query.filter_by(user_plex_id=user_plex_id, is_read=False).count()
 
+    @db_transaction
     def mark_all_as_read(self, user_plex_id=None):
-        try:
-            updated_rows = Notification.query.filter_by(user_plex_id=user_plex_id, is_read=False).update({'is_read': True})
-            db.session.commit()
-            return updated_rows
-        except Exception as e:
-            db.session.rollback()
-            return 0
+        updated_rows = Notification.query.filter_by(user_plex_id=user_plex_id, is_read=False).update({'is_read': True})
+        return updated_rows
             
+    @db_transaction
     def delete_all_notifications(self, user_plex_id=None):
-        try:
-            num_rows_deleted = db.session.query(Notification).filter_by(user_plex_id=user_plex_id).delete()
-            db.session.commit()
-            return num_rows_deleted
-        except Exception as e:
-            db.session.rollback()
-            return 0
+        num_rows_deleted = db.session.query(Notification).filter_by(user_plex_id=user_plex_id).delete()
+        return num_rows_deleted
 
+    @db_transaction
     def update_user_notification_timestamp(self, plex_user_id):
-        try:
-            profile = UserProfile.query.get(plex_user_id)
-            if profile:
-                profile.last_notification_sent = datetime.now(timezone.utc).isoformat()
-                db.session.commit()
-                return True
-        except Exception as e:
-            db.session.rollback()
+        profile = UserProfile.query.get(plex_user_id)
+        if profile:
+            profile.last_notification_sent = datetime.now(timezone.utc).isoformat()
+            return True
         return False
 
     # --- MÉTODOS DE AUDITORIA ---
+    @db_transaction
     def log_stream_termination(self, plex_user_id, username, media_title, platform, reason):
-        try:
-            log_entry = StreamTerminationLog(
-                user_plex_id=plex_user_id, username=username, media_title=media_title,
-                platform=platform, reason=reason, timestamp=datetime.utcnow()
-            )
-            db.session.add(log_entry)
-            db.session.commit()
-            from .. import extensions
-            if extensions.socketio:
-                extensions.socketio.emit('new_termination_log', self._row_to_dict(log_entry), namespace='/dashboard')
-        except Exception as e:
-            db.session.rollback()
+        """
+        Guarda o log de términ. A emissão via socketio deve ser tratada no serviço correspondente.
+        """
+        log_entry = StreamTerminationLog(
+            user_plex_id=plex_user_id, username=username, media_title=media_title,
+            platform=platform, reason=reason, timestamp=datetime.now(timezone.utc)
+        )
+        db.session.add(log_entry)
+        return self._row_to_dict(log_entry)
 
     def get_stream_termination_logs(self, limit=20):
         logs = StreamTerminationLog.query.order_by(StreamTerminationLog.timestamp.desc()).limit(limit).all()
         return [self._row_to_dict(log) for log in logs]
 
+    @db_transaction
     def delete_stream_termination_log(self, log_id):
-        try:
-            log_entry = StreamTerminationLog.query.get(log_id)
-            if log_entry:
-                db.session.delete(log_entry)
-                db.session.commit()
-                return True
-            return False
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Erro ao apagar o log de término {log_id}: {e}", exc_info=True)
-            raise
+        log_entry = StreamTerminationLog.query.get(log_id)
+        if log_entry:
+            db.session.delete(log_entry)
+            return True
+        return False
 
+    @db_transaction
     def clear_all_stream_termination_logs(self):
-        try:
-            num_rows_deleted = db.session.query(StreamTerminationLog).delete()
-            db.session.commit()
-            return num_rows_deleted
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Erro ao limpar todos os logs de término: {e}", exc_info=True)
-            raise
+        num_rows_deleted = db.session.query(StreamTerminationLog).delete()
+        return num_rows_deleted
 
     # --- MÉTODOS FINANCEIROS OTIMIZADOS ---
     def get_financial_summary(self, year, month, renewal_days=7):
-        """
-        Otimizado: Busca todos os pagamentos do mês em uma única consulta e agrega em memória.
-        Também otimiza a busca de utilizadores a expirar usando JOIN.
-        """
         # 1. Busca TODOS os pagamentos concluídos do mês em UMA ÚNICA consulta
         payments_in_month = db.session.query(PixPayment).filter(
             extract('year', PixPayment.created_at) == year, 
@@ -244,27 +212,23 @@ class DataManager:
             PixPayment.status == 'CONCLUIDA'
         ).order_by(PixPayment.created_at.desc()).all()
 
-        # 2. Agregação em Memória (Python) - muito mais rápido que múltiplas queries para este volume
+        # 2. Agregação em Memória
         total_revenue = 0.0
         sales_count = 0
         daily_revenue_map = defaultdict(float)
         weekly_revenue_map = defaultdict(float)
-        
         recent_transactions = []
         
         for i, payment in enumerate(payments_in_month):
             total_revenue += payment.value
             sales_count += 1
             
-            # Pega apenas os 10 primeiros para a lista de recentes
             if i < 10:
                 recent_transactions.append(self._row_to_dict(payment))
             
-            # Processamento de data seguro
             try:
                 dt = datetime.fromisoformat(payment.created_at)
                 day = dt.day
-                # Semana do ano para agrupamento (ou semana do mês simplificada)
                 week_num = int(dt.strftime('%W'))
                 
                 daily_revenue_map[day] += payment.value
@@ -272,23 +236,17 @@ class DataManager:
             except (ValueError, TypeError):
                 continue
         
-        # Formata o dicionário semanal para o gráfico (Semana X)
-        # Nota: A ordenação original pode não ser sequencial, então ordenamos pelas chaves
         sorted_weeks = sorted(weekly_revenue_map.keys())
-        weekly_revenue_dict = {}
-        for idx, week_num in enumerate(sorted_weeks):
-            weekly_revenue_dict[f"Semana {idx + 1}"] = weekly_revenue_map[week_num]
+        weekly_revenue_dict = {f"Semana {idx + 1}": weekly_revenue_map[w] for idx, w in enumerate(sorted_weeks)}
 
         # 3. Otimização de Utilizadores a Expirar (Query Única com JOIN)
-        today = datetime.now(get_localzone()).date()
+        today = datetime.now(timezone.utc).date()
         end_date = today + timedelta(days=renewal_days)
         today_str = today.isoformat()
         end_date_str = (end_date + timedelta(days=1)).isoformat()
         
-        # Em vez de buscar IDs bloqueados separadamente, usamos um LEFT JOIN/OUTER JOIN
-        # para filtrar utilizadores que NÃO têm um registo correspondente em BlockedUser.
         expiring_users_query = db.session.query(UserProfile).outerjoin(BlockedUser).filter(
-            BlockedUser.user_plex_id == None,  # Apenas utilizadores que NÃO estão na tabela BlockedUser
+            BlockedUser.user_plex_id == None, 
             UserProfile.expiration_date.isnot(None), 
             UserProfile.expiration_date != '',
             UserProfile.expiration_date >= today_str, 
@@ -323,10 +281,10 @@ class DataManager:
         try:
             payments = PixPayment.query.filter(PixPayment.status == 'CONCLUIDA', PixPayment.created_at >= start_date_iso, PixPayment.created_at <= end_date_iso).order_by(PixPayment.created_at.asc()).all()
             return [self._row_to_dict(p) for p in payments]
-        except Exception: return []
+        except Exception: 
+            return []
 
     def get_latest_completed_payment(self, plex_user_id):
-        """Busca o pagamento concluído mais recente para um utilizador."""
         payment = PixPayment.query.filter_by(
             user_plex_id=plex_user_id,
             status='CONCLUIDA'
@@ -335,55 +293,19 @@ class DataManager:
         
     # --- MÉTODOS para Perfis de Utilizador ---
     def get_user_profile(self, plex_user_id):
+        """
+        Retorna o perfil da base de dados. Se não existir, retorna None.
+        NOTA: A criação do perfil se ele não existir deve agora ser tratada no user_manager.py ou nas rotas.
+        """
         profile = UserProfile.query.get(plex_user_id)
-        if profile:
-            return self._row_to_dict(profile)
-        
-        from ..extensions import plex_manager
-        user_info = plex_manager.get_user_by_id(plex_user_id)
-        if user_info:
-            logger.info(f"Perfil de utilizador para '{user_info['username']}' (ID: {plex_user_id}) não encontrado. A criar um perfil básico.")
-            new_profile_data = {
-                'username': user_info['username'],
-                'email': user_info.get('email'),
-                'screen_limit': 0,
-                'allow_downloads': False,
-                'overseerr_access': False,
-                'hide_from_leaderboard': False
-            }
-            self.set_user_profile(plex_user_id, new_profile_data)
-            profile = UserProfile.query.get(plex_user_id)
-            return self._row_to_dict(profile)
-            
-        return {}
+        return self._row_to_dict(profile) if profile else None
 
     def get_user_profile_by_username(self, username):
+        """Retorna o perfil pelo username. Retorna None se não existir."""
         profile = UserProfile.query.filter(func.lower(UserProfile.username) == username.lower()).first()
-        if profile:
-            return self._row_to_dict(profile)
-
-        from ..extensions import plex_manager
-        all_users = plex_manager.get_all_plex_users()
-        if all_users:
-            user_info = next((u for u in all_users if u['username'].lower() == username.lower()), None)
-            if user_info:
-                plex_user_id = user_info['id']
-                logger.info(f"Perfil de utilizador para '{username}' (ID: {plex_user_id}) não encontrado. A criar um perfil básico.")
-                new_profile_data = {
-                    'username': user_info['username'],
-                    'email': user_info.get('email'),
-                    'screen_limit': 0,
-                    'allow_downloads': False,
-                    'overseerr_access': False,
-                    'hide_from_leaderboard': False
-                }
-                self.set_user_profile(plex_user_id, new_profile_data)
-                profile = UserProfile.query.get(plex_user_id)
-                return self._row_to_dict(profile)
-        return {}
+        return self._row_to_dict(profile) if profile else None
     
     def get_user_profile_by_telegram(self, telegram_id):
-        """Busca o perfil do usuário pelo Telegram ID."""
         profile = UserProfile.query.filter_by(telegram_user=telegram_id).first()
         return self._row_to_dict(profile) if profile else None
 
@@ -395,6 +317,7 @@ class DataManager:
         except Exception: return {}
 
     def get_all_user_profiles(self):
+        # NOTA: Considere adicionar paginação no futuro se tiver +10k utilizadores
         profiles = UserProfile.query.all()
         return [self._row_to_dict(p) for p in profiles]
 
@@ -405,23 +328,28 @@ class DataManager:
             return {p.plex_user_id: self._row_to_dict(p) for p in profiles}
         except Exception: return {}
 
+    @db_transaction
     def set_user_profile(self, plex_user_id, profile_data):
         profile = UserProfile.query.get(plex_user_id)
         if not profile:
             profile = UserProfile(plex_user_id=plex_user_id)
         if not profile.payment_token:
             profile.payment_token = secrets.token_urlsafe(16)
+        
         for key, value in profile_data.items():
             if hasattr(profile, key):
                 setattr(profile, key, value)
+        
         db.session.add(profile)
-        db.session.commit()
+        return self._row_to_dict(profile)
     
+    @db_transaction
     def delete_user_profile(self, plex_user_id):
         profile = UserProfile.query.get(plex_user_id)
         if profile:
             db.session.delete(profile)
-            db.session.commit()
+            return True
+        return False
 
     def get_all_user_expirations(self):
         profiles = UserProfile.query.filter(UserProfile.expiration_date.isnot(None), UserProfile.expiration_date != '').all()
@@ -433,29 +361,44 @@ class DataManager:
 
     # --- MÉTODOS de Pagamento PIX ---
     def get_and_lock_pix_payment(self, txid):
+        # Não usa o wrapper db_transaction por causa do with_for_update
         try:
             return self._row_to_dict(db.session.query(PixPayment).filter_by(txid=txid).with_for_update().first())
-        except Exception: raise
+        except Exception: 
+            db.session.rollback()
+            raise
 
+    @db_transaction
     def create_pix_payment(self, txid, plex_user_id, username, value, provider, screens, external_reference, coupon_code=None):
         payment = PixPayment.query.get(txid) or PixPayment(txid=txid)
-        payment.user_plex_id, payment.username, payment.value, payment.provider, payment.created_at, payment.status, payment.screens, payment.external_reference, payment.coupon_code = \
-            plex_user_id, username, value, provider, datetime.now().isoformat(), 'ATIVA', screens, external_reference, coupon_code
+        payment.user_plex_id = plex_user_id
+        payment.username = username
+        payment.value = value
+        payment.provider = provider
+        payment.created_at = datetime.now(timezone.utc).isoformat()
+        payment.status = 'ATIVA'
+        payment.screens = screens
+        payment.external_reference = external_reference
+        payment.coupon_code = coupon_code
         db.session.add(payment)
-        db.session.commit()
+        return self._row_to_dict(payment)
 
     def get_pix_payment(self, txid):
         return self._row_to_dict(PixPayment.query.get(txid))
 
+    @db_transaction
     def update_pix_payment_status(self, txid, status):
         payment = PixPayment.query.get(txid)
-        if payment: payment.status = status
+        if payment: 
+            payment.status = status
+            return True
+        return False
 
     def add_manual_payment(self, plex_user_id, username, value, description, payment_date_str):
         txid = f"manual_{secrets.token_hex(12)}"
         payment = PixPayment(txid=txid, user_plex_id=plex_user_id, username=username, value=float(value), status='CONCLUIDA', provider='Manual', description=description, created_at=payment_date_str, screens=0, external_reference=None)
         db.session.add(payment)
-        # O commit agora é da responsabilidade do chamador
+        # O commit continua a ser da responsabilidade do chamador como indicado originalmente
         return self._row_to_dict(payment)
 
     def get_payments_by_user(self, plex_user_id):
@@ -463,54 +406,35 @@ class DataManager:
             return [self._row_to_dict(p) for p in PixPayment.query.filter_by(user_plex_id=plex_user_id, status='CONCLUIDA').order_by(PixPayment.created_at.desc()).all()]
         except Exception: return []
 
+    @db_transaction
     def delete_pix_payment(self, txid):
         payment = PixPayment.query.get(txid)
         if payment:
-            try:
-                db.session.delete(payment)
-                db.session.commit()
-                return True
-            except Exception:
-                db.session.rollback()
-                raise
+            db.session.delete(payment)
+            return True
         return False
 
     # --- MÉTODOS de Limpeza de Dados ---
+    @db_transaction
     def delete_old_pending_payments(self, days_old):
         if not isinstance(days_old, int) or days_old <= 0: return 0
-        try:
-            cutoff_date_str = (datetime.now(timezone.utc) - timedelta(days=days_old)).isoformat()
-            num_deleted = PixPayment.query.filter(PixPayment.status != 'CONCLUIDA', PixPayment.created_at < cutoff_date_str).delete(synchronize_session=False)
-            db.session.commit()
-            if num_deleted > 0: logger.info(f"{num_deleted} cobranças PIX pendentes com mais de {days_old} dias foram apagadas.")
-            return num_deleted
-        except Exception:
-            db.session.rollback()
-            return 0
+        cutoff_date_str = (datetime.now(timezone.utc) - timedelta(days=days_old)).isoformat()
+        num_deleted = PixPayment.query.filter(PixPayment.status != 'CONCLUIDA', PixPayment.created_at < cutoff_date_str).delete(synchronize_session=False)
+        if num_deleted > 0: 
+            logger.info(f"{num_deleted} cobranças PIX pendentes com mais de {days_old} dias foram apagadas.")
+        return num_deleted
 
+    @db_transaction
     def delete_old_short_links(self, days_old):
-        """Apaga links curtos mais antigos que o número de dias especificado."""
-        if not isinstance(days_old, int) or days_old <= 0:
-            return 0
-        try:
-            # Define a data de corte em UTC
-            cutoff_date_utc = datetime.now(timezone.utc) - timedelta(days=days_old)
-            
-            # Apaga os links onde created_at é mais antigo que a data de corte
-            num_deleted = ShortLink.query.filter(
-                ShortLink.created_at < cutoff_date_utc
-            ).delete(synchronize_session=False)
-            
-            db.session.commit()
-            if num_deleted > 0:
-                logger.info(f"{num_deleted} links curtos com mais de {days_old} dias foram apagados.")
-            return num_deleted
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Erro ao apagar links curtos antigos: {e}", exc_info=True)
-            return 0
+        if not isinstance(days_old, int) or days_old <= 0: return 0
+        cutoff_date_utc = datetime.now(timezone.utc) - timedelta(days=days_old)
+        num_deleted = ShortLink.query.filter(ShortLink.created_at < cutoff_date_utc).delete(synchronize_session=False)
+        if num_deleted > 0:
+            logger.info(f"{num_deleted} links curtos com mais de {days_old} dias foram apagados.")
+        return num_deleted
 
     # --- MÉTODOS de Convites ---
+    @db_transaction
     def add_invitation(self, code, details):
         invitation = Invitation(
             code=code, 
@@ -524,10 +448,10 @@ class DataManager:
             max_uses=details.get('max_uses', 1), 
             use_count=details.get('use_count', 0), 
             claimed_by_users=json.dumps(details.get('claimed_by_users', [])),
-            telegram_id=details.get('telegram_id') # Novo campo
+            telegram_id=details.get('telegram_id')
         )
         db.session.add(invitation)
-        db.session.commit()
+        return self._row_to_dict(invitation)
 
     def get_invitation(self, code):
         invitation = Invitation.query.get(code)
@@ -538,18 +462,11 @@ class DataManager:
         return [self._row_to_dict(invite, process_json=True) for invite in invitations]
 
     def get_all_invitations(self):
-        """
-        Retorna todos os convites, sem filtrar por uso, ordenados por data de criação decrescente.
-        Útil para histórico e gestão.
-        """
         invitations = Invitation.query.order_by(Invitation.created_at.desc()).all()
         return [self._row_to_dict(invite, process_json=True) for invite in invitations]
 
     def check_telegram_id_exists_in_invites(self, telegram_id):
-        """Verifica se existe algum convite pendente com este telegram_id."""
-        if not telegram_id:
-            return False
-        # Verifica apenas convites que ainda não expiraram e não estão esgotados
+        if not telegram_id: return False
         now_str = datetime.now(timezone.utc).isoformat()
         invitation = Invitation.query.filter(
             Invitation.telegram_id == telegram_id,
@@ -559,44 +476,41 @@ class DataManager:
         ).first()
         return invitation is not None
 
+    @db_transaction
     def increment_invitation_use(self, code, username):
         invitation = Invitation.query.get(code)
         if invitation:
             invitation.use_count += 1
             invitation.claimed_at = datetime.now(timezone.utc).isoformat()
             claimed_users = json.loads(invitation.claimed_by_users or '[]')
-            if username not in claimed_users: claimed_users.append(username)
+            if username not in claimed_users: 
+                claimed_users.append(username)
             invitation.claimed_by_users = json.dumps(claimed_users)
-            db.session.commit()
+            return True
+        return False
             
-    # **NOVO MÉTODO**: Reseta o uso de um convite para reativá-lo.
+    @db_transaction
     def reset_invitation_usage(self, code):
-        """
-        Reseta a contagem de uso de um convite para zero e remove a expiração se estiver vencida,
-        permitindo que o convite seja reutilizado.
-        """
         invitation = Invitation.query.get(code)
         if invitation:
             invitation.use_count = 0
-            # Se a data de expiração já passou, removemos para que o convite fique válido indefinidamente
-            # ou até ser configurado novamente. Isso garante que ele seja "reativo".
             if invitation.expires_at:
                 try:
                     if datetime.fromisoformat(invitation.expires_at) < datetime.now(timezone.utc):
                         invitation.expires_at = None
                 except (ValueError, TypeError):
                      invitation.expires_at = None
-            
-            db.session.commit()
             logger.info(f"Convite '{code}' reativado manualmente (contagem resetada).")
             return True
         return False
     
+    @db_transaction
     def delete_invitation(self, code):
         invitation = Invitation.query.get(code)
         if invitation:
             db.session.delete(invitation)
-            db.session.commit()
+            return True
+        return False
 
     def get_user_claim_date(self, plex_user_id):
         profile = UserProfile.query.get(plex_user_id)
@@ -614,32 +528,25 @@ class DataManager:
     def get_blocked_users_dict(self):
         return {u.user_plex_id: self._row_to_dict(u) for u in BlockedUser.query.all()}
 
+    @db_transaction
     def add_blocked_user(self, plex_user_id, username, reason='manual'):
-        """Adiciona ou atualiza um utilizador na lista de bloqueados de forma segura."""
-        try:
-            user = BlockedUser.query.get(plex_user_id)
-            if not user:
-                user = BlockedUser(user_plex_id=plex_user_id, username=username)
+        user = BlockedUser.query.get(plex_user_id)
+        if not user:
+            user = BlockedUser(user_plex_id=plex_user_id, username=username)
 
-            user.blocked_at = datetime.now(get_localzone()).isoformat()
-            
-            user.block_reason = reason
-            db.session.add(user)
-            db.session.commit()
-            logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) adicionado/atualizado na lista de bloqueados com o motivo '{reason}'.")
-        except IntegrityError: 
-            db.session.rollback()
-            logger.error(f"Falha de integridade ao bloquear o utilizador '{username}'.")
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Erro inesperado ao adicionar utilizador bloqueado '{username}': {e}", exc_info=True)
-            raise
+        user.blocked_at = datetime.now(timezone.utc).isoformat()
+        user.block_reason = reason
+        db.session.add(user)
+        logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) adicionado/atualizado na lista de bloqueados.")
+        return self._row_to_dict(user)
 
+    @db_transaction
     def remove_blocked_user(self, plex_user_id):
         user = BlockedUser.query.get(plex_user_id)
         if user:
             db.session.delete(user)
-            db.session.commit()
+            return True
+        return False
             
     def _row_to_dict(self, row, process_json=False):
         if not row: return None
