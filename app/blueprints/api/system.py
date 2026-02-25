@@ -9,7 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 from datetime import datetime
 
-# ADICIONADO: Importa 'limiter' das extensões
+# Importa 'limiter' das extensões
 from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter
 from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
@@ -21,7 +21,7 @@ system_api_bp = Blueprint('system_api', __name__)
 @system_api_bp.route('/logs')
 @login_required
 @admin_required
-@limiter.exempt # ADICIONADO: Isenta a rota de logs do rate limit para permitir atualizações em tempo real
+@limiter.exempt # Isenta a rota de logs do rate limit para permitir atualizações em tempo real
 def get_logs():
     try:
         log_file = current_app.config.get('LOG_FILE', 'app.log')
@@ -116,10 +116,9 @@ def get_system_health():
 @login_required
 @admin_required
 def get_termination_logs():
-    """NOVO: Endpoint para obter os logs de términos de sessões."""
+    """Endpoint para obter os logs de términos de sessões."""
     try:
         logs = data_manager.get_stream_termination_logs(limit=20)
-        # CORREÇÃO: Formata o timestamp para um formato ISO 8601 consistente
         for log in logs:
             if isinstance(log.get('timestamp'), datetime):
                 log['timestamp'] = log['timestamp'].strftime('%Y-%m-%dT%H:%M:%S')
@@ -206,12 +205,20 @@ def api_settings():
         for field in fields_to_update:
             if field in new_data:
                 value = new_data[field]
+                
+                # --- CORREÇÃO CRÍTICA AQUI ---
+                # Ignora dicionários mascarados do frontend para que não corrompam os dados verdadeiros
+                if isinstance(value, dict) and "is_set" in value:
+                    continue
+                # ------------------------------
+
                 if field in numeric_fields: config_to_update[field] = int(value) if value else 0
                 elif isinstance(value, bool): config_to_update[field] = value
                 else: config_to_update[field] = value
         if new_data.get('plex_token') and new_data.get('plex_url'):
             config_to_update['PLEX_TOKEN'] = new_data['plex_token']
             config_to_update['PLEX_URL'] = new_data['plex_url']
+            
         save_app_config(config_to_update)
         app = current_app._get_current_object()
         app.config.update(config_to_update)
@@ -219,7 +226,11 @@ def api_settings():
         efi_manager.reload_credentials()
         mercado_pago_manager.reload_credentials()
         tautulli_manager.reload_credentials()
-        overseerr_manager.reload_config()
+        
+        if hasattr(overseerr_manager, 'reload_credentials'):
+            overseerr_manager.reload_credentials()
+        elif hasattr(overseerr_manager, 'reload_config'):
+            overseerr_manager.reload_config()
 
         if config_to_update.get("EFI_ENABLED"):
             efi_manager.configure_webhook()
@@ -263,27 +274,22 @@ def api_settings():
     # GET Request Logic
     config_to_send = load_or_create_config()
 
-    # Define secret keys that should not be sent to the client
     sensitive_keys = [
         'SECRET_KEY', 'PLEX_TOKEN', 'INTERNAL_TRIGGER_KEY',
         'TELEGRAM_BOT_TOKEN', 'TAUTULLI_API_KEY', 'EFI_CLIENT_SECRET',
         'MERCADOPAGO_ACCESS_TOKEN', 'BPIX_AUTH_TOKEN', 'OVERSEERR_API_KEY'
     ]
 
-    # Process sensitive keys to return only their length if they are set
     for key in sensitive_keys:
         if key in config_to_send and config_to_send[key]:
-            # Replace the secret with an object containing its length
             config_to_send[key] = {
                 "is_set": True,
                 "length": len(config_to_send[key])
             }
         else:
-            # Ensure the key exists but is marked as not set
             if key in config_to_send:
                 config_to_send[key] = { "is_set": False, "length": 0 }
 
-    # Pop keys that should absolutely never be sent, even as length
     config_to_send.pop('SECRET_KEY', None)
     config_to_send.pop('INTERNAL_TRIGGER_KEY', None)
 
@@ -341,11 +347,17 @@ def save_setup():
     config.update(normalized_data)
     config['IS_CONFIGURED'] = True
     save_app_config(config)
+    
+    # RECARREGAMENTO SEGURO
     tautulli_manager.reload_credentials()
-    overseerr_manager.reload_config()
-    efi_manager.reload_credentials() # Recarrega as credenciais da Efí
+    efi_manager.reload_credentials() 
+    
+    # Correção Específica para Overseerr
+    if hasattr(overseerr_manager, 'reload_credentials'):
+        overseerr_manager.reload_credentials()
+    elif hasattr(overseerr_manager, 'reload_config'):
+        overseerr_manager.reload_config()
 
-    # **MELHORIA: Tenta configurar o webhook da Efí após o setup inicial**
     if config.get("EFI_ENABLED"):
         efi_manager.configure_webhook()
 
@@ -358,6 +370,7 @@ def save_setup():
         session.pop('plex_token', None)
         session.pop('plex_username', None)
         return jsonify({"success": True, "redirect_url": url_for('main.index')})
+    
     config['IS_CONFIGURED'] = False
     save_app_config(config)
     return jsonify({"success": False, "message": _("Configuração salva, mas falha ao conectar: %(message)s", message=message)})
@@ -375,10 +388,8 @@ def test_tautulli_connection():
     if not url:
         return jsonify({'success': False, 'message': _('URL é obrigatória.')}), 400
 
-    # Lógica para usar a chave guardada se a chave recebida for um placeholder
     is_placeholder = all(char == '*' for char in api_key) if api_key else False
     if is_placeholder:
-        # Tenta usar a chave da configuração
         api_key = config.get('TAUTULLI_API_KEY')
         logger.info("Chave de API do Tautulli recebida como placeholder. A usar a chave guardada na configuração para o teste.")
 
@@ -417,17 +428,14 @@ def bulk_notify():
     data = request.get_json()
     message = data.get('message')
     target_audience = data.get('target_audience', 'active')
-    # Novo campo: Lista de IDs de utilizadores específicos
     target_user_ids = data.get('user_ids')
 
     if not message:
         return jsonify({"success": False, "message": _("A mensagem não pode estar vazia.")}), 400
 
-    # Validação adicional se o target for específico
     if target_audience == 'specific':
         if not target_user_ids or not isinstance(target_user_ids, list):
             return jsonify({"success": False, "message": _("Lista de IDs de utilizadores inválida ou ausente para o público 'specific'.")}), 400
-        # Garante que os IDs são inteiros
         try:
             target_user_ids = [int(uid) for uid in target_user_ids]
         except (ValueError, TypeError):
@@ -445,7 +453,7 @@ def bulk_notify():
     task_payload = {
         'message': message,
         'target_audience': target_audience,
-        'user_ids': target_user_ids if target_audience == 'specific' else None # Inclui IDs apenas se relevante
+        'user_ids': target_user_ids if target_audience == 'specific' else None 
     }
     task = data_manager.create_task('bulk_notification', task_payload)
 
