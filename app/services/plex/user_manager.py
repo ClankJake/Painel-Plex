@@ -4,13 +4,13 @@ import logging
 import json
 import base64
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from flask import current_app, url_for
+from flask_babel import gettext as _
 from plexapi.exceptions import NotFound
 from requests.exceptions import RequestException
-from flask_babel import gettext as _
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Lock
-from flask import current_app, url_for
-from urllib.parse import urlparse
 from apscheduler.jobstores.base import JobLookupError
 
 from ...extensions import cache
@@ -35,31 +35,26 @@ class PlexUserManager:
 
     def get_user_by_id(self, plex_user_id):
         """Busca um único utilizador pelo seu ID do Plex, utilizando a cache."""
-
         all_users = self.get_all_plex_users()
-
-        if all_users is None:
+        if not all_users:
             return None
         return next((u for u in all_users if u['id'] == plex_user_id), None)
 
     def _process_single_user(self, user, server_identifier):
         """
-        Processa um único objeto de usuário do Plex.
-        
-        ATENÇÃO: Executado em thread separada. NÃO usar url_for() ou current_app aqui.
-        Retorna apenas dados brutos e payloads para a thread principal processar.
+        Processa um único objeto de utilizador do Plex.
+        Executado em thread separada. NÃO usar url_for() ou current_app aqui.
         """
-        # Verifica se o usuário tem acesso ao servidor atual
         if any(s.machineIdentifier == server_identifier for s in user.servers):
             thumb_payload = None
             if user.thumb:
                 try:
                     parsed_thumb = urlparse(user.thumb)
                     path_with_query = parsed_thumb.path
-                    if parsed_thumb.query: path_with_query += "?" + parsed_thumb.query
+                    if parsed_thumb.query: 
+                        path_with_query += "?" + parsed_thumb.query
                     
                     payload_str = f"plex_account:{path_with_query}"
-                    # Retorna apenas o payload base64, não a URL completa
                     thumb_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
                 except Exception as e:
                     logger.error(f"Falha ao processar o payload do avatar para o utilizador {user.username}: {e}")
@@ -68,8 +63,8 @@ class PlexUserManager:
                 'username': user.username, 
                 'email': user.email, 
                 'id': user.id, 
-                'thumb_payload': thumb_payload,  # Passa o payload, a URL será gerada na main thread
-                'thumb': None, # Placeholder
+                'thumb_payload': thumb_payload, 
+                'thumb': None, # Placeholder preenchido na main thread
                 'servers': [s.name for s in user.servers]
             }
         return None
@@ -88,45 +83,42 @@ class PlexUserManager:
             all_friends = self.conn.account.users()
             users_with_access = []
 
-            # Otimização: Usa threads para processar a lista (chamadas de rede/lazy loading do PlexAPI)
+            # Otimização: Usa threads para processar a lista (PlexAPI faz lazy loading na rede)
             with ThreadPoolExecutor(max_workers=10) as executor:
-                # Submete tarefas
-                futures = [
-                    executor.submit(self._process_single_user, user, server_identifier)
-                    for user in all_friends
-                ]
+                futures = [executor.submit(self._process_single_user, user, server_identifier) for user in all_friends]
                 
                 for future in as_completed(futures):
                     try:
                         result = future.result()
                         if result:
-                            # AQUI estamos na thread principal com contexto de requisição.
-                            # Geramos a URL final agora.
+                            # AQUI estamos na thread principal com contexto de requisição
                             if result.get('thumb_payload'):
-                                result['thumb'] = url_for('image.proxy_image', source=result['thumb_payload'])
+                                try:
+                                    result['thumb'] = url_for('image.proxy_image', source=result['thumb_payload'])
+                                except RuntimeError:
+                                    pass # Ignora erro se estiver a rodar num Job (sem app context)
                             
-                            # Remove a chave temporária para limpar o objeto final
                             result.pop('thumb_payload', None)
                             users_with_access.append(result)
                     except Exception as exc:
-                        logger.error(f"Erro ao processar usuário em thread: {exc}")
+                        logger.error(f"Erro ao processar utilizador em thread: {exc}")
 
             # Processa o administrador separadamente
             if self.conn.account:
                 admin_id = self.conn.account.id
-                is_admin_in_list = any(u['id'] == admin_id for u in users_with_access)
-                
-                if not is_admin_in_list:
+                if not any(u['id'] == admin_id for u in users_with_access):
                     admin_thumb_url = None
                     if self.conn.account.thumb:
                         try:
                             parsed_thumb = urlparse(self.conn.account.thumb)
-                            path_with_query = parsed_thumb.path
-                            if parsed_thumb.query: path_with_query += "?" + parsed_thumb.query
-                            
+                            path_with_query = parsed_thumb.path + ("?" + parsed_thumb.query if parsed_thumb.query else "")
                             payload_str = f"plex_account:{path_with_query}"
                             b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                            admin_thumb_url = url_for('image.proxy_image', source=b64_payload)
+                            
+                            try:
+                                admin_thumb_url = url_for('image.proxy_image', source=b64_payload)
+                            except RuntimeError:
+                                pass # Ignora erro se sem app context
                         except Exception as e:
                             logger.error(f"Falha ao processar a URL do avatar para o administrador: {e}")
 
@@ -139,6 +131,7 @@ class PlexUserManager:
                     })
 
             return users_with_access
+
         except RequestException as e:
             logger.error(_("Erro de rede ao obter utilizadores do Plex: %(error)s", error=e))
             self.invalidate_user_cache()
@@ -153,18 +146,17 @@ class PlexUserManager:
         if not user:
             return {"success": False, "message": _("Utilizador não encontrado.")}
         
-        email = user['email']
-        username = user['username']
+        email = user.get('email')
 
-        if not self.conn.account:
+        if not self.conn.account or not self.conn.plex:
             return {"success": False, "message": _("A conta Plex não está configurada.")}
 
+        # O Administrador tem sempre acesso a tudo
         if self.conn.account.id == plex_user_id:
-            all_libraries = [sec.title for sec in self.conn.plex.library.sections()]
-            return {"success": True, "libraries": all_libraries}
+            return {"success": True, "libraries": [sec.title for sec in self.conn.plex.library.sections()]}
 
         try:
-            plex_user_obj = self.conn.account.user(email)
+            # 1. Tentar ler da base de dados local (cache rápida)
             profile = self.data_manager.get_user_profile(plex_user_id)
             if profile and profile.get('libraries'):
                 try:
@@ -172,12 +164,18 @@ class PlexUserManager:
                 except (json.JSONDecodeError, TypeError):
                     pass
 
+            # 2. Se não estiver na BD, busca na API do Plex
+            plex_user_obj = self.conn.account.user(email)
             server_resource = next((s for s in plex_user_obj.servers if s.machineIdentifier == self.conn.plex.machineIdentifier), None)
             library_titles = [sec.title for sec in server_resource.sections()] if server_resource else []
 
-            profile['libraries'] = json.dumps(library_titles)
-            self.data_manager.set_user_profile(plex_user_id, profile)
+            # Atualiza localmente para futuras requisições
+            if profile:
+                profile['libraries'] = json.dumps(library_titles)
+                self.data_manager.set_user_profile(plex_user_id, profile)
+                
             return {"success": True, "libraries": library_titles}
+
         except NotFound:
             return {"success": False, "message": _("Utilizador com o email %(email)s não encontrado na sua conta Plex.", email=email)}
         except Exception as e:
@@ -202,46 +200,42 @@ class PlexUserManager:
             self.conn.account.updateFriend(user=user_to_update, server=self.conn.plex, sections=libraries_to_share)
             
             profile = self.data_manager.get_user_profile(plex_user_id)
-            profile['libraries'] = json.dumps(library_titles)
-            self.data_manager.set_user_profile(plex_user_id, profile)
+            if profile:
+                profile['libraries'] = json.dumps(library_titles)
+                self.data_manager.set_user_profile(plex_user_id, profile)
+                
             return {"success": True, "message": _("Bibliotecas de %(username)s atualizadas com sucesso.", username=user['username'])}
         except Exception as e:
             logger.error(_("Erro ao atualizar bibliotecas para %(email)s: %(error)s", email=user['email'], error=e), exc_info=True)
             return {"success": False, "message": str(e)}
 
     def update_all_users_libraries(self, library_titles):
-        """
-        Atualiza as bibliotecas para TODOS os utilizadores com acesso ao servidor.
-        """
+        """Atualiza as bibliotecas para TODOS os utilizadores com acesso ao servidor."""
         all_users = self.get_all_plex_users()
         if not all_users:
-            return {"success": False, "message": _("Não foi possível obter a lista de usuário do Plex.")}
+            return {"success": False, "message": _("Não foi possível obter a lista de utilizadores do Plex.")}
 
         for user_data in all_users:
             self.update_user_libraries(user_data['id'], library_titles)
 
-        return {"success": True, "message": _("Bibliotecas atualizadas para todos os usuário.")}
+        return {"success": True, "message": _("Bibliotecas atualizadas para todos os utilizadores.")}
 
     def block_user(self, plex_user_id, reason='manual'):
         user_to_block = self.get_user_by_id(plex_user_id)
         if not user_to_block:
             return {"success": False, "message": _("Utilizador não encontrado.")}
 
-        if not self.conn.account:
-            return {"success": False, "message": _("A conta Plex não está configurada.")}
-
         try:
             username = user_to_block['username']
             self.data_manager.add_blocked_user(plex_user_id, username, reason=reason)
 
             if self.stream_manager:
-                # Lógica para obter a mensagem de bloqueio
+                reason_message = "O seu acesso ao servidor foi bloqueado pelo administrador."
                 if reason == 'expired':
                     reason_message = "A sua subscrição expirou. Por favor, renove para continuar."
                 elif reason == 'trial_expired':
                     reason_message = "O seu período de teste terminou. Renove para continuar."
-                else:
-                    reason_message = "O seu acesso ao servidor foi bloqueado pelo administrador."
+                
                 self.stream_manager.block_user_sessions(plex_user_id, reason=reason_message)
             
             return {"success": True, "message": _("Utilizador %(username)s bloqueado com sucesso.", username=username)}
@@ -261,76 +255,92 @@ class PlexUserManager:
             logger.error(_("Erro ao desbloquear o utilizador %(username)s: %(error)s", username=user_to_unblock['username'], error=e), exc_info=True)
             return {"success": False, "message": str(e)}
 
+    # --- LÓGICA DE REMOÇÃO REFATORADA (SRP) ---
     def remove_user(self, plex_user_id):
+        """
+        Desativa o utilizador, limpa os seus streams, remove-o do Overseerr e elimina a amizade no Plex.
+        """
         profile = self.data_manager.get_user_profile(plex_user_id)
         if not profile:
             return {"success": False, "message": _("Utilizador não encontrado na base de dados local.")}
 
-        email = profile.get('email')
-        username = profile.get('username')
-
         if not self.conn.account:
             return {"success": False, "message": _("O Plex não está configurado.")}
-        try:
-            from app.extensions import scheduler
 
+        username = profile.get('username')
+        email = profile.get('email')
+
+        try:
+            # 1. Encerrar streams ativos
             if self.stream_manager:
                 self.stream_manager.block_user_sessions(plex_user_id, "A sua conta está a ser removida do servidor.")
 
+            # 2. Remover do Overseerr
             if profile.get('overseerr_access') and email:
                 self.overseerr_manager.remove_user(email)
 
-            # CORREÇÃO: Tenta remover pelo ID primeiro, depois fallback para email/username
-            user_removed = False
-            try:
-                # 1. Procura pelo ID na lista de amigos
-                all_friends = self.conn.account.users()
-                friend_to_remove = next((u for u in all_friends if str(u.id) == str(plex_user_id)), None)
-                
-                if friend_to_remove:
-                    self.conn.account.removeFriend(friend_to_remove)
-                    logger.info(f"Utilizador '{friend_to_remove.username}' (ID: {plex_user_id}) removido com sucesso via ID.")
-                    user_removed = True
-                else:
-                    logger.warning(f"Utilizador ID {plex_user_id} não encontrado na lista de amigos. Tentando fallback para identificador.")
-            except Exception as e:
-                 logger.error(f"Erro ao tentar remover utilizador por ID: {e}")
+            # 3. Remover a partilha (amizade) do servidor Plex
+            self._remove_plex_friend(plex_user_id, email, username)
 
-            # 2. Fallback: Tenta remover por email ou username se não encontrou pelo ID
-            if not user_removed:
-                identifier = email or username
-                if identifier:
-                    try:
-                        # Alguns métodos da lib aceitam string diretamente ou requerem busca prévia
-                        self.conn.account.removeFriend(identifier)
-                        logger.info(f"Acesso ao Plex para '{username}' removido com sucesso via identificador.")
-                    except NotFound:
-                        logger.warning(f"Utilizador '{username}' já não era amigo na conta Plex (NotFound no fallback).")
-                    except Exception as e:
-                        logger.error(f"Erro ao tentar remover '{username}' por identificador: {e}")
-                else:
-                    logger.warning(f"Não foi possível tentar remover '{username}' do Plex por falta de email/username e ID falhou.")
+            # 4. Limpar perfil local e remover tarefas agendadas
+            self._deactivate_user_profile(plex_user_id, profile)
 
-            profile['status'] = 'inactive'
-            profile['expiration_date'] = None
+            return {
+                "success": True, 
+                "message": _("Utilizador %(username)s desativado e acesso removido com sucesso.", username=username), 
+                "username": username
+            }
 
-            if profile.get('trial_job_id'):
-                try: scheduler.remove_job(profile['trial_job_id'])
-                except JobLookupError: pass
-                profile['trial_job_id'] = None
-            if profile.get('expiration_job_id'):
-                 try: scheduler.remove_job(profile['expiration_job_id'])
-                 except JobLookupError: pass
-                 profile['expiration_job_id'] = None
-
-            self.data_manager.set_user_profile(plex_user_id, profile)
-            self.data_manager.remove_blocked_user(plex_user_id)
-            self.invalidate_user_cache()
-
-            return {"success": True, "message": _("Utilizador %(username)s desativado e acesso removido com sucesso.", username=username), "username": username}
         except Exception as e:
             logger.error(_("Erro ao remover o utilizador %(username)s: %(error)s", username=username, error=e), exc_info=True)
             return {"success": False, "message": str(e)}
+
+    def _remove_plex_friend(self, plex_user_id, email, username):
+        """Helper para tentar remover o utilizador do Plex, primeiro pelo ID, depois pelo email/username."""
+        user_removed = False
+        try:
+            all_friends = self.conn.account.users()
+            friend_to_remove = next((u for u in all_friends if str(u.id) == str(plex_user_id)), None)
+            
+            if friend_to_remove:
+                self.conn.account.removeFriend(friend_to_remove)
+                logger.info(f"Utilizador '{friend_to_remove.username}' (ID: {plex_user_id}) removido com sucesso via ID.")
+                user_removed = True
+            else:
+                logger.warning(f"Utilizador ID {plex_user_id} não encontrado na lista de amigos do Plex.")
+        except Exception as e:
+             logger.error(f"Erro ao tentar remover utilizador por ID: {e}")
+
+        # Fallback para Email/Username
+        if not user_removed and (email or username):
+            identifier = email or username
+            try:
+                self.conn.account.removeFriend(identifier)
+                logger.info(f"Acesso ao Plex para '{username}' removido com sucesso via identificador.")
+            except NotFound:
+                logger.warning(f"Utilizador '{username}' já não era amigo na conta Plex (NotFound no fallback).")
+            except Exception as e:
+                logger.error(f"Erro ao tentar remover '{username}' por identificador: {e}")
+
+    def _deactivate_user_profile(self, plex_user_id, profile):
+        """Helper para inativar o perfil local e remover Jobs do APScheduler."""
+        from app.extensions import scheduler
+        
+        profile['status'] = 'inactive'
+        profile['expiration_date'] = None
+
+        # Limpar tarefas pendentes
+        for job_key in ['trial_job_id', 'expiration_job_id']:
+            if profile.get(job_key):
+                try: 
+                    scheduler.remove_job(profile[job_key])
+                except JobLookupError: 
+                    pass
+                profile[job_key] = None
+
+        self.data_manager.set_user_profile(plex_user_id, profile)
+        self.data_manager.remove_blocked_user(plex_user_id)
+        self.invalidate_user_cache()
 
     def toggle_overseerr_access(self, plex_user_id, access: bool):
         user_info = self.get_user_by_id(plex_user_id)
@@ -338,6 +348,8 @@ class PlexUserManager:
             return {"success": False, "message": _("Utilizador não encontrado no Plex.")}
 
         profile = self.data_manager.get_user_profile(plex_user_id)
+        if not profile:
+            return {"success": False, "message": _("Perfil não encontrado localmente.")}
         
         if access:
             result = self.overseerr_manager.import_from_plex(user_info)
@@ -349,5 +361,5 @@ class PlexUserManager:
             self.data_manager.set_user_profile(plex_user_id, profile)
             message = _("Acesso ao Overseerr concedido.") if access else _("Acesso ao Overseerr removido.")
             return {"success": True, "message": message}
-        else:
-            return {"success": False, "message": result.get("message", _("Erro desconhecido."))}
+            
+        return {"success": False, "message": result.get("message", _("Erro desconhecido."))}
