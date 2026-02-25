@@ -6,55 +6,39 @@ import os
 import hashlib
 import base64
 import binascii
-from flask import Blueprint, request, Response, abort, current_app, send_from_directory
+import tempfile
+import shutil
+from pathlib import Path
+from typing import Tuple, Optional
+
+from flask import Blueprint, request, Response, abort, send_from_directory, redirect
 from urllib.parse import urlparse
 
 # Importa os gestores para aceder às configurações e tokens de forma segura
-# ADICIONADO: 'limiter' importado das extensions
 from ..extensions import plex_manager, tautulli_manager, limiter
 
 logger = logging.getLogger(__name__)
 image_bp = Blueprint('image', __name__)
 
-# --- CONFIGURAÇÃO DO CACHE EM DISCO ---
-IMAGE_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'config', 'cache', 'images')
-os.makedirs(IMAGE_CACHE_DIR, exist_ok=True)
+# --- CONFIGURAÇÃO DO CACHE EM DISCO (Usando Pathlib) ---
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+IMAGE_CACHE_DIR = BASE_DIR / 'config' / 'cache' / 'images'
+IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+# Sessão persistente para acelerar múltiplos downloads da mesma fonte
 session = requests.Session()
 session.headers.update({'Accept': 'image/webp,image/png,image/jpeg,image/*,*/*'})
 
-def get_cache_filepath(unique_identifier):
-    """Gera um nome de ficheiro seguro e único para uma URL de imagem."""
-    if not unique_identifier:
-        return None
-    # Usa um hash SHA256 para criar um nome de ficheiro único e de comprimento fixo
+def get_cache_filepath(unique_identifier: str) -> Path:
+    """Gera um caminho de ficheiro seguro e único para uma URL de imagem."""
     url_hash = hashlib.sha256(unique_identifier.encode('utf-8')).hexdigest()
-    return os.path.join(IMAGE_CACHE_DIR, url_hash)
+    return IMAGE_CACHE_DIR / url_hash
 
-@image_bp.route('/')
-@limiter.exempt # ADICIONADO: Isenta esta rota do limite de requisições global
-def proxy_image():
-    """
-    Atua como um proxy seguro para imagens do Plex e Tautulli.
-    O parâmetro 'source' contém a fonte e o caminho da imagem, codificados em Base64.
-    """
-    b64_payload = request.args.get('source')
-
-    if not b64_payload:
-        abort(400, "Parâmetro 'source' é obrigatório.")
-
-    try:
-        # Descodifica o payload a partir de Base64
-        decoded_payload = base64.urlsafe_b64decode(b64_payload.encode('utf-8')).decode('utf-8')
-        # Separa a fonte (ex: 'plex') do caminho da imagem
-        source, image_path = decoded_payload.split(':', 1)
-    except (binascii.Error, UnicodeDecodeError, ValueError):
-        abort(400, "Parâmetro 'source' inválido ou mal formatado.")
-
+def build_final_url(source: str, image_path: str) -> Tuple[Optional[str], dict]:
+    """Isola a lógica de construção de URLs e injeção de tokens."""
     final_url = None
     params = {}
     
-    # Constrói o URL final de forma segura no servidor
     if source == 'plex':
         if plex_manager and plex_manager.plex:
             final_url = plex_manager.plex.url(image_path, includeToken=False)
@@ -67,43 +51,72 @@ def proxy_image():
         if tautulli_manager and tautulli_manager.api_client.is_configured:
             final_url = f"{tautulli_manager.api_client.base_url}{image_path}"
             params['apikey'] = tautulli_manager.api_client.api_key
+            
+    return final_url, params
+
+@image_bp.route('/')
+@limiter.exempt
+def proxy_image():
+    """
+    Atua como um proxy seguro para imagens do Plex e Tautulli.
+    Protegido contra picos de RAM através de download por chunks (streaming).
+    """
+    b64_payload = request.args.get('source')
+
+    if not b64_payload:
+        abort(400, "Parâmetro 'source' é obrigatório.")
+
+    try:
+        decoded_payload = base64.urlsafe_b64decode(b64_payload.encode('utf-8')).decode('utf-8')
+        source, image_path = decoded_payload.split(':', 1)
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        abort(400, "Parâmetro 'source' inválido ou mal formatado.")
+
+    final_url, params = build_final_url(source, image_path)
     
     if not final_url:
         abort(404, "Fonte da imagem não encontrada ou não configurada.")
         
-    # A chave do cache é baseada no identificador único, sem segredos
-    unique_identifier = decoded_payload
-    cache_filepath = get_cache_filepath(unique_identifier)
+    cache_filepath = get_cache_filepath(decoded_payload)
 
-    # 1. Tenta servir a imagem a partir do cache em disco
-    if os.path.exists(cache_filepath):
-        logger.debug(f"A servir a imagem '{unique_identifier}' a partir do cache.")
+    # 1. Tenta servir a imagem a partir do cache (Extremamente rápido)
+    if cache_filepath.exists():
         return send_from_directory(
-            os.path.dirname(cache_filepath),
-            os.path.basename(cache_filepath),
-            mimetype='image/jpeg',
-            max_age=86400 # Cache no browser por 24 horas
+            str(cache_filepath.parent),
+            cache_filepath.name,
+            mimetype='image/jpeg', # Os browsers fazem 'sniff' do ficheiro real automaticamente
+            max_age=86400 # Cache no browser do utilizador por 24 horas
         )
 
-    # 2. Se não estiver em cache, busca a imagem da fonte original
+    # 2. Se não estiver em cache, descarrega em modo STREAMING e faz ATOMIC WRITE
     try:
+        # stream=True diz ao Requests para NÃO carregar a imagem para a RAM
         response = session.get(final_url, params=params, stream=True, timeout=15)
         response.raise_for_status()
         
-        image_content = response.content
         content_type = response.headers.get('Content-Type', 'image/jpeg')
 
-        # 3. Guarda a imagem no cache em disco
-        with open(cache_filepath, 'wb') as f:
-            f.write(image_content)
-        logger.debug(f"Imagem '{unique_identifier}' obtida e armazenada na cache.")
+        # Cria um ficheiro temporário para evitar que múltiplos pedidos 
+        # corrompam a mesma imagem lendo/escrevendo ao mesmo tempo
+        fd, temp_path = tempfile.mkstemp(dir=str(IMAGE_CACHE_DIR))
+        with os.fdopen(fd, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192): # Guarda em pedaços de 8KB
+                if chunk:
+                    f.write(chunk)
+                    
+        # Substituição atómica (Mover o ficheiro temporário para o nome final)
+        shutil.move(temp_path, str(cache_filepath))
         
-        # 4. Retorna a imagem para o cliente
-        return Response(image_content, mimetype=content_type, headers={
-            'Cache-Control': 'public, max-age=86400'
-        })
+        # Serve o ficheiro recém-descarregado diretamente do disco
+        return send_from_directory(
+            str(cache_filepath.parent),
+            cache_filepath.name,
+            mimetype=content_type,
+            max_age=86400
+        )
 
     except requests.exceptions.RequestException as e:
-        logger.error(f"Erro ao obter a imagem via proxy '{final_url}': {e}")
-        placeholder_response = requests.get("https://placehold.co/150x225/1F2937/E5E7EB?text=Erro")
-        return Response(placeholder_response.content, mimetype="image/png")
+        logger.error(f"Erro proxy imagem '{final_url}': {e}")
+        # OTIMIZAÇÃO MASSIVA: Em vez de o seu servidor gastar recursos a descarregar
+        # um erro, diz ao navegador do utilizador para ir ele buscar o erro.
+        return redirect("https://placehold.co/150x225/1F2937/E5E7EB?text=Erro+Capa")
