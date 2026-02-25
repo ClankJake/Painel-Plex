@@ -20,19 +20,45 @@ class MercadoPagoManager:
 
     def reload_credentials(self):
         """Recarrega a configuração e reinicia a instância da API do Mercado Pago."""
-        self.config = load_or_create_config()
-        access_token = self.config.get("MERCADOPAGO_ACCESS_TOKEN")
-        if access_token:
-            self.sdk = mercadopago.SDK(access_token)
-            logger.info("Credenciais do Mercado Pago recarregadas com sucesso.")
-        else:
+        try:
+            self.config = load_or_create_config()
+            
+            # 1. Verifica primeiro se a integração está ativada nas configurações
+            is_enabled = self.config.get("MERCADOPAGO_ENABLED", False)
+            
+            # Converte para booleano caso venha como string
+            if isinstance(is_enabled, str):
+                is_enabled = is_enabled.lower() in ['true', '1', 't', 'y', 'yes']
+
+            if not is_enabled:
+                self.sdk = None
+                logger.debug("Mercado Pago está desativado nas configurações. Inicialização ignorada.")
+                return # Pára a execução aqui, evitando o Warning desnecessário
+
+            # 2. Se estiver ativado, aí sim tenta buscar o token
+            access_token = self.config.get("MERCADOPAGO_ACCESS_TOKEN")
+            
+            # Valida estritamente se o token existe e é uma String válida
+            if access_token and isinstance(access_token, str) and access_token.strip():
+                self.sdk = mercadopago.SDK(access_token.strip())
+                logger.info("Credenciais do Mercado Pago recarregadas e ativadas com sucesso.")
+            else:
+                self.sdk = None
+                logger.warning("Mercado Pago está ATIVADO, mas o Access Token está vazio ou inválido. O serviço não funcionará.")
+                
+        except Exception as e:
             self.sdk = None
-            logger.warning("Access Token do Mercado Pago não configurado. O serviço de pagamento está desativado.")
+            logger.error(f"Erro interno ao inicializar o SDK do Mercado Pago: {e}")
 
     def check_status(self):
         """Verifica se o serviço do Mercado Pago está configurado e ativo."""
         config = load_or_create_config()
-        if not config.get("MERCADOPAGO_ENABLED"):
+        is_enabled = config.get("MERCADOPAGO_ENABLED", False)
+        
+        if isinstance(is_enabled, str):
+            is_enabled = is_enabled.lower() in ['true', '1', 't', 'y', 'yes']
+
+        if not is_enabled:
             return {"status": "DISABLED", "message": _("Desativado na configuração.")}
         if self.sdk:
             return {"status": "ONLINE", "message": _("Ativo e configurado.")}
