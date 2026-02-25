@@ -4,27 +4,44 @@ import { deleteLog, clearAllLogs, sendBulkNotification } from './api.js';
 import { renderTerminationLogs, updateSpecificUserLabel, openUserSelectionModal } from './ui.js';
 import { showToast, createModal } from '../utils.js';
 
-/**
- * Manipula a exclusão de um único log após confirmação.
- * @param {string} logId - O ID do log.
- */
+// ==========================================
+// HELPERS DE UI LOCAIS
+// ==========================================
+
+const setProgressBarState = (status, percent = 0, text = '') => {
+    if (!dom.progressBar || !dom.progressContainer) return;
+    
+    dom.progressBar.style.width = `${percent}%`;
+    dom.progressBar.classList.remove('bg-blue-600', 'bg-green-600', 'bg-red-600');
+    
+    if (status === 'active') dom.progressBar.classList.add('bg-blue-600');
+    if (status === 'success') dom.progressBar.classList.add('bg-green-600');
+    if (status === 'error') dom.progressBar.classList.add('bg-red-600');
+
+    if (dom.progressPercent) dom.progressPercent.textContent = `${percent}%`;
+    if (dom.progressText && text) dom.progressText.textContent = text;
+};
+
+// ==========================================
+// LOGS DE AUDITORIA (TERMINATION)
+// ==========================================
+
 export async function handleDeleteLog(logId) {
-    const { i18n } = state;
     try {
         const result = await deleteLog(logId);
         showToast(result.message, result.success ? 'success' : 'error');
+        
         if (result.success) {
             const logElement = document.querySelector(`[data-log-id="${logId}"]`);
             if (logElement) {
-                logElement.style.transition = 'opacity 0.3s ease-out, max-height 0.3s ease-out';
-                logElement.style.opacity = '0';
-                logElement.style.maxHeight = '0';
-                logElement.style.padding = '0';
-                logElement.style.margin = '0';
+                Object.assign(logElement.style, {
+                    transition: 'all 0.3s ease-out', opacity: '0', maxHeight: '0', padding: '0', margin: '0', border: 'none'
+                });
+                
                 setTimeout(() => {
                     logElement.remove();
                     if (dom.auditLogContainer && dom.auditLogContainer.children.length === 0) {
-                        renderTerminationLogs([]);
+                        renderTerminationLogs([]); 
                     }
                 }, 300);
             }
@@ -34,72 +51,68 @@ export async function handleDeleteLog(logId) {
     }
 }
 
-/**
- * Manipula a limpeza de todos os logs após confirmação.
- */
 export async function handleClearAllLogs() {
-    const { i18n } = state;
     try {
         const result = await clearAllLogs();
         showToast(result.message, result.success ? 'success' : 'error');
+        
         if (result.success && dom.auditLogContainer) {
-            Array.from(dom.auditLogContainer.children).forEach((child, index) => {
-                 setTimeout(() => {
+            const children = Array.from(dom.auditLogContainer.children);
+            
+            children.forEach((child, index) => {
+                setTimeout(() => {
                     child.style.transition = 'opacity 0.2s ease-out';
                     child.style.opacity = '0';
-                }, index * 50);
+                }, Math.min(index * 30, 500)); 
             });
-            setTimeout(() => renderTerminationLogs([]), dom.auditLogContainer.children.length * 50 + 200);
+            
+            const totalDelay = Math.min(children.length * 30, 500) + 200;
+            setTimeout(() => renderTerminationLogs([]), totalDelay);
         }
     } catch (error) {
         showToast(error.message, 'error');
     }
 }
 
-/**
- * Atualiza o texto do botão de envio em massa com base no alvo selecionado.
- */
+// ==========================================
+// NOTIFICAÇÕES EM MASSA (BULK)
+// ==========================================
+
 export function updateSendButtonText() {
     if (!dom.targetOptionsDiv || !dom.sendBulkBtnText) return;
+    
     const { i18n } = state;
     const selectedTargetInput = dom.targetOptionsDiv.querySelector('input[name="notification_target"]:checked');
     if (!selectedTargetInput) return;
 
-    const selectedTarget = selectedTargetInput.value;
-    let buttonText = i18n.sendToAllActive; // Default
+    const target = selectedTargetInput.value;
+    const targetTexts = {
+        'active': i18n.sendToAllActive,
+        'blocked': i18n.sendToAllBlocked,
+        'all': i18n.sendToAllUsers
+    };
 
-    if (selectedTarget === 'blocked') {
-        buttonText = i18n.sendToAllBlocked;
-    } else if (selectedTarget === 'all') {
-        buttonText = i18n.sendToAllUsers;
-    } else if (selectedTarget === 'specific') {
-        const count = state.selectedUserIds.size;
-        buttonText = i18n.sendToSpecificUsers.replace('{count}', count);
+    if (target === 'specific') {
+        dom.sendBulkBtnText.textContent = i18n.sendToSpecificUsers.replace('{count}', state.selectedUserIds.size);
+    } else {
+        dom.sendBulkBtnText.textContent = targetTexts[target] || i18n.sendToAllActive;
     }
-    dom.sendBulkBtnText.textContent = buttonText;
 }
 
-/**
- * Reseta a UI de notificação em massa após um atraso.
- * @param {number} delay - Atraso em milissegundos.
- */
-export function resetBulkNotificationUI(delay) {
+export function resetBulkNotificationUI(delay = 0) {
     const { i18n } = state;
 
-    // Limpa qualquer temporizador de segurança pendente
     if (state.safetyTimeout) {
         clearTimeout(state.safetyTimeout);
         state.safetyTimeout = null;
     }
 
     setTimeout(() => {
-        if (dom.sendBulkNotificationBtn) {
-            dom.sendBulkNotificationBtn.disabled = false;
-        }
+        if (dom.sendBulkNotificationBtn) dom.sendBulkNotificationBtn.disabled = false;
+        
         const bulkMessage = document.getElementById('bulk_message');
-        if (bulkMessage) {
-            bulkMessage.value = '';
-        }
+        if (bulkMessage) bulkMessage.value = '';
+        
         const targetActive = document.getElementById('target_active');
         if (targetActive) targetActive.checked = true;
         
@@ -109,44 +122,33 @@ export function resetBulkNotificationUI(delay) {
         
         if (dom.openUserSelectionBtn) dom.openUserSelectionBtn.disabled = true;
         if (dom.progressContainer) dom.progressContainer.classList.add('hidden');
-        if(dom.progressBar) {
-            dom.progressBar.style.width = '0%';
-            dom.progressBar.classList.remove('bg-red-600', 'bg-green-600');
-            dom.progressBar.classList.add('bg-blue-600'); // Reseta para a cor azul
-        }
-        if(dom.progressPercent) dom.progressPercent.textContent = '0%';
-        if(dom.progressText) dom.progressText.textContent = i18n.bulkSendStart || 'A iniciar...';
-
+        
+        setProgressBarState('active', 0, i18n.bulkSendStart || 'A iniciar...');
     }, delay);
 }
 
-/**
- * Manipula o clique do botão "Enviar" - valida, confirma e chama a API.
- */
-export async function handleSendBulkNotification() {
+export function handleSendBulkNotification() {
     const { i18n } = state;
     const messageEl = document.getElementById('bulk_message');
-    const message = messageEl ? messageEl.value : '';
+    const message = messageEl ? messageEl.value.trim() : '';
 
-    if (!message.trim()) {
+    if (!message) {
         showToast(i18n.writeAMessage, 'error');
         return;
     }
 
     const selectedTargetInput = document.querySelector('input[name="notification_target"]:checked');
     if (!selectedTargetInput) {
-         showToast(i18n.selectTargetAudience, 'error');
+        showToast(i18n.selectTargetAudience, 'error');
         return;
     }
     
     const targetAudience = selectedTargetInput.value;
-    let title = i18n.confirmBulkSendTitle; // Título genérico
     let confirmationMessage = i18n.confirmBulkSendMessage;
     let payload = { message, target_audience: targetAudience };
-    let selectedUserIds = [];
 
     if (targetAudience === 'specific') {
-        selectedUserIds = Array.from(state.selectedUserIds);
+        const selectedUserIds = Array.from(state.selectedUserIds);
         if (selectedUserIds.length === 0) {
             showToast(i18n.selectAtLeastOneUser, 'warning');
             openUserSelectionModal();
@@ -156,9 +158,13 @@ export async function handleSendBulkNotification() {
         payload.user_ids = selectedUserIds;
     }
 
-    // Modal de Confirmação
-    createModal('confirmationModal', title,
-        `<p>${confirmationMessage}</p>`,
+    _promptBulkConfirmation(confirmationMessage, payload);
+}
+
+function _promptBulkConfirmation(message, payload) {
+    const { i18n } = state;
+    createModal('confirmationModal', i18n.confirmBulkSendTitle,
+        `<p>${message}</p>`,
         `<button id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmSendButton}</button>
          <button id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
     );
@@ -168,52 +174,47 @@ export async function handleSendBulkNotification() {
     const confirmationModal = document.getElementById('confirmationModal');
 
     if (confirmBtn) {
-        confirmBtn.onclick = async () => {
-           if (confirmationModal) confirmationModal.classList.add('hidden');
-
-           // Desativa o botão e mostra o progresso imediatamente
-           dom.sendBulkNotificationBtn.disabled = true;
-           dom.sendBulkBtnText.textContent = i18n.sendingBulkNotification;
-           if (dom.progressContainer) dom.progressContainer.classList.remove('hidden');
-           // Garante que o texto 'A iniciar...' está correto
-           if (dom.progressText) dom.progressText.textContent = i18n.bulkSendStart || 'A iniciar...';
-           if (dom.progressBar) {
-               dom.progressBar.style.width = '0%';
-               dom.progressBar.classList.remove('bg-red-600', 'bg-green-600');
-               dom.progressBar.classList.add('bg-blue-600');
-           }
-           if (dom.progressPercent) dom.progressPercent.textContent = '0%';
-
-
-           try {
-               const result = await sendBulkNotification(payload);
-               
-               if (result.success) {
-                    // Inicia o temporizador de segurança.
-                    // Se o evento 'bulk_notification_start' não chegar em 15s,
-                    // a UI será redefinida.
-                    state.safetyTimeout = setTimeout(() => {
-                        if (dom.sendBulkNotificationBtn.disabled) { // Só se ainda estiver bloqueado
-                            showToast('A tarefa foi enviada, mas não recebemos resposta do servidor. (Timeout)', 'error');
-                            resetBulkNotificationUI(0);
-                        }
-                    }, 30000);
-                   
-               } else {
-                    // FALHA IMEDIATA DA API
-                    showToast(result.message, 'error');
-                    resetBulkNotificationUI(0); // Reset imediato
-               }
-           } catch (error) {
-               showToast(error.message, 'error');
-               resetBulkNotificationUI(0); // Reset imediato
-           }
+        confirmBtn.onclick = () => {
+            if (confirmationModal) confirmationModal.classList.add('hidden');
+            _executeBulkNotification(payload);
         };
     }
     if (cancelBtn) {
         cancelBtn.onclick = () => {
             if (confirmationModal) confirmationModal.classList.add('hidden');
-        }
+        };
     }
 }
 
+async function _executeBulkNotification(payload) {
+    const { i18n } = state;
+    
+    if (dom.sendBulkNotificationBtn) dom.sendBulkNotificationBtn.disabled = true;
+    if (dom.sendBulkBtnText) dom.sendBulkBtnText.textContent = i18n.sendingBulkNotification;
+    if (dom.progressContainer) dom.progressContainer.classList.remove('hidden');
+    
+    setProgressBarState('active', 0, i18n.bulkSendStart || 'A iniciar...');
+
+    try {
+        const result = await sendBulkNotification(payload);
+        
+        if (result.success) {
+            // MOSTRA FEEDBACK DE SUCESSO IMEDIATAMENTE AO CLICAR
+            showToast('A tarefa de envio em massa foi iniciada! Acompanhe o progresso.', 'success');
+
+            // Temporizador de Segurança: caso a API/Sockets falhem
+            state.safetyTimeout = setTimeout(() => {
+                if (dom.sendBulkNotificationBtn && dom.sendBulkNotificationBtn.disabled) {
+                    showToast('O envio continua no servidor, mas a barra de progresso expirou o tempo de espera.', 'warning');
+                    resetBulkNotificationUI(0);
+                }
+            }, 30000);
+        } else {
+            showToast(result.message, 'error');
+            resetBulkNotificationUI(0);
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+        resetBulkNotificationUI(0);
+    }
+}
