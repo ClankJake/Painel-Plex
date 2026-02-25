@@ -1,23 +1,23 @@
 import os
 import logging
 import atexit
+import signal
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 from tzlocal import get_localzone_name
 
-from flask import Flask, request, redirect, url_for, session, jsonify, flash, send_from_directory, render_template, has_request_context
+from flask import Flask, request, redirect, url_for, session, jsonify, render_template, send_from_directory, has_request_context
 from werkzeug.middleware.proxy_fix import ProxyFix
-from flask_login import current_user, logout_user
+from flask_login import current_user
 from flask_babel import get_locale, gettext as _
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from sqlalchemy import event, text
+from sqlalchemy import event
 
 from . import extensions
 from .config import load_or_create_config, is_configured
-from .scheduler import setup_scheduler
+from .scheduler import setup_scheduler, set_app_for_jobs
 from . import models
 from . import sockets
-from . import scheduler
 from .logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -25,23 +25,14 @@ logger = logging.getLogger(__name__)
 def set_sqlite_pragma(dbapi_connection, connection_record):
     """
     Configurações avançadas do SQLite para alta concorrência.
-    Ativa WAL, ajusta sincronização e timeouts.
+    Ativa WAL, ajusta sincronização e timeouts para evitar bloqueios de DB.
     """
     cursor = dbapi_connection.cursor()
     try:
-        # Ativa o modo WAL (permite leitura e escrita simultâneas)
         cursor.execute("PRAGMA journal_mode=WAL;")
-        
-        # NORMAL é mais rápido que FULL e seguro o suficiente em modo WAL
         cursor.execute("PRAGMA synchronous=NORMAL;")
-        
-        # Aumenta o tempo de espera por bloqueio para 30 segundos (evita 'database is locked')
         cursor.execute("PRAGMA busy_timeout=30000;")
-        
-        # Aumenta o cache em memória para aprox. 64MB (valor negativo = pages * 1024 bytes)
         cursor.execute("PRAGMA cache_size=-64000;")
-        
-        # Otimiza arquivos temporários na memória RAM
         cursor.execute("PRAGMA temp_store=MEMORY;")
     except Exception as e:
         logger.warning(f"Erro ao definir PRAGMAS do SQLite: {e}")
@@ -50,92 +41,83 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 
 @extensions.login_manager.user_loader
 def load_user(user_id):
-    """Carrega o usuário para o Flask-Login a partir dos detalhes na sessão."""
+    """Carrega o utilizador para o Flask-Login a partir dos detalhes da sessão."""
     user_details = session.get('user_details')
-    if user_details and user_details.get('id') == user_id:
+    if user_details and str(user_details.get('id')) == str(user_id):
         return models.User(**user_details)
     return None
 
-def shutdown_scheduler():
-    """Garante que o agendador é desligado corretamente ao sair."""
+def shutdown_scheduler(signum=None, frame=None):
+    """Garante que o agendador é desligado de forma segura e elegante ao sair."""
     if extensions.scheduler.running:
-        extensions.scheduler.shutdown()
+        logger.info("A encerrar o Scheduler (APScheduler) de forma segura...")
+        extensions.scheduler.shutdown(wait=False)
 
-def create_app():
+def create_app() -> Flask:
     """
-    Cria e configura uma instância da aplicação Flask (Application Factory).
+    Cria e configura a instância principal da aplicação Flask (Application Factory).
     """
     app = Flask(__name__)
-    
-    # --- Configuração de Idioma ---
-    def get_user_locale():
-        if has_request_context():
-            if 'language' in session:
-                return session['language']
-            return request.accept_languages.best_match(app.config['LANGUAGES'].keys())
-        return app.config.get('BABEL_DEFAULT_LOCALE', 'pt_BR')
 
-    app.config['LANGUAGES'] = {'pt_BR': 'Português'}
-    app.config['BABEL_DEFAULT_LOCALE'] = 'pt_BR'
+    # ==========================================
+    # CARREGAMENTO DE CONFIGURAÇÕES
+    # ==========================================
     
-    # --- Carregamento de Configurações ---
     app_config = load_or_create_config()
-    
-    app_config.pop('LOG_FILE', None)
-    app_config.pop('SQLALCHEMY_DATABASE_URI', None)
-    
     app.config.update(app_config)
 
-    # --- Definição de Caminhos ---
+    # Definição de Caminhos
     config_dir_path = os.path.join(app.root_path, '..', 'config')
     db_path = os.path.join(config_dir_path, 'app_data.db')
     scheduler_db_path = os.path.join(config_dir_path, 'scheduler_jobs.db')
-    log_file_path = os.path.join(config_dir_path, 'app.log')
     cache_dir_path = os.path.join(config_dir_path, 'cache', 'web_cache')
 
-    # --- Configurações do Flask e Extensões ---
+    # Configurações do Flask e Segurança de Sessão
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=30'
-    app.config['LOG_FILE'] = log_file_path
-    app.config['SECRET_KEY'] = app.config.get('SECRET_KEY')
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     
     base_url_for_cookie = app.config.get('APP_BASE_URL', '')
     app.config['SESSION_COOKIE_SECURE'] = base_url_for_cookie.startswith('https://')
     
-    # --- Otimização do Engine SQLAlchemy ---
+    # Otimização do SQLAlchemy
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        "connect_args": {
-            "timeout": 30  # Timeout de conexão a nível de driver
-        },
-        "pool_pre_ping": True, # Verifica se a conexão é válida antes de usar (evita erros de desconexão)
-        "pool_recycle": 300,   # Recicla conexões a cada 5 minutos
+        "connect_args": {"timeout": 30},
+        "pool_pre_ping": True, 
+        "pool_recycle": 300,
     }
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+    # Configurações de Cache e Rate Limit
     app.config['CACHE_TYPE'] = 'FileSystemCache'
     app.config['CACHE_DIR'] = cache_dir_path
     app.config['CACHE_DEFAULT_TIMEOUT'] = 300
     
-    # Rate Limiting
     app.config['RATELIMIT_DEFAULT'] = "200 per day; 50 per hour"
     app.config['RATELIMIT_STORAGE_URI'] = "memory://"
 
-    # Configuração de URL Base
-    base_url = app.config.get('APP_BASE_URL')
-    if base_url:
-        parsed_url = urlparse(base_url)
-        app.config['SERVER_NAME'] = parsed_url.netloc
-        app.config['APPLICATION_ROOT'] = parsed_url.path or '/'
-        app.config['PREFERRED_URL_SCHEME'] = parsed_url.scheme
+    # Confiança em Reverse Proxies (ex: Nginx, Cloudflare)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
-    # --- Inicialização de Logs ---
+    # Configuração de Idioma Dinâmico
+    app.config['LANGUAGES'] = {'pt_BR': 'Português', 'en': 'English'}
+    app.config['BABEL_DEFAULT_LOCALE'] = 'pt_BR'
+    
+    def get_user_locale():
+        if has_request_context():
+            return session.get('language') or request.accept_languages.best_match(app.config['LANGUAGES'].keys())
+        return app.config['BABEL_DEFAULT_LOCALE']
+
+    # Inicializa os Logs
     setup_logging(app, app.config.get('LOG_LEVEL', 'INFO'))
 
-    # --- Inicialização de Extensões ---
+    # ==========================================
+    # INICIALIZAÇÃO DE EXTENSÕES
+    # ==========================================
+    
     extensions.db.init_app(app)
     
-    # Registra o evento de conexão para aplicar as otimizações do SQLite
+    # Injeta a otimização de concorrência do SQLite na criação da base de dados
     with app.app_context():
         event.listen(extensions.db.engine, 'connect', set_sqlite_pragma)
 
@@ -145,26 +127,17 @@ def create_app():
     extensions.cache.init_app(app)
     extensions.limiter.init_app(app)
 
+    # Bugfix para compatibilidade com certas bibliotecas que procuram por 'cache'
     if 'cache' not in app.extensions:
         app.extensions['cache'] = app.extensions.get('caching')
-    
-    extensions.socketio.init_app(app, async_mode='gevent')
+
+    # Inicializa Sockets
+    extensions.socketio.init_app(app, async_mode='gevent', cors_allowed_origins="*")
     sockets.app_instance = app
 
-    # --- Configuração do Scheduler ---
-    if not extensions.scheduler.running:
-        # Usa as mesmas otimizações para o banco do Scheduler se possível,
-        # mas aqui definimos via URL string pois o JobStore cria sua própria engine
-        jobstores = {
-            'default': SQLAlchemyJobStore(url=f'sqlite:///{scheduler_db_path}?timeout=30')
-        }
-        try:
-            local_tz_name = get_localzone_name()
-        except Exception:
-            local_tz_name = 'UTC'
-        extensions.scheduler.configure(jobstores=jobstores, timezone=local_tz_name)
-
-    # --- Inicialização dos Services (Managers) ---
+    # ==========================================
+    # INICIALIZAÇÃO DE MANAGERS E SERVIÇOS
+    # ==========================================
     from .services import (
         DataManager, TautulliManager, PlexManager, 
         NotifierManager, EfiManager, MercadoPagoManager,
@@ -196,19 +169,37 @@ def create_app():
         user_manager=extensions.plex_manager.users
     )
     extensions.plex_manager.stream_manager = extensions.stream_manager
+
+    # ==========================================
+    # CONFIGURAÇÃO DO SCHEDULER
+    # ==========================================
+    set_app_for_jobs(app)
     
-    scheduler.set_app_for_jobs(app)
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+    if not extensions.scheduler.running:
+        jobstores = {
+            'default': SQLAlchemyJobStore(url=f'sqlite:///{scheduler_db_path}?timeout=30')
+        }
+        try:
+            local_tz_name = get_localzone_name()
+        except Exception:
+            local_tz_name = 'UTC'
+            
+        extensions.scheduler.configure(jobstores=jobstores, timezone=local_tz_name)
 
-    # Inicia o Scheduler se configurado
-    try:
-        if is_configured() and not extensions.scheduler.running:
-            setup_scheduler(app)
-            atexit.register(shutdown_scheduler)
-    except Exception as e:
-        logger.error(f"Falha ao iniciar o agendador de tarefas: {e}")
+        if is_configured():
+            try:
+                setup_scheduler(app)
+                # Regista handlers de encerramento seguro
+                atexit.register(shutdown_scheduler)
+                signal.signal(signal.SIGTERM, shutdown_scheduler)
+                signal.signal(signal.SIGINT, shutdown_scheduler)
+            except Exception as e:
+                logger.error(f"Falha ao iniciar o agendador de tarefas: {e}")
 
-    # --- Context Processors e Error Handlers ---
+    # ==========================================
+    # HOOKS E ERROR HANDLERS
+    # ==========================================
+
     @app.context_processor
     def inject_global_vars():
         return {
@@ -216,16 +207,51 @@ def create_app():
             'app_title': app.config.get('APP_TITLE', 'Painel Plex'),
             'cache_buster': int(datetime.now().timestamp())
         }
-    
+
     @app.errorhandler(429)
     def ratelimit_handler(e):
         if request.path.startswith('/api/') or request.is_json:
-            return jsonify({"success": False, "message": _("Muitas requisições. Aguarde um momento.")}), 429
+            return jsonify({"success": False, "message": _("Demasiados pedidos. Aguarde um momento e tente de novo.")}), 429
         return render_template('payment_unavailable.html', 
                                reason_title=_("Limite Excedido"),
-                               reason_message=_("Muitas tentativas. Aguarde alguns minutos.")), 429
+                               reason_message=_("Por segurança, limitámos os acessos temporariamente. Tente novamente dentro de alguns minutos.")), 429
 
-    # --- Rotas Básicas ---
+    @app.before_request
+    def check_configuration_and_user():
+        """
+        Garante que a aplicação não avança se ainda não foi configurada (Setup Inicial)
+        e encaminha utilizadores não administradores para fora de áreas sensíveis.
+        """
+        # Se for um ficheiro estático ou rota de webhook/pagamento público, ignorar
+        if request.endpoint in ('static', 'serve_sw', 'serve_manifest') or request.path.startswith('/socket.io'):
+            return
+
+        exempt_from_setup = {
+            'main.setup', 'system_api.save_setup', 
+            'auth.get_plex_auth_context', 'auth.check_plex_pin', 
+            'auth.check_plex_pin_for_token', 'auth.auth_status'
+        }
+
+        # Força o ecrã de setup inicial se o config.json for virgem
+        if not is_configured() and request.endpoint not in exempt_from_setup:
+            return redirect(url_for('main.setup'))
+
+        # Regras de Redirecionamento Baseadas em Papel (Role-based)
+        if current_user.is_authenticated:
+            # Bloqueia utilizadores logados de voltar à página de login
+            if request.endpoint == 'auth.login':
+                return redirect(url_for('main.index'))
+                
+            # Se for um utilizador comum (NÃO Admin), não deve estar no painel de controlo principal
+            if not current_user.is_admin():
+                # A UI deve forçar este utilizador para o `/statistics` em vez do dashboard de admin (`/`)
+                if request.endpoint in ('main.index', 'main.settings_page', 'main.users_page'):
+                    return redirect(url_for('main.statistics_page'))
+
+    # ==========================================
+    # REGISTO DE ROTAS (BLUEPRINTS)
+    # ==========================================
+    
     @app.route('/language/<lang>')
     def set_language(lang=None):
         if lang in app.config['LANGUAGES'].keys():
@@ -240,36 +266,6 @@ def create_app():
     def serve_sw():
         return send_from_directory(os.path.join(app.root_path, 'static', 'js'), 'service-worker.js', mimetype='application/javascript')
 
-    # --- Before Request Hook (Verificações de Segurança) ---
-    @app.before_request
-    def check_configuration_and_user():
-        exempt_endpoints = {
-            'static', 'main.setup', 'auth.login', 'auth.get_plex_auth_context', 
-            'auth.check_plex_pin', 'auth.check_plex_pin_for_token', 'auth.redirect_to_auth', 'auth.auth_status',
-            'system_api.save_setup', 'system_api.get_plex_servers', 'system_api.test_tautulli_connection', 
-            'system_api.test_overseerr_connection', 'system_api.auto_configure_tautulli_notifier',
-            'system_api.get_logs', 'system_api.clear_logs',
-            'invites_api.get_invite_details_route', 'invites_api.claim_invite_route',
-            'payments_api.efi_webhook', 'payments_api.mercadopago_webhook', 'payments_api.bpix_webhook',
-            'set_language', 'main.claim_invite_page', 'serve_manifest', 'serve_sw',
-            'main.payment_page', 'users_api.get_public_user_profile_by_token', 'payments_api.get_payment_options',
-            'payments_api.create_charge_route', 'payments_api.get_payment_status',
-            'redirect.redirect_to_url', 'image.proxy_image'
-        }
-        if request.endpoint in exempt_endpoints or request.path.startswith('/socket.io'):
-            return
-
-        if not is_configured():
-            return redirect(url_for('main.setup'))
-        
-        if current_user.is_authenticated and not current_user.is_admin():
-            if request.endpoint in ('main.index', 'main.settings_page', 'main.users_page'):
-                return redirect(url_for('main.statistics_page'))
-
-        if current_user.is_authenticated and request.endpoint == 'auth.login':
-            return redirect(url_for('main.index'))
-
-    # --- Registro dos Blueprints ---
     from .blueprints.main import main_bp
     from .blueprints.auth import auth_bp
     from .blueprints.redirect import redirect_bp
@@ -281,7 +277,7 @@ def create_app():
     from .blueprints.api.stats import stats_api_bp
     from .blueprints.api.notifications import notifications_api_bp
     from .blueprints.api.coupons import coupons_api_bp
-    
+
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(redirect_bp)
@@ -293,5 +289,8 @@ def create_app():
     app.register_blueprint(stats_api_bp, url_prefix='/api/statistics')
     app.register_blueprint(notifications_api_bp, url_prefix='/api/notifications')
     app.register_blueprint(coupons_api_bp, url_prefix='/api/coupons') 
+
+    # Compatibilidade de CORS com Sockets se usado fora do domínio direto
+    app.config['CORS_HEADERS'] = 'Content-Type'
 
     return app
