@@ -238,7 +238,7 @@ class PlexManager:
             try:
                 if data.get('expiration_date'):
                     exp_date = datetime.fromisoformat(data['expiration_date']).date()
-                    if 0 <= (exp_date - today).days < days_to_notify:
+                    if 0 <= (exp_date - today).days <= days_to_notify:
                         users_to_check.append(plex_id)
             except (ValueError, TypeError): 
                 continue
