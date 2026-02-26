@@ -30,21 +30,27 @@ payments_api_bp = Blueprint('payments_api', __name__)
 def efi_webhook_security(f):
     """
     Decorador de segurança para o webhook da Efí.
-    Valida a origem da requisição através do HMAC (Hash Cryptográfico),
-    garantindo que mesmo que IPs da Efí mudem (AWS), o webhook não seja rejeitado.
+    Valida a origem da requisição através do HMAC (Hash Cryptográfico).
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
         config = load_or_create_config()
+        
+        # LOG DE DEPURAÇÃO: Mostra que alguém bateu na porta do Webhook
+        logger.info(f"=== [WEBHOOK EFI SEGURANÇA] Recebida tentativa de acesso de: {request.remote_addr} ===")
+        logger.info(f"[WEBHOOK EFI SEGURANÇA] URL Acessada: {request.url}")
+        
         if not config.get("EFI_USE_MTLS", True):
-            # CORREÇÃO: Remoção do bloqueio de IP fixo. A Efí tem múltiplos IPs.
-            # O HMAC é a prova matemática de que o pedido vem da Efí.
             hmac_secret = config.get("EFI_WEBHOOK_HMAC_SECRET")
             received_hmac = request.args.get('hmac')
             
             if not hmac_secret or not received_hmac or hmac_secret != received_hmac:
-                logger.warning("Webhook da Efí bloqueado: HMAC inválido ou ausente. Possível tentativa de fraude.")
+                logger.error(f"[WEBHOOK EFI SEGURANÇA] ACESSO NEGADO! HMAC Inválido ou Ausente.")
+                logger.error(f"-> HMAC Esperado (Painel): '{hmac_secret}'")
+                logger.error(f"-> HMAC Recebido (URL): '{received_hmac}'")
                 return jsonify(status="error", message="Invalid HMAC"), 403
+            else:
+                logger.info("[WEBHOOK EFI SEGURANÇA] HMAC validado com sucesso! A permitir acesso à rota...")
 
         return f(*args, **kwargs)
     return decorated_function
@@ -115,10 +121,7 @@ def _run_payment_processing_in_thread(app, txid):
 
     for attempt in range(MAX_RETRIES):
         try:
-            # CORREÇÃO: Usar test_request_context('/') para garantir que links (url_for) funcionem
-            # sem quebrar a execução em background!
             with app.test_request_context('/'):
-                # 1. Obter e Trancar o Pagamento (Sem begin_nested() que causava crashes no SQLite)
                 payment = extensions.data_manager.get_and_lock_pix_payment(txid)
                 if not payment:
                     logger.warning(f"Pagamento {txid} não encontrado na tentativa {attempt + 1}. A ignorar.")
@@ -137,7 +140,6 @@ def _run_payment_processing_in_thread(app, txid):
                 
                 extensions.db.session.commit()
                 
-                # 2. Processar Lógica de Utilizador
                 plex_user_id = payment['user_plex_id']
                 profile = extensions.data_manager.get_user_profile(plex_user_id)
                 is_reactivation = profile.get('status') == 'inactive'
@@ -158,7 +160,6 @@ def _run_payment_processing_in_thread(app, txid):
                         
                     user_found_in_plex = _handle_reactivation_invite(profile, plex_user_id)
 
-                # Obter dados para renovação
                 user_info_for_renewal = extensions.plex_manager.get_user_by_id(plex_user_id)
                 if not user_info_for_renewal and is_reactivation:
                     logger.info(f"A usar dados do perfil local de '{profile['username']}' para a renovação (não encontrado no Plex).")
@@ -188,7 +189,6 @@ def _run_payment_processing_in_thread(app, txid):
                     except Exception as e:
                         logger.error(f"Erro ao enviar notificação final para '{profile['username']}': {e}")
 
-                    # Aplicar Cupões e Log local
                     if payment.get('coupon_code'):
                         logger.info(f"A registar a utilização do cupão '{payment['coupon_code']}' para '{profile['username']}'.")
                         extensions.data_manager.record_coupon_usage(payment['coupon_code'], plex_user_id)
@@ -205,7 +205,6 @@ def _run_payment_processing_in_thread(app, txid):
                         if extensions.socketio:
                             extensions.socketio.emit('new_notification', namespace='/')
 
-                # 3. Finalizar
                 extensions.data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
                 extensions.db.session.commit()
                 logger.info(f"Processamento do pagamento para TXID {txid} concluído com sucesso!")
@@ -331,19 +330,13 @@ def create_charge_route():
 
     logger.info(f"A preparar a geração de cobrança PIX via '{provider}' para '{username}' (ID: {plex_user_id}). Plano: {screens_str} telas.")
 
-    # Tratamento de Info Base
     user_email = profile.get('email')
     if not user_email:
-        logger.info(f"E-mail não encontrado localmente para '{username}'. A tentar obter do Plex...")
         try:
             if plex_user := extensions.plex_manager.get_user_by_id(plex_user_id):
                 user_email = plex_user.get('email')
-                logger.info(f"E-mail recuperado do Plex para '{username}': {user_email}")
-        except Exception as e:
-            logger.warning(f"Aviso: Não foi possível aceder ao e-mail no Plex para '{username}': {e}")
-            
-    if not user_email:
-        logger.warning(f"Aviso: A prosseguir com a geração da cobrança para '{username}' sem e-mail associado.")
+        except:
+            pass
 
     user_info = {
         "plex_user_id": plex_user_id, "username": username,
@@ -352,25 +345,20 @@ def create_charge_route():
 
     price_calculation = extensions.pricing_manager.calculate_price(screens_str, coupon_code, plex_user_id)
     if not price_calculation.get("success"):
-        logger.warning(f"Falha ao calcular o preço para '{username}': {price_calculation.get('message')}")
         return jsonify(price_calculation), 400
 
     final_price = price_calculation.get("discounted_price")
-    logger.info(f"Preço final calculado para '{username}': R$ {final_price:.2f} (Cupão aplicado: {price_calculation.get('coupon_applied')})")
 
     # Lógica de Cobrança Gratuita (100% Desconto)
     if final_price <= 0:
-        logger.info(f"A processar renovação/reativação 100% gratuita para '{username}'.")
         try:
             if profile.get('status') == 'inactive':
                 _handle_reactivation_invite(profile, plex_user_id)
-                # Garante atualização manual local imediata em casos de cupons 100%
                 profile = extensions.data_manager.get_user_profile(plex_user_id)
                 profile['status'] = 'active'
                 extensions.data_manager.set_user_profile(plex_user_id, profile)
 
             new_expiration_date = extensions.plex_manager.renew_subscription(plex_user_id, 1, base_mode='expiry_date')
-            
             if coupon_code: extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id)
             
             extensions.data_manager.add_manual_payment(
@@ -379,19 +367,12 @@ def create_charge_route():
                 payment_date_str=datetime.now(timezone.utc).isoformat()
             )
             extensions.db.session.commit()
-            
             extensions.plex_manager.notifier_manager.send_renewal_notification(user_info, new_expiration_date, profile)
             
-            extensions.data_manager.create_notification(message=_("Renovação gratuita via cupão registada para %(username)s.", username=username), category='success', link=url_for('main.users_page'))
-            if extensions.socketio:
-                extensions.socketio.emit('new_notification', namespace='/')
-            
-            logger.info(f"Renovação gratuita para '{username}' concluída com sucesso.")
             return jsonify({"success": True, "free_renewal": True, "message": _("Assinatura ativada gratuitamente!")})
             
         except Exception as e:
             extensions.db.session.rollback()
-            logger.error(f"Erro crítico durante a assinatura gratuita para '{username}': {e}", exc_info=True)
             return jsonify({"success": False, "message": _("Ocorreu um erro interno ao ativar.")}), 500
 
     # Lógica Regular
@@ -404,11 +385,6 @@ def create_charge_route():
         result = extensions.mercado_pago_manager.create_pix_payment(user_info, final_price, int(screens_str), coupon_code)
     elif provider == 'BPIX' and config.get('BPIX_ENABLED'):
         result = extensions.bpix_manager.create_pix_charge(user_info, final_price, int(screens_str), coupon_code)
-        
-    if result.get("success"):
-        logger.info(f"Cobrança gerada com sucesso via '{provider}' para '{username}'. TXID associado.")
-    else:
-        logger.error(f"Falha na API do provedor '{provider}' ao gerar cobrança para '{username}': {result.get('message')}")
 
     return jsonify(result)
 
@@ -443,7 +419,7 @@ def get_payment_status_route(txid):
             if status_result.get("success") and (st.get("status") == 'Pagamento realizado' or st.get("international_status") == "PAYMENT_RECEIVED"):
                 is_confirmed = True
     except Exception as e:
-        logger.warning(f"Erro ao consultar status em provider {provider} para TXID {txid}: {e}")
+        pass
 
     if is_confirmed:
         logger.info(f"O polling detetou que o pagamento {txid} foi aprovado na API do provedor. A agendar processamento.")
@@ -460,51 +436,71 @@ def get_payment_status_route(txid):
 @efi_webhook_security
 @limiter.exempt
 def efi_webhook():
-    # CORREÇÃO: Adicionamos LOGS intensivos para detetar o formato exato
-    # e garantir que a Efí recebe o seu "OK" a tempo.
-    try:
-        raw_data = request.data.decode('utf-8')
-        logger.info(f"=== [WEBHOOK EFI] Recebido POST. Dados Brutos: {raw_data[:200]}... ===")
-    except:
-        pass
-        
-    notification_data = request.get_json(silent=True)
+    logger.info(f"=== [WEBHOOK EFI PAYLOAD INICIAL] ===")
+    logger.info(f"[HEADERS]: {dict(request.headers)}")
     
+    # 1. Obter os dados brutos como texto antes que o Flask tente converter
+    try:
+        raw_data = request.get_data(as_text=True)
+        logger.info(f"[PAYLOAD BRUTO]: {raw_data}")
+    except Exception as e:
+        logger.error(f"Erro ao ler payload bruto: {e}")
+        raw_data = None
+
+    # 2. Tentar converter para JSON manualmente para garantir
+    notification_data = None
+    if raw_data:
+        try:
+            notification_data = json.loads(raw_data)
+        except json.JSONDecodeError:
+            logger.error("[WEBHOOK EFI] Falha: O Payload recebido não é um JSON válido.")
+
     if not notification_data: 
-        logger.info("[WEBHOOK EFI] Corpo vazio ou não-JSON. Retornando 200 para Validação da Efí.")
+        logger.info("[WEBHOOK EFI] Corpo vazio ou inválido. Retornando 200 para Validação da Efí.")
         return jsonify(status="validation_received"), 200
 
     try:
+        # A Efí envia "evento": "teste_webhook" durante a configuração
         if notification_data.get('evento') == 'teste_webhook': 
-            logger.info("[WEBHOOK EFI] Evento de teste recebido com sucesso.")
+            logger.info("[WEBHOOK EFI] Evento de TESTE recebido com sucesso da Efí.")
             return jsonify(status="received"), 200
 
+        # O webhook real vem dentro de um array "pix" (conforme os seus exemplos)
         pix_array = notification_data.get('pix', [])
+        
         if not pix_array:
-            logger.warning(f"[WEBHOOK EFI] Payload recebido não contém a chave 'pix'. Payload: {notification_data}")
+            logger.warning(f"[WEBHOOK EFI] Payload não contém o array 'pix'. Ignorando. Conteúdo: {notification_data}")
+            return jsonify(status="ignored"), 200
             
         for pix_notification in pix_array:
             txid = pix_notification.get('txid')
+            valor = pix_notification.get('valor')
+            pagador = pix_notification.get('infoPagador', 'N/A')
+            
+            logger.info(f"[WEBHOOK EFI] -> PIX Detetado! TXID: {txid} | Valor: R${valor} | Info: {pagador}")
+            
             if txid:
-                logger.info(f"[WEBHOOK EFI] Pagamento detectado via Webhook! TXID: {txid}")
-                
-                # Validação Rápida: Se já foi processado pelo Polling antes de fechar a aba, ignoramos.
+                # Validação Rápida
                 payment = extensions.data_manager.get_pix_payment(txid)
                 if payment and payment.get('status') == 'CONCLUIDA':
-                    logger.info(f"[WEBHOOK EFI] TXID {txid} já processado anteriormente. Ignorando dupla execução.")
+                    logger.info(f"[WEBHOOK EFI] -> O TXID {txid} já foi processado anteriormente. Ignorando.")
                     continue
 
+                # Dupla verificação na Efí (Segurança extra contra Webhooks falsos)
                 efi_status_result = extensions.efi_manager.detail_pix_charge(txid)
                 if efi_status_result.get("success") and efi_status_result.get("data", {}).get("status") == 'CONCLUIDA':
-                    logger.info(f"[WEBHOOK EFI] O pagamento {txid} foi confirmado! A iniciar renovação...")
+                    logger.info(f"[WEBHOOK EFI] -> SUCESSO! Pagamento {txid} confirmado. A iniciar renovação (Thread)...")
                     _process_successful_payment(txid)
                 else:
-                    logger.warning(f"[WEBHOOK EFI] Webhook recebido para {txid}, mas o estado na API Efí ainda não é 'CONCLUIDA'.")
+                    logger.warning(f"[WEBHOOK EFI] -> Recebeu webhook para {txid}, mas consultando a API da Efí, o status AINDA NÃO é 'CONCLUIDA'.")
+            else:
+                logger.warning("[WEBHOOK EFI] -> Elemento PIX recebido sem TXID. Estrutura inválida.")
                     
     except Exception as e:
         logger.error(f"[WEBHOOK EFI] Erro crítico no processamento do Webhook: {e}", exc_info=True)
         return jsonify(status="error", message="Server Error"), 500
         
+    logger.info(f"=== [WEBHOOK EFI PAYLOAD FIM] ===")
     return jsonify(status="received"), 200
 
 @payments_api_bp.route('/webhook/mercadopago', methods=['POST'])
