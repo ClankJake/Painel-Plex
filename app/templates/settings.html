@@ -2,73 +2,191 @@
 
 {% block title %}{{ _('Configurações') }} - {{ app_title }}{% endblock %}
 
+{% block extra_head %}
+<style>
+    /* Ocultar barra de scroll para navegação horizontal (Tabs) */
+    .horizontal-scroll {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;     /* Firefox */
+    }
+    .horizontal-scroll::-webkit-scrollbar {
+        display: none; /* Chrome, Safari, Opera */
+    }
+
+    /* Estilos das Tabs Otimizados */
+    .tab-button {
+        @apply whitespace-nowrap px-5 py-2.5 rounded-lg text-sm font-semibold text-gray-500 dark:text-gray-400 transition-all duration-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none;
+    }
+    .tab-button.active {
+        @apply bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-600;
+    }
+    
+    /* Animação suave para o botão Sticky */
+    .sticky-btn-wrapper {
+        animation: slideUp 0.5s ease-out forwards;
+    }
+    @keyframes slideUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 
-<form id="settingsForm" class="max-w-4xl mx-auto space-y-8">
+<!-- Cabeçalho Principal -->
+<header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div>
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3 tracking-tight">
+            <svg class="w-8 h-8 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            {{ _('Configurações do Sistema') }}
+        </h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-2 text-sm md:text-base">{{ _('Faça a gestão global da aplicação, automações, integrações e métodos de pagamento.') }}</p>
+    </div>
+</header>
 
-    <!-- Container for both tab navigation types -->
-    <div class="border-b border-gray-200 dark:border-gray-700">
-        <!-- Dropdown for small screens -->
-        <div class="md:hidden mb-2">
-             <label for="main-tabs-select" class="sr-only">{{ _('Selecionar Seção') }}</label>
-             <select id="main-tabs-select" name="main-tabs-select" class="block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 py-2 pl-3 pr-10 text-base focus:border-yellow-500 focus:outline-none focus:ring-yellow-500 sm:text-sm dark:text-gray-200">
-                <!-- Options will be populated by JS -->
-             </select>
+<form id="settingsForm" class="max-w-5xl mx-auto space-y-8 relative pb-20">
+
+    <!-- Cartão Principal que Engloba Tudo -->
+    <div class="bg-white dark:bg-gray-800/60 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 overflow-hidden">
+        
+        <!-- Zona Superior: Navegação das Abas -->
+        <div class="px-6 pt-6 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30">
+            <!-- Dropdown para dispositivos móveis -->
+            <div class="md:hidden mb-4 relative">
+                 <label for="main-tabs-select" class="sr-only">{{ _('Selecionar Seção') }}</label>
+                 <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+                 </div>
+                 <select id="main-tabs-select" name="main-tabs-select" class="block w-full rounded-xl border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 py-3 pl-10 pr-10 text-base font-semibold focus:border-yellow-500 focus:outline-none focus:ring-1 focus:ring-yellow-500 sm:text-sm dark:text-gray-200 cursor-pointer appearance-none shadow-sm">
+                    <!-- Options populadas via JS -->
+                 </select>
+                 <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-500">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                 </div>
+            </div>
+
+            <!-- Navegação horizontal para Desktop -->
+            <nav id="main-tabs" class="hidden md:flex flex-nowrap overflow-x-auto horizontal-scroll gap-x-1 sm:gap-x-2 pb-3" aria-label="Tabs">
+                <button type="button" data-tab="geral" class="tab-button active">{{ _('Geral') }}</button>
+                <button type="button" data-tab="tarefas" class="tab-button">{{ _('Tarefas Agendadas') }}</button>
+                <button type="button" data-tab="pagamentos" class="tab-button">{{ _('Pagamentos') }}</button>
+                <button type="button" data-tab="gamificacao" class="tab-button">{{ _('Gamificação') }}</button>
+                <button type="button" data-tab="notificacoes" class="tab-button">{{ _('Notificações') }}</button>
+                <button type="button" data-tab="comunicacoes" class="tab-button">{{ _('Comunicações') }}</button>
+                <button type="button" data-tab="conexoes" class="tab-button">{{ _('Conexões') }}</button>
+                <button type="button" data-tab="logs" class="tab-button">{{ _('Logs') }}</button>
+            </nav>
         </div>
 
-        <!-- Horizontal tabs for medium screens and up -->
-        <nav id="main-tabs" class="hidden md:flex flex-wrap gap-x-1 sm:gap-x-2 pb-2">
-            <button type="button" data-tab="geral" class="tab-button active">{{ _('Geral') }}</button>
-            <button type="button" data-tab="tarefas" class="tab-button">{{ _('Tarefas Agendadas') }}</button>
-            <button type="button" data-tab="pagamentos" class="tab-button">{{ _('Pagamentos') }}</button>
-            <button type="button" data-tab="gamificacao" class="tab-button">{{ _('Gamificação') }}</button>
-            <button type="button" data-tab="notificacoes" class="tab-button">{{ _('Notificações') }}</button>
-            <button type="button" data-tab="comunicacoes" class="tab-button">{{ _('Comunicações') }}</button>
-            <button type="button" data-tab="conexoes" class="tab-button">{{ _('Conexões') }}</button>
-            <button type="button" data-tab="logs" class="tab-button">{{ _('Logs') }}</button>
-        </nav>
+        <!-- Zona Inferior: Conteúdo das Abas -->
+        <div id="main-tab-content" class="p-6 sm:p-8 min-h-[500px]">
+            {% include "settings/tabs/general.html" %}
+            {% include "settings/tabs/tasks.html" %}
+            {% include "settings/tabs/payments.html" %}
+            {% include "settings/tabs/gamification.html" %}
+            {% include "settings/tabs/notifications.html" %}
+            {% include "settings/tabs/communications.html" %}
+            {% include "settings/tabs/connections.html" %}
+            {% include "settings/tabs/logs.html" %}
+        </div>
+        
     </div>
 
-    <div id="main-tab-content">
-        <!-- Inclusão das parciais das abas -->
-        {% include "settings/tabs/general.html" %}
-        {% include "settings/tabs/tasks.html" %}
-        {% include "settings/tabs/payments.html" %}
-        {% include "settings/tabs/gamification.html" %}
-        {% include "settings/tabs/notifications.html" %}
-        {% include "settings/tabs/communications.html" %}
-        {% include "settings/tabs/connections.html" %}
-        {% include "settings/tabs/logs.html" %}
-    </div>
-
-    <div class="pt-2 flex justify-end">
-        <button type="submit" id="saveButton" class="btn bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-500/20">{{ _('Salvar Alterações') }}</button>
+    <!-- Botão de Guardar Flutuante (Sticky Footer) -->
+    <div class="sticky bottom-6 z-40 mt-6 flex justify-end sticky-btn-wrapper px-2">
+        <button type="submit" id="saveButton" class="btn bg-green-600 hover:bg-green-500 text-white shadow-xl shadow-green-500/30 px-8 py-3.5 text-lg font-bold w-full sm:w-auto rounded-xl transition-all transform hover:-translate-y-1 border border-green-400 dark:border-green-700 flex items-center justify-center gap-2 group">
+            <svg class="w-6 h-6 transition-transform group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+            <span>{{ _('Salvar Alterações') }}</span>
+        </button>
     </div>
 </form>
 
-<!-- Modal de Ajuda (Placeholders) -->
-<div id="placeholderHelpModal" class="modal-backdrop hidden">
-    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-lg w-full">
-        <div class="flex justify-between items-center mb-4">
-            <h3 class="text-xl font-bold text-gray-900 dark:text-white">{{ _('Placeholders Disponíveis') }}</h3>
-            <button id="closeHelpModal" class="text-gray-400 hover:text-gray-600 dark:hover:text-white text-3xl">&times;</button>
+<!-- Modal de Ajuda (Placeholders) com Fundo Desfocado -->
+<div id="placeholderHelpModal" class="hidden fixed inset-0 z-50 bg-gray-900/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-3xl w-full border border-gray-100 dark:border-gray-700/50 transform transition-all overflow-hidden animate-fade-in">
+        
+        <div class="flex justify-between items-center px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                {{ _('Dicionário de Variáveis (Placeholders)') }}
+            </h3>
+            <button id="closeHelpModal" class="text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-3xl leading-none transition-colors focus:outline-none">&times;</button>
         </div>
-        <div class="modal-body space-y-2 text-sm text-gray-600 dark:text-gray-300 grid grid-cols-[max-content,1fr] gap-x-4 gap-y-2">
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{greeting}</strong> <span>- {{ _('Saudação baseada na hora (Bom dia, Boa tarde, Boa noite).') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{username}</strong> <span>- {{ _('O nome de utilizador do Plex.') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{name}</strong> <span>- {{ _('O nome completo do utilizador (definido no perfil).') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{email}</strong> <span>- {{ _('O endereço de email do utilizador.') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{date}</strong> <span>- {{ _('A data de vencimento formatada (dd/mm/aaaa).') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{telegram_user}</strong> <span>- {{ _('O ID ou @username do Telegram do utilizador.') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{discord_user_id}</strong> <span>- {{ _('O ID de utilizador do Discord para menções.') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{phone_number}</strong> <span>- {{ _('O número de telefone do utilizador.') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{days}</strong> <span>- {{ _('Os dias restantes para o vencimento (apenas para mensagens de vencimento).') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{new_date}</strong> <span>- {{ _('A nova data de vencimento (apenas para mensagens de renovação).') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{payment_link}</strong> <span>- {{ _('O link direto para a página de pagamento do utilizador.') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{price}</strong> <span>- {{ _('O valor da renovação do plano do utilizador (ex: R$ 10,00).') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{plan_name}</strong> <span>- {{ _('O plano que o usuario utiliza.') }}</span>
-            <strong class="font-mono text-blue-600 dark:text-blue-400">{limit}</strong> <span>- {{ _('O limite de telas do utilizador (apenas para mensagens de limite de tela).') }}</span>
-            <strong class="font-mono text-red-500 dark:text-red-400">{message}</strong> <span>- {{ _('A mensagem personalizada inserida no dashboard (apenas para templates de avisos em massa).') }}</span>
+        
+        <div class="p-6">
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">{{ _('Pode utilizar as seguintes variáveis mágicas nos seus templates de texto. O sistema irá substituí-las automaticamente pelos dados reais do utilizador no momento do envio.') }}</p>
+            
+            <!-- Grelha de Placeholders Premium -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
+                    <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{greeting}</code>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Saudação baseada na hora local (Bom dia, Boa tarde, Boa noite).') }}</span>
+                </div>
+                
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
+                    <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{username}</code>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('O nome de utilizador do cliente no Plex.') }}</span>
+                </div>
+                
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
+                    <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{name}</code>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('O nome completo (se definido no perfil), caso contrário usa o Username.') }}</span>
+                </div>
+                
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
+                    <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{email}</code>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('O endereço de email vinculado à conta do utilizador.') }}</span>
+                </div>
+                
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
+                    <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{date}</code>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Data de vencimento atual formatada.') }}</span>
+                </div>
+                
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
+                    <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{new_date}</code>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('A nova data de vencimento pós-renovação.') }}</span>
+                </div>
+
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
+                    <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{days}</code>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Quantidade de dias que faltam para o bloqueio.') }}</span>
+                </div>
+                
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
+                    <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{price}</code>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('O valor da assinatura baseado nas telas (Ex: R$ 10,00).') }}</span>
+                </div>
+                
+                <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
+                    <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{plan_name}</code>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Descrição amigável do plano (Ex: "2 Telas").') }}</span>
+                </div>
+                
+                <div class="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800/50 flex flex-col lg:col-span-2">
+                    <code class="text-green-600 dark:text-green-400 font-bold mb-1 font-mono text-sm">{payment_link}</code>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Link secreto e único para o utilizador gerar o PIX e renovar a conta automaticamente.') }}</span>
+                </div>
+                
+                <div class="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800/50 flex flex-col">
+                    <code class="text-red-600 dark:text-red-400 font-bold mb-1 font-mono text-sm">{limit}</code>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Limite de telas (Usado nos cortes por excesso).') }}</span>
+                </div>
+
+            </div>
+            
+            <div class="mt-6 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800/50">
+                <p class="text-xs text-purple-800 dark:text-purple-300">
+                    <strong class="font-bold">Dica de Envio em Massa:</strong> Se usar a variável <code class="font-mono font-bold bg-white dark:bg-gray-800 px-1 rounded">{message}</code> num template de comunicação, ela injetará o texto exato que você escreveu na caixa de texto do Dashboard.
+                </p>
+            </div>
+            
+        </div>
+        
+        <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 flex justify-end">
+            <button id="btnFooterCloseHelp" class="btn bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 transition-colors w-full sm:w-auto px-6">{{ _('Entendi') }}</button>
         </div>
     </div>
 </div>
@@ -112,4 +230,11 @@
     data-i18n-save-templates="{{ _('Salvar Templates de Comunicação') }}"
     data-i18n-saving-templates="{{ _('Salvando templates...') }}"
 ></script>
+
+<script>
+    // Script rápido de Fallback para fechar o Modal caso o handlers.js demore
+    document.getElementById('btnFooterCloseHelp').addEventListener('click', function() {
+        document.getElementById('placeholderHelpModal').classList.add('hidden');
+    });
+</script>
 {% endblock %}
