@@ -1,121 +1,209 @@
-<div id="tab-pagamentos" class="tab-content">
-    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <div>
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Configurações Pagamentos') }}</h2>
-            <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Configure e habilite Sistema Pagamento.') }}</p>
-        </div>
-        <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600 space-y-6">
-            <div>
-                <label for="PAYMENT_LINK_GRACE_PERIOD_DAYS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Período de Carência para Link de Pagamento (dias)') }}</label>
-                <input type="number" id="PAYMENT_LINK_GRACE_PERIOD_DAYS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="0">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Número de dias após o vencimento que o link de pagamento continuará ativo.')}}</p>
-            </div>
-            <div class="pt-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
-                <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Preços por Quantidade de Telas') }}</h4>
-                <div>
-                    <label for="RENEWAL_PRICE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço Padrão (Fallback)') }}</label>
-                    <input type="text" id="RENEWAL_PRICE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="10.00">
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Use este preço se não quiser definir valores por tela. Deixe os campos abaixo em branco para usar este valor.')}}</p>
+<div id="tab-pagamentos" class="tab-content hidden">
+    <!-- Cabeçalho da Aba -->
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            {{ _('Configurações de Pagamentos') }}
+        </h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1 text-sm">{{ _('Gira os valores da assinatura e configure as integrações com os bancos para receber por PIX automaticamente.') }}</p>
+    </div>
+
+    <div class="space-y-6">
+        
+        <!-- Cartão: Configurações Gerais -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                {{ _('Geral') }}
+            </h3>
+            <div class="max-w-md">
+                <label for="PAYMENT_LINK_GRACE_PERIOD_DAYS" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Período de Carência do Link (Dias)') }}</label>
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <input type="number" id="PAYMENT_LINK_GRACE_PERIOD_DAYS" class="block w-full pl-10 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow" min="0">
                 </div>
-                <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <h4 class="font-semibold text-lg mb-4">{{ _('Preços por Quantidade de Telas (Opcional)') }}</h4>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">{{_('Se preenchidos, estes valores terão prioridade sobre o preço padrão.')}}</p>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label for="PRICE_SCREEN_1" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 1 Tela') }}</label>
-                            <input type="text" id="PRICE_SCREEN_1" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="10.00">
-                        </div>
-                        <div>
-                            <label for="PRICE_SCREEN_2" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 2 Telas') }}</label>
-                        <input type="text" id="PRICE_SCREEN_2" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="18.00">
-                        </div>
-                        <div>
-                            <label for="PRICE_SCREEN_3" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 3 Telas') }}</label>
-                            <input type="text" id="PRICE_SCREEN_3" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="25.00">
-                        </div>
-                        <div>
-                            <label for="PRICE_SCREEN_4" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Preço para 4 Telas') }}</label>
-                            <input type="text" id="PRICE_SCREEN_4" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="30.00">
-                        </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Número de dias após o vencimento que o link continuará a gerar cobranças antes de bloquear.')}}</p>
+            </div>
+        </div>
+
+        <!-- Cartão: Preços -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
+                <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                {{ _('Tabela de Preços') }}
+            </h3>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{_('Defina os valores de renovação. O sistema aplicará automaticamente consoante o limite de ecrãs do utilizador.')}}</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Preço Padrão (Destaque) -->
+                <div class="p-4 bg-white dark:bg-gray-800 rounded-xl border border-yellow-200 dark:border-yellow-700/50 shadow-sm relative overflow-hidden">
+                    <div class="absolute top-0 right-0 bg-yellow-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg uppercase tracking-wide">Padrão</div>
+                    <label for="RENEWAL_PRICE" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">{{ _('Valor Fixo (Fallback)') }}</label>
+                    <div class="relative mt-2">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500 font-bold">R$</div>
+                        <input type="text" id="RENEWAL_PRICE" class="block w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="10.00">
+                    </div>
+                </div>
+                
+                <!-- Telas Específicas -->
+                <div class="p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                    <label for="PRICE_SCREEN_1" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">1 Tela</label>
+                    <div class="relative mt-2">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500 font-bold">R$</div>
+                        <input type="text" id="PRICE_SCREEN_1" class="block w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="10.00">
+                    </div>
+                </div>
+
+                <div class="p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                    <label for="PRICE_SCREEN_2" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">2 Telas</label>
+                    <div class="relative mt-2">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500 font-bold">R$</div>
+                        <input type="text" id="PRICE_SCREEN_2" class="block w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="18.00">
+                    </div>
+                </div>
+
+                <div class="p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                    <label for="PRICE_SCREEN_3" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">3 Telas</label>
+                    <div class="relative mt-2">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500 font-bold">R$</div>
+                        <input type="text" id="PRICE_SCREEN_3" class="block w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="25.00">
+                    </div>
+                </div>
+
+                <div class="p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                    <label for="PRICE_SCREEN_4" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">4 Telas</label>
+                    <div class="relative mt-2">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500 font-bold">R$</div>
+                        <input type="text" id="PRICE_SCREEN_4" class="block w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="30.00">
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
-            <div class="border-b border-gray-200 dark:border-gray-700 mb-6">
-                <!-- Esta barra de abas tem poucas abas, por isso mantemos o overflow-x-auto -->
-                <nav id="payment-provider-tabs" class="flex space-x-1 sm:space-x-2 overflow-x-auto no-scrollbar">
-                    <button type="button" data-subtab="EFI" class="tab-button active">Efí</button>
-                    <button type="button" data-subtab="MERCADOPAGO" class="tab-button">Mercado Pago</button>
-                    <button type="button" data-subtab="BPIX" class="tab-button">BPIX</button>
+        <!-- Cartão: Provedores de Pagamento -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                {{ _('Integrações Bancárias') }}
+            </h3>
+            
+            <!-- Navegação de Provedores (Sub-tabs) -->
+            <div class="border-b border-gray-200 dark:border-gray-700 mb-6 pb-2">
+                <nav id="payment-provider-tabs" class="flex space-x-2 overflow-x-auto horizontal-scroll">
+                    <!-- A classe tab-button aqui é lida pelo handlers.js que as transforma em Pills Ativas -->
+                    <button type="button" data-subtab="EFI" class="tab-button active bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-600">Efí Bank</button>
+                    <button type="button" data-subtab="MERCADOPAGO" class="tab-button text-gray-500 dark:text-gray-400">Mercado Pago</button>
+                    <button type="button" data-subtab="BPIX" class="tab-button text-gray-500 dark:text-gray-400">BPIX</button>
                 </nav>
             </div>
-            <div id="payment-provider-tab-content" class="space-y-6">
-                <div id="subtab-EFI" class="sub-tab-content active space-y-4 input-group">
-                     <div class="flex items-center">
-                        <input id="EFI_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                        <label for="EFI_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar Efí') }}</label>
-                    </div>
-                    <div class="disablable-input space-y-4">
-                        <div class="flex items-center">
-                            <input id="EFI_USE_MTLS" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                            <label for="EFI_USE_MTLS" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Usar mTLS (Modo Seguro Recomendado)') }}</label>
+
+            <!-- Conteúdos dos Provedores -->
+            <div id="payment-provider-tab-content">
+                
+                <!-- ABA EFI -->
+                <div id="subtab-EFI" class="sub-tab-content active space-y-5 animate-fade-in">
+                    <div class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
+                        <div>
+                            <p class="font-bold text-gray-900 dark:text-white">Efí Bank (Gerencianet)</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">PIX Automático Oficial</p>
                         </div>
-                        <div id="efi-hmac-section" class="hidden space-y-2 pl-6">
-                            <label for="EFI_WEBHOOK_HMAC_SECRET" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('HMAC Secret para Webhook') }}</label>
-                            <div class="flex items-center gap-2">
-                                <input type="text" id="EFI_WEBHOOK_HMAC_SECRET" readonly class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-200 border-gray-300 text-gray-900 dark:bg-gray-800 dark:border-gray-600 dark:text-white">
-                                <button type="button" id="generateHmacSecret" class="btn bg-blue-600 hover:bg-blue-500 text-white text-sm">{{ _('Gerar Novo') }}</button>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input id="EFI_ENABLED" type="checkbox" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-500"></div>
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pl-1">
+                        <div class="space-y-4">
+                            <div>
+                                <label for="EFI_CLIENT_ID" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Client ID</label>
+                                <input type="text" id="EFI_CLIENT_ID" class="block w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="Client_Id_...">
                             </div>
-                            <p class="text-xs text-yellow-600 dark:text-yellow-400 mt-2">{{_('Aviso: Desativar o mTLS é menos seguro. Use o HMAC como uma camada extra de validação.')}}</p>
+                            <div>
+                                <label for="EFI_CLIENT_SECRET" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Client Secret</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg></div>
+                                    <input type="password" id="EFI_CLIENT_SECRET" class="block w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="********">
+                                </div>
+                            </div>
+                            <div>
+                                <label for="EFI_PIX_KEY" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Chave PIX</label>
+                                <input type="text" id="EFI_PIX_KEY" class="block w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="ex: seu@email.com">
+                            </div>
                         </div>
-                        <div class="flex items-center">
-                            <input id="EFI_SANDBOX" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                            <label for="EFI_SANDBOX" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Modo de Teste (Sandbox)') }}</label>
-                        </div>
-                        <div>
-                            <label for="EFI_CLIENT_ID" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Client ID') }}</label>
-                            <input type="text" id="EFI_CLIENT_ID" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Insira o Client ID') }}">
-                        </div>
-                        <div>
-                            <label for="EFI_CLIENT_SECRET" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Client Secret') }}</label>
-                            <input type="password" id="EFI_CLIENT_SECRET" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha para alterar') }}">
-                        </div>
-                        <div>
-                            <label for="EFI_CERTIFICATE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Caminho do Certificado (.pem)') }}</label>
-                            <input type="text" id="EFI_CERTIFICATE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="./certs/seu_certificado.pem">
-                        </div>
-                        <div>
-                            <label for="EFI_PIX_KEY" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Sua Chave PIX') }}</label>
-                            <input type="text" id="EFI_PIX_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Sua chave PIX') }}">
-                        </div>
-                    </div>
-                </div>
-                <div id="subtab-MERCADOPAGO" class="sub-tab-content space-y-4 input-group">
-                    <div class="flex items-center">
-                        <input id="MERCADOPAGO_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                        <label for="MERCADOPAGO_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar Mercado Pago') }}</label>
-                    </div>
-                    <div class="disablable-input space-y-4">
-                        <div>
-                            <label for="MERCADOPAGO_ACCESS_TOKEN" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Access Token do Mercado Pago') }}</label>
-                            <input type="password" id="MERCADOPAGO_ACCESS_TOKEN" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha para alterar') }}">
-                        </div>
-                    </div>
-                </div>
-                <div id="subtab-BPIX" class="sub-tab-content space-y-4 input-group">
-                    <div class="flex items-center">
-                        <input id="BPIX_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                        <label for="BPIX_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar BPIX') }}</label>
-                    </div>
-                    <div class="disablable-input space-y-4">
-                        <div>
-                            <label for="BPIX_AUTH_TOKEN" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Token de Autorização') }}</label>
-                            <input type="password" id="BPIX_AUTH_TOKEN" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha para alterar') }}">
+
+                        <div class="space-y-4">
+                            <div>
+                                <label for="EFI_CERTIFICATE" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Caminho do Certificado (.pem)</label>
+                                <input type="text" id="EFI_CERTIFICATE" class="block w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="/app/certs/cert.pem">
+                            </div>
+
+                            <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800/50 flex flex-col gap-3">
+                                <label class="flex items-center cursor-pointer">
+                                    <input id="EFI_USE_MTLS" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span class="ml-2 text-sm font-bold text-gray-900 dark:text-gray-200">Usar mTLS <span class="bg-blue-100 text-blue-700 dark:bg-blue-800 dark:text-blue-300 text-[10px] px-2 py-0.5 rounded-full ml-1">RECOMENDADO</span></span>
+                                </label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input id="EFI_SANDBOX" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span class="ml-2 text-sm font-semibold text-gray-900 dark:text-gray-200">Modo de Teste (Sandbox)</span>
+                                </label>
+                            </div>
+
+                            <div id="efi-hmac-section" class="hidden p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800/50">
+                                <label for="EFI_WEBHOOK_HMAC_SECRET" class="block text-sm font-bold text-yellow-800 dark:text-yellow-400 mb-1">HMAC Secret (Webhook sem mTLS)</label>
+                                <div class="flex items-center gap-2 mt-2">
+                                    <input type="text" id="EFI_WEBHOOK_HMAC_SECRET" readonly class="block w-full px-3 py-2 text-sm rounded-lg border border-yellow-300 bg-yellow-100/50 text-gray-900 dark:bg-yellow-900/40 dark:border-yellow-700 dark:text-white font-mono">
+                                    <button type="button" id="generateHmacSecret" class="btn bg-yellow-600 hover:bg-yellow-500 text-white text-xs px-3 py-2 whitespace-nowrap">{{ _('Gerar') }}</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- ABA MERCADO PAGO -->
+                <div id="subtab-MERCADOPAGO" class="sub-tab-content hidden space-y-5 animate-fade-in">
+                    <div class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
+                        <div>
+                            <p class="font-bold text-gray-900 dark:text-white">Mercado Pago</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Gateway de Pagamentos</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input id="MERCADOPAGO_ENABLED" type="checkbox" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"></div>
+                        </label>
+                    </div>
+                    <div class="max-w-md pl-1">
+                        <label for="MERCADOPAGO_ACCESS_TOKEN" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Access Token</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg></div>
+                            <input type="password" id="MERCADOPAGO_ACCESS_TOKEN" class="block w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="APP_USR-...">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ABA BPIX -->
+                <div id="subtab-BPIX" class="sub-tab-content hidden space-y-5 animate-fade-in">
+                    <div class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
+                        <div>
+                            <p class="font-bold text-gray-900 dark:text-white">BPIX</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Gateway Alternativo</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input id="BPIX_ENABLED" type="checkbox" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-500"></div>
+                        </label>
+                    </div>
+                    <div class="max-w-md pl-1">
+                        <label for="BPIX_AUTH_TOKEN" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Token de Autorização</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg></div>
+                            <input type="password" id="BPIX_AUTH_TOKEN" class="block w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="Bearer ...">
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
 

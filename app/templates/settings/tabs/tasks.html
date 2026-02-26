@@ -1,81 +1,136 @@
-<div id="tab-tarefas" class="tab-content">
-     <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-6">
-        <div>
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Configurações de Tarefas Agendadas') }}</h2>
-            <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Configure e habilite para executar tarefas regulares de manutenção de forma automática.') }}</p>
-        </div>
-        <div class="mt-4 pt-3 space-y-2">
-            <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Envio de Notificações e Bloqueio') }}</h4>
-            <label for="EXPIRATION_NOTIFICATION_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Enviar Notificações de Vencimento') }}</label>
-            <input type="time" id="EXPIRATION_NOTIFICATION_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A verificação de vencimentos será executada diariamente a esta hora.')}}</p>
-        </div>
-        <div>
-            <label for="BLOCK_REMOVAL_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Remover Usuários Bloqueados') }}</label>
-            <input type="time" id="BLOCK_REMOVAL_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A verificação de contas bloqueadas para remoção será executada diariamente a esta hora.')}}</p>
-        </div>
-        <div>
-            <label for="DAYS_TO_REMOVE_BLOCKED_USER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Usuários Bloqueado Após (dias)') }}</label>
-            <input type="number" id="DAYS_TO_REMOVE_BLOCKED_USER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="0">
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Defina 0 para desativar.')}}</p>
-        </div>
-        <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
-            <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Vencimento Universal') }}</h4>
-            <div class="input-group space-y-4">
-                <div class="flex items-center">
-                    <input id="UNIVERSAL_EXPIRATION_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                    <label for="UNIVERSAL_EXPIRATION_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar horário de vencimento universal') }}</label>
+<div id="tab-tarefas" class="tab-content hidden">
+    <!-- Cabeçalho da Aba -->
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            {{ _('Automações e Tarefas') }}
+        </h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1 text-sm">{{ _('O servidor executa manutenções de forma invisível. Configure os horários e as regras dessas rotinas automáticas.') }}</p>
+    </div>
+
+    <div class="space-y-6">
+
+        <!-- Cartão 1: Rotinas de Avisos e Bloqueios -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                {{ _('Rotinas de Notificações e Cortes') }}
+            </h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="EXPIRATION_NOTIFICATION_TIME" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Hora dos Avisos de Vencimento') }}</label>
+                    <input type="time" id="EXPIRATION_NOTIFICATION_TIME" class="block w-full sm:max-w-xs px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A verificação de utilizadores prestes a vencer será executada diariamente a esta hora.')}}</p>
                 </div>
-                <div class="disablable-input">
-                    <label for="UNIVERSAL_EXPIRATION_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Horário Universal de Vencimento') }}</label>
-                    <input type="time" id="UNIVERSAL_EXPIRATION_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Se ativado, todas as assinaturas expirarão neste horário, ignorando as configurações individuais.')}}</p>
+                <div>
+                    <label for="BLOCK_REMOVAL_TIME" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Hora do Bloqueio Automático') }}</label>
+                    <input type="time" id="BLOCK_REMOVAL_TIME" class="block w-full sm:max-w-xs px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A verificação de contas expiradas (para bloqueio) ocorrerá a esta hora.')}}</p>
+                </div>
+                <div class="md:col-span-2 pt-4 border-t border-gray-200 dark:border-gray-700/50">
+                    <label for="DAYS_TO_REMOVE_BLOCKED_USER" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Eliminar do Servidor Após (Dias)') }}</label>
+                    <div class="flex items-center gap-4">
+                        <input type="number" id="DAYS_TO_REMOVE_BLOCKED_USER" class="block w-32 px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-red-500 focus:border-red-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow" min="0">
+                        <p class="text-xs text-gray-500 dark:text-gray-400">{{_('Se um utilizador estiver bloqueado há X dias, será removido da sua lista de amigos Plex permanentemente. Defina 0 para nunca eliminar.')}}</p>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
-            <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Limpeza Automática de Dados') }}</h4>
-             <div class="flex items-center">
-                <input id="CLEANUP_PENDING_PAYMENTS_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                <label for="CLEANUP_PENDING_PAYMENTS_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar limpeza de pagamentos pendentes') }}</label>
+
+        <!-- Cartão 2: Vencimento Universal -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {{ _('Vencimento Universal') }}
+                </h3>
+                <label class="relative inline-flex items-center cursor-pointer" title="{{ _('Habilitar/Desabilitar') }}">
+                    <input id="UNIVERSAL_EXPIRATION_ENABLED" type="checkbox" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-500"></div>
+                </label>
             </div>
-            <div>
-                <label for="CLEANUP_PENDING_PAYMENTS_DAYS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Pagamentos Pendentes (não concluídos) Após (dias)') }}</label>
-                <input type="number" id="CLEANUP_PENDING_PAYMENTS_DAYS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Isso remove cobranças PIX que não foram pagas para manter o banco de dados limpo.')}}</p>
-            </div>
-            <div class="flex items-center">
-                <input id="SHORT_LINK_CLEANUP_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                <label for="SHORT_LINK_CLEANUP_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar limpeza automática de links curtos') }}</label>
-            </div>
-            <div>
-                <label for="SHORT_LINK_MAX_AGE_DAYS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Links Curtos Após (dias)') }}</label>
-                <input type="number" id="SHORT_LINK_MAX_AGE_DAYS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Remove links encurtados antigos para manter a base de dados otimizada.')}}</p>
-            </div>
-            <div>
-                <label for="CLEANUP_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Executar a Limpeza') }}</label>
-                <input type="time" id="CLEANUP_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A tarefa de limpeza será executada diariamente a esta hora.')}}</p>
+            
+            <div class="disablable-input pl-1">
+                <label for="UNIVERSAL_EXPIRATION_TIME" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Horário de Corte') }}</label>
+                <input type="time" id="UNIVERSAL_EXPIRATION_TIME" class="block w-full sm:max-w-xs px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Força todas as assinaturas a expirarem nesta hora exata, em vez de expirarem na hora em que o utilizador foi inicialmente criado.')}}</p>
             </div>
         </div>
-         <div class="pt-6 mt-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
-            <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Limpeza do Cache de Imagens') }}</h4>
-             <div class="flex items-center">
-                <input id="IMAGE_CACHE_CLEANUP_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                <label for="IMAGE_CACHE_CLEANUP_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar limpeza do cache de imagens') }}</label>
+
+        <!-- Cartão 3: Limpeza de Dados -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <div class="flex items-center justify-between mb-4 pb-4 border-b border-gray-200 dark:border-gray-700/50">
+                <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    {{ _('Otimização da Base de Dados') }}
+                </h3>
+                <div class="flex items-center gap-3">
+                    <label for="CLEANUP_TIME" class="text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Hora de Execução:') }}</label>
+                    <input type="time" id="CLEANUP_TIME" class="block w-32 px-2 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-red-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow">
+                </div>
             </div>
-            <div>
-                <label for="IMAGE_CACHE_MAX_AGE_DAYS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Remover Imagens em Cache Após (dias)') }}</label>
-                <input type="number" id="IMAGE_CACHE_MAX_AGE_DAYS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Isto apaga ficheiros de imagem antigos para poupar espaço em disco.')}}</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pl-1">
+                <!-- Limpeza de Pagamentos -->
+                <div class="space-y-3 p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm font-bold text-gray-900 dark:text-white">{{ _('Pagamentos Pendentes') }}</label>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input id="CLEANUP_PENDING_PAYMENTS_ENABLED" type="checkbox" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-red-500"></div>
+                        </label>
+                    </div>
+                    <div>
+                        <label for="CLEANUP_PENDING_PAYMENTS_DAYS" class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">{{ _('Remover ao fim de (dias):') }}</label>
+                        <input type="number" id="CLEANUP_PENDING_PAYMENTS_DAYS" class="block w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-red-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" min="1">
+                        <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1 leading-tight">{{_('Elimina cobranças PIX abandonadas pelo utilizador para aliviar a base de dados.')}}</p>
+                    </div>
+                </div>
+
+                <!-- Limpeza de Links Curtos -->
+                <div class="space-y-3 p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm font-bold text-gray-900 dark:text-white">{{ _('Links Curtos Antigos') }}</label>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input id="SHORT_LINK_CLEANUP_ENABLED" type="checkbox" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-red-500"></div>
+                        </label>
+                    </div>
+                    <div>
+                        <label for="SHORT_LINK_MAX_AGE_DAYS" class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">{{ _('Remover ao fim de (dias):') }}</label>
+                        <input type="number" id="SHORT_LINK_MAX_AGE_DAYS" class="block w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-red-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" min="1">
+                        <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1 leading-tight">{{_('Remove links encurtados de pagamentos antigos (/s/...)')}}</p>
+                    </div>
+                </div>
             </div>
-            <div>
-                <label for="IMAGE_CACHE_CLEANUP_TIME" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Hora para Executar a Limpeza do Cache') }}</label>
-                <input type="time" id="IMAGE_CACHE_CLEANUP_TIME" class="mt-1 block max-w-xs p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A tarefa de limpeza do cache de imagens será executada diariamente a esta hora.')}}</p>
-            </div>               
         </div>
+
+        <!-- Cartão 4: Cache de Imagens -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+             <div class="flex items-center justify-between mb-4 pb-4 border-b border-gray-200 dark:border-gray-700/50">
+                <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    {{ _('Limpeza de Cache de Pôsteres') }}
+                </h3>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input id="IMAGE_CACHE_CLEANUP_ENABLED" type="checkbox" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-500"></div>
+                </label>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pl-1">
+                <div>
+                    <label for="IMAGE_CACHE_MAX_AGE_DAYS" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Idade Máxima da Imagem (dias)') }}</label>
+                    <input type="number" id="IMAGE_CACHE_MAX_AGE_DAYS" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" min="1">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Apaga miniaturas e capas de filmes antigas guardadas localmente para poupar espaço no disco do Servidor.')}}</p>
+                </div>
+                <div>
+                    <label for="IMAGE_CACHE_CLEANUP_TIME" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Hora de Execução') }}</label>
+                    <input type="time" id="IMAGE_CACHE_CLEANUP_TIME" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white">
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>

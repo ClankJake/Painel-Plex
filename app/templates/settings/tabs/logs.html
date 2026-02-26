@@ -1,21 +1,85 @@
-<div id="tab-logs" class="tab-content">
-    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <div class="flex flex-wrap gap-4 justify-between items-center mb-4">
-            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Logs do Sistema') }}</h3>
-            <div class="flex items-center gap-4">
-                <div>
-                    <label for="log_level_selector" class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Nível de Log:') }}</label>
-                    <select id="log_level_selector" class="p-1 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                        <option value="INFO">INFO</option>
-                        <option value="DEBUG">DEBUG</option>
+<div id="tab-logs" class="tab-content hidden">
+    
+    <!-- Cabeçalho da Aba -->
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <svg class="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            {{ _('Logs do Sistema') }}
+        </h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1 text-sm">{{ _('Monitorize a atividade do servidor em tempo real para depurar erros ou verificar o funcionamento das automações.') }}</p>
+    </div>
+
+    <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+        
+        <!-- Barra de Ferramentas (Toolbar) -->
+        <div class="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center mb-6">
+            
+            <!-- Seletor de Nível -->
+            <div class="flex items-center gap-3 w-full sm:w-auto">
+                <label for="log_level_selector" class="text-sm font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    <svg class="w-4 h-4 inline mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                    {{ _('Nível de Log:') }}
+                </label>
+                <div class="relative w-full sm:w-40">
+                    <select id="log_level_selector" class="block w-full pl-3 pr-10 py-2 text-sm rounded-lg border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white appearance-none shadow-sm cursor-pointer transition-shadow">
+                        <option value="INFO">INFO (Padrão)</option>
+                        <option value="DEBUG">DEBUG (Avançado)</option>
+                        <option value="WARNING">WARNING</option>
+                        <option value="ERROR">ERROR</option>
                     </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
                 </div>
-                <button type="button" id="toggle-logs" class="btn text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1.5">{{ _('Parar Atualização') }}</button>
-                <button type="button" id="clear-logs" class="btn text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-1.5">{{ _('Limpar') }}</button>
+            </div>
+
+            <!-- Botões de Ação -->
+            <div class="flex items-center gap-3 w-full sm:w-auto">
+                <button type="button" id="toggle-logs" class="btn flex-1 sm:flex-none justify-center bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9V5a2 2 0 00-2-2H6a2 2 0 00-2 2v14a2 2 0 002 2h2a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                    {{ _('Parar Atualização') }}
+                </button>
+                <button type="button" id="clear-logs" class="btn flex-1 sm:flex-none justify-center bg-red-600 hover:bg-red-500 text-white px-4 py-2 text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    {{ _('Limpar') }}
+                </button>
             </div>
         </div>
-        <div class="bg-gray-900 text-white p-4 rounded-lg h-96 overflow-y-auto">
-            <pre id="log-display">{{ _('Carregando logs...') }}</pre>
+
+        <style>
+            /* Scrollbar personalizada garantida para ambos os temas (Alto Contraste) */
+            .terminal-scrollbar::-webkit-scrollbar { 
+                width: 10px; 
+                height: 10px; 
+            }
+            .terminal-scrollbar::-webkit-scrollbar-track { 
+                background: #1e293b !important; /* Fundo escuro da calha */
+                border-radius: 8px; 
+            }
+            .terminal-scrollbar::-webkit-scrollbar-thumb { 
+                background: #64748b !important; /* Polegar da barra mais claro */
+                border-radius: 8px; 
+                border: 2px solid #1e293b !important; /* Borda para criar o efeito flutuante */
+            }
+            .terminal-scrollbar::-webkit-scrollbar-thumb:hover { 
+                background: #94a3b8 !important; /* Fica ainda mais claro ao passar o rato */
+            }
+            
+            /* Força o Terminal a ficar isolado dos temas Claro/Escuro do Painel */
+            #log-display {
+                background-color: #0f172a !important; /* Azul muito escuro fixo */
+                color: #e2e8f0 !important; /* Letras cinza claro fixas */
+                box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.5);
+            }
+        </style>
+        
+        <!-- Quadro Escuro de Logs Forçado -->
+        <div id="log-display" class="p-5 rounded-xl border border-gray-800 h-[500px] overflow-y-auto terminal-scrollbar font-mono text-sm leading-relaxed break-words whitespace-pre-wrap">
+            <div class="flex items-center gap-3 text-gray-400 animate-pulse font-sans">
+                <svg class="w-5 h-5 animate-spin text-yellow-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                {{ _('A carregar base de dados de logs...') }}
+            </div>
         </div>
+
     </div>
 </div>
