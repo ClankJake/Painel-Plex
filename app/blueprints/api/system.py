@@ -1,6 +1,8 @@
 # app/blueprints/api/system.py
 
 import logging
+import os
+import pytz
 from flask import Blueprint, jsonify, request, current_app, session, url_for
 from flask_login import login_user, current_user
 from plexapi.myplex import MyPlexAccount
@@ -248,12 +250,23 @@ def api_settings():
                 try:
                     if trigger_type == 'cron':
                         hour, minute = map(int, new_value.split(':')[:2])
-                        try:
-                            tz_str = get_localzone_name()
-                        except Exception:
-                            tz_str = 'UTC'
+                        
+                        # --- CORREÇÃO DO FUSO HORÁRIO PARA O DOCKER ---
+                        tz_env = os.environ.get('TZ')
+                        if tz_env:
+                            try: 
+                                tz_str = pytz.timezone(tz_env).zone
+                            except: 
+                                tz_str = 'UTC'
+                        else:
+                            try: 
+                                tz_str = get_localzone_name()
+                            except: 
+                                tz_str = 'UTC'
+                        # ----------------------------------------------
+                        
                         scheduler.reschedule_job(job_id, trigger=CronTrigger(hour=hour, minute=minute, timezone=tz_str))
-                        logger.info(f"Tarefa '{job_id}' reagendada para as {hour:02d}:{minute:02d}.")
+                        logger.info(f"Tarefa '{job_id}' reagendada para as {hour:02d}:{minute:02d} ({tz_str}).")
                     elif trigger_type == 'interval':
                         seconds = int(new_value)
                         scheduler.reschedule_job(job_id, trigger='interval', seconds=seconds)
