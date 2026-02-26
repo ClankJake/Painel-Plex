@@ -4,18 +4,9 @@
 
 {% block extra_head %}
 <style>
-    /* Ocultar barra de scroll para navegação horizontal (Tabs) */
-    .horizontal-scroll {
-        -ms-overflow-style: none;  /* IE and Edge */
-        scrollbar-width: none;     /* Firefox */
-    }
-    .horizontal-scroll::-webkit-scrollbar {
-        display: none; /* Chrome, Safari, Opera */
-    }
-
     /* Estilos das Tabs Otimizados */
     .tab-button {
-        @apply whitespace-nowrap px-5 py-2.5 rounded-lg text-sm font-semibold text-gray-500 dark:text-gray-400 transition-all duration-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none;
+        @apply px-4 py-2.5 rounded-lg text-sm font-semibold text-gray-500 dark:text-gray-400 transition-all duration-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none;
     }
     .tab-button.active {
         @apply bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-600;
@@ -45,7 +36,7 @@
     </div>
 </header>
 
-<form id="settingsForm" class="max-w-5xl mx-auto space-y-8 relative pb-20">
+<form id="settingsForm" class="max-w-6xl mx-auto space-y-8 relative pb-20">
 
     <!-- Cartão Principal que Engloba Tudo -->
     <div class="bg-white dark:bg-gray-800/60 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 overflow-hidden">
@@ -66,8 +57,8 @@
                  </div>
             </div>
 
-            <!-- Navegação horizontal para Desktop -->
-            <nav id="main-tabs" class="hidden md:flex flex-nowrap overflow-x-auto horizontal-scroll gap-x-1 sm:gap-x-2 pb-3" aria-label="Tabs">
+            <!-- Navegação para Desktop (CORRIGIDO: flex-wrap e gap-y-2 para quebrar linha se necessário) -->
+            <nav id="main-tabs" class="hidden md:flex flex-wrap gap-y-2 gap-x-2 pb-4" aria-label="Tabs">
                 <button type="button" data-tab="geral" class="tab-button active">{{ _('Geral') }}</button>
                 <button type="button" data-tab="tarefas" class="tab-button">{{ _('Tarefas Agendadas') }}</button>
                 <button type="button" data-tab="pagamentos" class="tab-button">{{ _('Pagamentos') }}</button>
