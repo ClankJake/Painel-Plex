@@ -30,23 +30,20 @@ payments_api_bp = Blueprint('payments_api', __name__)
 def efi_webhook_security(f):
     """
     Decorador de segurança para o webhook da Efí.
-    Valida IP de origem e HMAC caso o mTLS não esteja em uso.
+    Valida a origem da requisição através do HMAC (Hash Cryptográfico),
+    garantindo que mesmo que IPs da Efí mudem (AWS), o webhook não seja rejeitado.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
         config = load_or_create_config()
         if not config.get("EFI_USE_MTLS", True):
-            EFI_IP = '34.193.116.226'
-            remote_ip = request.headers.getlist("X-Forwarded-For")[0].rpartition(' ')[-1] if 'X-Forwarded-For' in request.headers else request.remote_addr or 'UNKNOWN'
-            
-            if remote_ip != EFI_IP:
-                logger.warning(f"Webhook da Efí bloqueado: IP '{remote_ip}' não corresponde a '{EFI_IP}'.")
-                return jsonify(status="error", message="IP not allowed"), 403
-            
+            # CORREÇÃO: Remoção do bloqueio de IP fixo. A Efí tem múltiplos IPs.
+            # O HMAC é a prova matemática de que o pedido vem da Efí.
             hmac_secret = config.get("EFI_WEBHOOK_HMAC_SECRET")
             received_hmac = request.args.get('hmac')
+            
             if not hmac_secret or not received_hmac or hmac_secret != received_hmac:
-                logger.warning("Webhook da Efí bloqueado: HMAC inválido.")
+                logger.warning("Webhook da Efí bloqueado: HMAC inválido ou ausente. Possível tentativa de fraude.")
                 return jsonify(status="error", message="Invalid HMAC"), 403
 
         return f(*args, **kwargs)
@@ -118,22 +115,26 @@ def _run_payment_processing_in_thread(app, txid):
 
     for attempt in range(MAX_RETRIES):
         try:
-            with app.test_request_context():
-                # 1. Obter e Trancar o Pagamento
-                with extensions.db.session.begin_nested():
-                    payment = extensions.data_manager.get_and_lock_pix_payment(txid)
-                    if not payment:
-                        logger.warning(f"Pagamento {txid} não encontrado na tentativa {attempt + 1}. A ignorar.")
-                        return
-                    
-                    current_status = payment.get('status')
-                    if current_status == 'CONCLUIDA':
-                        logger.info(f"Pagamento {txid} já se encontra concluído. A evitar processamento duplicado.")
-                        return
-                    elif current_status == 'ATIVA':
-                        extensions.data_manager.update_pix_payment_status(txid, 'PROCESSANDO')
-                    elif current_status != 'PROCESSANDO':
-                        return
+            # CORREÇÃO: Usar test_request_context('/') para garantir que links (url_for) funcionem
+            # sem quebrar a execução em background!
+            with app.test_request_context('/'):
+                # 1. Obter e Trancar o Pagamento (Sem begin_nested() que causava crashes no SQLite)
+                payment = extensions.data_manager.get_and_lock_pix_payment(txid)
+                if not payment:
+                    logger.warning(f"Pagamento {txid} não encontrado na tentativa {attempt + 1}. A ignorar.")
+                    return
+                
+                current_status = payment.get('status')
+                if current_status == 'CONCLUIDA':
+                    logger.info(f"Pagamento {txid} já se encontra concluído. A evitar processamento duplicado.")
+                    extensions.db.session.commit()
+                    return
+                elif current_status == 'ATIVA':
+                    extensions.data_manager.update_pix_payment_status(txid, 'PROCESSANDO')
+                elif current_status != 'PROCESSANDO':
+                    extensions.db.session.commit()
+                    return
+                
                 extensions.db.session.commit()
                 
                 # 2. Processar Lógica de Utilizador
@@ -459,26 +460,51 @@ def get_payment_status_route(txid):
 @efi_webhook_security
 @limiter.exempt
 def efi_webhook():
+    # CORREÇÃO: Adicionamos LOGS intensivos para detetar o formato exato
+    # e garantir que a Efí recebe o seu "OK" a tempo.
+    try:
+        raw_data = request.data.decode('utf-8')
+        logger.info(f"=== [WEBHOOK EFI] Recebido POST. Dados Brutos: {raw_data[:200]}... ===")
+    except:
+        pass
+        
     notification_data = request.get_json(silent=True)
+    
     if not notification_data: 
-        logger.info("Webhook da Efí recebido (Corpo vazio / Validação).")
+        logger.info("[WEBHOOK EFI] Corpo vazio ou não-JSON. Retornando 200 para Validação da Efí.")
         return jsonify(status="validation_received"), 200
 
-    logger.info(f"Notificação de Webhook Efí recebida: {notification_data}")
     try:
-        if notification_data.get('evento') == 'teste_webhook': return jsonify(status="received"), 200
+        if notification_data.get('evento') == 'teste_webhook': 
+            logger.info("[WEBHOOK EFI] Evento de teste recebido com sucesso.")
+            return jsonify(status="received"), 200
 
-        for pix_notification in notification_data.get('pix', []):
-            if txid := pix_notification.get('txid'):
-                logger.info(f"A verificar o TXID {txid} recebido via Webhook Efí.")
+        pix_array = notification_data.get('pix', [])
+        if not pix_array:
+            logger.warning(f"[WEBHOOK EFI] Payload recebido não contém a chave 'pix'. Payload: {notification_data}")
+            
+        for pix_notification in pix_array:
+            txid = pix_notification.get('txid')
+            if txid:
+                logger.info(f"[WEBHOOK EFI] Pagamento detectado via Webhook! TXID: {txid}")
+                
+                # Validação Rápida: Se já foi processado pelo Polling antes de fechar a aba, ignoramos.
+                payment = extensions.data_manager.get_pix_payment(txid)
+                if payment and payment.get('status') == 'CONCLUIDA':
+                    logger.info(f"[WEBHOOK EFI] TXID {txid} já processado anteriormente. Ignorando dupla execução.")
+                    continue
+
                 efi_status_result = extensions.efi_manager.detail_pix_charge(txid)
                 if efi_status_result.get("success") and efi_status_result.get("data", {}).get("status") == 'CONCLUIDA':
+                    logger.info(f"[WEBHOOK EFI] O pagamento {txid} foi confirmado! A iniciar renovação...")
                     _process_successful_payment(txid)
                 else:
-                    logger.warning(f"Webhook Efí para {txid} ignorado, o estado real na API não é 'CONCLUIDA'.")
+                    logger.warning(f"[WEBHOOK EFI] Webhook recebido para {txid}, mas o estado na API Efí ainda não é 'CONCLUIDA'.")
+                    
     except Exception as e:
-        logger.error(f"Erro webhook Efí: {e}", exc_info=True)
+        logger.error(f"[WEBHOOK EFI] Erro crítico no processamento do Webhook: {e}", exc_info=True)
         return jsonify(status="error", message="Server Error"), 500
+        
     return jsonify(status="received"), 200
 
 @payments_api_bp.route('/webhook/mercadopago', methods=['POST'])
