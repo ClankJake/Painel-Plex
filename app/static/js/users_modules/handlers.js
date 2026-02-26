@@ -44,6 +44,23 @@ const copyToClipboardFallback = (text) => {
 };
 
 /**
+ * Pega o URL base configurado (APP_BASE_URL) para criar links públicos precisos,
+ * evitando que os links fiquem com "localhost" se o admin os copiar localmente.
+ */
+const getBaseUrl = () => {
+    const scriptTag = document.getElementById('users-script');
+    let appBaseUrl = scriptTag && scriptTag.dataset.appBaseUrl ? scriptTag.dataset.appBaseUrl.trim() : '';
+    
+    if (appBaseUrl) {
+        // Remove a barra final se existir, para não ficar duplo: https://site.com//pay/...
+        return appBaseUrl.replace(/\/+$/, '');
+    }
+    
+    // Fallback de segurança se nada for encontrado
+    return window.location.origin;
+};
+
+/**
  * Determina se a renovação deve ser a partir de hoje ou da data de expiração.
  */
 const _determineRenewalBase = (expirationDateStr) => {
@@ -65,7 +82,8 @@ const _determineRenewalBase = (expirationDateStr) => {
  */
 export function handleInviteAction(action, code, details = null) {
     if (action === 'copy-invite') {
-        const inviteUrl = `${window.location.origin}${urls.baseInvitePage}${code}`;
+        // Corrigido para respeitar o domínio público configurado
+        const inviteUrl = `${getBaseUrl()}${urls.baseInvitePage}${code}`;
         modals.showInviteLinkModal(inviteUrl);
         return;
     } 
@@ -139,7 +157,8 @@ export function handleUserAction(action, user) {
         'extend-trial':      () => modals.showExtendTrialModal(user),
         'copy-payment-link': () => {
             if (user.payment_token) {
-                const paymentUrl = `${window.location.origin}/pay/${user.payment_token}`;
+                // Corrigido para respeitar o domínio público configurado
+                const paymentUrl = `${getBaseUrl()}/pay/${user.payment_token}`;
                 try {
                     copyToClipboardFallback(paymentUrl);
                     showToast(i18n.paymentLinkCopied || 'Link de pagamento copiado!', 'success');
