@@ -1,3 +1,5 @@
+# app/services/notifier_manager.py
+
 import json
 import logging
 import uuid
@@ -186,20 +188,25 @@ class NotifierManager:
         return formatted_price, plan_name
 
     def _get_payment_link(self, config, event_type, user_profile):
-        """Gera o link de pagamento (curto se ativado)."""
-        from flask import url_for
+        """Gera o link de pagamento, forçando o uso do APP_BASE_URL nas rotinas de Background."""
         if event_type == 'renewal' or not user_profile.get('payment_token'):
             return None
             
         try:
-            long_url = url_for('main.payment_page', token=user_profile['payment_token'], _external=True)
+            token = user_profile['payment_token']
+            app_base_url = config.get("APP_BASE_URL", "").strip().rstrip('/')
+            
+            if app_base_url:
+                long_url = f"{app_base_url}/pay/{token}"
+            else:
+                from flask import url_for
+                long_url = url_for('main.payment_page', token=token, _external=True)
+
             if config.get("ENABLE_LINK_SHORTENER") and self.link_shortener:
                 return self.link_shortener.create_short_link(long_url)
             return long_url
-        except RuntimeError:
-            return None
         except Exception as e:
-            logger.warning(f"Erro ao gerar link curto: {e}")
+            logger.warning(f"Erro ao gerar link de pagamento: {e}")
             return long_url if 'long_url' in locals() else None
 
     def _prepare_and_send(self, event_type, user, user_profile, context):
@@ -262,11 +269,39 @@ class NotifierManager:
 
     def send_expiration_notification(self, user, days_left, user_profile):
         expiration_date_str = user_profile.get('expiration_date')
-        formatted_date = datetime.fromisoformat(expiration_date_str).strftime('%d/%m/%Y') if expiration_date_str else ""
+        formatted_date = ""
+        
+        # --- CORREÇÃO DO FUSO HORÁRIO (TIMEZONE) NA DATA DE VENCIMENTO ---
+        if expiration_date_str:
+            try:
+                exp_dt = datetime.fromisoformat(expiration_date_str)
+                # Converte o UTC da Base de Dados de volta para o Fuso Horário Local (ex: Brasil)
+                if exp_dt.tzinfo:
+                    exp_dt = exp_dt.astimezone(get_localzone())
+                formatted_date = exp_dt.strftime('%d/%m/%Y')
+            except (ValueError, TypeError):
+                # Fallback de segurança se a data vier num formato inesperado
+                formatted_date = expiration_date_str[:10]
+        # -----------------------------------------------------------------
+                
         self._prepare_and_send('expiration', user, user_profile, {'days': days_left, 'date': formatted_date})
 
     def send_renewal_notification(self, user, new_expiration_date, user_profile):
-        formatted_date = new_expiration_date.strftime('%d/%m/%Y')
+        # --- CORREÇÃO DO FUSO HORÁRIO (TIMEZONE) NA DATA DE RENOVAÇÃO ---
+        if isinstance(new_expiration_date, datetime):
+            if new_expiration_date.tzinfo:
+                new_expiration_date = new_expiration_date.astimezone(get_localzone())
+            formatted_date = new_expiration_date.strftime('%d/%m/%Y')
+        else:
+            try:
+                exp_dt = datetime.fromisoformat(str(new_expiration_date))
+                if exp_dt.tzinfo:
+                    exp_dt = exp_dt.astimezone(get_localzone())
+                formatted_date = exp_dt.strftime('%d/%m/%Y')
+            except (ValueError, TypeError):
+                formatted_date = str(new_expiration_date)[:10]
+        # -----------------------------------------------------------------
+        
         self._prepare_and_send('renewal', user, user_profile, {'new_date': formatted_date, 'date': formatted_date})
 
     def send_trial_end_notification(self, user, user_profile):
@@ -300,7 +335,6 @@ class NotifierManager:
             total_users = len(users_to_notify)
             extensions.data_manager.update_task(task.id, {'status': 'running', 'progress_total': total_users})
             
-            # --- CORREÇÃO: Avisa o frontend que a contagem REAL começou ---
             if extensions.socketio:
                 extensions.socketio.emit('bulk_notification_start', {'total': total_users}, namespace='/dashboard')
             
@@ -319,7 +353,6 @@ class NotifierManager:
                 
                 if processed_count % 5 == 0: 
                     extensions.data_manager.update_task(task.id, {'progress_current': processed_count})
-                    # --- CORREÇÃO: Avisa o frontend de que a barra deve mexer ---
                     if extensions.socketio:
                         extensions.socketio.emit('bulk_notification_progress', {'current': processed_count, 'total': total_users}, namespace='/dashboard')
 
@@ -331,7 +364,6 @@ class NotifierManager:
                 'result': f'{processed_count} notificações enviadas.'
             })
             
-            # --- CORREÇÃO: Avisa o frontend que o processo terminou e a UI deve ficar verde ---
             if extensions.socketio:
                 extensions.socketio.emit('bulk_notification_end', {'message': f'{processed_count} enviadas.'}, namespace='/dashboard')
             
