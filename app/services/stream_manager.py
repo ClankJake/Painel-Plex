@@ -16,6 +16,13 @@ from ..config import load_or_create_config
 
 logger = logging.getLogger(__name__)
 
+# Verificação de segurança para o pacote WebSocket
+try:
+    import websocket
+    HAS_WEBSOCKET = True
+except ImportError:
+    HAS_WEBSOCKET = False
+
 def get_greeting():
     """Retorna uma saudação com base na hora local atual configurada no servidor."""
     current_hour = datetime.now(get_localzone()).hour
@@ -37,8 +44,6 @@ class StreamManager:
         self.user_manager = user_manager
         self._listener = None
         self._app = None
-        
-        # Memória temporária para evitar mandar 2 comandos KILL para a mesma sessão no mesmo segundo
         self._recently_killed_sessions = {} 
 
     # --- LÓGICA DE TEMPO REAL (SSE) ---
@@ -49,6 +54,10 @@ class StreamManager:
             return
 
         if getattr(self, '_listener', None) and self._listener.is_alive():
+            return
+
+        if not HAS_WEBSOCKET:
+            logger.error("🚨 PACOTE EM FALTA: O modo de Tempo Real (Plex SSE) não pode iniciar. Execute no terminal: pip install websocket-client")
             return
 
         try:
@@ -112,7 +121,8 @@ class StreamManager:
         if not from_event:
             logger.debug("A executar a verificação de streams (Job Fallback/Sweep)...")
 
-        if not getattr(self, '_listener', None) or not self._listener.is_alive():
+        # Tenta ligar o listener apenas se o pacote WebSocket estiver instalado
+        if HAS_WEBSOCKET and (not getattr(self, '_listener', None) or not self._listener.is_alive()):
             try:
                 app = current_app._get_current_object()
                 self.start_listener(app)
@@ -197,7 +207,7 @@ class StreamManager:
                 user_title = getattr(session.user, 'title', 'Desconhecido') if hasattr(session, 'user') else 'Desconhecido'
                 logger.info(f"⏳ A sessão ({session.title}) de '{user_title}' está a carregar o buffer e ainda não tem ID. A agendar novo corte em 3 segundos...")
                 
-                # Cria uma tarefa em background (thread) para verificar novamente daqui a 3 segundos, quando o buffer terminar
+                # Cria uma tarefa em background para verificar novamente daqui a 3 segundos
                 def delayed_check():
                     app = self._app
                     if not app:
@@ -214,7 +224,7 @@ class StreamManager:
                 threading.Timer(3.0, delayed_check).start()
         
         except NotFound:
-            # Erro 404: O Plex já limpou a sessão da base de dados dele (Falso Positivo)
+            # Erro 404: O Plex já limpou a sessão da base de dados dele
             user_title = getattr(session.user, 'title', 'Desconhecido') if hasattr(session, 'user') else 'Desconhecido'
             logger.info(f"✅ Sessão de '{user_title}' já não existe no Plex (Foi terminada com sucesso).")
         except Exception as e:
@@ -260,7 +270,7 @@ class StreamManager:
         return session.title
 
     def _build_placeholders(self, user_id, username, profile, session, context=None):
-        """Constrói um dicionário com os placeholders para as mensagens (saudação, nome, limites)."""
+        """Constrói um dicionário com os placeholders para as mensagens."""
         placeholders = {
             'username': username,
             'name': profile.get('name') or username,
@@ -313,7 +323,6 @@ class StreamManager:
             excess_count = len(sessions) - screen_limit
             logger.info(f"⚠️ O utilizador '{username}' excedeu o limite de {screen_limit} tela(s). A terminar {excess_count} sessão(ões).")
             
-            # Ordena: Termina as sessões que estão há mais tempo a correr
             sorted_sessions = sorted(sessions, key=lambda s: s.viewOffset or 0, reverse=True)
             
             msg_template = config.get('TERMINATION_MSG_SCREEN_LIMIT') or "Você excedeu o seu limite de {limit} telas simultâneas."
