@@ -220,42 +220,55 @@ class PlexUserManager:
 
         return {"success": True, "message": _("Bibliotecas atualizadas para todos os utilizadores.")}
 
+    # --- LÓGICA DE BLOQUEIO DE UTILIZADOR ---
     def block_user(self, plex_user_id, reason='manual'):
+        """Bloqueia um utilizador impedindo o seu acesso ao servidor Plex."""
         user_to_block = self.get_user_by_id(plex_user_id)
-        if not user_to_block:
-            return {"success": False, "message": _("Utilizador não encontrado.")}
+        
+        # Se for um Admin, não pode ser bloqueado
+        profile = self.data_manager.get_user_profile(plex_user_id)
+        if profile and profile.get('is_admin'):
+            logger.warning(f"Tentativa de bloqueio ignorada para a conta Administrador (ID: {plex_user_id}).")
+            return {"success": False, "message": "Contas de Administrador não podem ser bloqueadas."}
+
+        username = user_to_block['username'] if user_to_block else str(plex_user_id)
 
         try:
-            username = user_to_block['username']
+            # 1. Adicionar à base de dados de utilizadores bloqueados
             self.data_manager.add_blocked_user(plex_user_id, username, reason=reason)
 
+            # 2. Cortar imediatamente qualquer stream ativo!
             if self.stream_manager:
                 reason_message = "O seu acesso ao servidor foi bloqueado pelo administrador."
                 if reason == 'expired':
-                    reason_message = "A sua subscrição expirou. Por favor, renove para continuar."
+                    reason_message = "A sua subscrição expirou. Por favor, renove para continuar a assistir."
                 elif reason == 'trial_expired':
-                    reason_message = "O seu período de teste terminou. Renove para continuar."
+                    reason_message = "O seu período de teste terminou. Efetue uma assinatura para continuar."
                 
+                # Desliga qualquer filme/série que ele esteja a ver AGORA MESMO.
                 self.stream_manager.block_user_sessions(plex_user_id, reason=reason_message)
             
+            logger.info(f"🚫 Utilizador '{username}' foi bloqueado com sucesso (Motivo: {reason}).")
             return {"success": True, "message": _("Utilizador %(username)s bloqueado com sucesso.", username=username)}
+            
         except Exception as e:
-            logger.error(_("Erro ao bloquear o utilizador %(username)s: %(error)s", username=user_to_block['username'], error=e), exc_info=True)
+            logger.error(_("Erro ao bloquear o utilizador %(username)s: %(error)s", username=username, error=e), exc_info=True)
             return {"success": False, "message": str(e)}
 
     def unblock_user(self, plex_user_id):
+        """Remove o bloqueio de um utilizador, permitindo-lhe assistir novamente."""
         user_to_unblock = self.get_user_by_id(plex_user_id)
-        if not user_to_unblock:
-            return {"success": False, "message": _("Utilizador não encontrado.")}
+        username = user_to_unblock['username'] if user_to_unblock else str(plex_user_id)
 
         try:
             self.data_manager.remove_blocked_user(plex_user_id)
-            return {"success": True, "message": _("Utilizador %(username)s desbloqueado com sucesso.", username=user_to_unblock['username'])}
+            logger.info(f"✅ Utilizador '{username}' foi desbloqueado com sucesso.")
+            return {"success": True, "message": _("Utilizador %(username)s desbloqueado com sucesso.", username=username)}
         except Exception as e:
-            logger.error(_("Erro ao desbloquear o utilizador %(username)s: %(error)s", username=user_to_unblock['username'], error=e), exc_info=True)
+            logger.error(_("Erro ao desbloquear o utilizador %(username)s: %(error)s", username=username, error=e), exc_info=True)
             return {"success": False, "message": str(e)}
 
-    # --- LÓGICA DE REMOÇÃO REFATORADA (SRP) ---
+    # --- LÓGICA DE REMOÇÃO (SRP) ---
     def remove_user(self, plex_user_id):
         """
         Desativa o utilizador, limpa os seus streams, remove-o do Overseerr e elimina a amizade no Plex.
@@ -304,7 +317,7 @@ class PlexUserManager:
             
             if friend_to_remove:
                 self.conn.account.removeFriend(friend_to_remove)
-                logger.info(f"Utilizador '{friend_to_remove.username}' (ID: {plex_user_id}) removido com sucesso via ID.")
+                logger.info(f"🗑️ Utilizador '{friend_to_remove.username}' (ID: {plex_user_id}) removido do Servidor Plex.")
                 user_removed = True
             else:
                 logger.warning(f"Utilizador ID {plex_user_id} não encontrado na lista de amigos do Plex.")
@@ -316,7 +329,7 @@ class PlexUserManager:
             identifier = email or username
             try:
                 self.conn.account.removeFriend(identifier)
-                logger.info(f"Acesso ao Plex para '{username}' removido com sucesso via identificador.")
+                logger.info(f"🗑️ Acesso ao Plex para '{username}' removido via identificador alternativo.")
             except NotFound:
                 logger.warning(f"Utilizador '{username}' já não era amigo na conta Plex (NotFound no fallback).")
             except Exception as e:
