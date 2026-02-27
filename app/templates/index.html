@@ -4,15 +4,26 @@
 
 {% block extra_head %}
 <style>
+    /* Otimização dos ícones das plataformas com aspecto premium */
     .platform-icon {
-        width: 40px;
-        height: 40px;
-        border-radius: 0.5rem;
-        background-size: 60%;
+        width: 44px;
+        height: 44px;
+        border-radius: 0.75rem; 
+        background-size: 55%;
         background-repeat: no-repeat;
         background-position: center;
         flex-shrink: 0;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); 
+        border: 1px solid rgba(255,255,255,0.1);
     }
+    
+    /* Scrollbar personalizada para listas internas longas (como logs) */
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
     /* Estilos de Plataforma Injetados */
     .platform-alexa { background-color: #00caff; background-image: url(/static/images/platforms/alexa.svg); }
     .platform-android { background-color: #3ddc84; background-image: url(/static/images/platforms/android.svg); }
@@ -48,172 +59,208 @@
 {% endblock %}
 
 {% block content %}
+
+<!-- Cabeçalho da Página -->
 <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
     <div>
-        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">{{ _('Dashboard') }}</h2>
-        <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Uma visão geral do seu servidor.') }}</p>
+        <h2 class="text-3xl font-extrabold text-gray-900 dark:text-white flex items-center gap-3 tracking-tight">
+            <svg class="w-8 h-8 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+            {{ _('Visão Geral do Servidor') }}
+        </h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1 text-sm md:text-base">{{ _('Monitorização em tempo real, envio de avisos e saúde do sistema.') }}</p>
     </div>
     <div class="flex items-center gap-4">
-        <div id="realtime-status" class="flex items-center gap-2 text-sm font-semibold px-3 py-1 rounded-full transition-colors duration-300">
-            <div class="w-2 h-2 rounded-full"></div>
+        <!-- Badge de Status em Tempo Real -->
+        <div id="realtime-status" class="flex items-center gap-2 text-sm font-bold px-4 py-1.5 rounded-xl transition-colors duration-300 shadow-sm border border-transparent">
+            <div class="w-2.5 h-2.5 rounded-full animate-pulse"></div>
             <span></span>
         </div>
     </div>
 </header>
 
-<div id="loadingIndicator" class="text-center py-20">
-    <svg class="animate-spin h-10 w-10 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-    <p class="text-lg text-gray-500 dark:text-gray-400 mt-4">{{ _('Carregando dados do dashboard...') }}</p>
+<!-- Indicador de Carregamento -->
+<div id="loadingIndicator" class="flex flex-col items-center justify-center min-h-[60vh] w-full animate-fade-in-up">
+    <div class="relative w-16 h-16 mb-4">
+        <div class="absolute inset-0 rounded-full border-t-2 border-yellow-500 animate-spin"></div>
+        <div class="absolute inset-2 rounded-full border-r-2 border-blue-500 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
+    </div>
+    <p class="text-lg font-medium text-gray-500 dark:text-gray-400">{{ _('A carregar base de dados em tempo real...') }}</p>
 </div>
 
-<div id="errorContainer" class="hidden text-center py-10 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg">
-    <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar os dados.') }}</p>
-    <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
+<!-- Container de Erro -->
+<div id="errorContainer" class="hidden text-center py-12 px-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-2xl shadow-sm mb-8 animate-fade-in-up">
+    <svg class="w-12 h-12 text-red-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+    <p class="text-lg font-bold text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar os dados.') }}</p>
+    <p id="errorMessage" class="text-sm font-medium text-red-600 dark:text-red-400 mt-2"></p>
 </div>
 
-<div id="dashboardContainer" class="hidden space-y-8">
-    <div id="summaryCards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <!-- Summary cards content will be injected by JS -->
+<!-- Dashboard Principal (Oculto inicialmente) -->
+<div id="dashboardContainer" class="hidden space-y-8 animate-fade-in-up">
+    
+    <!-- Grelha de Cartões de Resumo (Injetada pelo JS) -->
+    <div id="summaryCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        <!-- O JS constrói estes cartões usando as funções no frontend -->
     </div>
 
     <!-- Secção "Reproduzindo Agora" -->
     <div id="active-streams-section" class="hidden">
-        <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 h-full">
-            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Reproduzindo Agora') }}</h3>
-            <div id="activeStreamsContainer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                <!-- Active streams content will be injected by JS -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/50">
+            <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-5 flex items-center gap-2">
+                <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                {{ _('Sessões Ativas') }}
+            </h3>
+            <div id="activeStreamsContainer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                <!-- O conteúdo dos streams será injetado pelo JS -->
             </div>
         </div>
     </div>
 
-    <!-- Nova secção combinada para Avisos e Logs lado a lado -->
+    <!-- Secção Dupla: Avisos em Massa e Logs de Auditoria -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
         <!-- Card de Avisos em Massa -->
-        <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Avisos em Massa') }}</h3>
-            <div id="bulk-notification-form" class="space-y-4">
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/50 flex flex-col">
+            <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-5 flex items-center gap-2">
+                <svg class="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"></path></svg>
+                {{ _('Avisos em Massa') }}
+            </h3>
+            
+            <div id="bulk-notification-form" class="space-y-6 flex-grow">
                 <div>
-                    <label for="bulk_message" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Mensagem a ser enviada') }}</label>
-                    <textarea id="bulk_message" rows="3" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: Olá {name}, o servidor entrará em manutenção em 1 hora.') }}"></textarea>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Use {name}, {username} ou {email} para personalizar a mensagem.') }}</p>
+                    <label for="bulk_message" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{{ _('Mensagem a ser enviada') }}</label>
+                    <textarea id="bulk_message" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow resize-none shadow-inner" placeholder="{{ _('Ex: Olá {name}, o servidor entrará em manutenção em 1 hora.') }}"></textarea>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 font-mono bg-gray-100 dark:bg-gray-800 p-2 rounded-lg inline-block">{{ _('Placeholders: {name}, {username}, {email}') }}</p>
                 </div>
+                
                 <div>
-                    <label class="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">{{ _('Destinatários') }}</label>
-                    <div class="space-y-2" id="target-options">
-                        <div class="flex items-center">
-                            <input id="target_active" name="notification_target" type="radio" value="active" class="h-4 w-4 border-gray-300 text-yellow-600 focus:ring-yellow-500" checked>
-                            <label for="target_active" class="ml-3 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ _('Utilizadores Ativos') }}</label>
-                        </div>
-                        <div class="flex items-center">
-                            <input id="target_blocked" name="notification_target" type="radio" value="blocked" class="h-4 w-4 border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                            <label for="target_blocked" class="ml-3 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ _('Apenas Utilizadores Bloqueados') }}</label>
-                        </div>
-                        <div class="flex items-center">
-                            <input id="target_all" name="notification_target" type="radio" value="all" class="h-4 w-4 border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                            <label for="target_all" class="ml-3 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ _('TODOS os Utilizadores (Ativos e Bloqueados)') }}</label>
-                        </div>
-                        <!-- Opção de seleção com botão -->
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center">
-                                <input id="target_specific" name="notification_target" type="radio" value="specific" class="h-4 w-4 border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                                <label id="target-specific-label" for="target_specific" class="ml-3 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                    {{ _('Utilizadores Selecionados') }}
-                                    <span id="target-specific-count" class="text-yellow-500 dark:text-yellow-400 font-semibold"></span>
-                                </label>
-                            </div>
-                            <!-- Botão Selecionar... com tamanho ajustado -->
-                            <button type="button" id="open-user-selection-modal-btn" class="btn bg-yellow-500 text-white ml-4 py-1 px-2 text-xs rounded-md shadow-sm hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                                {{ _('Selecionar...') }}
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{{ _('Público-Alvo') }}</label>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="target-options">
+                        
+                        <label class="flex items-center p-3 border border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors has-[:checked]:border-yellow-500 has-[:checked]:bg-yellow-50 dark:has-[:checked]:bg-yellow-900/20">
+                            <input id="target_active" name="notification_target" type="radio" value="active" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 dark:bg-gray-700 dark:border-gray-600" checked>
+                            <span class="ml-3 text-sm font-medium text-gray-900 dark:text-gray-200">{{ _('Apenas Ativos') }}</span>
+                        </label>
+                        
+                        <label class="flex items-center p-3 border border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors has-[:checked]:border-yellow-500 has-[:checked]:bg-yellow-50 dark:has-[:checked]:bg-yellow-900/20">
+                            <input id="target_blocked" name="notification_target" type="radio" value="blocked" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 dark:bg-gray-700 dark:border-gray-600">
+                            <span class="ml-3 text-sm font-medium text-gray-900 dark:text-gray-200">{{ _('Apenas Bloqueados') }}</span>
+                        </label>
+                        
+                        <label class="flex items-center p-3 border border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors has-[:checked]:border-yellow-500 has-[:checked]:bg-yellow-50 dark:has-[:checked]:bg-yellow-900/20">
+                            <input id="target_all" name="notification_target" type="radio" value="all" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 dark:bg-gray-700 dark:border-gray-600">
+                            <span class="ml-3 text-sm font-medium text-gray-900 dark:text-gray-200">{{ _('Todos (Geral)') }}</span>
+                        </label>
+                        
+                        <div class="flex items-stretch border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden transition-colors has-[:checked]:border-yellow-500 has-[:checked]:bg-yellow-50 dark:has-[:checked]:bg-yellow-900/20">
+                            <label class="flex items-center p-3 flex-grow cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800">
+                                <input id="target_specific" name="notification_target" type="radio" value="specific" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 dark:bg-gray-700 dark:border-gray-600">
+                                <span id="target-specific-label" class="ml-3 text-sm font-medium text-gray-900 dark:text-gray-200">{{ _('Específicos') }} <span id="target-specific-count" class="text-yellow-600 dark:text-yellow-500 ml-1"></span></span>
+                            </label>
+                            <button type="button" id="open-user-selection-modal-btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-yellow-500 hover:text-white dark:hover:bg-yellow-600 text-gray-700 dark:text-gray-200 px-3 text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-l border-gray-200 dark:border-gray-700" disabled>
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
                             </button>
                         </div>
-                    </div>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ _('Nota: As mensagens só serão enviadas para utilizadores com um método de contacto registado.') }}</p>
-                </div>
-
-                <!-- Movido o container de progresso para aqui, inicialmente escondido -->
-                <div id="bulk-progress-container" class="w-full mt-4 hidden">
-                    <div class="flex justify-between mb-1">
-                        <span id="bulk-progress-text" class="text-sm font-medium text-gray-700 dark:text-white">{{ _('A iniciar...') }}</span>
-                        <span id="bulk-progress-percent" class="text-sm font-medium text-gray-700 dark:text-white">0%</span>
-                    </div>
-                    <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-                        <div id="bulk-progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-linear" style="width: 0%"></div>
+                        
                     </div>
                 </div>
 
-                <!-- Alterado justify-end para justify-start -->
-                <div class="pt-2 flex justify-start">
-                    <button type="button" id="send-bulk-notification-btn" class="btn bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086L2.279 16.76a.75.75 0 00.95.826l16-5.333a.75.75 0 000-1.418l-16-5.333z" /></svg>
-                        <span id="send-bulk-btn-text">{{ _('Enviar para Utilizadores Ativos') }}</span>
-                    </button>
+                <!-- Progresso do Envio -->
+                <div id="bulk-progress-container" class="w-full mt-4 hidden animate-fade-in">
+                    <div class="flex justify-between mb-2">
+                        <span id="bulk-progress-text" class="text-xs font-bold text-blue-600 dark:text-blue-400">{{ _('A preparar envio...') }}</span>
+                        <span id="bulk-progress-percent" class="text-xs font-bold text-gray-700 dark:text-gray-300">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700 shadow-inner overflow-hidden">
+                        <div id="bulk-progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-linear" style="width: 0%"></div>
+                    </div>
                 </div>
+            </div>
+            
+            <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700/50 mt-auto">
+                <button type="button" id="send-bulk-notification-btn" class="w-full btn bg-blue-600 hover:bg-blue-500 text-white shadow-xl shadow-blue-500/20 py-3 text-base rounded-xl font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                    <span id="send-bulk-btn-text">{{ _('Enviar para Utilizadores Ativos') }}</span>
+                </button>
             </div>
         </div>
 
         <!-- Card de Log de Sessões Terminadas -->
-        <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex flex-col">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Log de Sessões Terminadas') }}</h3>
-                <button id="clear-all-logs-btn" class="text-xs text-red-600 dark:text-red-400 hover:underline font-semibold" disabled>{{ _('Limpar Tudo') }}</button>
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/50 flex flex-col">
+            <div class="flex justify-between items-center mb-5 pb-4 border-b border-gray-200 dark:border-gray-700/50">
+                <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                    {{ _('Auditoria de Cortes') }}
+                </h3>
+                <button id="clear-all-logs-btn" class="text-xs font-bold text-red-500 hover:text-red-700 dark:hover:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-lg transition-colors border border-red-200 dark:border-red-800/50 disabled:opacity-50" disabled>{{ _('Limpar Histórico') }}</button>
             </div>
-            <div id="auditLogContainer" class="space-y-3 max-h-[450px] overflow-y-auto pr-2 flex-grow">
-                <!-- Audit logs content will be injected by JS -->
+            
+            <!-- Custom Scrollbar aplicada aqui -->
+            <div id="auditLogContainer" class="space-y-3 h-[400px] overflow-y-auto pr-2 custom-scrollbar flex-grow content-start">
+                <div class="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+                    <svg class="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    A verificar base de dados...
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Saúde do Sistema') }}</h3>
-        <div id="systemHealthContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+    <!-- Saúde do Sistema -->
+    <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/50">
+        <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-5 flex items-center gap-2">
+            <svg class="w-6 h-6 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
+            {{ _('Saúde das Integrações') }}
+        </h3>
+        <div id="systemHealthContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             <!-- System health content will be injected by JS -->
         </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
-        <div class="lg:col-span-3 bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Receita Mensal') }}</h3>
-            <div class="h-80"><canvas id="monthlyRevenueChart"></canvas></div>
+    <!-- Gráficos Globais -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 sm:gap-8">
+        <div class="lg:col-span-3 bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/50">
+            <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2">
+                <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                {{ _('Evolução da Receita Mensal') }}
+            </h3>
+            <div class="h-80 w-full"><canvas id="monthlyRevenueChart"></canvas></div>
         </div>
-        <div class="lg:col-span-2 bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Utilizadores Ativos vs. Bloqueados') }}</h3>
-            <div class="h-80 flex items-center justify-center"><canvas id="userStatusChart"></canvas></div>
+        
+        <div class="lg:col-span-2 bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/50">
+            <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2">
+                <svg class="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
+                {{ _('Distribuição de Utilizadores') }}
+            </h3>
+            <div class="h-80 flex items-center justify-center w-full"><canvas id="userStatusChart"></canvas></div>
         </div>
     </div>
 </div>
 
 
-<!-- [INÍCIO] Esqueleto do Modal de Seleção de Utilizador -->
-<div id="userSelectionModal" class="fixed inset-0 z-50 overflow-y-auto hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="flex items-center justify-center min-h-screen p-4">
-        <!-- Overlay -->
-        <div class="fixed inset-0 bg-gray-500/75 dark:bg-gray-900/75 transition-opacity" aria-hidden="true"></div>
+<!-- [INÍCIO] Modal de Seleção de Utilizador (Uniformizado) -->
+<div id="userSelectionModal" class="hidden fixed inset-0 z-50 bg-gray-900/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-lg w-full border border-gray-100 dark:border-gray-700/50 transform transition-all overflow-hidden animate-fade-in">
+        
+        <!-- Cabeçalho -->
+        <div class="flex justify-between items-center px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
+            <h3 class="modal-title text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                {{ _('Selecionar Utilizadores') }}
+            </h3>
+            <button type="button" class="modal-close text-gray-400 hover:text-red-500 text-3xl leading-none transition-colors focus:outline-none">&times;</button>
+        </div>
 
-        <!-- Conteúdo do Modal -->
-        <div class="relative w-full max-w-lg p-6 overflow-hidden text-left transition-all transform bg-white dark:bg-gray-800 shadow-xl rounded-2xl border border-gray-200 dark:border-gray-700">
-            <!-- Cabeçalho -->
-            <div class="flex justify-between items-center pb-3 border-b border-gray-200 dark:border-gray-700">
-                <h3 class="modal-title text-lg font-medium leading-6 text-gray-900 dark:text-white">{{ _('Selecionar Utilizadores') }}</h3>
-                <button type="button" class="modal-close p-1 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
-                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-            </div>
+        <!-- Corpo (Injetado via JS) -->
+        <div class="modal-body p-6">
+            <div class="flex justify-center p-4"><div class="animate-spin rounded-full h-6 w-6 border-b-2 border-yellow-500"></div></div>
+        </div>
 
-            <!-- Corpo -->
-            <div class="modal-body mt-4">
-                <!-- O JS irá injetar o conteúdo (pesquisa, lista, etc.) aqui -->
-                <p>{{ _('A carregar...') }}</p>
-            </div>
-
-            <!-- Rodapé -->
-            <div class="modal-footer mt-5 sm:mt-6 flex justify-end space-x-3">
-                <!-- O JS irá injetar os botões (Confirmar, Cancelar) aqui -->
-            </div>
+        <!-- Rodapé (Injetado via JS) -->
+        <div class="modal-footer px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 flex flex-col sm:flex-row justify-end gap-3">
+            <!-- Botões gerados no ui.js do dashboard_modules -->
         </div>
     </div>
 </div>
 <!-- [FIM] Esqueleto do Modal -->
-
 
 {% endblock %}
 
@@ -222,11 +269,6 @@
 <script src="{{ url_for('static', filename='dist/chart.umd.js') }}"></script>
 <script src="{{ url_for('static', filename='dist/chartjs-adapter-date-fns.bundle.min.js') }}"></script>
 
-<!-- 
-    **MUDANÇA CRÍTICA**
-    O script principal é carregado como `type="module"`.
-    Adicionei as chaves i18n em falta que o JS modularizado precisa.
--->
 <script id="dashboard-script"
         type="module"
         src="{{ url_for('static', filename='js/dashboard.js') }}"
@@ -274,7 +316,7 @@
         data-i18n-bulk-send-complete="{{ _('Envio em massa concluído!') }}"
         data-i18n-bulk-send-progress="{{ _('Enviando {current} de {total}...') }}"
         data-i18n-bulk-send-error="{{ _('Ocorreu um erro no envio em massa') }}"
-        data-i18n-now-playing="{{ _('Reproduzindo Agora') }}"
+        data-i18n-now-playing="{{ _('Sessões Ativas') }}"
         data-i18n-no-active-streams="{{ _('Nenhuma reprodução ativa no momento.') }}"
         data-i18n-close="{{ _('Fechar') }}"
         data-i18n-no-terminated-sessions="{{ _('Nenhuma sessão terminada recentemente.') }}"
@@ -305,4 +347,3 @@
         data-i18n-bulk-send-start="{{ _('A iniciar...') }}"
 ></script>
 {% endblock %}
-
