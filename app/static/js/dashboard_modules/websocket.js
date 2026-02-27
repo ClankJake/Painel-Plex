@@ -1,5 +1,3 @@
-// IMPORTAÇÕES CORRIGIDAS: Como este ficheiro já está em 'dashboard_modules', 
-// usamos './' para os ficheiros irmãos e '../' para o utils.js que está na pasta anterior.
 import { dom, state } from './config.js';
 import { renderSummaryCards, renderCharts, renderActiveStreamsDashboard, prependTerminationLog } from './ui.js';
 import { resetBulkNotificationUI } from './handlers.js';
@@ -204,3 +202,4 @@ export function setupWebSocket() {
         }
     }, 15000);
 }
+
