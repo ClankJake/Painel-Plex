@@ -16,6 +16,10 @@ from ..config import load_or_create_config
 
 logger = logging.getLogger(__name__)
 
+# Silenciar o spam de INFO das bibliotecas do Plex e Websocket
+logging.getLogger('plexapi').setLevel(logging.WARNING)
+logging.getLogger('websocket').setLevel(logging.WARNING)
+
 # Verificação de segurança para o pacote WebSocket
 try:
     import websocket
@@ -63,7 +67,8 @@ class StreamManager:
         try:
             self._app = app
             self._listener = self.conn.plex.startAlertListener(self._on_plex_event)
-            logger.info("📡 Plex Real-Time Listener (SSE) iniciado com sucesso! Controlo de streams instantâneo ativado.")
+            # Passado para DEBUG para não poluir os logs padrão
+            logger.debug("📡 Plex Real-Time Listener (SSE) iniciado com sucesso! Controlo de streams instantâneo ativado.")
         except Exception as e:
             logger.error(f"Falha ao iniciar o Plex Listener SSE: {e}")
 
@@ -72,7 +77,7 @@ class StreamManager:
         if getattr(self, '_listener', None):
             self._listener.stop()
             self._listener = None
-            logger.info("📡 Plex Real-Time Listener (SSE) desligado.")
+            logger.debug("📡 Plex Real-Time Listener (SSE) desligado.")
 
     def _on_plex_event(self, data):
         """Callback acionado no milissegundo em que algo muda no Plex."""
