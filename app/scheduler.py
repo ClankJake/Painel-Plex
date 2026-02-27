@@ -144,7 +144,7 @@ def sweep_expired_users_job():
     if not _app: return
     with _app.test_request_context('/'):
         from . import extensions
-        from .models import UserProfile, User # Importação correta dos modelos
+        from .models import UserProfile
         
         logger.info("Varredura de segurança: A procurar contas expiradas não cortadas...")
         
@@ -154,36 +154,36 @@ def sweep_expired_users_job():
             cut_count = 0
             
             for profile_obj in all_profiles:
-                # 1. Ignorar contas que já estão inativas (já foram cortadas)
+                # 1. Ignorar contas inativas
                 if profile_obj.status == 'inactive':
                     continue
                 
-                # 2. Ignorar se não tiver data de expiração (ex: Admins ou contas vitalícias)
+                # 2. Ignorar se não tiver data de expiração
                 expiration_date_str = profile_obj.expiration_date
                 if not expiration_date_str:
                     continue
 
-                # 3. Verificação segura de Admin na tabela User
+                plex_user_id = profile_obj.plex_user_id
+
+                # 3. Verificação segura de Admin via data_manager (evita bugs de SQLAlchemy Types)
                 try:
-                    db_user = db.session.get(User, int(profile_obj.plex_user_id))
-                    if db_user and getattr(db_user, 'is_admin', False):
-                        continue # É admin, não bloqueia
-                except (ValueError, TypeError):
-                    pass # Se o ID não for inteiro, segue em frente
+                    profile_dict = extensions.data_manager.get_user_profile(plex_user_id)
+                    if profile_dict and profile_dict.get('is_admin'):
+                        continue # É administrador, ignora bloqueios!
+                except Exception as e:
+                    logger.debug(f"Aviso ao tentar ler perfil para admin check (ID {plex_user_id}): {e}")
                     
+                # 4. Avaliar Data de Expiração
                 try:
                     expiration_date = datetime.fromisoformat(expiration_date_str)
                     if expiration_date.tzinfo is None:
                         expiration_date = expiration_date.replace(tzinfo=timezone.utc)
                         
-                    # Se a data de expiração já passou, e a conta AINDA ESTÁ ATIVA!
                     if now_utc >= expiration_date:
-                        plex_user_id = profile_obj.plex_user_id
                         username = profile_obj.username or 'Desconhecido'
                         
                         logger.warning(f"⚠️ [VARREDURA] A conta de '{username}' expirou às {expiration_date.strftime('%Y-%m-%d %H:%M:%S')} mas escapou ao corte. A bloquear AGORA.")
                         
-                        # Chama a lógica de bloqueio
                         extensions.plex_manager.block_user(plex_user_id, reason='expired')
                         cut_count += 1
                         
@@ -225,27 +225,14 @@ def removal_job():
                 if admin_user in (plex_username, plex_email) and admin_user != "":
                     is_admin = True
                     
-            if not is_admin:
-                for pid in (plex_user_id, str(plex_user_id)):
-                    try:
-                        profile = extensions.data_manager.get_user_profile(pid)
-                        if profile and isinstance(profile, dict) and profile.get('is_admin'):
-                            is_admin = True
-                            break
-                    except Exception:
-                        pass
-            
+            # Check seguro de admin via data_manager
             if not is_admin:
                 try:
-                    from app.models import User
-                    try:
-                        db_user = db.session.get(User, int(plex_user_id))
-                    except ValueError:
-                        db_user = db.session.get(User, str(plex_user_id))
-                    if db_user and getattr(db_user, 'is_admin', False):
+                    profile_dict = extensions.data_manager.get_user_profile(plex_user_id)
+                    if profile_dict and profile_dict.get('is_admin'):
                         is_admin = True
                 except Exception:
-                    db.session.rollback()
+                    pass
 
             if is_admin:
                 continue
