@@ -5,6 +5,7 @@ Flask-Migrate
 Flask-Caching
 Flask-Limiter
 alembic
+websocket-client
 Werkzeug
 plexapi
 requests
