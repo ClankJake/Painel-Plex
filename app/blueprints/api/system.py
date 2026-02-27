@@ -53,6 +53,7 @@ def clear_logs():
 @system_api_bp.route('/dashboard-summary')
 @login_required
 @admin_required
+@limiter.exempt # Painel do Admin precisa atualizar sem limites
 def get_dashboard_summary():
     from ...extensions import data_manager
     from datetime import datetime
@@ -87,6 +88,7 @@ def get_dashboard_summary():
 @system_api_bp.route('/active-streams')
 @login_required
 @admin_required
+@limiter.exempt # O coração do Tempo Real! Sem limites para o Admin.
 def get_active_streams():
     """Retorna detalhes das sessões ativas."""
     try:
@@ -99,6 +101,7 @@ def get_active_streams():
 @system_api_bp.route('/system-health')
 @login_required
 @admin_required
+@limiter.exempt # Isento para não bloquear o painel principal
 def get_system_health():
     """Verifica e retorna o estado de todos os serviços integrados."""
     health_status = {
@@ -117,6 +120,7 @@ def get_system_health():
 @system_api_bp.route('/termination-logs')
 @login_required
 @admin_required
+@limiter.exempt # Isento para atualizações ao vivo do painel
 def get_termination_logs():
     """Endpoint para obter os logs de términos de sessões."""
     try:
