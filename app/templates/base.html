@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ current_locale.language }}">
+<html lang="{{ current_locale.language }}" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,8 +17,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
     <script>
-        // Define o tema (claro/escuro) antes do resto da página carregar
+        // Define o tema (claro/escuro) super rápido para evitar o "Flash" branco
         if (localStorage.getItem('theme') === 'dark' ||
            (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
           document.documentElement.classList.add('dark');
@@ -26,144 +27,207 @@
           document.documentElement.classList.remove('dark');
         }
     </script>
+
+    <style>
+        /* Tipografia Base */
+        body { font-family: 'Inter', sans-serif; }
+        
+        /* Scrollbar Global Estilizada */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { 
+            background: #cbd5e1; 
+            border-radius: 10px; 
+        }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Animações Genéricas */
+        .animate-fade-in-up { animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+
     {% block extra_head %}{% endblock %}
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-300 transition-colors duration-300">
+<body class="bg-gray-50 dark:bg-[#0b1120] text-gray-800 dark:text-gray-300 transition-colors duration-300 min-h-screen flex flex-col antialiased selection:bg-yellow-200 selection:text-yellow-900 dark:selection:bg-yellow-900/50 dark:selection:text-yellow-200">
 
-    <div class="min-h-screen">
-        {% block header %}
-        <!-- Cabeçalho da aplicação -->
-        <header class="bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg sticky top-0 z-40 border-b border-gray-200 dark:border-gray-700/50">
-            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex items-center justify-between h-16">
-                    <!-- Logo e Título -->
-                    <div class="flex items-center">
-                        <a href="{{ url_for('main.index') if current_user.is_admin() else url_for('main.statistics_page') }}" class="flex-shrink-0 flex items-center gap-2">
-                             <svg class="w-8 h-8 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
-                            <span class="hidden sm:inline text-xl font-bold text-gray-900 dark:text-white">{{ app_title }}</span>
-                        </a>
-                    </div>
-                    <!-- Menu de Navegação e Controles -->
-                    <div class="flex items-center gap-2 md:gap-4">
-                        <!-- Navegação Desktop -->
-                        <nav class="hidden md:flex items-center space-x-1">
-                            {% if current_user.is_authenticated and current_user.is_admin() %}
-                                <a href="{{ url_for('main.index') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint == 'main.index' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-500 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700/60 {% endif %}">{{ _('Início') }}</a>
-                                <a href="{{ url_for('main.users_page') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint == 'main.users_page' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-500 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700/60 {% endif %}">{{ _('Usuários') }}</a>
-                                <a href="{{ url_for('main.financial_page') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint == 'main.financial_page' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-500 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700/60 {% endif %}">{{ _('Financeiro') }}</a>
-                            {% endif %}
-                            <a href="{{ url_for('main.statistics_page') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint == 'main.statistics_page' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-500 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700/60 {% endif %}">{{ _('Estatísticas') }}</a>
-                            <a href="{{ url_for('main.account_page') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint == 'main.account_page' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-500 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700/60 {% endif %}">{{ _('Minha Conta') }}</a>
-                            {% if current_user.is_authenticated and current_user.is_admin() %}
-                                <a href="{{ url_for('main.settings_page') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint == 'main.settings_page' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-500 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700/60 {% endif %}">{{ _('Configurações') }}</a>
-                            {% endif %}
-                        </nav>
+    {% block header %}
+    <!-- Cabeçalho Principal (Glassmorphism) -->
+    <header class="bg-white/70 dark:bg-[#0f172a]/80 backdrop-blur-xl sticky top-0 z-40 border-b border-gray-200/80 dark:border-gray-800/80 shadow-sm transition-all">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16 sm:h-18">
+                
+                <!-- Logo e Título -->
+                <div class="flex items-center">
+                    <a href="{{ url_for('main.index') if current_user.is_admin() else url_for('main.statistics_page') }}" class="flex-shrink-0 flex items-center gap-2.5 group transition-transform hover:scale-105">
+                         <svg class="w-8 h-8 text-yellow-500 drop-shadow-sm transition-transform group-hover:rotate-12" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
+                        <span class="hidden sm:inline text-xl font-extrabold text-gray-900 dark:text-white tracking-tight">{{ app_title }}</span>
+                    </a>
+                </div>
 
-                        <!-- Controles (Avatar, Notificações, Tema, Logout) -->
-                        <div class="border-l border-gray-300 dark:border-gray-600 pl-2 md:pl-4 flex items-center gap-1 md:gap-3">
-                             <!-- Avatar e Nome do Utilizador (Visível em ecrãs maiores) -->
-                             <div class="hidden lg:flex items-center gap-2">
-                                 <img src="{{ current_user.thumb or 'https://placehold.co/40x40/1F2937/E5E7EB?text=?' }}" alt="Avatar" class="w-8 h-8 rounded-full">
-                                 <span class="text-sm text-gray-500 dark:text-gray-400">{{ _('Logado como') }} <strong class="font-medium text-gray-900 dark:text-white">{{ current_user.username }}</strong></span>
-                             </div>
+                <!-- Menu de Navegação e Controles -->
+                <div class="flex items-center gap-2 md:gap-5">
+                    
+                    <!-- Navegação Desktop Premium -->
+                    <nav class="hidden md:flex items-center gap-1">
+                        {% if current_user.is_authenticated and current_user.is_admin() %}
+                            <a href="{{ url_for('main.index') }}" class="px-4 py-2 rounded-xl text-sm font-semibold transition-all {% if request.endpoint == 'main.index' %} bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 {% else %} text-gray-500 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800/50 {% endif %}">{{ _('Início') }}</a>
+                            <a href="{{ url_for('main.users_page') }}" class="px-4 py-2 rounded-xl text-sm font-semibold transition-all {% if request.endpoint == 'main.users_page' %} bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 {% else %} text-gray-500 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800/50 {% endif %}">{{ _('Usuários') }}</a>
+                            <a href="{{ url_for('main.financial_page') }}" class="px-4 py-2 rounded-xl text-sm font-semibold transition-all {% if request.endpoint == 'main.financial_page' %} bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 {% else %} text-gray-500 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800/50 {% endif %}">{{ _('Financeiro') }}</a>
+                        {% endif %}
+                        <a href="{{ url_for('main.statistics_page') }}" class="px-4 py-2 rounded-xl text-sm font-semibold transition-all {% if request.endpoint == 'main.statistics_page' %} bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 {% else %} text-gray-500 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800/50 {% endif %}">{{ _('Estatísticas') }}</a>
+                        <a href="{{ url_for('main.account_page') }}" class="px-4 py-2 rounded-xl text-sm font-semibold transition-all {% if request.endpoint == 'main.account_page' %} bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 {% else %} text-gray-500 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800/50 {% endif %}">{{ _('Minha Conta') }}</a>
+                        {% if current_user.is_authenticated and current_user.is_admin() %}
+                            <a href="{{ url_for('main.settings_page') }}" class="px-4 py-2 rounded-xl text-sm font-semibold transition-all {% if request.endpoint == 'main.settings_page' %} bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 {% else %} text-gray-500 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800/50 {% endif %}">
+                                <svg class="w-5 h-5 inline-block -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            </a>
+                        {% endif %}
+                    </nav>
 
-                            <!-- Botão de Notificações -->
-                            {% if current_user.is_authenticated %}
-                            <div class="relative">
-                                <button id="notification-button" type="button" title="{{ _('Notificações') }}" class="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none">
-                                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-                                    <!-- Ponto vermelho para notificações não lidas -->
-                                    <div id="notification-badge" class="absolute top-0 right-0 w-3 h-3 rounded-full bg-red-500 border-2 border-white dark:border-gray-800 hidden"></div>
-                                </button>
-                                <!-- Painel de Notificações (Dropdown) -->
-                                <div id="notification-panel" class="hidden opacity-0 scale-95 origin-top-right fixed top-16 inset-x-4 md:absolute md:top-full md:inset-x-auto md:left-auto md:right-0 md:w-96 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 focus:outline-none transition-all duration-200 ease-out" role="menu" aria-orientation="vertical" aria-labelledby="notification-button">
-                                    <div class="p-4 flex justify-between items-center border-b border-gray-200 dark:border-gray-700">
-                                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ _('Notificações') }}</h3>
-                                        <button id="clear-all-notifications" class="text-xs text-red-600 dark:text-red-400 hover:underline">{{ _('Limpar Tudo') }}</button>
-                                    </div>
-                                    <div id="notification-list" class="py-1 max-h-96 overflow-y-auto" role="none">
-                                        <!-- Notificações serão inseridas aqui via JS -->
-                                    </div>
+                    <!-- Zona de Ferramentas -->
+                    <div class="border-l border-gray-200 dark:border-gray-700 pl-2 md:pl-5 flex items-center gap-1.5">
+                        
+                        <!-- Avatar Otimizado -->
+                        <div class="hidden lg:flex items-center gap-2 mr-2">
+                             <img src="{{ current_user.thumb or 'https://placehold.co/40x40/1F2937/E5E7EB?text=?' }}" alt="Avatar" class="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm object-cover">
+                             <span class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ current_user.username }}</span>
+                         </div>
+
+                        <!-- Sino de Notificações -->
+                        {% if current_user.is_authenticated %}
+                        <div class="relative">
+                            <button id="notification-button" type="button" class="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500">
+                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                                <!-- Ponto Vermelho (Ping) -->
+                                <div id="notification-badge" class="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white dark:border-[#0f172a] hidden"></div>
+                            </button>
+                            
+                            <!-- Dropdown de Notificações Premium -->
+                            <div id="notification-panel" class="hidden opacity-0 scale-95 origin-top-right absolute top-full mt-2 right-0 w-80 sm:w-96 rounded-2xl shadow-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 focus:outline-none transition-all duration-200 ease-out z-50 overflow-hidden" role="menu" aria-orientation="vertical">
+                                <div class="px-5 py-4 flex justify-between items-center border-b border-gray-100 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/80">
+                                    <h3 class="text-base font-bold text-gray-900 dark:text-white">{{ _('Notificações') }}</h3>
+                                    <button id="clear-all-notifications" class="text-xs font-semibold text-red-500 hover:text-red-700 dark:hover:text-red-400 transition-colors">{{ _('Limpar Todas') }}</button>
+                                </div>
+                                <div id="notification-list" class="py-2 max-h-[400px] overflow-y-auto" role="none">
+                                    <!-- Javascript Injeta Notificações Aqui -->
                                 </div>
                             </div>
-                            {% endif %}
-
-                            <!-- Botão de Troca de Tema -->
-                            <button id="theme-toggle" type="button" title="{{ _('Mudar tema') }}" class="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none">
-                                <svg id="theme-toggle-dark-icon" class="hidden h-5 w-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
-                                <svg id="theme-toggle-light-icon" class="hidden h-5 w-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
-                            </button>
-
-                             <!-- Botão de Logout -->
-                             <a href="{{ url_for('auth.logout') }}" title="{{ _('Sair') }}" class="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-red-100 dark:hover:bg-red-800/50 hover:text-red-600 dark:hover:text-white">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                             </a>
                         </div>
+                        {% endif %}
 
-                        <!-- Botão de Menu Mobile -->
-                        <div class="md:hidden">
-                            <button id="mobile-menu-button" class="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700">
+                        <!-- Botão Modo Escuro -->
+                        <button id="theme-toggle" type="button" class="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500">
+                            <svg id="theme-toggle-dark-icon" class="hidden h-5 w-5" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+                            <svg id="theme-toggle-light-icon" class="hidden h-5 w-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"></path></svg>
+                        </button>
+
+                         <!-- Botão Sair -->
+                         <a href="{{ url_for('auth.logout') }}" class="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500">
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                         </a>
+
+                        <!-- Botão Menu Mobile (Hamburguer) -->
+                        <div class="md:hidden ml-1">
+                            <button id="mobile-menu-button" class="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500">
                                 <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                             </button>
                         </div>
                     </div>
                 </div>
-                <!-- Menu Mobile (Dropdown) -->
-                <div id="mobile-menu" class="hidden md:hidden w-full">
-                    <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-                        {% if current_user.is_authenticated and current_user.is_admin() %}
-                           <a href="{{ url_for('main.index') }}" class="block px-3 py-2 rounded-md text-base font-medium {% if request.endpoint == 'main.index' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-400 hover:text-white hover:bg-gray-700/60 {% endif %}">{{ _('Início') }}</a>
-                           <a href="{{ url_for('main.users_page') }}" class="block px-3 py-2 rounded-md text-base font-medium {% if request.endpoint == 'main.users_page' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-400 hover:text-white hover:bg-gray-700/60 {% endif %}">{{ _('Usuários') }}</a>
-                           <a href="{{ url_for('main.financial_page') }}" class="block px-3 py-2 rounded-md text-base font-medium {% if request.endpoint == 'main.financial_page' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-400 hover:text-white hover:bg-gray-700/60 {% endif %}">{{ _('Financeiro') }}</a>
-                        {% endif %}
-                        <a href="{{ url_for('main.statistics_page') }}" class="block px-3 py-2 rounded-md text-base font-medium {% if request.endpoint == 'main.statistics_page' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-400 hover:text-white hover:bg-gray-700/60 {% endif %}">{{ _('Estatísticas') }}</a>
-                        <a href="{{ url_for('main.account_page') }}" class="block px-3 py-2 rounded-md text-base font-medium {% if request.endpoint == 'main.account_page' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-400 hover:text-white hover:bg-gray-700/60 {% endif %}">{{ _('Minha Conta') }}</a>
-                        {% if current_user.is_authenticated and current_user.is_admin() %}
-                            <a href="{{ url_for('main.settings_page') }}" class="block px-3 py-2 rounded-md text-base font-medium {% if request.endpoint == 'main.settings_page' %} bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white {% else %} text-gray-400 hover:text-white hover:bg-gray-700/60 {% endif %}">{{ _('Configurações') }}</a>
-                        {% endif %}
-                    </div>
+            </div>
+
+            <!-- Menu Mobile Dropdown -->
+            <div id="mobile-menu" class="hidden md:hidden w-full border-t border-gray-100 dark:border-gray-700/50 mt-2 pb-4">
+                <div class="flex flex-col space-y-1 mt-2">
+                    {% if current_user.is_authenticated and current_user.is_admin() %}
+                        <a href="{{ url_for('main.index') }}" class="px-4 py-3 rounded-xl font-medium transition-colors {% if request.endpoint == 'main.index' %} bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 {% else %} text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 {% endif %}">{{ _('Início') }}</a>
+                        <a href="{{ url_for('main.users_page') }}" class="px-4 py-3 rounded-xl font-medium transition-colors {% if request.endpoint == 'main.users_page' %} bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 {% else %} text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 {% endif %}">{{ _('Usuários') }}</a>
+                        <a href="{{ url_for('main.financial_page') }}" class="px-4 py-3 rounded-xl font-medium transition-colors {% if request.endpoint == 'main.financial_page' %} bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 {% else %} text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 {% endif %}">{{ _('Financeiro') }}</a>
+                    {% endif %}
+                    <a href="{{ url_for('main.statistics_page') }}" class="px-4 py-3 rounded-xl font-medium transition-colors {% if request.endpoint == 'main.statistics_page' %} bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 {% else %} text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 {% endif %}">{{ _('Estatísticas') }}</a>
+                    <a href="{{ url_for('main.account_page') }}" class="px-4 py-3 rounded-xl font-medium transition-colors {% if request.endpoint == 'main.account_page' %} bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 {% else %} text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 {% endif %}">{{ _('Minha Conta') }}</a>
+                    {% if current_user.is_authenticated and current_user.is_admin() %}
+                        <a href="{{ url_for('main.settings_page') }}" class="px-4 py-3 rounded-xl font-medium transition-colors {% if request.endpoint == 'main.settings_page' %} bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 {% else %} text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 {% endif %}">{{ _('Configurações do Sistema') }}</a>
+                    {% endif %}
                 </div>
             </div>
-        </header>
-        {% endblock header %}
+        </div>
+    </header>
+    {% endblock header %}
 
-        <!-- Conteúdo Principal da Página -->
-        <main class="container mx-auto p-4 sm:p-6 lg:p-8">
-            <!-- Mensagens Flash -->
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    <div id="flash-container" class="mb-4">
-                    {% for category, message in messages %}
-                        <div class="p-4 text-sm rounded-lg {% if category == 'error' %} bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-200 border border-red-200 dark:border-red-600/50 {% elif category == 'info' %} bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200 border border-blue-200 dark:border-blue-600/50 {% else %} bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-200 border border-green-200 dark:border-green-600/50 {% endif %}" role="alert">
-                           {{ message }}
+    <!-- Container Principal Flexível -->
+    <main class="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full max-w-7xl">
+        
+        <!-- Mensagens Flash Animadas e com Ícones -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div id="flash-container" class="mb-6 space-y-3">
+                {% for category, message in messages %}
+                    <div class="animate-fade-in-up flex items-center p-4 rounded-xl shadow-sm border-l-4 
+                        {% if category == 'error' %} 
+                            bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border-red-500 
+                        {% elif category == 'info' %} 
+                            bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 border-blue-500 
+                        {% else %} 
+                            bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200 border-green-500 
+                        {% endif %}" role="alert">
+                        
+                        <!-- Ícone Dinâmico -->
+                        <div class="flex-shrink-0 mr-3">
+                            {% if category == 'error' %}
+                                <svg class="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>
+                            {% elif category == 'info' %}
+                                <svg class="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
+                            {% else %}
+                                <svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+                            {% endif %}
                         </div>
-                    {% endfor %}
+                        <div class="text-sm font-medium">{{ message }}</div>
+                        
+                        <!-- Botão Fechar Flash -->
+                        <button onclick="this.parentElement.remove()" class="ml-auto -mx-1.5 -my-1.5 p-1.5 rounded-lg focus:ring-2 focus:ring-gray-400 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 inline-flex h-8 w-8 text-gray-500 opacity-70 hover:opacity-100 transition-all">
+                            <span class="sr-only">Fechar</span>
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                        </button>
                     </div>
-                {% endif %}
-            {% endwith %}
-            <!-- Bloco de Conteúdo Específico da Página -->
-            {% block content %}{% endblock %}
-        </main>
-    </div>
+                {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
 
-    <!-- Modals (Placeholders) -->
-    <div id="notificationConfirmationModal" class="modal-backdrop hidden"></div>
-    <div id="confirmationModal" class="modal-backdrop hidden"></div>
-    <!-- Toast (Notificações Flutuantes) -->
-    <div id="toast" class="toast"></div>
+        <!-- Bloco de Conteúdo Específico da Página -->
+        {% block content %}{% endblock %}
+    </main>
 
-    <!-- Scripts Globais (utils, tema, service worker) -->
+    <!-- Modals (Placeholders para o JS injetar as Caixas de Confirmação) -->
+    <div id="notificationConfirmationModal" class="modal-backdrop hidden z-50 fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center"></div>
+    <div id="confirmationModal" class="modal-backdrop hidden z-50 fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center"></div>
+    
+    <!-- Toast (Notificações Flutuantes no Canto Superior Direito) -->
+    <div id="toast" class="toast fixed top-20 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Scripts Globais -->
     <script>
-    // Script inline para lógica básica do header e tema
     document.addEventListener('DOMContentLoaded', () => {
+        // Toggle suave do Menu Mobile
         const mobileMenuButton = document.getElementById('mobile-menu-button');
         const mobileMenu = document.getElementById('mobile-menu');
         if(mobileMenuButton) {
             mobileMenuButton.addEventListener('click', () => {
-                mobileMenu.classList.toggle('hidden');
+                if (mobileMenu.classList.contains('hidden')) {
+                    mobileMenu.classList.remove('hidden');
+                    mobileMenu.classList.add('animate-fade-in-up');
+                } else {
+                    mobileMenu.classList.add('hidden');
+                    mobileMenu.classList.remove('animate-fade-in-up');
+                }
             });
         }
 
+        // Lógica dos Ícones do Tema Escuro/Claro
         const themeToggleButton = document.getElementById('theme-toggle');
         const darkIcon = document.getElementById('theme-toggle-dark-icon');
         const lightIcon = document.getElementById('theme-toggle-light-icon');
@@ -184,29 +248,29 @@
                 const isNowDark = document.documentElement.classList.contains('dark');
                 localStorage.setItem('theme', isNowDark ? 'dark' : 'light');
                 updateThemeIcons();
-                window.dispatchEvent(new Event('themeChanged')); // Dispara evento para outros scripts
+                window.dispatchEvent(new Event('themeChanged')); // Dispara evento para outros scripts que precisem
             });
         }
 
-        // Registo do Service Worker (para PWA)
+        // Registo do Service Worker (para App PWA Mobile)
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register("{{ url_for('static', filename='js/service-worker.js') }}")
-                    .then(registration => console.log('Service Worker registado com sucesso:', registration))
-                    .catch(error => console.log('Falha no registo do Service Worker:', error));
+                    .then(registration => console.log('✅ Service Worker PWA ativado.'))
+                    .catch(error => console.log('❌ Falha no Service Worker:', error));
             });
         }
-        updateThemeIcons(); // Define o ícone correto no carregamento inicial
+        updateThemeIcons(); 
     });
     </script>
 
     <!-- Scripts Modulares -->
     <script type="module" src="{{ url_for('static', filename='js/utils.js') }}"></script>
 
-    <!-- CORREÇÃO: Mover a inclusão do Socket.IO para ANTES de notifications.js -->
+    <!-- Socket.IO -> Necessário para notificações Real-Time e Processamento de Pagamentos -->
     <script src="{{ url_for('static', filename='dist/socket.io.min.js') }}"></script>
 
-    <!-- Script de Notificações (agora com Socket.IO carregado) -->
+    <!-- Script Gestor de Notificações -->
     <script id="notifications-script"
         type="module"
         src="{{ url_for('static', filename='js/notifications.js') }}"
@@ -214,13 +278,13 @@
         data-url-mark-all-read="{{ url_for('notifications_api.mark_all_notifications_as_read_route') }}"
         data-url-clear-all="{{ url_for('notifications_api.clear_all_notifications_route') }}"
         data-i18n-no-notifications="{{ _('Nenhuma notificação nova.') }}"
-        data-i18n-confirm-clear-title="{{ _('Confirmar Limpeza') }}"
-        data-i18n-confirm-clear-message="{{ _('Tem a certeza de que deseja apagar TODAS as notificações? Esta ação não pode ser desfeita.') }}"
-        data-i18n-confirm-button="{{ _('Sim, Limpar Tudo') }}"
+        data-i18n-confirm-clear-title="{{ _('Apagar Notificações') }}"
+        data-i18n-confirm-clear-message="{{ _('Tem a certeza que deseja limpar o seu histórico de notificações?') }}"
+        data-i18n-confirm-button="{{ _('Sim, Limpar') }}"
         data-i18n-cancel-button="{{ _('Cancelar') }}"
     ></script>
 
-    <!-- Bloco para scripts específicos da página -->
+    <!-- Bloco Extra de Scripts Específicos por Página -->
     {% block scripts %}{% endblock %}
 </body>
 </html>
