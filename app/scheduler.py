@@ -1,5 +1,7 @@
 # app/scheduler.py
 
+# app/scheduler.py
+
 import logging
 import time
 import os
@@ -138,6 +140,54 @@ def end_subscription_job(plex_user_id):
         else:
             logger.warning(f"O usuário '{plex_user_id}' não foi encontrado durante a tarefa de fim de assinatura.")
 
+@single_instance_job('sweep_expired_users_job')
+def sweep_expired_users_job():
+    """Varredura de segurança: apanha utilizadores que já expiraram caso o servidor estivesse desligado."""
+    if not _app: return
+    with _app.test_request_context('/'):
+        from . import extensions
+        logger.info("Varredura de segurança: A procurar contas expiradas não cortadas...")
+        
+        try:
+            # Pega na lista de todos os utilizadores da BD local
+            all_users = extensions.data_manager.get_all_users()
+            now_utc = datetime.now(timezone.utc)
+            cut_count = 0
+            
+            for profile in all_users:
+                # Ignorar contas já inativas (cortadas) ou contas Admin (vitalícias)
+                if profile.get('status') == 'inactive' or profile.get('is_admin'):
+                    continue
+                    
+                expiration_date_str = profile.get('expiration_date')
+                if not expiration_date_str:
+                    continue
+                    
+                try:
+                    expiration_date = datetime.fromisoformat(expiration_date_str)
+                    if expiration_date.tzinfo is None:
+                        expiration_date = expiration_date.replace(tzinfo=timezone.utc)
+                        
+                    # Se a data de expiração já passou, e a conta AINDA ESTÁ ATIVA!
+                    if now_utc >= expiration_date:
+                        plex_user_id = profile.get('plex_user_id')
+                        username = profile.get('username', 'Desconhecido')
+                        
+                        logger.warning(f"⚠️ [VARREDURA] A conta de '{username}' expirou às {expiration_date.strftime('%Y-%m-%d %H:%M:%S')} mas escapou ao corte. A bloquear AGORA.")
+                        
+                        # Chama a mesma lógica da função individual
+                        extensions.plex_manager.block_user(plex_user_id, reason='expired')
+                        cut_count += 1
+                        
+                except Exception as ex:
+                    logger.error(f"Erro ao avaliar expiração do utilizador {profile.get('username')}: {ex}")
+                    
+            if cut_count > 0:
+                logger.info(f"✅ Varredura concluída. {cut_count} contas atrasadas foram bloqueadas com sucesso.")
+                
+        except Exception as e:
+            logger.error(f"Erro fatal na varredura de utilizadores expirados: {e}")
+
 @single_instance_job('removal_job')
 def removal_job():
     if not _app: return
@@ -257,6 +307,24 @@ def setup_scheduler(app):
     
     tz_str = get_app_timezone()
     logger.info(f"O agendador iniciará no fuso horário: {tz_str}")
+
+    # ===============================================
+    # REDE DE SEGURANÇA CONTRA FALHAS DE AGENDAMENTO
+    # ===============================================
+    # Executa a varredura logo no arranque do servidor
+    extensions.scheduler.add_job(
+        id='startup_sweep_job', func=sweep_expired_users_job,
+        trigger='date', run_date=datetime.now(timezone.utc),
+        replace_existing=True
+    )
+    
+    # E agenda para correr de hora a hora como backup final
+    extensions.scheduler.add_job(
+        id='hourly_sweep_job', func=sweep_expired_users_job,
+        trigger='interval', hours=1, replace_existing=True,
+        misfire_grace_time=3600
+    )
+    # ===============================================
 
     extensions.scheduler.add_job(
         id='stream_check_job', func=stream_check_job,
