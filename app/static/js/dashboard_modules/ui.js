@@ -5,7 +5,7 @@ import { getUsersForSelection } from './api.js';
 import { updateSendButtonText } from './handlers.js';
 
 // ==========================================
-// CONSTANTES E ÍCONES SVG (Para limpar o código)
+// CONSTANTES E ÍCONES SVG
 // ==========================================
 
 const ICONS = {
@@ -149,7 +149,7 @@ export function renderSystemHealth(health) {
 }
 
 // ==========================================
-// STREAMS EM TEMPO REAL
+// STREAMS EM TEMPO REAL (SMART SYNC)
 // ==========================================
 
 function _getStreamStateConfig(streamState) {
@@ -170,7 +170,6 @@ function _getStreamCardInnerHtml(s) {
     let streamText = sd.is_transcoding ? `Transcode` : 'Direct Play';
     if (sd.is_transcoding && typeof sd.transcode_progress === 'number') streamText += ` (${sd.transcode_progress}%)`;
     
-    // Adicionado fallback de imagens com onerror para não mostrar imagens rasgadas
     const placeholderImg = "https://placehold.co/150x225/1F2937/E5E7EB?text=Sem+Capa";
     const avatarPlaceholder = "https://placehold.co/24x24/1F2937/E5E7EB?text=U";
 
@@ -209,14 +208,15 @@ function _getStreamCardInnerHtml(s) {
     `;
 }
 
-// CORREÇÃO CRÍTICA DO MEMORY LEAK: o ID do interval estava a ser perdido porque `this` não existe em arrow functions.
 function _createTimerInterval(sessionKey) {
     const intervalId = setInterval(() => {
         const timer = state.activeTimers[sessionKey];
         if (!timer) {
-            clearInterval(intervalId); // <-- Correção aqui
+            clearInterval(intervalId);
             return;
         }
+        
+        // Relógio nativo do cliente flui independentemente do servidor
         const elapsedSinceUpdate = Date.now() - timer.last_updated;
         const current_offset = timer.view_offset + elapsedSinceUpdate;
         
@@ -257,35 +257,69 @@ export function renderActiveStreamsDashboard(sessions) {
                 card.dataset.sessionKey = s.session_key;
                 card.className = 'stream-card bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-xl shadow-md flex items-start gap-3 sm:gap-4 overflow-hidden';
                 dom.activeStreamsContainer.appendChild(card);
+                card.innerHTML = _getStreamCardInnerHtml(s);
+            } else {
+                // Se o cartão já existe, atualizamos apenas os metadados (como bitrate) sem refazer o HTML inteiro
+                // Atualizamos o ícone de estado visual
+                const stConfig = _getStreamStateConfig(s.state);
+                const iconSpan = document.getElementById(`state-icon-${s.session_key}`);
+                if (iconSpan) {
+                    iconSpan.className = stConfig.color;
+                    iconSpan.innerHTML = stConfig.icon;
+                }
             }
-            card.innerHTML = _getStreamCardInnerHtml(s);
         });
     } else {
         dom.activeStreamsSection.classList.add('hidden');
         dom.activeStreamsContainer.innerHTML = '';
     }
 
-    // Gere o estado dos timers
+    // Gere o estado dos timers (Com Interpolação Suave - Smart Sync)
+    const now = Date.now();
     sessions.forEach(s => {
         const timer = state.activeTimers[s.session_key];
+        
         if (timer) {
-            timer.view_offset = s.view_offset;
+            // Calcula qual é o tempo que o cliente acha que está a passar na TV agora
+            let clientCurrentOffset = timer.view_offset;
+            if (timer.state === 'playing') {
+                clientCurrentOffset += (now - timer.last_updated);
+            }
+
+            const stateChanged = timer.state !== s.state;
             timer.duration = s.duration;
-            timer.last_updated = Date.now();
-            
+            timer.state = s.state;
+
+            // SMART SYNC: A Magia acontece aqui!
+            // Se a diferença for MAIOR que 5 segundos (ex: o cliente puxou o filme à frente com o comando)
+            // OU se ele meteu no Pause/Play, nós forçamos o tempo do servidor.
+            // Se for menor, ignoramos a latência da rede e deixamos o relógio do painel andar sem solavancos.
+            if (stateChanged || Math.abs(s.view_offset - clientCurrentOffset) > 5000) {
+                timer.view_offset = s.view_offset;
+                timer.last_updated = now;
+            }
+
             if (s.state !== 'playing' && timer.interval) {
+                // Pausado ou em Buffering: Para o relógio local
                 clearInterval(timer.interval);
                 timer.interval = null;
+                
+                // Atualiza a tela para mostrar o tempo exato em que pausou
+                const timeEl = document.getElementById(`time-${s.session_key}`);
+                if (timeEl) timeEl.textContent = `${formatTime(timer.view_offset)}/${formatTime(timer.duration)}`;
+                
             } else if (s.state === 'playing' && !timer.interval) {
+                // Voltou a dar Play
+                timer.last_updated = now;
                 timer.interval = _createTimerInterval(s.session_key);
             }
-            timer.state = s.state;
         } else {
+            // Novo filme a iniciar
             state.activeTimers[s.session_key] = {
                 view_offset: s.view_offset,
                 duration: s.duration,
                 state: s.state,
-                last_updated: Date.now(),
+                last_updated: now,
                 interval: s.state === 'playing' ? _createTimerInterval(s.session_key) : null
             };
         }
@@ -404,7 +438,6 @@ export function openUserSelectionModal() {
     const modalFooter = modal.querySelector('.modal-footer');
     if (!modalBody || !modalFooter) return;
 
-    // Injeta HTML Estrutural
     const parts = _getModalHtmlParts(i18n);
     modal.querySelector('.modal-title').textContent = i18n.selectUsers;
     modalBody.innerHTML = parts.body;
@@ -412,7 +445,6 @@ export function openUserSelectionModal() {
 
     const tempSelectedIds = new Set(state.selectedUserIds);
     
-    // Bindings de UI rápidos
     const $ = id => modal.querySelector(`#${id}`);
     const userList = $('bulk-notify-selection-list');
     const countSpan = $('bulk-notify-selected-count');
@@ -444,7 +476,6 @@ export function openUserSelectionModal() {
         }
     };
 
-    // Listeners
     $('bulk-notify-confirm').onclick = () => {
         state.selectedUserIds = tempSelectedIds;
         updateSpecificUserLabel(state.selectedUserIds.size);
