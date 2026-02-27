@@ -1,57 +1,134 @@
-<div id="tab-conexoes" class="tab-content">
-    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <div>
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Configurações Conexões') }}</h2>
-            <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Configure os dados de conexão com servidor Plex, Tautulli e Overseerr/Jellyseerr.') }}</p>
-        </div>
-        <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600 space-y-4">
-            <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ _('Plex') }}</h4>
-            <div>
-                <label for="plex_url_display" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL do Servidor Plex') }}</label>
-                <input type="text" id="plex_url_display" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Não definido') }}" readonly>
+<div id="tab-conexoes" class="tab-content hidden">
+    
+    <!-- Cabeçalho da Aba -->
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <svg class="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+            {{ _('Conexões e Integrações') }}
+        </h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1 text-sm">{{ _('Configure a ligação com o seu servidor Media e ferramentas auxiliares de monitorização e pedidos.') }}</p>
+    </div>
+
+    <div class="space-y-6">
+
+        <!-- Cartão: Plex Media Server -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
+                    <svg class="w-6 h-6 text-yellow-600 dark:text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">{{ _('Plex Media Server') }}</h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Servidor principal de partilha de média.') }}</p>
+                </div>
             </div>
-            <p class="text-sm text-gray-500 dark:text-gray-400">{{ _('Para alterar o servidor Plex ou atualizar seu token, refaça a autenticação.') }}</p>
-            <button type="button" id="reauth-plex-button" class="btn bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-semibold">
-                 <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
-                 {{ _('Autenticar para Buscar Servidores') }}
-            </button>
-            <div id="server-selection-container" class="hidden space-y-2 mt-4"></div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label for="plex_url_display" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('URL do Servidor Ativo') }}</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
+                        </div>
+                        <input type="text" id="plex_url_display" class="block w-full pl-10 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-gray-100 text-gray-500 focus:outline-none dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400 cursor-not-allowed shadow-inner" placeholder="{{ _('Não definido') }}" readonly>
+                    </div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ _('Para alterar o servidor ou atualizar o seu token de acesso, clique no botão de autenticação abaixo.') }}</p>
+                </div>
+                
+                <button type="button" id="reauth-plex-button" class="btn w-full sm:w-auto bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2.5 px-4 rounded-xl shadow-sm transition-transform hover:-translate-y-0.5 flex items-center justify-center">
+                    <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
+                    {{ _('Autenticar e Buscar Servidores') }}
+                </button>
+                <div id="server-selection-container" class="hidden space-y-2 mt-4 animate-fade-in-up"></div>
+            </div>
         </div>
 
-        <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600 space-y-4">
-             <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ _('Tautulli') }}</h4>
-             <p class="text-sm text-gray-500 dark:text-gray-400">{{_('Necessário para o ranking de estatísticas e controle de sessões.')}}</p>
+        <!-- Cartão: Tautulli -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                    <svg class="w-6 h-6 text-blue-600 dark:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">{{ _('Tautulli') }}</h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Necessário para o ranking de estatísticas e controlo de sessões ativas.') }}</p>
+                </div>
+            </div>
+            
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                    <label for="TAUTULLI_URL" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL do Tautulli') }}</label>
-                    <input type="text" id="TAUTULLI_URL" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="http://127.0.0.1:8181">
+                    <label for="TAUTULLI_URL" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('URL do Tautulli') }}</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                        </div>
+                        <input type="text" id="TAUTULLI_URL" class="block w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow" placeholder="http://127.0.0.1:8181">
+                    </div>
                 </div>
                 <div>
-                    <label for="TAUTULLI_API_KEY" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Chave da API do Tautulli') }}</label>
-                    <input type="password" id="TAUTULLI_API_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha para alterar') }}">
+                    <label for="TAUTULLI_API_KEY" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Chave da API (Tautulli)') }}</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                        </div>
+                        <input type="password" id="TAUTULLI_API_KEY" class="block w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow" placeholder="{{ _('Preencha para alterar') }}">
+                    </div>
                 </div>
             </div>
-            <button type="button" id="testTautulliButton" class="btn bg-blue-600 hover:bg-blue-500 text-white mt-4">{{ _('Testar Conexão') }}</button>
+            <div class="mt-5 flex justify-end">
+                <button type="button" id="testTautulliButton" class="btn bg-blue-600 hover:bg-blue-500 text-white py-2 px-5 rounded-xl shadow-sm text-sm font-bold transition-all flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {{ _('Testar Conexão') }}
+                </button>
+            </div>
         </div>
 
-        <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600 space-y-4">
-             <h4 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Overseerr / Jellyseerr') }}</h4>
-             <p class="text-sm text-gray-500 dark:text-gray-400">{{_('Necessário para suporte servidor de pedidos.')}}</p>
-            <div class="space-y-4">
-               <div class="flex items-center">
-                   <input id="OVERSEERR_ENABLED" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                   <label for="OVERSEERR_ENABLED" class="ml-2 block text-sm font-medium text-gray-900 dark:text-gray-300">{{ _('Habilitar integração') }}</label>
-               </div>
+        <!-- Cartão: Seerr -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                        <svg class="w-6 h-6 text-purple-600 dark:text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">{{ _('Seerr') }}</h3>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Integração para o sistema de pedidos de filmes/séries.') }}</p>
+                    </div>
+                </div>
+                <!-- Toggle Moderno -->
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input id="OVERSEERR_ENABLED" type="checkbox" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-500"></div>
+                </label>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 disablable-input">
                 <div>
-                    <label for="OVERSEERR_URL" class="block text-sm font-medium text-gray-600 dark:text-gray-300">URL</label>
-                    <input type="url" id="OVERSEERR_URL" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="http://127.0.0.1:5055">
+                    <label for="OVERSEERR_URL" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('URL do Overseerr') }}</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                        </div>
+                        <input type="url" id="OVERSEERR_URL" class="block w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow" placeholder="http://127.0.0.1:5055">
+                    </div>
                 </div>
                 <div>
-                    <label for="OVERSEERR_API_KEY" class="block text-sm font-medium text-gray-600 dark:text-gray-300">{{ _('Chave da API') }}</label>
-                    <input type="password" id="OVERSEERR_API_KEY" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Preencha à chave API') }}">
+                    <label for="OVERSEERR_API_KEY" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Chave da API (Overseerr)') }}</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                        </div>
+                        <input type="password" id="OVERSEERR_API_KEY" class="block w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow" placeholder="{{ _('Preencha a chave API') }}">
+                    </div>
                 </div>
             </div>
-            <button type="button" id="testOverseerrButton" class="btn bg-blue-600 hover:bg-blue-500 text-white">{{ _('Testar Conexão') }}</button>
+            <div class="mt-5 flex justify-end disablable-input">
+                <button type="button" id="testOverseerrButton" class="btn bg-purple-600 hover:bg-purple-500 text-white py-2 px-5 rounded-xl shadow-sm text-sm font-bold transition-all flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {{ _('Testar Conexão') }}
+                </button>
+            </div>
         </div>
+
     </div>
 </div>
