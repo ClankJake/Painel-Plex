@@ -144,24 +144,32 @@ def sweep_expired_users_job():
     if not _app: return
     with _app.test_request_context('/'):
         from . import extensions
-        from .models import UserProfile # Importação direta do modelo de BD
+        from .models import UserProfile, User # Importação correta dos modelos
         
         logger.info("Varredura de segurança: A procurar contas expiradas não cortadas...")
         
         try:
-            # Lemos diretamente da Base de Dados usando SQLAlchemy
             all_profiles = UserProfile.query.all()
             now_utc = datetime.now(timezone.utc)
             cut_count = 0
             
             for profile_obj in all_profiles:
-                # Ignorar contas já inativas ou contas Admin
-                if profile_obj.status == 'inactive' or profile_obj.is_admin:
+                # 1. Ignorar contas que já estão inativas (já foram cortadas)
+                if profile_obj.status == 'inactive':
                     continue
-                    
+                
+                # 2. Ignorar se não tiver data de expiração (ex: Admins ou contas vitalícias)
                 expiration_date_str = profile_obj.expiration_date
                 if not expiration_date_str:
                     continue
+
+                # 3. Verificação segura de Admin na tabela User
+                try:
+                    db_user = db.session.get(User, int(profile_obj.plex_user_id))
+                    if db_user and getattr(db_user, 'is_admin', False):
+                        continue # É admin, não bloqueia
+                except (ValueError, TypeError):
+                    pass # Se o ID não for inteiro, segue em frente
                     
                 try:
                     expiration_date = datetime.fromisoformat(expiration_date_str)
