@@ -10,53 +10,71 @@ import {
 import { setupWebSocket } from './dashboard_modules/websocket.js';
 import { attachEventListeners } from './dashboard_modules/listeners.js';
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Popula urls, i18n, e referências do DOM
+const initDashboard = async () => {
+    console.log("🚀 [Dashboard] A inicializar o sistema central...");
+
+    // 1. Popula urls, variáveis de tradução (i18n) e referências do DOM
     initConfig();
 
-    dom.loadingIndicator.style.display = 'block';
+    // 2. Prepara a Interface (Mostra Loading, Esconde Painel)
+    dom.loadingIndicator.style.display = ''; // Limpa para permitir que a classe 'flex' do Tailwind atue
     dom.dashboardContainer.classList.add('hidden');
     dom.errorContainer.classList.add('hidden');
 
     try {
-        // 2. Carrega todos os dados iniciais da API
+        console.log("📦 [Dashboard] A transferir dados do servidor...");
+        
+        // 3. Carrega todos os dados iniciais da API em paralelo
         const data = await loadDashboardData();
 
-        // 3. Renderiza os dados iniciais
-        if (data.summaryData.success) {
+        // 4. Tolerância a Falhas (Graceful Degradation)
+        // Tentamos renderizar cada bloco individualmente. Se um falhar, o resto continua a funcionar!
+        
+        // Resumos e Gráficos
+        if (data.summaryData && data.summaryData.success) {
             renderSummaryCards(data.summaryData.summary);
             renderCharts(data.summaryData.summary);
         } else {
-            throw new Error(data.summaryData.message);
+            console.warn("⚠️ [Dashboard] Falha parcial: Não foi possível carregar os resumos/gráficos.", data.summaryData?.message);
         }
 
-        if (data.healthData.success) {
+        // Saúde do Sistema
+        if (data.healthData && data.healthData.success) {
             renderSystemHealth(data.healthData.health);
+        } else {
+            console.warn("⚠️ [Dashboard] Falha parcial: Não foi possível carregar a saúde do sistema.");
         }
 
-        if (data.streamsData.success) {
+        // Streams em Tempo Real
+        if (data.streamsData && data.streamsData.success) {
             renderActiveStreamsDashboard(data.streamsData.sessions);
         }
 
-        if (data.auditData.success) {
+        // Logs de Auditoria
+        if (data.auditData && data.auditData.success) {
             renderTerminationLogs(data.auditData.logs);
         }
 
-        // Exibe o dashboard
+        // Tudo carregado (ou a maior parte), exibe o painel com transição suave
         dom.dashboardContainer.classList.remove('hidden');
+        console.log("✅ [Dashboard] Interface carregada com sucesso.");
 
     } catch (error) {
-        // Exibe o erro
-        dom.errorMessage.textContent = error.message;
+        // Erro Crítico (Ex: falha total de rede ou API offline)
+        console.error("❌ [Dashboard] Erro crítico na inicialização:", error);
+        dom.errorMessage.textContent = error.message || "Falha grave na comunicação com o servidor.";
         dom.errorContainer.classList.remove('hidden');
     } finally {
+        // Desliga o spinner de carregamento independentemente do resultado
         dom.loadingIndicator.style.display = 'none';
     }
 
-    // 4. Anexa os event listeners (cliques, etc.)
+    // 5. Anexa os event listeners (Cliques, Envios de Formulário, Modais)
     attachEventListeners();
     
-    // 5. Inicia a conexão WebSocket
+    // 6. Inicia o Motor de Tempo Real (Plex SSE + Socket.IO)
     setupWebSocket();
-});
+};
 
+// Dispara o arranque assim que o HTML do navegador estiver pronto
+document.addEventListener('DOMContentLoaded', initDashboard);
