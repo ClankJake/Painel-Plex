@@ -120,7 +120,7 @@ def end_subscription_job(plex_user_id):
         from . import extensions
         user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
         user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
-        logger.info(f"Fim da assinatura para '{user_identifier}'. Acionando o bloqueio.")
+        logger.info(f"Fim da assinatura para '{user_identifier}'. Processando vencimento da conta.")
         
         try:
             profile = extensions.data_manager.get_user_profile(plex_user_id)
@@ -138,65 +138,6 @@ def end_subscription_job(plex_user_id):
         else:
             logger.warning(f"O usuário '{plex_user_id}' não foi encontrado durante a tarefa de fim de assinatura.")
 
-@single_instance_job('sweep_expired_users_job')
-def sweep_expired_users_job():
-    """Varredura de segurança: apanha utilizadores que já expiraram caso o servidor estivesse desligado."""
-    if not _app: return
-    with _app.test_request_context('/'):
-        from . import extensions
-        from .models import UserProfile
-        
-        logger.info("Varredura de segurança: A procurar contas expiradas não cortadas...")
-        
-        try:
-            all_profiles = UserProfile.query.all()
-            now_utc = datetime.now(timezone.utc)
-            cut_count = 0
-            
-            for profile_obj in all_profiles:
-                # 1. Ignorar contas inativas
-                if profile_obj.status == 'inactive':
-                    continue
-                
-                # 2. Ignorar se não tiver data de expiração
-                expiration_date_str = profile_obj.expiration_date
-                if not expiration_date_str:
-                    continue
-
-                plex_user_id = profile_obj.plex_user_id
-
-                # 3. Verificação segura de Admin via data_manager (evita bugs de SQLAlchemy Types)
-                try:
-                    profile_dict = extensions.data_manager.get_user_profile(plex_user_id)
-                    if profile_dict and profile_dict.get('is_admin'):
-                        continue # É administrador, ignora bloqueios!
-                except Exception as e:
-                    logger.debug(f"Aviso ao tentar ler perfil para admin check (ID {plex_user_id}): {e}")
-                    
-                # 4. Avaliar Data de Expiração
-                try:
-                    expiration_date = datetime.fromisoformat(expiration_date_str)
-                    if expiration_date.tzinfo is None:
-                        expiration_date = expiration_date.replace(tzinfo=timezone.utc)
-                        
-                    if now_utc >= expiration_date:
-                        username = profile_obj.username or 'Desconhecido'
-                        
-                        logger.warning(f"⚠️ [VARREDURA] A conta de '{username}' expirou às {expiration_date.strftime('%Y-%m-%d %H:%M:%S')} mas escapou ao corte. A bloquear AGORA.")
-                        
-                        extensions.plex_manager.block_user(plex_user_id, reason='expired')
-                        cut_count += 1
-                        
-                except Exception as ex:
-                    logger.error(f"Erro ao avaliar expiração do utilizador {profile_obj.username}: {ex}")
-                    
-            if cut_count > 0:
-                logger.info(f"✅ Varredura concluída. {cut_count} contas atrasadas foram bloqueadas com sucesso.")
-            else:
-                logger.debug("✅ Varredura concluída. Nenhuma conta atrasada encontrada.")
-                
-        except Exception as e:
-            logger.error(f"Erro fatal na varredura de utilizadores expirados: {e}", exc_info=True)
 
 @single_instance_job('removal_job')
 def removal_job():
@@ -225,7 +166,6 @@ def removal_job():
                 if admin_user in (plex_username, plex_email) and admin_user != "":
                     is_admin = True
                     
-            # Check seguro de admin via data_manager
             if not is_admin:
                 try:
                     profile_dict = extensions.data_manager.get_user_profile(plex_user_id)
@@ -304,22 +244,6 @@ def setup_scheduler(app):
     
     tz_str = get_app_timezone()
     logger.info(f"O agendador iniciará no fuso horário: {tz_str}")
-
-    # ===============================================
-    # REDE DE SEGURANÇA CONTRA FALHAS DE AGENDAMENTO
-    # ===============================================
-    extensions.scheduler.add_job(
-        id='startup_sweep_job', func=sweep_expired_users_job,
-        trigger='date', run_date=datetime.now(timezone.utc),
-        replace_existing=True
-    )
-    
-    extensions.scheduler.add_job(
-        id='hourly_sweep_job', func=sweep_expired_users_job,
-        trigger='interval', hours=1, replace_existing=True,
-        misfire_grace_time=3600
-    )
-    # ===============================================
 
     extensions.scheduler.add_job(
         id='stream_check_job', func=stream_check_job,
