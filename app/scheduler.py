@@ -62,6 +62,9 @@ def get_app_timezone():
 # DEFINIÇÃO DAS TAREFAS (BACKGROUND JOBS)
 # ==========================================
 
+def sweep_expired_users_job():
+    pass
+
 @single_instance_job('task_processor_job')
 def task_processor_job():
     if not _app: return
@@ -244,6 +247,15 @@ def setup_scheduler(app):
     
     tz_str = get_app_timezone()
     logger.info(f"O agendador iniciará no fuso horário: {tz_str}")
+
+    try:
+        extensions.scheduler.remove_job('hourly_sweep_job')
+    except Exception:
+        pass
+    try:
+        extensions.scheduler.remove_job('startup_sweep_job')
+    except Exception:
+        pass
 
     extensions.scheduler.add_job(
         id='stream_check_job', func=stream_check_job,
