@@ -40,7 +40,8 @@ def get_greeting():
 class StreamManager:
     """
     Gere a monitorização e o término de streams diretamente no Plex.
-    Potenciado por SSE (Websockets) para tempo real, com sistema Anti-Spam.
+    Potenciado por SSE (Websockets) para tempo real, com sistema Anti-Spam,
+    Prevenção Proativa e Controlo de Sobrecarga (Thundering Herd).
     """
     def __init__(self, plex_connection, data_manager, user_manager):
         self.conn = plex_connection
@@ -48,6 +49,10 @@ class StreamManager:
         self.user_manager = user_manager
         self._listener = None
         self._app = None
+        
+        # Controlo de Concorrência para Verificações Atrasadas (Thundering Herd Prevention)
+        self._delayed_check_lock = threading.Lock()
+        self._delayed_check_pending = False
 
     # --- LÓGICA DE TEMPO REAL (SSE) ---
 
@@ -93,29 +98,28 @@ class StreamManager:
                     from app.extensions import cache
                     
                     # 🛡️ DEBOUNCE GLOBAL: Impede que rajadas de eventos do Plex sobrecarreguem o servidor
-                    # Se um evento ocorreu há menos de 2 segundos, ignora os restantes.
                     if cache.get("sse_event_lock"):
                         return
                     cache.set("sse_event_lock", True, timeout=2)
 
-                    # Avisa Frontend imediatamente (Latência 0ms)
+                    # Avisa Frontend imediatamente (Latência 0ms) para atualizar a grelha
                     try:
                         from app.extensions import socketio
                         socketio.emit('dashboard_update_streams', namespace='/dashboard')
                     except Exception:
                         pass
 
-                    # Executa a verificação numa thread separada
+                    # Executa a verificação numa thread separada (daemon=True evita prender o encerramento do Gunicorn)
                     def background_check():
                         with self._app.app_context():
                             self.check_and_enforce_streams(from_event=True)
                             
-                    threading.Thread(target=background_check).start()
+                    threading.Thread(target=background_check, daemon=True).start()
 
     # --- MÉTODOS PÚBLICOS ---
 
     def block_user_sessions(self, plex_user_id, reason):
-        """Termina todas as sessões ativas de um utilizador específico."""
+        """Termina todas as sessões ativas de um utilizador específico (Usado no Bloqueio Manual/Vencimento)."""
         if not self.conn.plex:
             logger.warning(f"Não foi possível bloquear as sessões do utilizador ID {plex_user_id}: Conexão com o Plex não disponível.")
             return
@@ -133,6 +137,7 @@ class StreamManager:
         if not from_event:
             logger.debug("A executar a verificação de streams (Job Fallback/Sweep)...")
 
+        # Auto-recuperação do Websocket se ele tiver caído (ex: reinício do Plex)
         if HAS_WEBSOCKET and (not getattr(self, '_listener', None) or not self._listener.is_alive()):
             try:
                 app = current_app._get_current_object()
@@ -177,19 +182,47 @@ class StreamManager:
                 else:
                     self._enforce_screen_limits(user_id, username, user_session_list, profile, config)
 
-        except requests.exceptions.ConnectionError as e:
-            logger.warning(f"Erro de conexão ao verificar streams (temporário): {e}. A saltar.")
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout) as e:
+            # Captura otimizada para evitar crashes se o Plex estiver lento ou em manutenção
+            logger.warning(f"Atraso/Falha de rede ao verificar streams: {type(e).__name__}. A saltar ciclo.")
         except Exception as e:
             logger.error(f"Erro inesperado ao verificar e impor streams: {e}", exc_info=True)
 
     # --- MÉTODOS AUXILIARES E DE LÓGICA DE NEGÓCIO ---
+
+    def _schedule_delayed_check(self):
+        """
+        Agenda uma varredura para o futuro. 
+        Garante que apenas UM agendamento existe de cada vez (Thundering Herd Prevention).
+        """
+        with self._delayed_check_lock:
+            if self._delayed_check_pending:
+                return # Já existe uma verificação na calha, não criar outra
+            self._delayed_check_pending = True
+
+        def delayed_run():
+            time.sleep(3.0) # Tempo para o Plex gerar os IDs e estabilizar
+            
+            # Liberta o Lock antes de executar para permitir novos agendamentos futuros
+            with self._delayed_check_lock:
+                self._delayed_check_pending = False
+                
+            if self._app:
+                try:
+                    with self._app.app_context():
+                        self.check_and_enforce_streams(from_event=True)
+                except Exception as e:
+                    logger.debug(f"Falha silenciosa na verificação atrasada: {e}")
+
+        threading.Thread(target=delayed_run, daemon=True).start()
 
     def _enforce_block_rules(self, user_id, username, sessions, profile, block_info, config):
         """Aplica a regra de bloqueio: Termina todas as sessões ativas deste utilizador."""
         from app.extensions import cache
         block_reason = block_info.get('block_reason', 'manual')
         
-        # 🛡️ ANTI-SPAM (Nível DB): Retira da fila as sessões que já receberam comando KILL nos últimos 15s
+        spam_timeout = config.get("STREAM_CHECK_INTERVAL_SECONDS", 15)
+        
         valid_sessions = []
         for s in sessions:
             session_key = getattr(s, 'sessionKey', None)
@@ -198,7 +231,7 @@ class StreamManager:
             valid_sessions.append(s)
 
         if not valid_sessions:
-            return # Evita spamar o terminal e a base de dados se não houver sessões válidas
+            return
 
         logger.info(f"🚫 A terminar {len(valid_sessions)} stream(s) para o utilizador bloqueado: '{username}' (Motivo: {block_reason}).")
         
@@ -212,7 +245,6 @@ class StreamManager:
             'trial_expired': "O seu período de teste terminou. Renove para continuar."
         }.get(block_reason, "O seu acesso ao servidor foi bloqueado pelo administrador.")
 
-        # Só gera o placeholder usando a primeira sessão válida para poupar CPU
         msg_template = config.get(msg_template_key) or default_msg
         placeholders = self._build_placeholders(user_id, username, profile, valid_sessions[0])
         reason_text = msg_template.format(**placeholders)
@@ -220,14 +252,11 @@ class StreamManager:
         for session in valid_sessions:
             session_key = getattr(session, 'sessionKey', None)
             if session_key:
-                # Tranca a porta (impede a gravação e spam desta sessão específica por 15 segundos)
-                cache.set(f"kill_spam_{session_key}", True, timeout=15)
+                cache.set(f"kill_spam_{session_key}", True, timeout=spam_timeout)
             else:
-                # Prevenção extra para sessões em modo buffer
                 buffer_lock_key = f"buffer_spam_{username}_{self._get_media_title(session)}"
                 cache.set(buffer_lock_key, True, timeout=5)
 
-            # Salva na BD de logs APENAS uma vez!
             self.data_manager.log_stream_termination(
                 plex_user_id=user_id,
                 username=username,
@@ -241,8 +270,8 @@ class StreamManager:
         """Aplica a regra de limite de ecrãs simultâneos."""
         from app.extensions import cache
         screen_limit = profile.get('screen_limit', 0)
+        spam_timeout = config.get("STREAM_CHECK_INTERVAL_SECONDS", 15)
         
-        # 🛡️ ANTI-SPAM (Nível DB): Retira da contagem ecrãs que já foram bloqueados há instantes
         active_sessions = []
         for s in sessions:
             session_key = getattr(s, 'sessionKey', None)
@@ -254,7 +283,7 @@ class StreamManager:
             excess_count = len(active_sessions) - screen_limit
             logger.info(f"⚠️ O utilizador '{username}' excedeu o limite de {screen_limit} tela(s). A terminar {excess_count} sessão(ões).")
             
-            sorted_sessions = sorted(active_sessions, key=lambda s: s.viewOffset or 0, reverse=True)
+            sorted_sessions = sorted(active_sessions, key=lambda s: getattr(s, 'viewOffset', 0) or 0, reverse=True)
             
             msg_template = config.get('TERMINATION_MSG_SCREEN_LIMIT') or "Você excedeu o seu limite de {limit} telas simultâneas."
             placeholders = self._build_placeholders(user_id, username, profile, sorted_sessions[0], context={'limit': screen_limit})
@@ -265,7 +294,7 @@ class StreamManager:
                 
                 session_key = getattr(session_to_terminate, 'sessionKey', None)
                 if session_key:
-                    cache.set(f"kill_spam_{session_key}", True, timeout=15)
+                    cache.set(f"kill_spam_{session_key}", True, timeout=spam_timeout)
                 
                 self.data_manager.log_stream_termination(
                     plex_user_id=user_id,
@@ -277,63 +306,63 @@ class StreamManager:
                 self._terminate_session(session_to_terminate, reason_text)
 
     def _terminate_session(self, session, reason):
-        """Envia o comando de paragem (stop) para a API do Plex."""
+        """Envia o comando de paragem (stop) para a API do Plex com Prevenção Proativa de Erros."""
         from app.extensions import cache
         try:
             session_key = getattr(session, 'sessionKey', None)
+            
+            # PREVENÇÃO PROATIVA: Verifica se o objeto interno da sessão já tem o 'id' criado pelo Plex
+            # Se não tiver, o PlexAPI iria "crashar". Nós abortamos antes que isso aconteça!
+            plex_internal_session = getattr(session, 'session', None)
+            internal_id = getattr(plex_internal_session, 'id', None) if plex_internal_session else None
 
-            if session_key:
-                logger.info(f"⚡ A enviar comando de término (KILL) para a sessão {session_key} (Utilizador: '{session.user.title}') | Motivo: '{reason}'")
+            if session_key and internal_id:
+                logger.info(f"⚡ A enviar comando de término (KILL) para a sessão {session_key} (Utilizador: '{getattr(session.user, 'title', 'Desconhecido')}') | Motivo: '{reason}'")
                 
-                # Dispara o corte diretamente para o Plex
-                session.stop(reason=str(reason))
+                try:
+                    session.stop(reason=str(reason))
+                except AttributeError as e:
+                    if "'NoneType' object has no attribute 'id'" in str(e):
+                        logger.warning(f"Sessão {session_key} instável. O Plex está ainda a carregar o buffer interno.")
+                    else:
+                        raise
                 
-                # Dispara evento SocketIO para atualizar interface
                 try:
                     from app.extensions import socketio
                     socketio.emit('dashboard_update_streams', namespace='/dashboard')
                 except Exception:
                     pass
             else:
+                # Sessão em "Limbo" (Buffering inicial sem ID atribuído no Plex). Mandamos aguardar.
                 user_title = getattr(session.user, 'title', 'Desconhecido') if hasattr(session, 'user') else 'Desconhecido'
-                buffer_lock_key = f"buffer_wait_{user_title}_{self._get_media_title(session)}"
+                platform_info = getattr(session.player, 'platform', 'Device') if hasattr(session, 'player') else 'Device'
                 
-                # Para evitar log repetido "A agendar novo corte..."
+                # Chave ultra-específica para evitar falsos positivos se o mesmo utilizador abrir 2 coisas iguais
+                buffer_lock_key = f"buffer_wait_{user_title}_{self._get_media_title(session)}_{platform_info}"
+                
                 if not cache.get(buffer_lock_key):
                     cache.set(buffer_lock_key, True, timeout=5)
-                    logger.info(f"⏳ A sessão ({session.title}) de '{user_title}' está a carregar o buffer e ainda não tem ID. A agendar novo corte em 3 segundos...")
-                    
-                    def delayed_check():
-                        app = self._app
-                        if not app:
-                            try:
-                                from flask import current_app
-                                app = current_app._get_current_object()
-                            except RuntimeError:
-                                pass
-                        
-                        if app:
-                            with app.app_context():
-                                self.check_and_enforce_streams(from_event=True)
-
-                    threading.Timer(3.0, delayed_check).start()
+                    logger.info(f"⏳ A sessão ({session.title}) de '{user_title}' está no buffer inicial e ainda não tem ID. A reagendar corte consolidado...")
+                    self._schedule_delayed_check()
         
         except NotFound:
+            # O utilizador percebeu e fechou sozinho ou o servidor já cortou. Tudo bem!
             user_title = getattr(session.user, 'title', 'Desconhecido') if hasattr(session, 'user') else 'Desconhecido'
             logger.info(f"✅ Sessão de '{user_title}' já não existe no Plex (Foi terminada com sucesso).")
         except Exception as e:
+            # Captura qualquer outro erro estranho que possa surgir de rede.
             user_title = getattr(session.user, 'title', 'Desconhecido') if hasattr(session, 'user') else 'Desconhecido'
             logger.error(f"Falha ao terminar a sessão do utilizador '{user_title}': {e}", exc_info=True)
 
     def _get_session_user_id(self, session):
         """Tenta obter o ID do utilizador de forma segura."""
         try:
+            if hasattr(session, 'user') and session.user:
+                return getattr(session.user, 'id', None)
             if hasattr(session, 'userID'):
                 return session.userID
-            if hasattr(session, 'user'):
-                return getattr(session.user, 'id', None)
-        except NotFound as e:
-            logger.warning(f"Utilizador '{getattr(session, '_username', 'desconhecido')}' não encontrado no Plex (Erro: {e}).")
+        except Exception as e:
+            logger.warning(f"Utilizador da sessão não encontrado de forma segura: {e}")
         return None
 
     def _group_sessions_by_user(self, sessions):
@@ -361,14 +390,14 @@ class StreamManager:
         """Extrai o título formatado da sessão (séries vs filmes)."""
         if getattr(session, 'type', None) == 'episode' and hasattr(session, 'grandparentTitle'):
             return f"{session.grandparentTitle} - {session.title}"
-        return session.title
+        return getattr(session, 'title', 'Desconhecido')
 
     def _build_placeholders(self, user_id, username, profile, session, context=None):
         """Constrói um dicionário com os placeholders para as mensagens."""
         placeholders = {
             'username': username,
             'name': profile.get('name') or username,
-            'email': getattr(session.user, 'email', ''),
+            'email': getattr(session.user, 'email', '') if hasattr(session, 'user') else '',
             'greeting': get_greeting(),
             'telegram_user': profile.get('telegram_user', ''),
             'discord_user_id': profile.get('discord_user_id', ''),
