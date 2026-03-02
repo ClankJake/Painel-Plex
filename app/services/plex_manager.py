@@ -2,6 +2,7 @@
 
 import logging
 import base64
+import time
 from urllib.parse import urlparse
 from flask import current_app, url_for
 from flask_babel import gettext as _
@@ -165,10 +166,28 @@ class PlexManager:
             except RuntimeError:
                 thumb_url = f"/image/proxy?source={b64_payload}"
         
+        # 🚀 OTIMIZAÇÃO: Usar a imagem em cache (Proxy Local) em vez do link direto do Plex.
+        # Assim a imagem é guardada no servidor e nunca expira!
+        final_user_thumb = user_thumb_map.get(getattr(s.user, 'id', None))
+        
+        # Se por acaso for um utilizador que não está no map (novo amigo a assistir no mesmo segundo), proxy na hora
+        if not final_user_thumb and getattr(s.user, 'thumb', None):
+            try:
+                parsed_thumb = urlparse(s.user.thumb)
+                path_with_query = parsed_thumb.path + ("?" + parsed_thumb.query if parsed_thumb.query else "")
+                payload_str = f"plex_account:{path_with_query}"
+                b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                try:
+                    final_user_thumb = url_for('image.proxy_image', source=b64_payload)
+                except RuntimeError:
+                    final_user_thumb = f"/image/proxy?source={b64_payload}"
+            except Exception:
+                pass
+
         return {
             "session_key": s.sessionKey, 
             "user": s.user.title, 
-            "user_thumb": user_thumb_map.get(s.user.id),
+            "user_thumb": final_user_thumb,
             "player": s.player.title, 
             "platform": s.player.platform, 
             "type": s.type,
@@ -198,6 +217,7 @@ class PlexManager:
     def get_all_plex_users(self, force_refresh=False): 
         if force_refresh:
             self.users.invalidate_user_cache()
+            
         return self.users.get_all_plex_users()
 
     def get_user_libraries(self, plex_user_id): return self.users.get_user_libraries(plex_user_id)
