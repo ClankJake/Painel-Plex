@@ -4,6 +4,8 @@ import os
 import json
 import logging
 import secrets
+import calendar
+import pytz
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
@@ -16,8 +18,23 @@ from sqlalchemy import func, extract, not_
 from sqlalchemy.exc import IntegrityError
 from flask_babel import gettext as _, ngettext
 from collections import defaultdict
+from tzlocal import get_localzone_name
 
 logger = logging.getLogger(__name__)
+
+# --- HELPERS ---
+def get_app_timezone():
+    """Obtém o fuso horário real do sistema (respeita a variável TZ do Docker)."""
+    tz_env = os.environ.get('TZ')
+    if tz_env:
+        try:
+            return pytz.timezone(tz_env)
+        except pytz.UnknownTimeZoneError:
+            pass
+    try: 
+        return pytz.timezone(get_localzone_name())
+    except Exception: 
+        return pytz.UTC
 
 # --- DECORADOR PARA TRANSAÇÕES DA BASE DE DADOS ---
 def db_transaction(f):
@@ -53,7 +70,6 @@ class DataManager:
         return self._row_to_dict(task)
 
     def get_next_pending_task(self, name):
-        # with_for_update não deve estar num wrapper genérico, por isso lidamos com ele diretamente
         return Task.query.filter_by(name=name, status='pending').order_by(Task.created_at).with_for_update().first()
 
     @db_transaction
@@ -135,9 +151,6 @@ class DataManager:
     # --- MÉTODOS DE NOTIFICAÇÃO ---
     @db_transaction
     def create_notification(self, message, category='info', link=None, user_plex_id=None):
-        """
-        Guarda a notificação. A emissão de WebSockets deve ser feita pela Rota/Serviço que chamou este método.
-        """
         notification = Notification(
             message=message, category=category, link=link,
             user_plex_id=user_plex_id, timestamp=datetime.now(timezone.utc)
@@ -176,9 +189,6 @@ class DataManager:
     # --- MÉTODOS DE AUDITORIA ---
     @db_transaction
     def log_stream_termination(self, plex_user_id, username, media_title, platform, reason):
-        """
-        Guarda o log de términ. A emissão via socketio deve ser tratada no serviço correspondente.
-        """
         log_entry = StreamTerminationLog(
             user_plex_id=plex_user_id, username=username, media_title=media_title,
             platform=platform, reason=reason, timestamp=datetime.now(timezone.utc)
@@ -205,14 +215,23 @@ class DataManager:
 
     # --- MÉTODOS FINANCEIROS OTIMIZADOS ---
     def get_financial_summary(self, year, month, renewal_days=7):
-        # 1. Busca TODOS os pagamentos concluídos do mês em UMA ÚNICA consulta
+        local_tz = get_app_timezone()
+
+        # 1. Delimitar o mês atual usando o fuso horário local
+        _, last_day = calendar.monthrange(year, month)
+        local_start = local_tz.localize(datetime(year, month, 1, 0, 0, 0))
+        local_end = local_tz.localize(datetime(year, month, last_day, 23, 59, 59, 999999))
+
+        # Converter para as horas UTC exatas para a consulta na base de dados
+        utc_start_str = local_start.astimezone(timezone.utc).isoformat()
+        utc_end_str = local_end.astimezone(timezone.utc).isoformat()
+
         payments_in_month = db.session.query(PixPayment).filter(
-            extract('year', PixPayment.created_at) == year, 
-            extract('month', PixPayment.created_at) == month, 
+            PixPayment.created_at >= utc_start_str,
+            PixPayment.created_at <= utc_end_str,
             PixPayment.status == 'CONCLUIDA'
         ).order_by(PixPayment.created_at.desc()).all()
 
-        # 2. Agregação em Memória
         total_revenue = 0.0
         sales_count = 0
         daily_revenue_map = defaultdict(float)
@@ -227,9 +246,15 @@ class DataManager:
                 recent_transactions.append(self._row_to_dict(payment))
             
             try:
-                dt = datetime.fromisoformat(payment.created_at)
-                day = dt.day
-                week_num = int(dt.strftime('%W'))
+                # 2. Ao ler a data, converte-a de UTC para a hora local do painel
+                dt_utc = datetime.fromisoformat(payment.created_at)
+                if dt_utc.tzinfo is None:
+                    dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+                
+                dt_local = dt_utc.astimezone(local_tz)
+                
+                day = dt_local.day
+                week_num = int(dt_local.strftime('%W'))
                 
                 daily_revenue_map[day] += payment.value
                 weekly_revenue_map[week_num] += payment.value
@@ -239,11 +264,12 @@ class DataManager:
         sorted_weeks = sorted(weekly_revenue_map.keys())
         weekly_revenue_dict = {f"Semana {idx + 1}": weekly_revenue_map[w] for idx, w in enumerate(sorted_weeks)}
 
-        # 3. Otimização de Utilizadores a Expirar (Query Única com JOIN)
-        today = datetime.now(timezone.utc).date()
-        end_date = today + timedelta(days=renewal_days)
-        today_str = today.isoformat()
-        end_date_str = (end_date + timedelta(days=1)).isoformat()
+        # 3. Otimização de Utilizadores a Expirar
+        today_local = datetime.now(local_tz).date()
+        today_utc = datetime.now(timezone.utc).date()
+        end_date_utc = today_utc + timedelta(days=renewal_days)
+        today_str = today_utc.isoformat()
+        end_date_str = (end_date_utc + timedelta(days=1)).isoformat()
         
         expiring_users_query = db.session.query(UserProfile).outerjoin(BlockedUser).filter(
             BlockedUser.user_plex_id == None, 
@@ -256,12 +282,16 @@ class DataManager:
         upcoming_expirations = []
         for p in expiring_users_query:
             try:
-                exp_date = datetime.fromisoformat(p.expiration_date).date()
-                days_left = (exp_date - today).days
+                exp_date_utc = datetime.fromisoformat(p.expiration_date)
+                if exp_date_utc.tzinfo is None:
+                    exp_date_utc = exp_date_utc.replace(tzinfo=timezone.utc)
+                
+                days_left = (exp_date_utc.astimezone(local_tz).date() - today_local).days
                 days_text = ngettext('%(num)d dia restante', '%(num)d dias restantes', days_left) % {'num': days_left} if days_left > 0 else (_("Hoje") if days_left == 0 else _("Expirado"))
+                
                 upcoming_expirations.append({
                     'username': p.username, 
-                    'expiration_date': exp_date.strftime('%d/%m/%Y'), 
+                    'expiration_date': exp_date_utc.astimezone(local_tz).strftime('%d/%m/%Y'), 
                     'days_left': days_left, 
                     'days_left_text': days_text, 
                     'screen_limit': p.screen_limit
@@ -293,15 +323,10 @@ class DataManager:
         
     # --- MÉTODOS para Perfis de Utilizador ---
     def get_user_profile(self, plex_user_id):
-        """
-        Retorna o perfil da base de dados. Se não existir, retorna None.
-        NOTA: A criação do perfil se ele não existir deve agora ser tratada no user_manager.py ou nas rotas.
-        """
         profile = UserProfile.query.get(plex_user_id)
         return self._row_to_dict(profile) if profile else None
 
     def get_user_profile_by_username(self, username):
-        """Retorna o perfil pelo username. Retorna None se não existir."""
         profile = UserProfile.query.filter(func.lower(UserProfile.username) == username.lower()).first()
         return self._row_to_dict(profile) if profile else None
     
@@ -317,7 +342,6 @@ class DataManager:
         except Exception: return {}
 
     def get_all_user_profiles(self):
-        # NOTA: Considere adicionar paginação no futuro se tiver +10k utilizadores
         profiles = UserProfile.query.all()
         return [self._row_to_dict(p) for p in profiles]
 
@@ -361,7 +385,6 @@ class DataManager:
 
     # --- MÉTODOS de Pagamento PIX ---
     def get_and_lock_pix_payment(self, txid):
-        # Não usa o wrapper db_transaction por causa do with_for_update
         try:
             return self._row_to_dict(db.session.query(PixPayment).filter_by(txid=txid).with_for_update().first())
         except Exception: 
@@ -398,7 +421,6 @@ class DataManager:
         txid = f"manual_{secrets.token_hex(12)}"
         payment = PixPayment(txid=txid, user_plex_id=plex_user_id, username=username, value=float(value), status='CONCLUIDA', provider='Manual', description=description, created_at=payment_date_str, screens=0, external_reference=None)
         db.session.add(payment)
-        # O commit continua a ser da responsabilidade do chamador como indicado originalmente
         return self._row_to_dict(payment)
 
     def get_payments_by_user(self, plex_user_id):
@@ -528,17 +550,36 @@ class DataManager:
     def get_blocked_users_dict(self):
         return {u.user_plex_id: self._row_to_dict(u) for u in BlockedUser.query.all()}
 
-    @db_transaction
     def add_blocked_user(self, plex_user_id, username, reason='manual'):
-        user = BlockedUser.query.get(plex_user_id)
-        if not user:
-            user = BlockedUser(user_plex_id=plex_user_id, username=username)
+        """Adiciona ou atualiza um utilizador bloqueado. Protegido contra colisões de threads."""
+        try:
+            user = BlockedUser.query.get(plex_user_id)
+            if not user:
+                user = BlockedUser(user_plex_id=plex_user_id, username=username)
 
-        user.blocked_at = datetime.now(timezone.utc).isoformat()
-        user.block_reason = reason
-        db.session.add(user)
-        logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) adicionado/atualizado na lista de bloqueados.")
-        return self._row_to_dict(user)
+            user.blocked_at = datetime.now(timezone.utc).isoformat()
+            user.block_reason = reason
+            db.session.add(user)
+            db.session.commit()
+            
+            logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) adicionado/atualizado na lista de bloqueados.")
+            return self._row_to_dict(user)
+            
+        except IntegrityError:
+            db.session.rollback()
+            user = BlockedUser.query.get(plex_user_id)
+            if user:
+                user.blocked_at = datetime.now(timezone.utc).isoformat()
+                user.block_reason = reason
+                db.session.commit()
+                return self._row_to_dict(user)
+                
+            return None
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Erro inesperado em add_blocked_user: {e}", exc_info=True)
+            raise
 
     @db_transaction
     def remove_blocked_user(self, plex_user_id):
