@@ -1,88 +1,191 @@
-<div id="tab-gamificacao" class="tab-content">
-    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-8">
-        <div>
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Configurações de Gamificação') }}</h2>
-            <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Ajuste os objetivos para cada nível das conquistas.') }}</p>
-        </div>
-
-        <!-- Maratonista de Cinema -->
-        <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
-            <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Maratonista de Cinema') }}</h4>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Objetivo: Número de filmes assistidos no período selecionado.') }}</p>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
-                <div>
-                    <label for="ACHIEVEMENT_MOVIE_MARATHON_BRONZE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Bronze') }}</label>
-                    <input type="number" id="ACHIEVEMENT_MOVIE_MARATHON_BRONZE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
-                </div>
-                <div>
-                    <label for="ACHIEVEMENT_MOVIE_MARATHON_SILVER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Prata') }}</label>
-                    <input type="number" id="ACHIEVEMENT_MOVIE_MARATHON_SILVER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
-                </div>
-                <div>
-                    <label for="ACHIEVEMENT_MOVIE_MARATHON_GOLD" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Ouro') }}</label>
-                    <input type="number" id="ACHIEVEMENT_MOVIE_MARATHON_GOLD" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
-                </div>
+<div id="tab-gamificacao" class="tab-content animate-fade-in-up">
+    <div class="bg-white dark:bg-[#1e293b] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/60 overflow-hidden">
+        
+        <!-- Cabeçalho da Aba -->
+        <div class="p-6 border-b border-gray-200 dark:border-gray-700/60 bg-gray-50/50 dark:bg-gray-800/20 flex items-center gap-4">
+            <div class="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-xl text-purple-600 dark:text-purple-400 shadow-inner">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path></svg>
+            </div>
+            <div>
+                <h2 class="text-xl font-bold text-gray-900 dark:text-white">{{ _('Configurações de Gamificação') }}</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Defina as metas necessárias para desbloquear cada nível de conquista.') }}</p>
             </div>
         </div>
 
-        <!-- Rei das Séries -->
-        <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
-            <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Rei das Séries') }}</h4>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Objetivo: Número de episódios assistidos no período selecionado.') }}</p>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
-                <div>
-                    <label for="ACHIEVEMENT_SERIES_BINGER_BRONZE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Bronze') }}</label>
-                    <input type="number" id="ACHIEVEMENT_SERIES_BINGER_BRONZE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+        <!-- Corpo do Formulário (Grid de Missões) -->
+        <div class="p-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+            
+            <!-- Maratonista de Cinema -->
+            <div class="bg-gray-50/50 dark:bg-gray-800/20 rounded-xl p-5 border border-gray-200 dark:border-gray-700/50 transition-all hover:border-blue-400/50 dark:hover:border-blue-500/50 group">
+                <div class="flex items-start gap-3 mb-4">
+                    <div class="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"></path></svg>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-gray-900 dark:text-white">{{ _('Maratonista de Cinema') }}</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Metas baseadas no número de filmes assistidos.') }}</p>
+                    </div>
                 </div>
-                <div>
-                    <label for="ACHIEVEMENT_SERIES_BINGER_SILVER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Prata') }}</label>
-                    <input type="number" id="ACHIEVEMENT_SERIES_BINGER_SILVER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
-                </div>
-                <div>
-                    <label for="ACHIEVEMENT_SERIES_BINGER_GOLD" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Ouro') }}</label>
-                    <input type="number" id="ACHIEVEMENT_SERIES_BINGER_GOLD" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                <div class="grid grid-cols-3 gap-3">
+                    <!-- Bronze -->
+                    <div>
+                        <label for="ACHIEVEMENT_MOVIE_MARATHON_BRONZE" class="block text-xs font-semibold text-amber-700 dark:text-amber-600 mb-1 pl-1">{{ _('Bronze') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-amber-600 dark:text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <input type="number" id="ACHIEVEMENT_MOVIE_MARATHON_BRONZE" class="pl-8 block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                    <!-- Prata -->
+                    <div>
+                        <label for="ACHIEVEMENT_MOVIE_MARATHON_SILVER" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 pl-1">{{ _('Prata') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-slate-400 dark:text-slate-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <input type="number" id="ACHIEVEMENT_MOVIE_MARATHON_SILVER" class="pl-8 block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-slate-500/50 focus:border-slate-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                    <!-- Ouro -->
+                    <div>
+                        <label for="ACHIEVEMENT_MOVIE_MARATHON_GOLD" class="block text-xs font-semibold text-yellow-600 dark:text-yellow-500 mb-1 pl-1">{{ _('Ouro') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-yellow-400 dark:text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <input type="number" id="ACHIEVEMENT_MOVIE_MARATHON_GOLD" class="pl-8 block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Viajante do Tempo -->
-        <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
-            <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Viajante do Tempo') }}</h4>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Objetivo: Número de décadas diferentes de filmes assistidos.') }}</p>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
-                <div>
-                    <label for="ACHIEVEMENT_TIME_TRAVELER_BRONZE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Bronze') }}</label>
-                    <input type="number" id="ACHIEVEMENT_TIME_TRAVELER_BRONZE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+            <!-- Rei das Séries -->
+            <div class="bg-gray-50/50 dark:bg-gray-800/20 rounded-xl p-5 border border-gray-200 dark:border-gray-700/50 transition-all hover:border-emerald-400/50 dark:hover:border-emerald-500/50 group">
+                <div class="flex items-start gap-3 mb-4">
+                    <div class="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-gray-900 dark:text-white">{{ _('Rei das Séries') }}</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Metas baseadas no número de episódios assistidos.') }}</p>
+                    </div>
                 </div>
-                <div>
-                    <label for="ACHIEVEMENT_TIME_TRAVELER_SILVER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Prata') }}</label>
-                    <input type="number" id="ACHIEVEMENT_TIME_TRAVELER_SILVER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
-                </div>
-                <div>
-                    <label for="ACHIEVEMENT_TIME_TRAVELER_GOLD" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Ouro') }}</label>
-                    <input type="number" id="ACHIEVEMENT_TIME_TRAVELER_GOLD" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label for="ACHIEVEMENT_SERIES_BINGER_BRONZE" class="block text-xs font-semibold text-amber-700 dark:text-amber-600 mb-1 pl-1">{{ _('Bronze') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-amber-600 dark:text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <input type="number" id="ACHIEVEMENT_SERIES_BINGER_BRONZE" class="pl-8 block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="ACHIEVEMENT_SERIES_BINGER_SILVER" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 pl-1">{{ _('Prata') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-slate-400 dark:text-slate-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <input type="number" id="ACHIEVEMENT_SERIES_BINGER_SILVER" class="pl-8 block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-slate-500/50 focus:border-slate-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="ACHIEVEMENT_SERIES_BINGER_GOLD" class="block text-xs font-semibold text-yellow-600 dark:text-yellow-500 mb-1 pl-1">{{ _('Ouro') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-yellow-400 dark:text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <input type="number" id="ACHIEVEMENT_SERIES_BINGER_GOLD" class="pl-8 block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
 
-         <!-- Fã do Realizador -->
-         <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
-            <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-200">{{ _('Fã do Realizador') }}</h4>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Objetivo: Número de filmes assistidos do realizador mais visto.') }}</p>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
-                <div>
-                    <label for="ACHIEVEMENT_DIRECTOR_FAN_BRONZE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Bronze') }}</label>
-                    <input type="number" id="ACHIEVEMENT_DIRECTOR_FAN_BRONZE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+            <!-- Viajante do Tempo -->
+            <div class="bg-gray-50/50 dark:bg-gray-800/20 rounded-xl p-5 border border-gray-200 dark:border-gray-700/50 transition-all hover:border-fuchsia-400/50 dark:hover:border-fuchsia-500/50 group">
+                <div class="flex items-start gap-3 mb-4">
+                    <div class="p-2 bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-600 dark:text-fuchsia-400 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-gray-900 dark:text-white">{{ _('Viajante do Tempo') }}</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Número de décadas diferentes de filmes assistidos.') }}</p>
+                    </div>
                 </div>
-                <div>
-                    <label for="ACHIEVEMENT_DIRECTOR_FAN_SILVER" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Prata') }}</label>
-                    <input type="number" id="ACHIEVEMENT_DIRECTOR_FAN_SILVER" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
-                </div>
-                <div>
-                    <label for="ACHIEVEMENT_DIRECTOR_FAN_GOLD" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Ouro') }}</label>
-                    <input type="number" id="ACHIEVEMENT_DIRECTOR_FAN_GOLD" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="1">
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label for="ACHIEVEMENT_TIME_TRAVELER_BRONZE" class="block text-xs font-semibold text-amber-700 dark:text-amber-600 mb-1 pl-1">{{ _('Bronze') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-amber-600 dark:text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <input type="number" id="ACHIEVEMENT_TIME_TRAVELER_BRONZE" class="pl-8 block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="ACHIEVEMENT_TIME_TRAVELER_SILVER" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 pl-1">{{ _('Prata') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-slate-400 dark:text-slate-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <input type="number" id="ACHIEVEMENT_TIME_TRAVELER_SILVER" class="pl-8 block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-slate-500/50 focus:border-slate-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="ACHIEVEMENT_TIME_TRAVELER_GOLD" class="block text-xs font-semibold text-yellow-600 dark:text-yellow-500 mb-1 pl-1">{{ _('Ouro') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-yellow-400 dark:text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <input type="number" id="ACHIEVEMENT_TIME_TRAVELER_GOLD" class="pl-8 block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
                 </div>
             </div>
+
+             <!-- Fã do Realizador -->
+             <div class="bg-gray-50/50 dark:bg-gray-800/20 rounded-xl p-5 border border-gray-200 dark:border-gray-700/50 transition-all hover:border-rose-400/50 dark:hover:border-rose-500/50 group">
+                <div class="flex items-start gap-3 mb-4">
+                    <div class="p-2 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-gray-900 dark:text-white">{{ _('Fã do Realizador') }}</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Número de filmes assistidos de um único realizador.') }}</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label for="ACHIEVEMENT_DIRECTOR_FAN_BRONZE" class="block text-xs font-semibold text-amber-700 dark:text-amber-600 mb-1 pl-1">{{ _('Bronze') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-amber-600 dark:text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <input type="number" id="ACHIEVEMENT_DIRECTOR_FAN_BRONZE" class="pl-8 block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="ACHIEVEMENT_DIRECTOR_FAN_SILVER" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 pl-1">{{ _('Prata') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-slate-400 dark:text-slate-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <input type="number" id="ACHIEVEMENT_DIRECTOR_FAN_SILVER" class="pl-8 block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-slate-500/50 focus:border-slate-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="ACHIEVEMENT_DIRECTOR_FAN_GOLD" class="block text-xs font-semibold text-yellow-600 dark:text-yellow-500 mb-1 pl-1">{{ _('Ouro') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-yellow-400 dark:text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <input type="number" id="ACHIEVEMENT_DIRECTOR_FAN_GOLD" class="pl-8 block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>

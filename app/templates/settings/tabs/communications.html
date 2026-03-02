@@ -1,89 +1,165 @@
-<div id="tab-comunicacoes" class="tab-content">
-    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-        <div>
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Configurações Comunicações') }}</h2>
-            <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Edite o template de cada agente de mensagem em massa e as mensagens do Controlo de Streams.') }}</p>
-        </div>
-        <div class="mt-4 pt-3 border-b border-gray-200 dark:border-gray-700 mb-6">
-            <!-- Esta barra de abas tem poucas abas, por isso mantemos o overflow-x-auto -->
-            <nav id="comunicacoes-tabs" class="flex space-x-1 sm:space-x-2 overflow-x-auto no-scrollbar">
-                <button type="button" data-subtab="bulk-messages" class="tab-button active">{{ _('Avisos em Massa') }}</button>
-                <button type="button" data-subtab="stream-control" class="tab-button">{{ _('Controlo de Streams') }}</button>
-            </nav>
-        </div>
-        <div id="comunicacoes-tab-content">
-            <div id="subtab-bulk-messages" class="sub-tab-content active space-y-6">
-                <div>
-                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Templates para Avisos em Massa') }}</h3>
-                    <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Defina os modelos base para as mensagens em massa. Use o placeholder {message} onde a mensagem do dashboard deve ser inserida.') }}</p>
-                </div>
-                <div id="bulk-notification-templates" class="space-y-4">
-                    <div>
-                        <label for="TELEGRAM_BULK_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Template para Telegram') }}
-                            <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
-                        </label>
-                        <textarea id="TELEGRAM_BULK_MESSAGE_TEMPLATE" rows="4" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: Olá {name}, temos um aviso importante: {message}') }}"></textarea>
-                    </div>
-                    <div>
-                        <label for="DISCORD_BULK_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Template para Discord (JSON)') }}
-                             <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
-                        </label>
-                        <textarea id="DISCORD_BULK_MESSAGE_TEMPLATE" rows="6" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono" placeholder='{"content": "<@{discord_user_id}> Olá {name}!", "embeds": [{"title": "Aviso Importante", "description": "{message}"}]}'></textarea>
-                    </div>
-                    <div>
-                        <label for="WEBHOOK_BULK_MESSAGE_TEMPLATE" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Template para Webhook (JSON)') }}
-                             <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
-                        </label>
-                        <textarea id="WEBHOOK_BULK_MESSAGE_TEMPLATE" rows="6" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono" placeholder='{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}'></textarea>
-                    </div>
-                    <!-- Botão de Salvar específico para templates de comunicação -->
-                    <div class="pt-4 flex justify-end">
-                        <button type="button" id="saveBulkTemplatesButton" class="btn bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20">{{ _('Salvar Templates de Comunicação') }}</button>
-                    </div>
-                </div>
+<div id="tab-comunicacoes" class="tab-content hidden animate-fade-in-up">
+    <div class="bg-white dark:bg-[#1e293b] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/60 overflow-hidden">
+        
+        <!-- Cabeçalho da Aba -->
+        <div class="p-6 border-b border-gray-200 dark:border-gray-700/60 bg-gray-50/50 dark:bg-gray-800/20 flex items-center gap-4">
+            <div class="p-3 bg-cyan-100 dark:bg-cyan-900/30 rounded-xl text-cyan-600 dark:text-cyan-400 shadow-inner">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
             </div>
-            <div id="subtab-stream-control" class="sub-tab-content space-y-6">
-                <div>
-                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Mensagens de Término de Stream') }}</h3>
-                     <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Personalize as mensagens exibidas no Plex quando uma sessão é terminada automaticamente.') }}</p>
+            <div>
+                <h2 class="text-xl font-bold text-gray-900 dark:text-white">{{ _('Comunicações e Textos') }}</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Edite as mensagens globais, disparos em massa e textos de corte automático.') }}</p>
+            </div>
+        </div>
+
+        <div class="p-6">
+            <!-- Navegação de Sub-abas -->
+            <div class="border-b border-gray-200 dark:border-gray-700 mb-6 pb-2">
+                <nav id="comunicacoes-tabs" class="flex space-x-2 overflow-x-auto horizontal-scroll">
+                    <button type="button" data-subtab="bulk-messages" class="tab-button active bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-600 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-cyan-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"></path></svg>
+                        {{ _('Avisos em Massa') }}
+                    </button>
+                    <button type="button" data-subtab="stream-control" class="tab-button text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        {{ _('Controlo de Streams') }}
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Conteúdos dos Separadores -->
+            <div id="comunicacoes-tab-content" class="space-y-6">
+                
+                <!-- ================= ABA AVISOS EM MASSA ================= -->
+                <div id="subtab-bulk-messages" class="sub-tab-content active space-y-6 animate-fade-in">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ _('Templates para Disparos Globais') }}</h3>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Defina a estrutura para os comunicados. A variável mágica {message} será substituída pelo texto que escrever no dashboard.') }}</p>
+                    </div>
+
+                    <div id="bulk-notification-templates" class="space-y-5">
+                        
+                        <!-- Telegram -->
+                        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-4 rounded-xl border border-gray-200 dark:border-gray-700/50">
+                            <div class="flex items-center justify-between mb-2">
+                                <label for="TELEGRAM_BULK_MESSAGE_TEMPLATE" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.21-1.12-.33-1.08-.7.02-.19.27-.39.75-.59 2.95-1.28 4.91-2.13 5.89-2.54 2.8-1.16 3.38-1.36 3.76-1.36.08 0 .27.02.39.11.1.08.13.19.14.27-.01.06.01.24 0 .24z"/></svg>
+                                    {{ _('Template Telegram') }}
+                                </label>
+                                <button type="button" class="show-help-button text-cyan-600 hover:text-cyan-700 p-1" title="Ver Variáveis Mágicas">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                </button>
+                            </div>
+                            <textarea id="TELEGRAM_BULK_MESSAGE_TEMPLATE" rows="3" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow shadow-inner resize-y" placeholder="{{ _('Ex: Olá {name}, temos um aviso importante: {message}') }}"></textarea>
+                        </div>
+
+                        <!-- Discord -->
+                        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-4 rounded-xl border border-gray-200 dark:border-gray-700/50">
+                            <div class="flex items-center justify-between mb-2">
+                                <label for="DISCORD_BULK_MESSAGE_TEMPLATE" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg>
+                                    {{ _('Template Discord (JSON)') }}
+                                </label>
+                                <button type="button" class="show-help-button text-cyan-600 hover:text-cyan-700 p-1" title="Ver Variáveis Mágicas">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                </button>
+                            </div>
+                            <textarea id="DISCORD_BULK_MESSAGE_TEMPLATE" rows="5" class="block w-full p-3 text-sm font-mono rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-900/80 dark:border-gray-600 dark:text-gray-300 transition-shadow shadow-inner resize-y" placeholder='{"content": "<@{discord_user_id}> Olá {name}!", "embeds": [{"title": "Aviso Importante", "description": "{message}"}]}'></textarea>
+                        </div>
+
+                        <!-- Webhook -->
+                        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-4 rounded-xl border border-gray-200 dark:border-gray-700/50">
+                            <div class="flex items-center justify-between mb-2">
+                                <label for="WEBHOOK_BULK_MESSAGE_TEMPLATE" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                                    {{ _('Template Webhook Genérico (JSON)') }}
+                                </label>
+                                <button type="button" class="show-help-button text-cyan-600 hover:text-cyan-700 p-1" title="Ver Variáveis Mágicas">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                </button>
+                            </div>
+                            <textarea id="WEBHOOK_BULK_MESSAGE_TEMPLATE" rows="5" class="block w-full p-3 text-sm font-mono rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-900/80 dark:border-gray-600 dark:text-gray-300 transition-shadow shadow-inner resize-y" placeholder='{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}'></textarea>
+                        </div>
+
+                        <!-- Botão de Salvar Fixo Embaixo -->
+                        <div class="pt-2 flex justify-end">
+                            <button type="button" id="saveBulkTemplatesButton" class="btn bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-500/30 flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                                {{ _('Gravar Templates de Comunicação') }}
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <div class="space-y-4">
+
+                <!-- ================= ABA CONTROLO DE STREAMS ================= -->
+                <div id="subtab-stream-control" class="sub-tab-content hidden space-y-6 animate-fade-in">
                     <div>
-                        <label for="STREAM_CHECK_INTERVAL_SECONDS" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Intervalo de Verificação de Streams (segundos)') }}</label>
-                        <input type="number" id="STREAM_CHECK_INTERVAL_SECONDS" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" min="5">
-                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Intervalo em segundos para verificar os streams ativos e aplicar os limites. Recomenda-se 15 segundos.')}}</p>
+                        <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ _('Textos de Bloqueio Automático') }}</h3>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('As mensagens abaixo são exibidas diretamente no ecrã da TV/Dispositivo do utilizador quando o servidor força o encerramento da reprodução.') }}</p>
                     </div>
-                    <div>
-                        <label for="TERMINATION_MSG_BLOCKED_MANUAL" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Mensagem: Bloqueio Manual') }}
-                            <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
+
+                    <!-- Frequência -->
+                    <div class="max-w-md bg-cyan-50/50 dark:bg-cyan-900/10 p-4 rounded-xl border border-cyan-100 dark:border-cyan-800/30">
+                        <label for="STREAM_CHECK_INTERVAL_SECONDS" class="block text-sm font-semibold text-cyan-800 dark:text-cyan-400 mb-1 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            {{ _('Verificar limites a cada (segundos)') }}
                         </label>
-                        <textarea id="TERMINATION_MSG_BLOCKED_MANUAL" rows="2" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex.: O seu acesso ao servidor foi bloqueado pelo administrador.') }}"></textarea>
+                        <input type="number" id="STREAM_CHECK_INTERVAL_SECONDS" class="block w-full px-3 py-2 text-sm rounded-lg border border-cyan-200 bg-white text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-800 dark:border-cyan-700/50 dark:text-white mt-2" min="5">
+                        <p class="text-xs text-cyan-600/70 dark:text-cyan-500/70 mt-2">{{_('Tempo de segurança (fallback) entre verificações profundas da rede. O servidor já responde instantaneamente a eventos Play/Pause. Padrão sugerido: 15.')}}</p>
                     </div>
-                    <div>
-                        <label for="TERMINATION_MSG_BLOCKED_EXPIRED" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Mensagem: Assinatura Expirada') }}
-                             <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
-                        </label>
-                        <textarea id="TERMINATION_MSG_BLOCKED_EXPIRED" rows="2" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex.: A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.') }}"></textarea>
+
+                    <hr class="border-gray-200 dark:border-gray-700/60">
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Manual -->
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="TERMINATION_MSG_BLOCKED_MANUAL" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                                    <svg class="w-4 h-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                    {{ _('Bloqueio Administrativo') }}
+                                </label>
+                                <button type="button" class="show-help-button text-cyan-600 hover:text-cyan-700 p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
+                            </div>
+                            <textarea id="TERMINATION_MSG_BLOCKED_MANUAL" rows="2" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow resize-y" placeholder="{{ _('O seu acesso foi bloqueado.') }}"></textarea>
+                        </div>
+
+                        <!-- Assinatura Expirada -->
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="TERMINATION_MSG_BLOCKED_EXPIRED" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                                    <svg class="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    {{ _('Assinatura Expirada') }}
+                                </label>
+                                <button type="button" class="show-help-button text-cyan-600 hover:text-cyan-700 p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
+                            </div>
+                            <textarea id="TERMINATION_MSG_BLOCKED_EXPIRED" rows="2" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow resize-y" placeholder="{{ _('A sua subscrição expirou.') }}"></textarea>
+                        </div>
+
+                        <!-- Teste Terminado -->
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                                    <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                                    {{ _('Período de Teste Finalizado') }}
+                                </label>
+                                <button type="button" class="show-help-button text-cyan-600 hover:text-cyan-700 p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
+                            </div>
+                            <textarea id="TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED" rows="2" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow resize-y" placeholder="{{ _('O seu teste terminou.') }}"></textarea>
+                        </div>
+
+                        <!-- Telas Excedidas -->
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="TERMINATION_MSG_SCREEN_LIMIT" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                                    <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                    {{ _('Limite de Telas Atingido') }}
+                                </label>
+                                <button type="button" class="show-help-button text-cyan-600 hover:text-cyan-700 p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
+                            </div>
+                            <textarea id="TERMINATION_MSG_SCREEN_LIMIT" rows="2" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow resize-y" placeholder="{{ _('Você excedeu o limite de telas.') }}"></textarea>
+                        </div>
                     </div>
-                    <div>
-                        <label for="TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Mensagem: Teste Expirado') }}
-                             <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
-                        </label>
-                        <textarea id="TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED" rows="2" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex.: O seu período de teste para {username} terminou. Renove para continuar.') }}"></textarea>
-                    </div>
-                    <div>
-                        <label for="TERMINATION_MSG_SCREEN_LIMIT" class="flex items-center gap-2 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {{ _('Mensagem: Limite de Telas Excedido') }}
-                             <button type="button" class="show-help-button text-blue-500 hover:text-blue-700"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg></button>
-                        </label>
-                        <textarea id="TERMINATION_MSG_SCREEN_LIMIT" rows="2" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex.: {username}, você excedeu o seu limite de {limit} tela(s) simultânea(s).') }}"></textarea>
-                    </div>
+
                 </div>
             </div>
         </div>

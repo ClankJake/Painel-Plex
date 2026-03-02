@@ -1,38 +1,93 @@
-<div id="tab-geral" class="tab-content active">
-    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-6">
-        <div>
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Configurações Gerais') }}</h2>
-            <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Ajuste as configurações gerais e padrões.') }}</p>
-        </div>
-        <div>
-            <label for="APP_TITLE" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Título da Aplicação') }}</label>
-            <input type="text" id="APP_TITLE" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-        </div>
-         <div>
-            <label for="APP_BASE_URL" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('URL Base da Aplicação') }}</label>
-            <input type="url" id="APP_BASE_URL" class="mt-1 block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="https://seuservidor.com">
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('O endereço público que aponta para a sua aplicação. Necessário para webhooks de pagamento e links curtos.')}}</p>
-        </div>
-        <div class="pt-6 border-t border-gray-200 dark:border-gray-700 space-y-4">
+<div id="tab-geral" class="tab-content active animate-fade-in-up">
+    <div class="bg-white dark:bg-[#1e293b] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/60 overflow-hidden">
+        
+        <!-- Cabeçalho da Aba -->
+        <div class="p-6 border-b border-gray-200 dark:border-gray-700/60 bg-gray-50/50 dark:bg-gray-800/20 flex items-center gap-4">
+            <div class="p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl text-yellow-600 dark:text-yellow-400 shadow-inner">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </div>
             <div>
-                <label for="languageSelector" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Idioma da Interface') }}</label>
-                <select id="languageSelector" class="mt-1 max-w-sm block w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                    {% for lang, name in config.LANGUAGES.items() %}
-                        <option value="{{ lang }}" {% if lang == current_locale.language %}selected{% endif %}>{{ name }}</option>
-                    {% endfor %}
-                </select>
+                <h2 class="text-xl font-bold text-gray-900 dark:text-white">{{ _('Configurações Gerais') }}</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Ajuste as configurações gerais e a identidade da sua plataforma.') }}</p>
             </div>
-            <div class="flex flex-col items-start">
-                <div class="flex items-center">
-                    <input id="ENABLE_LINK_SHORTENER" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500">
-                    <label for="ENABLE_LINK_SHORTENER" class="ml-2 text-sm font-medium text-gray-900 dark:text-gray-300">
-                        {{ _('Habilitar Encurtador de Links') }}
-                    </label>
+        </div>
+
+        <!-- Corpo do Formulário -->
+        <div class="p-6 space-y-8">
+            
+            <!-- Grupo 1: Identidade -->
+            <div>
+                <h3 class="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">{{ _('Identidade do Servidor') }}</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    
+                    <!-- Título da App -->
+                    <div>
+                        <label for="APP_TITLE" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Título da Aplicação') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"></path></svg>
+                            </div>
+                            <input type="text" id="APP_TITLE" class="pl-10 block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 transition-all dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" placeholder="Ex: Meu Plex Premium">
+                        </div>
+                    </div>
+
+                    <!-- URL Base -->
+                    <div>
+                        <label for="APP_BASE_URL" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{{ _('URL Base da Aplicação') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                            </div>
+                            <input type="url" id="APP_BASE_URL" class="pl-10 block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 transition-all dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" placeholder="https://seuservidor.com">
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-start gap-1.5">
+                            <svg class="w-4 h-4 flex-shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span>{{_('Endereço público da aplicação. Necessário para webhooks de pagamentos PIX e links curtos.')}}</span>
+                        </p>
+                    </div>
                 </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 ml-6">
-                    {{ _('Marque essa caixa caso deseje link curto nas notificações.') }}
-                </p>
             </div>
+
+            <hr class="border-gray-200 dark:border-gray-700/60">
+
+            <!-- Grupo 2: Preferências -->
+            <div>
+                <h3 class="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">{{ _('Preferências e Comportamento') }}</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                    
+                    <!-- Seletor de Idioma -->
+                    <div>
+                        <label for="languageSelector" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Idioma da Interface') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"></path></svg>
+                            </div>
+                            <select id="languageSelector" class="pl-10 block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 transition-all dark:bg-gray-900/50 dark:border-gray-600 dark:text-white appearance-none cursor-pointer">
+                                {% for lang, name in config.LANGUAGES.items() %}
+                                    <option value="{{ lang }}" {% if lang == current_locale.language %}selected{% endif %}>{{ name }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Encurtador de Links (Toggle Premium) -->
+                    <div class="bg-gray-50 dark:bg-gray-900/30 rounded-xl p-4 border border-gray-200 dark:border-gray-700/60 mt-1 md:mt-0">
+                        <label class="relative inline-flex items-center cursor-pointer w-full group">
+                            <input type="checkbox" id="ENABLE_LINK_SHORTENER" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300/50 dark:peer-focus:ring-yellow-800/50 rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-yellow-500 group-hover:bg-gray-400 dark:group-hover:bg-gray-500"></div>
+                            <span class="ml-3 text-sm font-semibold text-gray-900 dark:text-gray-200 flex-1">{{ _('Encurtador de Links Interno') }}</span>
+                        </label>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 pl-14">
+                            {{ _('Encurta links longos de faturas e renovações nas notificações (ex: Telegram/Discord) usando o seu domínio base para um aspeto mais limpo.') }}
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+            
         </div>
     </div>
 </div>
