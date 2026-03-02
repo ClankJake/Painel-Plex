@@ -2,107 +2,193 @@
 
 {% block title %}{{ _('Dashboard Financeiro') }} - {{ app_title }}{% endblock %}
 
+{% block extra_head %}
+<style>
+    /* Esconde a barra de scroll horizontal (mantendo a funcionalidade) */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* Scrollbar personalizada para listas internas */
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    
+    /* Estilos das Tabs Otimizados */
+    .tab-button {
+        @apply flex items-center whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-500 dark:text-gray-400 transition-all duration-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50;
+    }
+    .tab-button.active {
+        @apply bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-600;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+<!-- Cabeçalho Principal -->
+<header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6 animate-fade-in-up">
     <div>
-        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">{{ _('Dashboard Financeiro') }}</h2>
-        <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Acompanhe a saúde financeira do seu serviço.') }}</p>
+        <h2 class="text-3xl font-black text-gray-900 dark:text-white flex items-center gap-3 tracking-tight">
+            <svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            {{ _('Dashboard Financeiro') }}
+        </h2>
+        <p class="text-sm md:text-base text-gray-500 dark:text-gray-400 mt-2">{{ _('Acompanhe a saúde financeira, receitas, métricas de vendas e cupões.') }}</p>
     </div>
-    <div class="flex items-center gap-2 bg-white dark:bg-gray-800/50 p-2 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
-        <button id="prevMonthBtn" title="{{_('Mês Anterior')}}" class="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
-            <svg class="h-5 w-5 text-gray-500 dark:text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+    
+    <!-- Navegador de Meses Elegante -->
+    <div class="flex items-center bg-white dark:bg-gray-800/60 p-1.5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 mt-4 md:mt-0 flex-shrink-0">
+        <button id="prevMonthBtn" title="{{_('Mês Anterior')}}" class="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700/50 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition-all focus:ring-2 focus:ring-yellow-500/50">
+            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" /></svg>
         </button>
-        <span class="font-semibold text-gray-600 dark:text-gray-300 text-center w-32" id="currentMonthLabel"></span>
-        <button id="nextMonthBtn" title="{{_('Mês Seguinte')}}" class="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
-            <svg class="h-5 w-5 text-gray-500 dark:text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+        <span class="font-bold text-gray-800 dark:text-gray-200 text-center w-32 text-sm tracking-wide" id="currentMonthLabel"></span>
+        <button id="nextMonthBtn" title="{{_('Mês Seguinte')}}" class="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700/50 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition-all focus:ring-2 focus:ring-yellow-500/50">
+            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" /></svg>
         </button>
     </div>
 </header>
 
-<!-- Adiciona a navegação por abas -->
-<div class="border-b border-gray-200 dark:border-gray-700 mb-6">
-    <nav id="financial-tabs" class="flex space-x-6">
-        <button type="button" data-tab="summary" class="tab-button active py-3 px-1 border-b-2 font-medium text-sm">{{ _('Resumo') }}</button>
-        <button type="button" data-tab="reports" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Relatórios') }}</button>
-        <button type="button" data-tab="coupons" class="tab-button py-3 px-1 border-b-2 font-medium text-sm">{{ _('Cupões') }}</button>
+<!-- Navegação por Abas Premium -->
+<div class="mb-6 animate-fade-in-up" style="animation-delay: 0.1s;">
+    <nav id="financial-tabs" class="flex space-x-2 overflow-x-auto no-scrollbar pb-2">
+        <button type="button" data-tab="summary" class="tab-button active group">
+            <svg class="w-5 h-5 mr-2 transition-transform duration-300 group-hover:scale-110 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            {{ _('Resumo Geral') }}
+        </button>
+        <button type="button" data-tab="reports" class="tab-button group">
+            <svg class="w-5 h-5 mr-2 transition-transform duration-300 group-hover:scale-110 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            {{ _('Relatórios CSV') }}
+        </button>
+        <button type="button" data-tab="coupons" class="tab-button group">
+            <svg class="w-5 h-5 mr-2 transition-transform duration-300 group-hover:scale-110 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"></path></svg>
+            {{ _('Gestão de Cupões') }}
+        </button>
     </nav>
 </div>
 
-<div id="financial-tab-content">
-    <!-- Aba de Resumo -->
-    <div id="tab-summary" class="tab-content active space-y-8">
-        <div id="loadingIndicator" class="text-center py-20">
-            <svg class="animate-spin h-10 w-10 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-            <p class="text-lg text-gray-500 dark:text-gray-400 mt-4">{{ _('A carregar dados financeiros...') }}</p>
+<div id="financial-tab-content" class="animate-fade-in-up" style="animation-delay: 0.2s;">
+    
+    <!-- ================= ABA DE RESUMO ================= -->
+    <div id="tab-summary" class="tab-content active space-y-6">
+        
+        <!-- Estado de Carregamento (Alinhado com index.html) -->
+        <div id="loadingIndicator" class="flex flex-col items-center justify-center min-h-[50vh] w-full">
+            <div class="relative w-16 h-16 mb-4">
+                <div class="absolute inset-0 rounded-full border-t-2 border-yellow-500 animate-spin"></div>
+                <div class="absolute inset-2 rounded-full border-r-2 border-green-500 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
+            </div>
+            <p class="text-lg font-medium text-gray-500 dark:text-gray-400">{{ _('A carregar a magia financeira...') }}</p>
         </div>
 
-        <div id="errorContainer" class="hidden text-center py-10 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg">
-            <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar os dados.') }}</p>
-            <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
+        <!-- Estado de Erro (Alinhado com index.html) -->
+        <div id="errorContainer" class="hidden text-center py-12 px-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-2xl shadow-sm">
+            <svg class="w-12 h-12 text-red-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <p class="text-lg font-bold text-red-700 dark:text-red-300">{{ _('Ocorreu um erro ao carregar os dados.') }}</p>
+            <p id="errorMessage" class="text-sm font-medium text-red-600 dark:text-red-400 mt-2"></p>
         </div>
 
-        <div id="financialDashboard" class="hidden space-y-8">
-            <!-- Cards de Resumo -->
+        <!-- Dashboard Real -->
+        <div id="financialDashboard" class="hidden space-y-6">
+            
+            <!-- Cards de Métricas Principais -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div class="bg-green-500/10 dark:bg-green-500/20 text-green-800 dark:text-green-200 p-4 sm:p-6 rounded-xl">
-                    <div class="flex items-center gap-4">
-                        <div class="p-3 bg-green-500/20 rounded-lg"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01" /></svg></div>
+                <!-- Card Receita -->
+                <div class="bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-900/20 dark:to-green-800/5 text-green-900 dark:text-green-100 p-6 rounded-2xl shadow-sm border border-green-200 dark:border-green-800/30 relative overflow-hidden">
+                    <div class="absolute -right-6 -top-6 text-green-500/10 dark:text-green-500/5">
+                        <svg class="w-32 h-32" fill="currentColor" viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01" /></svg>
+                    </div>
+                    <div class="relative flex items-center gap-5">
+                        <div class="p-3.5 bg-green-500/20 dark:bg-green-500/30 rounded-xl shadow-inner">
+                            <svg class="h-7 w-7 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01" /></svg>
+                        </div>
                         <div>
-                            <p class="text-sm font-medium opacity-80">{{ _('Receita do Mês') }}</p>
-                            <p class="text-3xl font-bold" id="totalRevenue">R$ 0,00</p>
+                            <p class="text-sm font-semibold opacity-70">{{ _('Receita do Mês') }}</p>
+                            <p class="text-3xl font-extrabold tracking-tight mt-0.5" id="totalRevenue">R$ 0,00</p>
                         </div>
                     </div>
                 </div>
-                <div class="bg-blue-500/10 dark:bg-blue-500/20 text-blue-800 dark:text-blue-200 p-4 sm:p-6 rounded-xl">
-                    <div class="flex items-center gap-4">
-                        <div class="p-3 bg-blue-500/20 rounded-lg"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+
+                <!-- Card Vendas -->
+                <div class="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-900/20 dark:to-blue-800/5 text-blue-900 dark:text-blue-100 p-6 rounded-2xl shadow-sm border border-blue-200 dark:border-blue-800/30 relative overflow-hidden">
+                    <div class="absolute -right-6 -top-6 text-blue-500/10 dark:text-blue-500/5">
+                        <svg class="w-32 h-32" fill="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    </div>
+                    <div class="relative flex items-center gap-5">
+                        <div class="p-3.5 bg-blue-500/20 dark:bg-blue-500/30 rounded-xl shadow-inner">
+                            <svg class="h-7 w-7 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        </div>
                         <div>
-                            <p class="text-sm font-medium opacity-80">{{ _('Assinaturas Pagas no Mês') }}</p>
-                            <p class="text-3xl font-bold" id="salesCount">0</p>
+                            <p class="text-sm font-semibold opacity-70">{{ _('Assinaturas Pagas no Mês') }}</p>
+                            <p class="text-3xl font-extrabold tracking-tight mt-0.5" id="salesCount">0</p>
                         </div>
                     </div>
                 </div>
-                <div class="bg-yellow-500/10 dark:bg-yellow-500/20 text-yellow-800 dark:text-yellow-200 p-4 sm:p-6 rounded-xl">
-                    <div class="flex items-center gap-4">
-                        <div class="p-3 bg-yellow-500/20 rounded-lg"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div>
+
+                <!-- Card Renovações -->
+                <div class="bg-gradient-to-br from-yellow-50 to-yellow-100/50 dark:from-yellow-900/20 dark:to-yellow-800/5 text-yellow-900 dark:text-yellow-100 p-6 rounded-2xl shadow-sm border border-yellow-200 dark:border-yellow-800/30 relative overflow-hidden">
+                    <div class="absolute -right-6 -top-6 text-yellow-500/10 dark:text-yellow-500/5">
+                        <svg class="w-32 h-32" fill="currentColor" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    </div>
+                    <div class="relative flex items-center gap-5">
+                        <div class="p-3.5 bg-yellow-500/20 dark:bg-yellow-500/30 rounded-xl shadow-inner">
+                            <svg class="h-7 w-7 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        </div>
                         <div>
-                            <p id="upcomingRenewalsLabel" class="text-sm font-medium opacity-80">{{ _('Renovações Próximas (7d)') }}</p>
-                            <p class="text-3xl font-bold" id="upcomingRenewals">0</p>
+                            <p id="upcomingRenewalsLabel" class="text-sm font-semibold opacity-70">{{ _('Renovações Próximas (7d)') }}</p>
+                            <p class="text-3xl font-extrabold tracking-tight mt-0.5" id="upcomingRenewals">0</p>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Gráfico de Receita -->
-            <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-                    <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Visão Geral da Receita') }}</h3>
-                    <div class="flex items-center bg-gray-200 dark:bg-gray-700 rounded-lg p-1 text-sm self-end sm:self-center">
-                        <button data-chart-view="daily" class="chart-view-btn active px-3 py-1 rounded-md">{{ _('Diário') }}</button>
-                        <button data-chart-view="weekly" class="chart-view-btn px-3 py-1 rounded-md">{{ _('Semanal') }}</button>
+            <div class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                        {{ _('Visão Geral da Receita') }}
+                    </h3>
+                    <!-- Toggle iOS Style para o Gráfico -->
+                    <div class="flex items-center bg-gray-100 dark:bg-gray-900/50 rounded-xl p-1.5 text-sm shadow-inner w-full sm:w-auto">
+                        <button data-chart-view="daily" class="chart-view-btn flex-1 sm:flex-none active px-5 py-1.5 rounded-lg font-bold transition-all text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">{{ _('Diário') }}</button>
+                        <button data-chart-view="weekly" class="chart-view-btn flex-1 sm:flex-none px-5 py-1.5 rounded-lg font-bold transition-all text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">{{ _('Semanal') }}</button>
                     </div>
                 </div>
-                <div class="h-64 sm:h-96"><canvas id="revenueChart"></canvas></div>
+                <div class="h-64 sm:h-80 w-full"><canvas id="revenueChart"></canvas></div>
             </div>
 
-            <!-- Listas de Dados -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                    <h3 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">{{ _('Transações Recentes') }}</h3>
-                    <div id="transactionsList" class="space-y-3 overflow-y-auto h-96 pr-2">
+            <!-- Listas Dinâmicas -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Lista de Transações -->
+                <div class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 flex flex-col h-full">
+                    <h3 class="text-xl font-bold mb-5 text-gray-900 dark:text-white flex items-center gap-2">
+                        <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01"></path></svg>
+                        {{ _('Transações Concluídas') }}
+                    </h3>
+                    <div id="transactionsList" class="space-y-3 overflow-y-auto max-h-96 pr-2 custom-scrollbar flex-1">
                         <!-- Conteúdo inserido por JS -->
                     </div>
                 </div>
-                <div class="bg-white dark:bg-gray-800/50 p-4 sm:p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-                        <h3 id="renewalsCardTitle" class="text-xl font-semibold text-gray-900 dark:text-gray-100">{{ _('Próximas Renovações') }}</h3>
-                        <select id="renewalsFilter" class="bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm p-1 focus:ring-yellow-500 focus:border-yellow-500">
-                            <option value="7" selected>{{ _('Próximos 7 dias') }}</option>
-                            <option value="15">{{ _('Próximos 15 dias') }}</option>
-                            <option value="30">{{ _('Próximos 30 dias') }}</option>
-                        </select>
+                
+                <!-- Lista de Renovações -->
+                <div class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 flex flex-col h-full">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-5 gap-3">
+                        <h3 id="renewalsCardTitle" class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            {{ _('Próximas Renovações') }}
+                        </h3>
+                        <div class="relative">
+                            <select id="renewalsFilter" class="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-semibold py-2 pl-3 pr-8 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 cursor-pointer outline-none appearance-none shadow-sm transition-shadow">
+                                <option value="7" selected>{{ _('Próximos 7 dias') }}</option>
+                                <option value="15">{{ _('Próximos 15 dias') }}</option>
+                                <option value="30">{{ _('Próximos 30 dias') }}</option>
+                            </select>
+                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </div>
+                        </div>
                     </div>
-                     <div id="renewalsList" class="space-y-3 overflow-y-auto h-96 pr-2">
+                    <div id="renewalsList" class="space-y-3 overflow-y-auto max-h-96 pr-2 custom-scrollbar flex-1">
                         <!-- Conteúdo inserido por JS -->
                     </div>
                 </div>
@@ -110,76 +196,114 @@
         </div>
     </div>
     
-    <!-- Aba de Relatórios -->
-    <div id="tab-reports" class="tab-content space-y-8">
-        <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-            <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Exportar Relatório Financeiro') }}</h3>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('Selecione um intervalo de datas para exportar todas as transações concluídas como um ficheiro CSV.') }}</p>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                <div>
-                    <label for="startDate" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Data de Início') }}</label>
-                    <input type="date" id="startDate" class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+    <!-- ================= ABA DE RELATÓRIOS ================= -->
+    <div id="tab-reports" class="tab-content hidden space-y-6 animate-fade-in">
+        <div class="bg-white dark:bg-gray-800/60 p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 max-w-3xl mx-auto mt-4">
+            <div class="flex items-center gap-4 mb-6">
+                <div class="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl shadow-inner">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                 </div>
                 <div>
-                    <label for="endDate" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Data de Fim') }}</label>
-                    <input type="date" id="endDate" class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white">{{ _('Exportar Relatório CSV') }}</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Gere um documento para contabilidade com todas as transações de um período.') }}</p>
                 </div>
             </div>
-            <div class="mt-6 flex justify-end">
-                <button id="exportCsvBtn" class="btn bg-teal-600 hover:bg-teal-500 text-white">
-                    <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-                    {{ _('Exportar para CSV') }}
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5 items-end bg-gray-50/50 dark:bg-gray-900/30 p-5 rounded-xl border border-gray-200 dark:border-gray-700/50">
+                <div>
+                    <label for="startDate" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Data de Início') }}</label>
+                    <input type="date" id="startDate" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow shadow-sm">
+                </div>
+                <div>
+                    <label for="endDate" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Data de Fim') }}</label>
+                    <input type="date" id="endDate" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow shadow-sm">
+                </div>
+            </div>
+            
+            <div class="mt-8 flex justify-end">
+                <button id="exportCsvBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30 flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all transform hover:-translate-y-0.5">
+                    <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    {{ _('Exportar Ficheiro CSV') }}
                 </button>
             </div>
         </div>
     </div>
 
-
-    <!-- Aba de Cupões -->
-    <div id="tab-coupons" class="tab-content space-y-8">
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <!-- ================= ABA DE CUPÕES ================= -->
+    <div id="tab-coupons" class="tab-content hidden space-y-6 animate-fade-in">
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            
             <!-- Formulário de Criação -->
-            <div class="lg:col-span-1 bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Criar Novo Cupão') }}</h3>
-                <form id="createCouponForm" class="space-y-4">
+            <div class="xl:col-span-1 bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 h-fit sticky top-24">
+                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                    <svg class="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                    {{ _('Criar Novo Cupão') }}
+                </h3>
+                <form id="createCouponForm" class="space-y-5">
                     <div>
-                        <label for="couponCode" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Código') }}</label>
-                        <input type="text" id="couponCode" required class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="EX: PROMO25">
+                        <label for="couponCode" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Código do Cupão') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+                            </div>
+                            <input type="text" id="couponCode" required class="block w-full pl-9 p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow uppercase font-mono shadow-sm" placeholder="EX: PROMO25">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="discountType" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Tipo') }}</label>
+                            <div class="relative">
+                                <select id="discountType" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow cursor-pointer appearance-none shadow-sm">
+                                    <option value="percentage">{{ _('Percentagem') }}</option>
+                                    <option value="fixed">{{ _('Valor Fixo') }}</option>
+                                </select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="discountValue" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Valor') }}</label>
+                            <input type="number" id="discountValue" required step="0.01" min="0" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow shadow-sm" placeholder="Ex: 25">
+                        </div>
                     </div>
                     <div>
-                        <label for="discountType" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Tipo de Desconto') }}</label>
-                        <select id="discountType" class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                            <option value="percentage">{{ _('Percentagem (%%)') }}</option>
-                            <option value="fixed">{{ _('Valor Fixo (R$)') }}</option>
-                        </select>
+                        <label for="maxUses" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Limite de Utilizações') }}</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                            </div>
+                            <input type="number" id="maxUses" required min="1" value="1" class="block w-full pl-9 p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow shadow-sm">
+                        </div>
                     </div>
                     <div>
-                        <label for="discountValue" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Valor') }}</label>
-                        <input type="number" id="discountValue" required step="0.01" min="0" class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="25 ou 5.00">
+                        <label for="expiresAt" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Expira em (Opcional)') }}</label>
+                        <input type="date" id="expiresAt" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow text-gray-500 shadow-sm">
                     </div>
-                    <div>
-                        <label for="maxUses" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Usos Máximos') }}</label>
-                        <input type="number" id="maxUses" required min="1" value="1" class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <div class="pt-4">
+                        <button type="submit" class="btn bg-amber-500 hover:bg-amber-400 text-white w-full py-3.5 rounded-xl shadow-lg shadow-amber-500/20 font-bold transition-all transform hover:-translate-y-0.5 flex justify-center items-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                            {{ _('Gerar Cupão') }}
+                        </button>
                     </div>
-                    <div>
-                        <label for="expiresAt" class="block text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Data de Validade (Opcional)') }}</label>
-                        <input type="date" id="expiresAt" class="mt-1 w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                    </div>
-                    <button type="submit" class="btn bg-green-600 hover:bg-green-500 text-white w-full">{{ _('Criar Cupão') }}</button>
                 </form>
             </div>
+            
             <!-- Lista de Cupões -->
-            <div class="lg:col-span-2 bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{{ _('Cupões Existentes') }}</h3>
-                <div id="couponsListContainer" class="overflow-x-auto">
-                    <!-- Tabela será inserida aqui -->
+            <div class="xl:col-span-2 bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 flex flex-col h-full">
+                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                    <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+                    {{ _('Cupões Ativos e Histórico') }}
+                </h3>
+                <div id="couponsListContainer" class="overflow-x-auto w-full custom-scrollbar">
+                    <!-- Tabela inserida por JS -->
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<div id="confirmationModal" class="modal-backdrop hidden"></div>
+<div id="confirmationModal" class="hidden fixed inset-0 z-50 bg-gray-900/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true"></div>
 {% endblock %}
 
 {% block scripts %}
