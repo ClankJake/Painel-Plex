@@ -43,10 +43,20 @@ def build_final_url(source: str, image_path: str) -> Tuple[Optional[str], dict]:
         if plex_manager and plex_manager.plex:
             final_url = plex_manager.plex.url(image_path, includeToken=False)
             params['X-Plex-Token'] = plex_manager.plex._token
+            
     elif source == 'plex_account':
          if plex_manager and plex_manager.account:
-            final_url = f"https://plex.tv{image_path}"
+            # Proteção: Se já for uma URL completa, usa-a. Se for caminho relativo, junta o plex.tv
+            if image_path.startswith('http://') or image_path.startswith('https://'):
+                final_url = image_path
+            else:
+                final_url = f"https://plex.tv{image_path}"
             params['X-Plex-Token'] = plex_manager.account._token
+            
+    elif source == 'url':
+        # Suporte para URLs externas diretas (Gravatar, etc)
+        final_url = image_path
+        
     elif source == 'tautulli':
         if tautulli_manager and tautulli_manager.api_client.is_configured:
             final_url = f"{tautulli_manager.api_client.base_url}{image_path}"
