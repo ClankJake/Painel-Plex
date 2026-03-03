@@ -2,11 +2,11 @@
 <html lang="{{ current_locale.language }}">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{{ _('Renovação de Assinatura') }} - {{ app_title }}</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='gold'><path d='M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z'/></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
         if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
           document.documentElement.classList.add('dark');
@@ -16,90 +16,168 @@
     </script>
     <style>
         body { font-family: 'Inter', sans-serif; }
-        .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; padding: 1rem 1.5rem; border-radius: 0.5rem; color: white; opacity: 0; transform: translateY(20px); transition: opacity 0.3s ease, transform 0.3s ease; z-index: 9999; }
-        .toast.show { opacity: 1; transform: translateY(0); }
+        
+        /* Fundo dinâmico Premium */
+        .bg-ambient {
+            background-color: #f3f4f6;
+            background-image: radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+        }
+        .dark .bg-ambient {
+            background-color: #0f172a;
+            background-image: radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), radial-gradient(at 50% 0%, hsla(225,39%,15%,1) 0, transparent 50%), radial-gradient(at 100% 0%, hsla(339,49%,15%,1) 0, transparent 50%);
+        }
+
+        /* Notificações Toasts (Estilo Moderno) */
+        .toast { position: fixed; bottom: 2rem; right: 50%; transform: translateX(50%) translateY(100px); padding: 1rem 1.5rem; border-radius: 9999px; color: white; opacity: 0; transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); z-index: 9999; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); font-weight: 500; text-align: center; white-space: nowrap; max-width: 90vw;}
+        @media (min-width: 640px) { .toast { right: 2rem; transform: translateX(0) translateY(100px); } }
+        .toast.show { opacity: 1; transform: translateX(50%) translateY(0); }
+        @media (min-width: 640px) { .toast.show { transform: translateX(0) translateY(0); } }
         .toast.success { background-color: #10B981; }
         .toast.error { background-color: #EF4444; }
-        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.75); display: flex; justify-content: center; align-items: center; z-index: 50; backdrop-filter: blur(4px); }
-        .modal-content { @apply bg-white dark:bg-gray-800; padding: 1.5rem; border-radius: 0.75rem; max-width: 90%; width: 500px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-        .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border-radius: 0.5rem; font-weight: 600; transition: all 0.2s ease-in-out; border: 1px solid transparent; }
-        .animate-fade-in { animation: fadeIn 0.5s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        
+        /* Modais */
+        .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(15, 23, 42, 0.75); display: flex; justify-content: center; align-items: center; z-index: 50; backdrop-filter: blur(8px); opacity: 0; transition: opacity 0.3s ease; pointer-events: none;}
+        .modal-backdrop:not(.hidden) { opacity: 1; pointer-events: auto;}
+        .modal-content { @apply bg-white dark:bg-[#1e293b]; padding: 1.5rem; border-radius: 1.5rem; max-width: 90%; width: 500px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); transform: scale(0.95); transition: transform 0.3s ease;}
+        .modal-backdrop:not(.hidden) .modal-content { transform: scale(1); }
+        
+        /* Utilidades */
+        .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.875rem 1.5rem; border-radius: 0.75rem; font-weight: 600; transition: all 0.2s ease-in-out; cursor: pointer;}
+        .btn:active { transform: scale(0.97); }
+        .animate-fade-in-up { animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Esconder scrollbar na caixa do PIX Copia e Cola */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-300 transition-colors duration-300">
+<body class="bg-gray-50 dark:bg-[#0f172a] text-gray-800 dark:text-gray-200 min-h-screen flex flex-col selection:bg-yellow-500 selection:text-white relative overflow-x-hidden">
 
-    <div class="flex items-center justify-center min-h-screen p-4">
-        <div class="w-full max-w-lg">
-            <div class="text-center mb-6">
-                <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{{ app_title }}</h1>
-                <p class="text-gray-500 dark:text-gray-400 mt-1">{{ _('Página de Renovação') }}</p>
+    <!-- Fundo Blur Decorativo -->
+    <div class="fixed inset-0 z-0 pointer-events-none">
+        <div class="absolute top-0 inset-x-0 h-[500px] bg-gradient-to-b from-yellow-400/20 to-transparent dark:from-yellow-500/10 dark:to-transparent"></div>
+    </div>
+
+    <div class="relative z-10 flex flex-col items-center justify-center min-h-screen p-4 sm:p-6 w-full">
+        <div class="w-full max-w-md animate-fade-in-up">
+            
+            <!-- Título do Servidor -->
+            <div class="text-center mb-8">
+                <h1 class="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">{{ app_title }}</h1>
+                <p class="text-gray-500 dark:text-gray-400 mt-2 font-medium">{{ _('Portal de Assinatura') }}</p>
             </div>
 
-            <div id="main-container" class="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700/50">
-                <div id="loadingIndicator" class="text-center py-10">
-                    <svg class="animate-spin h-8 w-8 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    <p class="text-lg text-gray-500 dark:text-gray-400 mt-4">{{ _('Carregando informações...') }}</p>
+            <!-- Cartão Principal -->
+            <div id="main-container" class="bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-xl p-6 sm:p-8 rounded-[2rem] shadow-2xl border border-gray-100 dark:border-gray-700/60 overflow-hidden relative">
+                
+                <!-- Indicador de Carregamento -->
+                <div id="loadingIndicator" class="text-center py-12 flex flex-col items-center justify-center">
+                    <div class="relative w-16 h-16 mb-6">
+                        <div class="absolute inset-0 rounded-full border-t-2 border-yellow-500 animate-spin"></div>
+                        <div class="absolute inset-2 rounded-full border-r-2 border-yellow-300 dark:border-yellow-700 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
+                    </div>
+                    <p class="text-lg font-medium text-gray-500 dark:text-gray-400">{{ _('A carregar a sua conta...') }}</p>
                 </div>
 
-                <div id="errorContainer" class="hidden text-center py-10">
-                    <p class="text-lg text-red-700 dark:text-red-300">{{ _('Ocorreu um erro') }}</p>
-                    <p id="errorMessage" class="text-sm text-red-600 dark:text-red-400 mt-2"></p>
+                <!-- Estado de Erro -->
+                <div id="errorContainer" class="hidden text-center py-10 px-4 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-800/30">
+                    <div class="inline-flex p-3 bg-red-100 dark:bg-red-900/30 text-red-500 rounded-full mb-4">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    </div>
+                    <p class="text-lg font-bold text-red-700 dark:text-red-400">{{ _('Ligação Inválida') }}</p>
+                    <p id="errorMessage" class="text-sm text-red-600/80 dark:text-red-400/80 mt-2 font-medium"></p>
                 </div>
                 
+                <!-- Estado de Pagamento/Renovação -->
                 <div id="paymentContainer" class="hidden" data-is-reactivation="{{ 'true' if is_reactivation else 'false' }}">
+                    
+                    <!-- Cabeçalho do Utilizador -->
                     <div id="user-info-header" class="flex flex-col items-center text-center">
-                        <img id="user-thumb" src="https://placehold.co/96x96/1F2937/E5E7EB?text=?" alt="Avatar" class="w-24 h-24 rounded-full mb-4">
+                        <div class="relative mb-5">
+                            <div class="absolute inset-0 bg-gradient-to-tr from-yellow-400 to-yellow-600 rounded-full blur opacity-40"></div>
+                            <img id="user-thumb" src="https://placehold.co/128x128/1F2937/E5E7EB?text=?" alt="Avatar" class="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-white dark:border-[#1e293b] shadow-xl object-cover">
+                        </div>
+                        
                         {% if is_reactivation %}
-                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white" id="user-username">{{ _('Bem-vindo de volta, %(username)s!', username=username) }}</h2>
-                        <p class="text-gray-500 dark:text-gray-400 mt-2">{{ _('A sua assinatura expirou. Efetue o pagamento abaixo para reativar o seu acesso instantaneamente.') }}</p>
+                        <div class="inline-block px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
+                            {{ _('Acesso Suspenso') }}
+                        </div>
+                        <h2 class="text-2xl font-black text-gray-900 dark:text-white tracking-tight" id="user-username">{{ _('Olá, %(username)s!', username=username) }}</h2>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm">{{ _('A sua assinatura terminou. Efetue o pagamento abaixo para reativar o seu acesso instantaneamente e voltar a assistir.') }}</p>
                         {% else %}
-                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white" id="user-username"></h2>
-                        <p class="text-sm text-gray-500 dark:text-gray-400" id="user-expiration"></p>
+                        <div class="inline-block px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
+                            {{ _('Acesso Ativo') }}
+                        </div>
+                        <h2 class="text-2xl font-black text-gray-900 dark:text-white tracking-tight" id="user-username"></h2>
+                        <p class="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1" id="user-expiration"></p>
                         {% endif %}
                     </div>
 
+                    <!-- Divisória Elegante -->
+                    <hr class="border-t border-gray-100 dark:border-gray-700/50 my-6">
 
-                    <div id="payment-section" class="mt-8 space-y-4">
-                        <!-- Opções de pagamento serão inseridas aqui -->
+                    <!-- Área Dinâmica de Botões de Pagamento -->
+                    <div id="payment-section" class="space-y-4">
+                        <!-- Botões injetados via JS -->
                     </div>
 
-                    <div id="pix-display" class="hidden text-center space-y-4 mt-6">
-                        <p>{{ _('Pagamento PIX gerado! Utilize o QR Code ou o código abaixo para pagar.') }}</p>
-                        <img id="pix-qr-code" src="" class="mx-auto border-4 border-white dark:border-gray-600 rounded-lg w-56 h-56">
-                        <div class="flex items-center space-x-2">
-                            <input type="text" id="pix-copy-paste" readonly class="w-full p-2 text-sm text-gray-900 bg-gray-200 rounded-lg border-none dark:bg-gray-700 dark:text-white">
-                            <button id="copy-pix-code" class="p-2 rounded-md bg-blue-500 text-white hover:bg-blue-600">{{ _('Copiar') }}</button>
+                    <!-- Visor do PIX -->
+                    <div id="pix-display" class="hidden text-center mt-4">
+                        <div class="bg-gray-50 dark:bg-gray-900/50 rounded-2xl p-5 border border-gray-100 dark:border-gray-700/50 shadow-inner">
+                            <h3 class="font-bold text-gray-900 dark:text-white flex items-center justify-center gap-2 mb-4">
+                                <svg class="w-5 h-5 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+                                {{ _('Pagamento PIX Gerado') }}
+                            </h3>
+                            
+                            <div class="bg-white p-3 rounded-xl shadow-sm inline-block mb-5">
+                                <img id="pix-qr-code" src="" class="w-48 h-48 sm:w-56 sm:h-56" alt="QR Code PIX">
+                            </div>
+                            
+                            <div class="relative flex items-center w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm focus-within:ring-2 focus-within:ring-yellow-500/50 transition-shadow">
+                                <input type="text" id="pix-copy-paste" readonly class="w-full p-3.5 text-sm font-mono text-gray-600 dark:text-gray-300 bg-transparent border-none focus:outline-none no-scrollbar whitespace-nowrap overflow-x-scroll">
+                                <button id="copy-pix-code" class="absolute right-1 top-1 bottom-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 px-4 rounded-lg font-bold text-sm transition-colors flex items-center gap-1.5 border border-gray-200 dark:border-gray-600">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                    {{ _('Copiar') }}
+                                </button>
+                            </div>
                         </div>
-                        <p id="polling-status" class="text-sm text-gray-500 dark:text-gray-400">{{ _('A aguardar confirmação de pagamento...') }}</p>
-                        <div class="mt-4 p-3 bg-yellow-100 dark:bg-yellow-500/20 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-200 text-left rounded-md">
-                            <p class="font-bold">{{ _('Importante!') }}</p>
-                            <p class="text-sm">{{ _('Para garantir que sua assinatura seja ativada instantaneamente, por favor, mantenha esta página aberta até que o pagamento seja confirmado.') }}</p>
+
+                        <div class="mt-6 flex flex-col items-center">
+                            <div class="flex items-center gap-2 text-sm font-semibold text-yellow-600 dark:text-yellow-500 mb-2 bg-yellow-50 dark:bg-yellow-500/10 px-4 py-1.5 rounded-full">
+                                <span class="relative flex h-2.5 w-2.5">
+                                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-yellow-500"></span>
+                                </span>
+                                <span id="polling-status">{{ _('A aguardar confirmação...') }}</span>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 px-4">{{ _('Não feche esta página. A ativação será feita automaticamente assim que pagar.') }}</p>
                         </div>
                     </div>
 
-                    <div id="success-display" class="hidden text-center space-y-4 animate-fade-in">
-                        <svg class="w-16 h-16 text-green-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <h2 id="success-title" class="text-2xl font-bold text-gray-900 dark:text-white"></h2>
-                        <p id="success-message" class="text-gray-600 dark:text-gray-400"></p>
+                    <!-- Ecrã de Sucesso Mágico -->
+                    <div id="success-display" class="hidden text-center space-y-5 animate-fade-in-up py-4">
+                        <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 text-green-500 mb-2">
+                            <svg class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        <h2 id="success-title" class="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight"></h2>
+                        <p id="success-message" class="text-base text-gray-600 dark:text-gray-400 font-medium"></p>
                         
-                        <!-- NOVA ÁREA PARA AÇÃO DE REATIVAÇÃO AUTOMÁTICA -->
-                        <div id="reactivation-action-area" class="hidden mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
-                            <p class="text-sm text-blue-800 dark:text-blue-200 mb-4 font-medium">
-                                {{ _('Para finalizar, clique no botão abaixo para aceitar o convite automaticamente:') }}
-                            </p>
-                            <button id="reactivate-plex-login-btn" class="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-sm font-bold rounded-md text-gray-900 bg-yellow-500 hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 transition-all shadow-lg">
-                                <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
-                                {{ _('Entrar com Plex para Ativar') }}
-                            </button>
+                        <!-- Botão de Reativação Automática -->
+                        <div id="reactivation-action-area" class="hidden pt-6 mt-6 border-t border-gray-100 dark:border-gray-700/50">
+                            <div class="bg-blue-50 dark:bg-blue-900/10 p-5 rounded-2xl border border-blue-100 dark:border-blue-800/30">
+                                <p class="text-sm text-blue-800 dark:text-blue-300 mb-4 font-semibold">{{ _('Último passo! Clique abaixo para aceitar o convite e voltar a assistir:') }}</p>
+                                <button id="reactivate-plex-login-btn" class="w-full btn bg-[#e5a00d] hover:bg-[#c98c0b] text-white shadow-xl shadow-[#e5a00d]/30 py-3.5 text-base font-bold transform hover:-translate-y-0.5 transition-all flex justify-center items-center gap-2">
+                                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
+                                    {{ _('Entrar no Plex') }}
+                                </button>
+                            </div>
                         </div>
-                        <!-- FIM NOVA ÁREA -->
 
-                        <div class="mt-8" id="default-login-btn-container">
-                            <a id="login-button" href="#" class="btn bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3">
-                                <!-- O texto do botão será inserido pelo JS -->
+                        <!-- Botão de Voltar padrão -->
+                        <div class="pt-4" id="default-login-btn-container">
+                            <a id="login-button" href="#" class="inline-flex w-full sm:w-auto items-center justify-center px-8 py-3.5 border border-transparent text-sm font-bold rounded-xl shadow-lg text-white bg-gray-900 hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 transition-all transform hover:-translate-y-0.5">
+                                <!-- Texto injetado por JS -->
                             </a>
                         </div>
                     </div>
@@ -108,6 +186,7 @@
         </div>
     </div>
 
+    <!-- Modais e Notificações Injetáveis -->
     <div id="providerChoiceModal" class="modal-backdrop hidden"></div>
     <div id="toast" class="toast"></div>
 
