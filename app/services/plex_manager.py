@@ -3,7 +3,7 @@
 import logging
 import base64
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qsl, urlencode
 from flask import current_app, url_for
 from flask_babel import gettext as _
 from requests.exceptions import ConnectTimeout, ReadTimeout, ConnectionError, RequestException
@@ -34,9 +34,6 @@ class PlexManager:
         self.app = None
         self.plex = None
         self.account = None
-        
-        # Relógio interno para forçar auto-renovação da lista de utilizadores
-        self._last_user_sync = time.time()
 
     def init_app(self, app):
         from app.config import is_configured
@@ -51,10 +48,14 @@ class PlexManager:
             self.plex = self.conn.plex
             self.account = self.conn.account
             self.users.invalidate_user_cache()
-            self._last_user_sync = time.time() # Reinicia o relógio
+            
             if self.app:
+                with self.app.app_context():
+                    from app.extensions import cache
+                    cache.set('last_plex_user_sync', time.time(), timeout=86400)
                 from app.config import load_or_create_config
                 self.app.config.update(load_or_create_config())
+                
         return success, message
 
     def check_status(self):
@@ -167,31 +168,34 @@ class PlexManager:
             try:
                 thumb_url = url_for('image.proxy_image', source=b64_payload)
             except RuntimeError:
-                # CORREÇÃO: url_for gera /image/?source=, o fallback tem de ser igual
                 thumb_url = f"/image/?source={b64_payload}"
         
         final_user_thumb = user_thumb_map.get(getattr(s.user, 'id', None))
         
-        # Processa a imagem do utilizador se não estiver na cache do user_thumb_map
         if not final_user_thumb and getattr(s.user, 'thumb', None):
             try:
                 original_thumb = s.user.thumb
-                parsed_thumb = urlparse(original_thumb)
                 
-                # Se for URL interna do Plex, usa o proxy
-                if 'plex.tv' in parsed_thumb.netloc or not parsed_thumb.netloc:
-                    path_with_query = parsed_thumb.path + ("?" + parsed_thumb.query if parsed_thumb.query else "")
-                    payload_str = f"plex_account:{path_with_query}"
+                # Filtro Anti-Double-Proxy aprimorado
+                if '/image/' not in original_thumb:
+                    parsed_thumb = urlparse(original_thumb)
+                    
+                    query_params = parse_qsl(parsed_thumb.query)
+                    clean_query = urlencode([(k, v) for k, v in query_params if k.lower() != 'x-plex-token'])
+                    clean_url = parsed_thumb._replace(query=clean_query).geturl()
+                    
+                    if 'plex.tv' in parsed_thumb.netloc or not parsed_thumb.netloc:
+                        payload_str = f"plex_account:{clean_url}"
+                    else:
+                        payload_str = f"url:{clean_url}"
+                        
                     b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
                     try:
                         final_user_thumb = url_for('image.proxy_image', source=b64_payload)
                     except RuntimeError:
-                        # CORREÇÃO: Rota de fallback alinhada
                         final_user_thumb = f"/image/?source={b64_payload}"
                 else:
-                    # Se for um link externo absoluto que não seja do Plex (ex: Gravatar)
                     final_user_thumb = original_thumb
-                    
             except Exception:
                 pass
 
@@ -226,47 +230,64 @@ class PlexManager:
     def get_libraries(self): return self.conn.get_libraries()
     
     def get_all_plex_users(self, force_refresh=False): 
+        from app.extensions import cache
+        
+        last_sync = cache.get('last_plex_user_sync')
         current_time = time.time()
         
-        # 1. AUTO-RENOVAÇÃO (A cada 12 horas)
-        if not force_refresh and (current_time - self._last_user_sync > 43200):
+        # 1. AUTO-RENOVAÇÃO BLINDADA (A cada 6 horas)
+        if not force_refresh and (not last_sync or (current_time - last_sync > 21600)):
             force_refresh = True
-            logger.debug("🔄 Auto-sincronização global ativada para atualizar avatares da Plex.")
+            logger.debug("🔄 Auto-sincronização global de utilizadores ativada.")
             
         if force_refresh:
             self.users.invalidate_user_cache()
-            self._last_user_sync = current_time
+            cache.set('last_plex_user_sync', current_time, timeout=86400)
             
-        users = self.users.get_all_plex_users()
+        cached_users = self.users.get_all_plex_users()
         
-        # 2. PROXY GLOBAL PARA IMAGENS DE PERFIL 🚀
-        if users:
-            for user in users:
-                original_thumb = user.get('thumb')
-                
-                # CORREÇÃO CRÍTICA: Bloqueia re-processamento se a URL já iniciar pela rota oficial do proxy
-                if original_thumb and not original_thumb.startswith('/image/'):
-                    try:
+        if not cached_users:
+            return []
+
+        processed_users = []
+        
+        # 2. CLONE DE SEGURANÇA E PROXY LIMPO
+        for u in cached_users:
+            user = dict(u)  # Clona para não envenenar a cache
+            original_thumb = user.get('thumb')
+            
+            if original_thumb:
+                try:
+                    # Filtro crítico: Se a URL já tiver /image/, ignora para não criar double proxy
+                    if '/image/' not in original_thumb:
                         parsed_thumb = urlparse(original_thumb)
                         
-                        # Verifica se é um link que realmente pertence ao Plex para utilizar o X-Plex-Token
+                        # Remove o token antigo para não cachear links mortos
+                        query_params = parse_qsl(parsed_thumb.query)
+                        clean_query = urlencode([(k, v) for k, v in query_params if k.lower() != 'x-plex-token'])
+                        clean_url = parsed_thumb._replace(query=clean_query).geturl()
+                        
                         if 'plex.tv' in parsed_thumb.netloc or not parsed_thumb.netloc:
-                            path_with_query = parsed_thumb.path + ("?" + parsed_thumb.query if parsed_thumb.query else "")
-                            payload_str = f"plex_account:{path_with_query}"
-                            b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                            
-                            try:
-                                user['thumb'] = url_for('image.proxy_image', source=b64_payload)
-                            except RuntimeError:
-                                user['thumb'] = f"/image/?source={b64_payload}"
+                            payload_str = f"plex_account:{clean_url}"
                         else:
-                            # Mantém imagens externas intactas (ex: Gravatar)
-                            user['thumb'] = original_thumb
+                            payload_str = f"url:{clean_url}"
                             
-                    except Exception as e:
-                        logger.debug(f"Erro ao converter imagem do utilizador {user.get('username')}: {e}")
+                        b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                        
+                        try:
+                            user['thumb'] = url_for('image.proxy_image', source=b64_payload)
+                        except RuntimeError:
+                            user['thumb'] = f"/image/?source={b64_payload}"
+                    else:
+                        # Se já for um proxy gerado por nós, usa-o sem tocar
+                        user['thumb'] = original_thumb
+                        
+                except Exception as e:
+                    logger.debug(f"Erro ao converter imagem do utilizador {user.get('username')}: {e}")
+            
+            processed_users.append(user)
 
-        return users
+        return processed_users
 
     def get_user_libraries(self, plex_user_id): return self.users.get_user_libraries(plex_user_id)
     def update_user_libraries(self, plex_user_id, library_titles): return self.users.update_user_libraries(plex_user_id, library_titles)
