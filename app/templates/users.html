@@ -26,12 +26,12 @@
         @apply ml-2 px-2 py-0.5 rounded-full text-xs font-bold transition-colors;
     }
     
-    /* Toggle de Convites interno (Estilo iOS) */
+    /* CORREÇÃO APLICADA: Toggle de Convites interno (Estilo iOS) blindado contra esmagamento */
     .invite-tab-btn {
-        @apply px-4 py-1.5 text-sm font-bold rounded-lg transition-all text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200;
+        @apply relative flex items-center justify-center whitespace-nowrap px-4 py-1.5 text-sm font-bold rounded-lg transition-all duration-200 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200;
     }
     .invite-tab-btn.active {
-        @apply bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm;
+        @apply bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm z-10;
     }
 </style>
 {% endblock %}
@@ -72,11 +72,10 @@
             <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             {{ _('Gestão de Convites') }}
         </h3>
-        
-        <!-- Abas de Filtro de Convites (iOS Style) -->
-        <div class="flex items-center bg-gray-100 dark:bg-gray-900/50 rounded-xl p-1.5 text-sm shadow-inner w-full sm:w-auto">
-            <button id="tab-invites-active" class="invite-tab-btn active flex-1 sm:flex-none">{{ _('Convites Ativos') }}</button>
-            <button id="tab-invites-history" class="invite-tab-btn flex-1 sm:flex-none">{{ _('Histórico') }}</button>
+
+        <div class="flex space-x-1 bg-gray-100 dark:bg-gray-700/50 rounded-lg p-1">
+            <button id="tab-invites-active" class="px-3 py-1 text-sm font-medium rounded-md shadow-sm bg-white dark:bg-gray-600 text-gray-900 dark:text-white transition-all focus:outline-none">{{ _('Ativos') }}</button>
+            <button id="tab-invites-history" class="px-3 py-1 text-sm font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600/50 transition-all focus:outline-none">{{ _('Histórico') }}</button>
         </div>
     </div>
 
@@ -220,8 +219,8 @@
         data-i18n-action-cannot-be-undone="{{ _('Esta ação não pode ser desfeita.') }}"
         data-i18n-confirm-delete-button="{{ _('Sim, Apagar') }}"
         data-i18n-cancel="{{ _('Cancelar') }}"
-        data-i18n-link-copied="{{ _('Link copiado para a área de transferência!') }}"
-        data-i18n-copy-failed="{{ _('Falha ao copiar. Por favor, copie manually.') }}"
+        data-i18n-link-copied="{{ _('Link copiado para a área de clipboard!') }}"
+        data-i18n-copy-failed="{{ _('Falha ao copiar. Por favor, copie manualmente.') }}"
         data-i18n-loading-users-failed="{{ _('Falha ao carregar dados.') }}"
         data-i18n-users-active="{{ _('Ativos') }}"
         data-i18n-users-blocked="{{ _('Bloqueados') }}"
