@@ -51,7 +51,18 @@ def _handle_reactivation_invite(profile, plex_user_id):
     user_found_in_plex = False
     if target_identifier:
         try:
-            libraries = json.loads(profile.get('libraries', '[]'))
+            # 🛡️ CORREÇÃO: Prevenção do Erro 'NoneType' caso as bibliotecas sejam NULL na DB
+            libraries_raw = profile.get('libraries')
+            if libraries_raw is None:
+                libraries = []
+            elif isinstance(libraries_raw, str):
+                try:
+                    libraries = json.loads(libraries_raw)
+                except json.JSONDecodeError:
+                    libraries = []
+            else:
+                libraries = libraries_raw if isinstance(libraries_raw, list) else []
+
             invite_result = extensions.plex_manager.invites.send_plex_invite(target_identifier, libraries, plex_user_id=plex_user_id)
             
             if not invite_result.get('success'):
@@ -59,7 +70,7 @@ def _handle_reactivation_invite(profile, plex_user_id):
             else:
                 logger.info(f"Convite de reativação enviado com sucesso para: {target_identifier}")
         except Exception as invite_error:
-            logger.error(f"Erro crítico ao convidar '{target_identifier}': {invite_error}")
+            logger.error(f"Erro crítico ao convidar '{target_identifier}': {invite_error}", exc_info=True)
 
         time.sleep(2)
         extensions.plex_manager.users.invalidate_user_cache()
@@ -219,6 +230,7 @@ def get_payment_options():
     is_public_request = bool(token)
     user_profile = None
 
+    # 🛡️ PRIORIDADE AO TOKEN: Mesmo que o admin esteja logado, se houver token na URL usa a conta do token.
     if token:
         profile_from_token = UserProfile.query.filter_by(payment_token=token).first()
         if profile_from_token:
@@ -246,15 +258,25 @@ def get_payment_options():
 @limiter.limit("5 per minute")
 def validate_coupon_route():
     data = request.json
-    user_profile = extensions.data_manager.get_user_profile_by_username(data.get('username'))
-    if not user_profile:
-        return jsonify({"success": False, "message": "Utilizador não encontrado."}), 404
+    token = data.get('token')
+    plex_user_id = None
+    
+    # 🛡️ PROTEÇÃO APLICADA: Uso exclusivo do Token ou Sessão Real
+    if token:
+        profile = UserProfile.query.filter_by(payment_token=token).first()
+        if profile:
+            plex_user_id = profile.plex_user_id
+    elif current_user.is_authenticated:
+        plex_user_id = int(current_user.id)
+        
+    if not plex_user_id:
+        return jsonify({"success": False, "message": _("Utilizador não autorizado ou token inválido.")}), 404
 
     if not data.get('code') or data.get('screens') is None:
         return jsonify({"success": False, "message": "Código e plano são obrigatórios."}), 400
 
     return jsonify(extensions.pricing_manager.calculate_price(
-        screens=data.get('screens'), coupon_code=data.get('code'), plex_user_id=user_profile.get('plex_user_id')
+        screens=data.get('screens'), coupon_code=data.get('code'), plex_user_id=plex_user_id
     ))
 
 @payments_api_bp.route('/create-charge', methods=['POST'])
@@ -268,14 +290,16 @@ def create_charge_route():
 
     plex_user_id, username = None, None
 
-    if current_user.is_authenticated:
+    # 🛡️ CORREÇÃO CRÍTICA: PRIORIDADE ABSOLUTA AO TOKEN DA URL
+    if token:
+        profile_model = UserProfile.query.filter_by(payment_token=token).first()
+        if profile_model:
+            plex_user_id, username = profile_model.plex_user_id, profile_model.username
+    elif current_user.is_authenticated:
         plex_user_id, username = int(current_user.id), current_user.username
-    elif token:
-        if profile := UserProfile.query.filter_by(payment_token=token).first():
-            plex_user_id, username = profile.plex_user_id, profile.username
     
     if not plex_user_id:
-        return jsonify({"success": False, "message": _("Utilizador não especificado.")}), 400
+        return jsonify({"success": False, "message": _("Utilizador não especificado ou token inválido.")}), 400
 
     profile = extensions.data_manager.get_user_profile(plex_user_id)
     if not profile:
@@ -302,26 +326,74 @@ def create_charge_route():
 
     if final_price <= 0:
         try:
-            if profile.get('status') == 'inactive':
-                _handle_reactivation_invite(profile, plex_user_id)
-                profile = extensions.data_manager.get_user_profile(plex_user_id)
-                profile['status'] = 'active'
-                extensions.data_manager.set_user_profile(plex_user_id, profile)
+            is_reactivation = (profile.get('status') == 'inactive')
+            user_found_in_plex = False
 
-            new_expiration_date = extensions.plex_manager.renew_subscription(plex_user_id, 1, base_mode='expiry_date')
+            # 1. Criação das notificações para o Sino e Histórico
+            if is_reactivation:
+                extensions.data_manager.create_notification(
+                    message=_("O utilizador %(username)s reativou a conta com um cupão de 100%%.", username=username),
+                    category='success', link=url_for('main.users_page')
+                )
+                extensions.data_manager.create_notification(
+                    message=_("A sua conta foi reativada gratuitamente com sucesso!"),
+                    category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
+                )
+                user_found_in_plex = _handle_reactivation_invite(profile, plex_user_id)
+            else:
+                extensions.data_manager.create_notification(
+                    message=_("Renovação de %(username)s (Cupão 100%%) confirmada.", username=username),
+                    category='success', link=url_for('main.users_page')
+                )
+                extensions.data_manager.create_notification(
+                    message=_("A sua renovação com cupão foi confirmada com sucesso."),
+                    category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
+                )
+
+            # 2. Renovação exata baseada nas telas escolhidas
+            renewal_base_mode = 'today' if is_reactivation else 'expiry_date'
+            config = load_or_create_config()
+            expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
+            
+            new_expiration_date = extensions.plex_manager.renew_subscription(
+                plex_user_id, 1, screens=int(screens_str), base_mode=renewal_base_mode,
+                expiration_time_str=expiration_time, is_reactivation=is_reactivation
+            )
+            
+            # 3. Tratamento de Reativação Pendente (Convite)
+            if is_reactivation and not user_found_in_plex:
+                post_renewal_profile = extensions.data_manager.get_user_profile(plex_user_id)
+                if post_renewal_profile.get('status') == 'active':
+                    post_renewal_profile['status'] = 'inactive'
+                    extensions.data_manager.set_user_profile(plex_user_id, post_renewal_profile)
+
             if coupon_code: extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id)
             
             extensions.data_manager.add_manual_payment(
                 plex_user_id=plex_user_id, username=username, value=0.00,
-                description=f"Reativação/Renovação Cupão 100% ({coupon_code})",
+                description=f"Renovação Cupão 100% ({coupon_code})",
                 payment_date_str=datetime.now(timezone.utc).isoformat()
             )
             extensions.db.session.commit()
-            extensions.plex_manager.notifier_manager.send_renewal_notification(user_info, new_expiration_date, profile)
             
-            return jsonify({"success": True, "free_renewal": True, "message": _("Assinatura ativada gratuitamente!")})
+            # 4. Tocar o Sino em Tempo Real (WebSockets)
+            if extensions.socketio:
+                extensions.socketio.emit('new_notification', namespace='/')
+                extensions.socketio.emit('user_list_updated', {'message': _("Renovação gratuita concluída.")}, namespace='/dashboard')
+
+            refreshed_profile = extensions.data_manager.get_user_profile(plex_user_id)
+            extensions.plex_manager.notifier_manager.send_renewal_notification(user_info, new_expiration_date, refreshed_profile)
+            
+            # 5. Retornar o estado do utilizador para o JS saber se mostra o botão do Plex
+            return jsonify({
+                "success": True, 
+                "free_renewal": True, 
+                "user_status": refreshed_profile.get('status', 'active'),
+                "message": _("Assinatura ativada gratuitamente!")
+            })
             
         except Exception as e:
+            logger.error(f"Erro na renovação gratuita: {e}", exc_info=True)
             extensions.db.session.rollback()
             return jsonify({"success": False, "message": _("Ocorreu um erro interno ao ativar.")}), 500
 
