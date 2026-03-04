@@ -17,17 +17,18 @@
 
     /* Estilização avançada para as Abas de Utilizadores controladas por JS */
     .user-tab {
-        /* 🛡️ CORREÇÃO MOBILE AQUI: flex-shrink-0 impede que os botões sejam esmagados! */
+        /* flex-shrink-0 impede que os botões sejam esmagados! */
         @apply flex-shrink-0 flex items-center whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-500 dark:text-gray-400 transition-all duration-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50;
     }
     .user-tab.active {
         @apply bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-600;
     }
     .user-tab .tab-count {
-        @apply ml-2 px-2 py-0.5 rounded-full text-xs font-bold transition-colors;
+        /* flex-shrink-0 adicionado para garantir que a bolinha de contagem nunca encolhe */
+        @apply ml-2 px-2 py-0.5 rounded-full text-xs font-bold transition-colors flex-shrink-0;
     }
     
-    /* CORREÇÃO APLICADA: Toggle de Convites interno (Estilo iOS) blindado contra esmagamento */
+    /* Toggle de Convites interno (Estilo iOS) blindado contra esmagamento */
     .invite-tab-btn {
         @apply relative flex-shrink-0 flex items-center justify-center whitespace-nowrap px-4 py-1.5 text-sm font-bold rounded-lg transition-all duration-200 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200;
     }
@@ -114,37 +115,37 @@
     </div>
 
     <!-- Abas de Filtro de Utilizadores -->
-    <div class="border-b border-gray-200 dark:border-gray-700/60 mb-6 pb-2">
-        <nav id="userTabs" class="flex space-x-2 overflow-x-auto no-scrollbar" aria-label="Tabs">
+    <div class="border-b border-gray-200 dark:border-gray-700 overflow-hidden">
+        <nav id="userTabs" class="-mb-px flex space-x-1 sm:space-x-2 overflow-x-auto no-scrollbar" aria-label="Tabs">
             <!-- Aba Todos -->
             <button data-filter="all" class="user-tab active">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-blue-500" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" /></svg>
-                <span class="hidden sm:inline ml-2">{{ _('Todos') }}</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-blue-500" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" /></svg>
+                <span class="tab-text">{{ _('Todos') }}</span>
                 <span id="count-all" class="tab-count bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-300">0</span>
             </button>
             <!-- Aba Ativos -->
             <button data-filter="active" class="user-tab">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
-                <span class="hidden sm:inline ml-2">{{ _('Ativos') }}</span>
-                <span id="count-active" class="tab-count bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300">0</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-green-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                <span class="tab-text">{{ _('Ativos') }}</span>
+                <span id="count-active" class="tab-count bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">0</span>
             </button>
             <!-- Aba Em Teste -->
             <button data-filter="trial" class="user-tab">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-purple-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.414L11 10.586V6z" clip-rule="evenodd" /></svg>
-                <span class="hidden sm:inline ml-2">{{ _('Em Teste') }}</span>
-                <span id="count-trial" class="tab-count bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300">0</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-purple-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.414L11 10.586V6z" clip-rule="evenodd" /></svg>
+                <span class="tab-text">{{ _('Em Teste') }}</span>
+                <span id="count-trial" class="tab-count bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">0</span>
             </button>
             <!-- Aba Bloqueados -->
             <button data-filter="blocked" class="user-tab">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-red-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm-2.5 8V5.5a2.5 2.5 0 115 0V9h-5z" clip-rule="evenodd" /></svg>
-                <span class="hidden sm:inline ml-2">{{ _('Bloqueados') }}</span>
-                <span id="count-blocked" class="tab-count bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300">0</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-red-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm-2.5 8V5.5a2.5 2.5 0 115 0V9h-5z" clip-rule="evenodd" /></svg>
+                <span class="tab-text">{{ _('Bloqueados') }}</span>
+                <span id="count-blocked" class="tab-count bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">0</span>
             </button>
             <!-- Aba Inativos -->
             <button data-filter="inactive" class="user-tab">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>
-                <span class="hidden sm:inline ml-2">{{ _('Inativos') }}</span>
-                <span id="count-inactive" class="tab-count bg-gray-100 text-gray-800 dark:bg-gray-900/50 dark:text-gray-400">0</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>
+                <span class="tab-text">{{ _('Inativos') }}</span>
+                <span id="count-inactive" class="tab-count bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300">0</span>
             </button>
         </nav>
     </div>
