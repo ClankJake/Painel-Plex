@@ -1,7 +1,10 @@
+# /app/services/plex/invite_manager.py 
+
 import logging
 import secrets
 import time
 import json
+import re
 import requests
 from datetime import datetime, timezone, timedelta
 
@@ -12,9 +15,47 @@ from flask import url_for
 
 logger = logging.getLogger(__name__)
 
+# =========================================================================
+# TRADUTOR DE ERROS DO PLEX
+# =========================================================================
+def extract_plex_error_message(exception) -> str:
+    """
+    Extrai uma mensagem de erro legível e amigável das exceções brutas da API do Plex.
+    """
+    error_message = str(exception)
+
+    xml_pattern = r'<Response[^>]+status="([^"]*)"[^>]*/?>'
+    xml_match = re.search(xml_pattern, error_message)
+    if xml_match:
+        return xml_match.group(1)
+
+    json_pattern = r'"message":\s*"([^"]*)"'
+    json_match = re.search(json_pattern, error_message)
+    if json_match:
+        return json_match.group(1)
+
+    status_pattern = r"\(\d+\)\s+([^;]+);"
+    status_match = re.search(status_pattern, error_message)
+    if status_match:
+        error_text = status_match.group(1).strip()
+        return error_text.replace("_", " ").title()
+
+    if hasattr(exception, "message"):
+        return str(exception.message)
+
+    clean_message = error_message.split(";")[0] if ";" in error_message else error_message
+    clean_message = clean_message.replace("plexapi.exceptions.", "").replace("BadRequest: ", "")
+
+    stripped = clean_message.strip().strip("'\"")
+    if stripped.isdigit():
+        return f"ID de biblioteca inválido: '{stripped}'. Verifique as configurações."
+
+    return clean_message
+
+
 class PlexInviteManager:
     """
-    Gere todo o ciclo de vida dos convites de utilizadores.
+    Gere todo o ciclo de vida dos convites de utilizadores e reativações.
     """
     def __init__(self, connection, user_manager, data_manager, plex_manager, overseerr_manager, notifier_manager):
         self.conn = connection
@@ -32,7 +73,6 @@ class PlexInviteManager:
         max_uses = kwargs.get('max_uses', 1)
         telegram_id = kwargs.get('telegram_id')
 
-        # Validação do código personalizado
         if custom_code:
             if self.data_manager.get_invitation(custom_code):
                 return {"success": False, "message": _("Este código personalizado já está em uso.")}
@@ -40,7 +80,6 @@ class PlexInviteManager:
         else:
             code = secrets.token_urlsafe(16)
         
-        # Validação de Duplicidade de Telegram ID
         if telegram_id:
             existing_user = self.data_manager.get_user_profile_by_telegram(telegram_id)
             if existing_user:
@@ -84,17 +123,39 @@ class PlexInviteManager:
 
     def claim_invitation(self, code, plex_user_account):
         """
-        Orquestra o resgate de um convite. (Refatorado para melhor leitura e SRP).
+        Orquestra o resgate de um convite inicial, com proteção anti-espertos.
         """
         invitation, message = self.get_invitation_by_code(code)
         if not invitation:
             return {"success": False, "message": message}
         
         username = plex_user_account.username
+        plex_user_id = plex_user_account.id
         
-        # 1. Validação básica de resgate duplicado
+        # 1. Validação básica de resgate duplicado do mesmo convite
         if username in invitation.get('claimed_by_users', []):
             return {"success": False, "message": _("Já resgatou este convite anteriormente.")}
+            
+        # 🛡️ 1.5. SISTEMA ANTI-BURLA (O bloqueio de espertinhos)
+        # Verifica se esta conta do Plex já faz parte do nosso sistema
+        existing_profile = self.data_manager.get_user_profile(plex_user_id)
+        if existing_profile:
+            is_blocked = self.data_manager.get_blocked_user(plex_user_id) is not None
+            
+            # Se o utilizador já foi cliente, mas deixou expirar ou foi bloqueado
+            if existing_profile.get('status') == 'inactive' or is_blocked:
+                logger.warning(f"O utilizador inativo '{username}' tentou usar o convite '{code}' para contornar o pagamento.")
+                return {
+                    "success": False,
+                    "message": _("A sua conta encontra-se inativa ou expirada. Por favor, acesse à página minha conta para renovar a assinatura em vez de utilizar um novo convite.")
+                }
+            
+            # Se o utilizador já está ativo, não precisa de gastar um convite
+            if existing_profile.get('status') == 'active':
+                return {
+                    "success": False,
+                    "message": _("Você já possui acesso ativo a este servidor. Não necessita de resgatar novos convites.")
+                }
         
         # 2. Prevenção de Abuso de Testes (Trials)
         if invitation.get("trial_duration_minutes", 0) > 0:
@@ -105,27 +166,27 @@ class PlexInviteManager:
                     "message": _("Já utilizou um período de teste anteriormente. Para continuar a utilizar o serviço, adquira um plano.")
                 }
         
-        # 3. Tratamento de Telegram ID
         telegram_id_from_invite = self._handle_telegram_linking(invitation, username)
 
-        # 4. Enviar Convite via Plex
-        invite_result = self.send_plex_invite(plex_user_account.email, invitation['libraries'], plex_user_id=plex_user_account.id)
+        invite_result = self.send_plex_invite(
+            identifier=plex_user_account.email, 
+            library_titles=invitation['libraries'], 
+            plex_user_id=plex_user_account.id,
+            allow_sync=invitation.get('allow_downloads', False)
+        )
+        
         if not invite_result.get("success"):
             return invite_result
         if invite_result.get("already_exists"):
             return {"success": False, "message": _("Já tem acesso a este servidor.")}
 
-        # 5. Aceitar o Convite
-        # Nota: O `_accept_invite_v2` agora tem retry automático, não precisamos do `time.sleep(3)` aqui.
         accept_result = self._accept_invite_v2(plex_user_account)
         if not accept_result.get("success"):
-            # Fallback de segurança: Verifica se realmente falhou ou se já está aceite na cache
             self.user_manager.invalidate_user_cache()
             all_current_users = self.user_manager.get_all_plex_users()
             if not any(str(u['id']) == str(plex_user_account.id) for u in all_current_users):
                 return {"success": False, "message": accept_result.get('message')}
 
-        # 6. Atualizar Limites e Estado Local
         if invitation.get('screen_limit', 0) > 0:
             self.plex_manager.update_screen_limit(plex_user_account.id, invitation['screen_limit'])
 
@@ -133,7 +194,6 @@ class PlexInviteManager:
         self.user_manager.invalidate_user_cache()
         self.data_manager.create_notification(message=f"'{username}' resgatou um convite.", category='success', link=url_for('main.users_page'))
 
-        # 7. Configurar Perfil Local, Trial e Overseerr
         user_data_response = self._setup_local_profile_and_integrations(
             plex_user_account, invitation, telegram_id_from_invite
         )
@@ -144,10 +204,7 @@ class PlexInviteManager:
             "user_data": user_data_response
         }
 
-    # --- MÉTODOS AUXILIARES DE RESGATE (SRP) ---
-
     def _check_trial_abuse(self, username):
-        """Verifica se o utilizador já usou algum convite de teste (trial) no passado."""
         try:
             all_invites = self.data_manager.get_all_invitations()
             invites_list = all_invites.values() if isinstance(all_invites, dict) else all_invites
@@ -162,7 +219,6 @@ class PlexInviteManager:
             return False
 
     def _handle_telegram_linking(self, invitation, username):
-        """Valida e retorna o Telegram ID a vincular, evitando conflitos."""
         telegram_id = invitation.get('telegram_id')
         if not telegram_id:
             return None
@@ -175,7 +231,6 @@ class PlexInviteManager:
         return telegram_id
 
     def _setup_local_profile_and_integrations(self, plex_account, invitation, telegram_id):
-        """Configura perfil na BD, Overseerr e Job de Expiração."""
         from app.config import load_or_create_config
         
         profile_data = {
@@ -190,14 +245,12 @@ class PlexInviteManager:
             profile_data['telegram_user'] = telegram_id
             logger.info(f"Telegram ID {telegram_id} vinculado ao utilizador {plex_account.username}.")
 
-        # Trial Logic
         is_trial = False
         if invitation.get("trial_duration_minutes", 0) > 0:
             is_trial = True
             trial_end_utc, job_id = self._schedule_trial_end(plex_account.id, invitation["trial_duration_minutes"])
             profile_data.update({"trial_end_date": trial_end_utc.isoformat(), "trial_job_id": job_id})
 
-        # Overseerr Logic
         if invitation.get('overseerr_access'):
             self.overseerr_manager.import_from_plex({"id": plex_account.id, "email": plex_account.email, "username": plex_account.username})
             profile_data['overseerr_access'] = True
@@ -219,7 +272,6 @@ class PlexInviteManager:
         }
 
     def _schedule_trial_end(self, plex_user_id, duration_minutes):
-        """Agenda a remoção do utilizador via APScheduler."""
         from app.extensions import scheduler
         from app.scheduler import end_trial_job
         
@@ -232,8 +284,6 @@ class PlexInviteManager:
             trigger='date', run_date=naive_run_date, replace_existing=True
         )
         return trial_end_utc, job_id
-
-    # --- RESTANTE GESTÃO DE CONVITES ---
 
     def list_invitations(self):
         return self.data_manager.get_all_invitations()
@@ -272,7 +322,15 @@ class PlexInviteManager:
         except Exception as e:
             logger.error(f"Erro não fatal ao sincronizar dados do utilizador: {e}")
 
-    def send_plex_invite(self, identifier, library_titles, plex_user_id=None):
+    # =========================================================================
+    # REATIVAÇÃO E ENVIO DE CONVITES REFORÇADOS
+    # =========================================================================
+    def send_plex_invite(self, identifier, library_titles, plex_user_id=None, allow_sync=False):
+        """
+        Envia o convite para a Plex.tv.
+        A MELHORIA: Se o utilizador já for amigo, usa o user_manager blindado para atualizar as
+        permissões (Downloads e Bibliotecas), restaurando o acesso com perfeição.
+        """
         if not self.conn.plex:
             return {"success": False, "message": _("O Plex não está configurado.")}
         
@@ -290,88 +348,106 @@ class PlexInviteManager:
             if not libraries_to_share:
                 return {"success": False, "message": _("Nenhuma biblioteca válida foi encontrada para partilhar.")}
 
-            # Se já for amigo
+            if not user_to_invite:
+                try:
+                    user_to_invite = self.conn.account.user(identifier)
+                except NotFound:
+                    pass
+
             if user_to_invite:
                 self._sync_local_user_data(user_to_invite)
                 
                 if self.conn.plex.machineIdentifier in [s.machineIdentifier for s in user_to_invite.servers]:
-                    return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso."), "email": user_to_invite.email}
+                    logger.info(f"O utilizador {user_to_invite.username} já é amigo. Restaurando bibliotecas e permissão de Sync via Atualização de Fundo...")
+                    self.user_manager.update_user_libraries(user_to_invite.id, library_titles, allow_sync=allow_sync)
+                    return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso. Permissões restauradas."), "email": user_to_invite.email}
 
-                self.conn.account.updateFriend(user=user_to_invite, server=self.conn.plex, sections=libraries_to_share)
-                return {"success": True, "message": _("Acesso do utilizador atualizado com sucesso via ID!"), "email": user_to_invite.email}
+                try:
+                    self.conn.account.updateFriend(user=user_to_invite, server=self.conn.plex, sections=libraries_to_share, allowSync=allow_sync)
+                    return {"success": True, "message": _("Acesso do utilizador atualizado com sucesso!"), "email": user_to_invite.email}
+                except Exception as update_err:
+                    self.user_manager.update_user_libraries(user_to_invite.id, library_titles, allow_sync=allow_sync)
+                    return {"success": True, "message": _("Acesso do utilizador atualizado com sucesso (via Sistema Seguro)!"), "email": user_to_invite.email}
 
-            # Fallback (Ainda não é amigo ou ID falhou)
-            user_to_invite = self.conn.account.user(identifier)
-            if user_to_invite:
-                 self._sync_local_user_data(user_to_invite)
-
-            if self.conn.plex.machineIdentifier in [s.machineIdentifier for s in user_to_invite.servers]:
-                return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso."), "email": user_to_invite.email}
-
-            self.conn.account.updateFriend(user=user_to_invite, server=self.conn.plex, sections=libraries_to_share)
-            return {"success": True, "message": _("Acesso do utilizador atualizado com sucesso para %(identifier)s!", identifier=identifier), "email": user_to_invite.email}
-
-        except NotFound:
-            # Novo amigo
-            self.conn.account.inviteFriend(user=identifier, server=self.conn.plex, sections=libraries_to_share)
+            # É um amigo Novo: Usa o convite nativo do PlexAPI que funciona perfeitamente para novos e-mails
+            self.conn.account.inviteFriend(user=identifier, server=self.conn.plex, sections=libraries_to_share, allowSync=allow_sync)
             return {"success": True, "message": _("Convite enviado com sucesso para %(identifier)s!", identifier=identifier), "email": identifier}
         
         except BadRequest as e:
             error_str = str(e).lower()
             if 'user is already a friend' in error_str or "already sharing" in error_str or "invite has already been sent" in error_str:
                 return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso ou um convite pendente.")}
-            logger.error(f"Erro 'BadRequest' ao convidar '{identifier}': {e}")
-            return {"success": False, "message": str(e)}
+            
+            clean_error = extract_plex_error_message(e)
+            logger.error(f"Erro 'BadRequest' ao convidar '{identifier}': {clean_error}")
+            return {"success": False, "message": clean_error}
         
         except Exception as e:
-            logger.error(f"Erro inesperado ao convidar '{identifier}': {e}", exc_info=True)
-            return {"success": False, "message": str(e)}
+            clean_error = extract_plex_error_message(e)
+            logger.error(f"Erro inesperado ao convidar '{identifier}': {clean_error}")
+            return {"success": False, "message": clean_error}
 
+    # =========================================================================
+    # ACEITAÇÃO BLINDADA V2
+    # =========================================================================
     def _accept_invite_v2(self, user_account: MyPlexAccount, max_retries=3, delay=2.0):
-        """
-        Aceita o convite pendente usando o token da conta Plex do utilizador com mecanismo de Retry.
-        PlexAPI as vezes sofre de consistência eventual (eventual consistency), o convite demora 1 a 2 seg a aparecer.
-        """
-        from app.config import load_or_create_config
-        config = load_or_create_config()
-        
         owner_identifier = self.conn.account.username
-        session = requests.Session()
+        owner_email = getattr(self.conn.account, 'email', None)
+        owner_title = getattr(self.conn.account, 'title', None)
+
+        base = "https://clients.plex.tv"
+        
         params = {
-            "X-Plex-Product": config.get("APP_TITLE", "Plex Panel"), 
+            "X-Plex-Product": "PlexPanel", 
             "X-Plex-Version": "1.0",
-            "X-Plex-Client-Identifier": f"{secrets.token_hex(8)}-plex-panel-accept",
-            "X-Plex-Platform": "Python", 
-            "X-Plex-Device": "Server",
+            "X-Plex-Client-Identifier": getattr(user_account, 'uuid', f"{secrets.token_hex(8)}-plex-panel"),
+            "X-Plex-Platform": "Web", 
+            "X-Plex-Platform-Version": "1.0",
+            "X-Plex-Features": "external-media,indirect-media,hub-style-list",
+            "X-Plex-Language": "pt",
             "X-Plex-Token": user_account.authToken,
         }
-        
+        headers = {"Accept": "application/json"}
+
         def _matches(inv):
-            o = inv.get("owner", {})
-            return owner_identifier in (o.get("username"), o.get("email"), o.get("title"))
+            owner_data = inv.get("owner", {})
+            possible_owner_values = [
+                owner_data.get("username"), 
+                owner_data.get("email"), 
+                owner_data.get("title"), 
+                owner_data.get("friendlyName")
+            ]
+            server_identifiers = [owner_identifier, owner_email, owner_title]
+            return any(val and val in possible_owner_values for val in server_identifiers)
 
         for attempt in range(max_retries):
             try:
-                resp = session.get("https://clients.plex.tv/api/v2/shared_servers/invites/received/pending", params=params, headers={"Accept": "application/json"}, timeout=15)
+                session = getattr(user_account, '_session', requests.Session())
+                
+                url_list = f"{base}/api/v2/shared_servers/invites/received/pending"
+                resp = session.get(url_list, params=params, headers=headers, timeout=15)
                 resp.raise_for_status()
                 invites = resp.json()
                 
                 invite = next((i for i in invites if _matches(i)), None)
                 if invite and invite.get("sharedServers"):
                     invite_id = invite["sharedServers"][0]["id"]
-                    resp_accept = session.post(f"https://clients.plex.tv/api/v2/shared_servers/{invite_id}/accept", params=params, headers={"Accept": "application/json"}, timeout=15)
+                    url_accept = f"{base}/api/v2/shared_servers/{invite_id}/accept"
+                    
+                    resp_accept = session.post(url_accept, params=params, headers=headers, timeout=15)
                     resp_accept.raise_for_status()
+                    
+                    logger.info(f"Convite ID {invite_id} aceite com sucesso via API V2!")
                     return {"success": True}
                 
-                # Se não encontrar o convite, aguarda e tenta novamente (Consistência Eventual do Plex)
                 logger.debug(f"Convite não encontrado na tentativa {attempt + 1}/{max_retries}. A aguardar {delay}s...")
                 time.sleep(delay)
                 
             except Exception as e:
-                logger.error(f"Erro na tentativa {attempt + 1} ao aceitar convite na API do Plex: {e}")
+                logger.error(f"Erro na tentativa {attempt + 1} ao aceitar convite na API V2: {e}")
                 time.sleep(delay)
 
-        return {"success": False, "message": _("Não foi possível encontrar um convite pendente. Tente verificar o seu email.")}
+        return {"success": False, "message": _("O convite não apareceu no sistema a tempo. Por favor, tente aceitá-lo manualmente no seu email.")}
 
     def accept_invite_via_token(self, plex_token):
         """
@@ -379,16 +455,13 @@ class PlexInviteManager:
         """
         try:
             user_account = MyPlexAccount(token=plex_token)
-            
             accept_result = self._accept_invite_v2(user_account)
             
             if not accept_result.get('success'):
-                # Verifica se o utilizador JÁ está ativo (pode ter aceite por email entretanto)
                 self.user_manager.invalidate_user_cache()
                 all_users = self.user_manager.get_all_plex_users()
                 if any(str(u['id']) == str(user_account.id) for u in all_users):
                     return {"success": True, "message": _("O utilizador já está ativo no servidor."), "user": user_account}
-                
                 return accept_result
 
             return {"success": True, "message": _("Convite aceite com sucesso."), "user": user_account}
