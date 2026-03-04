@@ -522,8 +522,12 @@ def get_user_libraries_route(user): return jsonify(extensions.plex_manager.get_u
 @admin_required
 @user_lookup_by_id
 def update_libraries_route(user): 
-    res = extensions.plex_manager.update_user_libraries(user['id'], request.json.get('libraries', []))
-    if res.get('success'): logger.info(f"Admin '{current_user.username}' atualizou as bibliotecas de '{user['username']}'.")
+    libs = request.json.get('libraries', [])
+    allow_sync = request.json.get('allow_sync')
+    
+    res = extensions.plex_manager.update_user_libraries(user['id'], libs, allow_sync=allow_sync)
+    if res.get('success'): 
+        logger.info(f"Admin '{current_user.username}' atualizou as bibliotecas e permissões de '{user['username']}'.")
     return jsonify(res)
 
 @users_api_bp.route('/update-all-libraries', methods=['POST'])
