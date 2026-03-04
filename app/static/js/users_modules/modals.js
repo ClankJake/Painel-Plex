@@ -395,67 +395,167 @@ export function showScreenLimitModal(user) {
 export async function showLibraryManagementModal(user = null) {
     const isBulkUpdate = user === null;
     const title = isBulkUpdate ? i18n.updateLibsForAll : `${i18n.manageLibsFor} ${sanitizeHTML(user.username)}`;
+    
+    // Configura os containers dinâmicos com IDs (resolve o erro TypeError: innerHTML is null)
     const body = `
-        <div class="flex justify-between items-center mb-3">
-            <p class="text-sm text-gray-500 dark:text-gray-400">Selecione o acesso permitido:</p>
-            <button type="button" id="modalSelectAllLibs" class="text-xs bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 px-3 py-1 rounded-md transition-colors">${i18n.selectAll}</button>
-        </div>
-        <div id="modalLibsContainer" class="max-h-56 overflow-y-auto bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-200 dark:border-gray-700 space-y-1 modal-body">
-            <div class="flex justify-center p-4"><div class="animate-spin rounded-full h-6 w-6 border-b-2 border-yellow-500"></div></div>
+        <div id="lib-modal-dynamic-body">
+            <div class="flex flex-col justify-center items-center py-10">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mb-4"></div>
+                <span class="text-gray-500 dark:text-gray-400 font-medium">Acessando a biblioteca...</span>
+            </div>
         </div>`;
         
-    const footer = `
-        <button id="libMgmtSave" class="btn bg-green-600 hover:bg-green-500 text-white w-full sm:w-auto transition-colors disabled:opacity-50">${i18n.save}</button>
-        <button id="libMgmtCancel" class="${btnCancelClass}">${i18n.cancel}</button>`;
+    const footer = `<div id="lib-modal-dynamic-footer" class="w-full flex justify-end"></div>`;
         
     const modal = createModal('libraryManagementModal', title, body, footer);
 
-    const modalLibsContainer = modal.querySelector('#modalLibsContainer');
-    const selectAllButton = modal.querySelector('#modalSelectAllLibs');
-    const saveButton = modal.querySelector('#libMgmtSave');
-
-    modal.querySelector('#libMgmtCancel').onclick = () => modal.classList.add('hidden');
-    saveButton.disabled = true;
-
-    let userLibraries = [];
-    if (!isBulkUpdate) {
-        try {
-            const userLibsResponse = await api.fetchUserLibraries(user.id);
-            if (userLibsResponse && userLibsResponse.success && Array.isArray(userLibsResponse.libraries)) {
-                userLibraries = userLibsResponse.libraries;
+    try {
+        const fetchUrl = isBulkUpdate ? null : `/api/users/libraries/${user.id}?t=${new Date().getTime()}`;
+        
+        let userLibraries = [];
+        let allowSync = false;
+        
+        if (!isBulkUpdate) {
+            const response = await fetch(fetchUrl);
+            const responseData = await response.json();
+            if (responseData.success) {
+                userLibraries = responseData.libraries || [];
+                allowSync = responseData.allow_sync || false;
             } else {
-                throw new Error((userLibsResponse && userLibsResponse.message) || i18n.errorLoadingLibs);
+                throw new Error(responseData.message || "Erro na sincronização");
             }
-        } catch (e) {
-             modalLibsContainer.innerHTML = `<p class="text-red-500 text-center py-4">${e.message}</p>`;
-             return;
         }
+
+        const allLibraries = state.allLibraries || [];
+        
+        let checkboxesHtml = allLibraries.map(lib => {
+            const isChecked = userLibraries.includes(lib.title) ? 'checked' : '';
+            return `
+                <label class="flex items-center space-x-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-gray-200 dark:hover:border-gray-600">
+                    <input type="checkbox" value="${sanitizeHTML(lib.title)}" class="library-checkbox form-checkbox h-5 w-5 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-500 rounded text-yellow-500 focus:ring-yellow-500 focus:ring-offset-0" ${isChecked}>
+                    <span class="text-sm font-medium text-gray-800 dark:text-gray-200">${sanitizeHTML(lib.title)}</span>
+                </label>
+            `;
+        }).join('');
+
+        if (allLibraries.length === 0) {
+            checkboxesHtml = `<p class="text-yellow-600 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-xl text-center">Nenhuma biblioteca disponível no servidor.</p>`;
+        }
+
+        // Interruptor visual de "Permitir Downloads"
+        const allowSyncHtml = isBulkUpdate ? '' : `
+            <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <label class="flex items-center justify-between w-full p-3 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors group">
+                    <div>
+                        <span class="text-sm font-bold text-gray-900 dark:text-white block group-hover:text-yellow-600 transition-colors">Permitir Downloads</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">Permite que o utilizador descarregue filmes e séries (Offline)</span>
+                    </div>
+                    <div class="relative inline-block w-10 mr-2 align-middle select-none">
+                        <input type="checkbox" id="modalAllowSync" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 border-gray-300 dark:border-gray-600 appearance-none cursor-pointer transition-transform duration-200 ease-in-out" ${allowSync ? 'checked' : ''} style="${allowSync ? 'transform: translateX(100%); border-color: #EAB308;' : ''}">
+                        <label for="modalAllowSync" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 dark:bg-gray-700 cursor-pointer transition-colors duration-200 ease-in-out" style="${allowSync ? 'background-color: #EAB308;' : ''}"></label>
+                    </div>
+                </label>
+            </div>
+            <style>
+                .toggle-checkbox:checked { right: 0; border-color: #EAB308; }
+                .toggle-checkbox:checked + .toggle-label { background-color: #EAB308; }
+                .toggle-checkbox { transition: all 0.3s; z-index: 1; }
+            </style>
+        `;
+
+        const modalBody = modal.querySelector('#lib-modal-dynamic-body');
+        const modalFooter = modal.querySelector('#lib-modal-dynamic-footer');
+
+        modalBody.innerHTML = `
+            <div class="flex justify-between items-center mb-4">
+                <p class="text-sm text-gray-500 dark:text-gray-400">Selecione o acesso permitido:</p>
+                <button type="button" id="modalSelectAllLibs" class="text-xs bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 px-3 py-1.5 rounded-md transition-colors font-bold">${i18n.selectAll}</button>
+            </div>
+            <div class="space-y-1 max-h-[40vh] overflow-y-auto custom-scrollbar pr-2 bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-200 dark:border-gray-700">
+                ${checkboxesHtml}
+            </div>
+            ${allowSyncHtml}
+        `;
+
+        modalFooter.className = "flex flex-col sm:flex-row justify-end gap-3 w-full";
+        modalFooter.innerHTML = `
+            <button id="saveLibraryBtn" class="btn bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-500/30 w-full sm:w-auto transition-transform transform hover:-translate-y-0.5">${i18n.save}</button>
+            <button id="libMgmtCancel" class="${btnCancelClass}">${i18n.cancel}</button>
+        `;
+
+        // Listener de animação do Toggle (Botão de Downloads)
+        const allowSyncToggle = modal.querySelector('#modalAllowSync');
+        if (allowSyncToggle) {
+            allowSyncToggle.addEventListener('change', function() {
+                if (this.checked) {
+                    this.style.transform = 'translateX(100%)';
+                    this.style.borderColor = '#EAB308';
+                    this.nextElementSibling.style.backgroundColor = '#EAB308';
+                } else {
+                    this.style.transform = 'translateX(0)';
+                    this.style.borderColor = '';
+                    this.nextElementSibling.style.backgroundColor = '';
+                }
+            });
+        }
+
+        const selectAllButton = modal.querySelector('#modalSelectAllLibs');
+        const saveButton = modal.querySelector('#saveLibraryBtn');
+        const libsContainer = modalBody;
+
+        selectAllButton.onclick = () => toggleSelectAll(libsContainer, selectAllButton);
+        modal.querySelector('#libMgmtCancel').onclick = () => modal.classList.add('hidden');
+
+        saveButton.onclick = async () => {
+            saveButton.disabled = true; 
+            saveButton.innerHTML = 'Salvando...';
+
+            const selectedLibs = Array.from(libsContainer.querySelectorAll('.library-checkbox:checked')).map(cb => cb.value);
+            const allowSyncChecked = allowSyncToggle ? allowSyncToggle.checked : null;
+
+            try {
+                let result;
+                if (isBulkUpdate) {
+                    result = await api.updateAllLibraries(selectedLibs);
+                } else {
+                    // Comunica diretamente com o endpoint para enviar as bibliotecas + permissão de download
+                    const payload = { plex_user_id: user.id, libraries: selectedLibs, allow_sync: allowSyncChecked };
+                    const response = await fetch('/api/users/update-libraries', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    result = await response.json();
+                }
+
+                showToast(result.message, result.success ? 'success' : 'error');
+                if (result.success) {
+                    modal.classList.add('hidden');
+                    document.dispatchEvent(new CustomEvent('data-refresh-requested'));
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (err) {
+                showToast(err.message, 'error');
+                saveButton.disabled = false; 
+                saveButton.innerHTML = i18n.save;
+            }
+        };
+
+    } catch (e) {
+        const modalBody = modal.querySelector('#lib-modal-dynamic-body');
+        const modalFooter = modal.querySelector('#lib-modal-dynamic-footer');
+
+        modalBody.innerHTML = `
+            <div class="text-center">
+                <div class="inline-flex p-4 bg-red-100 dark:bg-red-900/30 text-red-500 rounded-full mb-4"><svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
+                <p class="text-red-500 dark:text-red-400 font-medium">Erro ao sincronizar: ${e.message}</p>
+            </div>`;
+
+        modalFooter.className = "w-full flex justify-end";
+        modalFooter.innerHTML = `<button id="libMgmtCancel" class="${btnCancelClass} w-full sm:w-auto">${i18n.close}</button>`;
+        modal.querySelector('#libMgmtCancel').onclick = () => modal.classList.add('hidden');
     }
-
-    modalLibsContainer.innerHTML = state.allLibraries.map(lib => `
-        <label class="flex items-center space-x-3 p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors cursor-pointer">
-            <input type="checkbox" class="form-checkbox h-4 w-4 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-500 rounded text-yellow-500 focus:ring-yellow-500 focus:ring-offset-0" value="${sanitizeHTML(lib.title)}" ${userLibraries.includes(lib.title) ? 'checked' : ''}>
-            <span class="text-sm text-gray-800 dark:text-gray-200">${sanitizeHTML(lib.title)}</span>
-        </label>`).join('');
-        
-    saveButton.disabled = false;
-    selectAllButton.onclick = () => toggleSelectAll(modalLibsContainer, selectAllButton);
-
-    saveButton.onclick = async () => {
-        saveButton.disabled = true;
-        const selectedLibraries = Array.from(modalLibsContainer.querySelectorAll('input:checked')).map(input => input.value);
-        const apiCall = isBulkUpdate ? api.updateAllLibraries(selectedLibraries) : api.updateUserLibraries(user.id, selectedLibraries);
-        
-        try {
-            const result = await apiCall;
-            showToast(result.message, result.success ? 'success' : 'error');
-            if (result.success) document.dispatchEvent(new CustomEvent('data-refresh-requested'));
-            modal.classList.add('hidden');
-        } catch (error) {
-            showToast(error.message, 'error');
-            saveButton.disabled = false;
-        }
-    };
 }
 
 export async function showUserProfileModal(user) {
@@ -464,9 +564,9 @@ export async function showUserProfileModal(user) {
         <button id="modalCancel" class="${btnCancelClass}">${i18n.cancel}</button>`;
         
     const modal = createModal('userProfileModal', `${i18n.manageProfileTitle} <span class="text-yellow-600 dark:text-yellow-500">${sanitizeHTML(user.username)}</span>`, 
-        `<div class="flex justify-center py-10"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500"></div></div>`, footer);
+        `<div id="profile-modal-dynamic-body"><div class="flex justify-center py-10"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500"></div></div></div>`, footer);
         
-    const modalBody = modal.querySelector('.modal-body');
+    const modalBody = modal.querySelector('#profile-modal-dynamic-body');
 
     try {
         const data = await api.fetchUserProfile(user.id);
