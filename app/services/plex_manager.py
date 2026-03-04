@@ -290,7 +290,7 @@ class PlexManager:
         return processed_users
 
     def get_user_libraries(self, plex_user_id): return self.users.get_user_libraries(plex_user_id)
-    def update_user_libraries(self, plex_user_id, library_titles): return self.users.update_user_libraries(plex_user_id, library_titles)
+    def update_user_libraries(self, plex_user_id, library_titles, allow_sync=None): return self.users.update_user_libraries(plex_user_id, library_titles, allow_sync=allow_sync)
     def update_all_users_libraries(self, library_titles): return self.users.update_all_users_libraries(library_titles)
     def toggle_overseerr_access(self, plex_user_id, access: bool): return self.users.toggle_overseerr_access(plex_user_id, access)
     
