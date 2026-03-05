@@ -95,167 +95,18 @@ class PlexManager:
 
     # --- SESSÕES E STREAMING ---
     def get_active_sessions(self):
-        """Obtém todas as sessões ativas do Plex e formata os dados."""
-        if not self.conn.plex:
+        """
+        Delega a obtenção de sessões ativas para o Motor de Streams (stream_manager), 
+        que possui lógica avançada de proteção, deteção de players e extração de artwork.
+        """
+        if not self.conn.plex or not self.stream_manager:
             return {"success": False, "sessions": [], "stream_count": 0}
         
         try:
-            all_users = self.users.get_all_plex_users() or []
-            user_thumb_map = {user['id']: user['thumb'] for user in all_users}
-            
-            sessions = self.conn.plex.sessions()
-            session_details = [self._parse_session_data(s, user_thumb_map) for s in sessions]
-            
-            return {"success": True, "sessions": session_details, "stream_count": len(sessions)}
-            
-        except (ConnectionError, ReadTimeout, RequestException) as e:
-            logger.warning(f"Erro de rede ao obter sessões do Plex: {e}")
-            return {"success": False, "sessions": [], "stream_count": 0}
+            return self.stream_manager.get_now_playing()
         except Exception as e:
-            logger.error(f"Erro inesperado ao parsear sessões do Plex: {e}", exc_info=True)
+            logger.error(f"Erro inesperado ao delegar sessões ao Motor de Streams: {e}", exc_info=True)
             return {"success": False, "sessions": [], "stream_count": 0}
-
-    def _parse_session_data(self, s, user_thumb_map):
-        """Método auxiliar para tratar os dados de uma única sessão com precisão militar."""
-        progress = 0
-        view_offset = getattr(s, 'viewOffset', 0)
-        duration = getattr(s, 'duration', 0)
-        
-        if view_offset and duration and duration > 0:
-            progress = (view_offset / duration) * 100
-            
-        state = "stopped"
-        if s.players:
-            player_state = getattr(s.players[0], "state", "stopped")
-            state = {"paused": "paused", "playing": "playing", "buffering": "buffering"}.get(player_state, "stopped")
-            
-        # 🛡️ MELHORIA 1: Duplo check de Transcoding importado da referência
-        is_transcoding = False
-        video_decision, audio_decision = "Direct Play", "Direct Play"
-        transcode_progress = None
-        transcode_speed = None
-        
-        transcode_session = getattr(s, "transcodeSession", None)
-        transcode_sessions_list = getattr(s, "transcodeSessions", [])
-        
-        # Agarra a sessão de transcoding, seja ela um objeto isolado ou o primeiro item da nova lista
-        active_ts = transcode_session if transcode_session else (transcode_sessions_list[0] if transcode_sessions_list else None)
-        
-        if active_ts:
-            v_dec = getattr(active_ts, 'videoDecision', 'copy')
-            a_dec = getattr(active_ts, 'audioDecision', 'copy')
-            
-            if v_dec == "transcode": 
-                is_transcoding, video_decision = True, "Transcode"
-            if a_dec == "transcode": 
-                is_transcoding, audio_decision = True, "Transcode"
-                
-            if is_transcoding:
-                # 🛡️ MELHORIA 2: Extração da Velocidade para deteção de Gargalos
-                try: 
-                    transcode_progress = int(getattr(active_ts, "progress", 0))
-                    transcode_speed = float(getattr(active_ts, "speed", 0.0))
-                except (ValueError, TypeError): 
-                    pass
-
-        media = s.media[0] if getattr(s, 'media', None) else None
-        video_codec = (getattr(media, "videoCodec", None) or "N/A").upper()
-        audio_codec = (getattr(media, "audioCodec", None) or "N/A").upper()
-        container = (getattr(media, "container", None) or "N/A").upper()
-        
-        video_resolution = getattr(media, "videoResolution", "N/A")
-        try: 
-            video_resolution = f"{int(video_resolution)}p"
-        except (ValueError, TypeError): 
-            pass
-        
-        # 🛡️ MELHORIA 3: Formatação blindada de Títulos (previne erros se não houver número da temporada)
-        title = getattr(s, 'title', 'Desconhecido')
-        subtitle = str(getattr(s, 'year', ''))
-        media_type = getattr(s, "type", "unknown").lower()
-        
-        if media_type == 'episode':
-            grandparent = getattr(s, 'grandparentTitle', '')
-            title = grandparent if grandparent else title
-            
-            season_num = getattr(s, 'parentIndex', None)
-            episode_num = getattr(s, 'index', None)
-            
-            if season_num is not None and episode_num is not None:
-                subtitle = f"S{int(season_num):02d} · E{int(episode_num):02d} - {getattr(s, 'title', '')}"
-            else:
-                subtitle = getattr(s, 'title', '')
-        
-        # 🛡️ MELHORIA 4: Cascata de Imagens da Referência (Garante que há sempre um Poster bonito)
-        thumb_key = None
-        for attr in ['grandparentThumb', 'parentThumb', 'art', 'thumb']:
-            val = getattr(s, attr, None)
-            if val:
-                thumb_key = val
-                break
-                
-        thumb_url = None
-        if thumb_key:
-            # Mantemos o proxy de segurança do seu painel para não expor o Plex Token!
-            b64_payload = base64.urlsafe_b64encode(f"plex:{thumb_key}".encode('utf-8')).decode('utf-8')
-            try:
-                thumb_url = url_for('image.proxy_image', source=b64_payload)
-            except RuntimeError:
-                thumb_url = f"/image/?source={b64_payload}"
-        
-        # Tratamento de Imagem do Utilizador (Mantido o seu filtro Anti-Double-Proxy perfeito)
-        final_user_thumb = user_thumb_map.get(getattr(s.user, 'id', None))
-        if not final_user_thumb and getattr(s.user, 'thumb', None):
-            try:
-                original_thumb = s.user.thumb
-                if '/image/' not in original_thumb:
-                    parsed_thumb = urlparse(original_thumb)
-                    query_params = parse_qsl(parsed_thumb.query)
-                    clean_query = urlencode([(k, v) for k, v in query_params if k.lower() != 'x-plex-token'])
-                    clean_url = parsed_thumb._replace(query=clean_query).geturl()
-                    
-                    if 'plex.tv' in parsed_thumb.netloc or not parsed_thumb.netloc:
-                        payload_str = f"plex_account:{clean_url}"
-                    else:
-                        payload_str = f"url:{clean_url}"
-                        
-                    b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                    try:
-                        final_user_thumb = url_for('image.proxy_image', source=b64_payload)
-                    except RuntimeError:
-                        final_user_thumb = f"/image/?source={b64_payload}"
-                else:
-                    final_user_thumb = original_thumb
-            except Exception:
-                pass
-
-        return {
-            "session_key": getattr(s, 'sessionKey', '0'), 
-            "user": getattr(s.user, 'title', 'Desconhecido'), 
-            "user_thumb": final_user_thumb,
-            "player": getattr(s.player, 'title', 'Desconhecido') if getattr(s, 'player', None) else 'Desconhecido', 
-            "platform": getattr(s.player, 'platform', 'Desconhecido') if getattr(s, 'player', None) else 'Desconhecido', 
-            "type": media_type,
-            "title": title, 
-            "subtitle": subtitle, 
-            "progress": round(progress, 2),
-            "view_offset": view_offset, 
-            "duration": duration, 
-            "thumb_url": thumb_url, 
-            "state": state,
-            "stream_details": { 
-                "video_decision": video_decision, 
-                "audio_decision": audio_decision, 
-                "video_codec": video_codec, 
-                "audio_codec": audio_codec, 
-                "video_resolution": video_resolution, 
-                "stream": "Transcode" if is_transcoding else "Direct Play", 
-                "container": container, 
-                "is_transcoding": is_transcoding, 
-                "transcode_progress": transcode_progress,
-                "transcode_speed": transcode_speed  # Adicionada Velocidade!
-            }
-        }
 
     # --- BIBLIOTECAS E ACESSOS ---
     def get_libraries(self): return self.conn.get_libraries()
