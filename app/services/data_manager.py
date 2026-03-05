@@ -264,20 +264,22 @@ class DataManager:
         sorted_weeks = sorted(weekly_revenue_map.keys())
         weekly_revenue_dict = {f"Semana {idx + 1}": weekly_revenue_map[w] for idx, w in enumerate(sorted_weeks)}
 
-        # 3. Otimização de Utilizadores a Expirar
+        # 3. Otimização de Utilizadores a Expirar (CORRIGIDA)
         today_local = datetime.now(local_tz).date()
-        today_utc = datetime.now(timezone.utc).date()
-        end_date_utc = today_utc + timedelta(days=renewal_days)
-        today_str = today_utc.isoformat()
-        end_date_str = (end_date_utc + timedelta(days=1)).isoformat()
+        
+        # 🛡️ CORREÇÃO: Ampliamos a janela da query (+2 dias para a frente e para trás)
+        # O SQL usa comparações de texto nas datas ISO (ex: "2024-05-10T23:00" < "2024-05-11").
+        # Isso causava o "corte" de utilizadores que expiravam hoje devido às horas!
+        search_start_str = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+        search_end_str = (datetime.now(timezone.utc) + timedelta(days=renewal_days + 2)).isoformat()
         
         expiring_users_query = db.session.query(UserProfile).outerjoin(BlockedUser).filter(
             BlockedUser.user_plex_id == None, 
             UserProfile.expiration_date.isnot(None), 
             UserProfile.expiration_date != '',
-            UserProfile.expiration_date >= today_str, 
-            UserProfile.expiration_date < end_date_str
-        ).order_by(UserProfile.expiration_date.asc()).all()
+            UserProfile.expiration_date >= search_start_str, 
+            UserProfile.expiration_date <= search_end_str
+        ).all()
         
         upcoming_expirations = []
         for p in expiring_users_query:
@@ -286,17 +288,24 @@ class DataManager:
                 if exp_date_utc.tzinfo is None:
                     exp_date_utc = exp_date_utc.replace(tzinfo=timezone.utc)
                 
+                # Cálculo matemático perfeito (Data Local - Hoje Local = Dias Restantes)
                 days_left = (exp_date_utc.astimezone(local_tz).date() - today_local).days
-                days_text = ngettext('%(num)d dia restante', '%(num)d dias restantes', days_left) % {'num': days_left} if days_left > 0 else (_("Hoje") if days_left == 0 else _("Expirado"))
                 
-                upcoming_expirations.append({
-                    'username': p.username, 
-                    'expiration_date': exp_date_utc.astimezone(local_tz).strftime('%d/%m/%Y'), 
-                    'days_left': days_left, 
-                    'days_left_text': days_text, 
-                    'screen_limit': p.screen_limit
-                })
+                # 🛡️ CORREÇÃO: >= 0 garante que 'Hoje' (0 dias) entra na lista!
+                if 0 <= days_left <= renewal_days:
+                    days_text = ngettext('%(num)d dia restante', '%(num)d dias restantes', days_left) % {'num': days_left} if days_left > 0 else _("Hoje")
+                    
+                    upcoming_expirations.append({
+                        'username': p.username, 
+                        'expiration_date': exp_date_utc.astimezone(local_tz).strftime('%d/%m/%Y'), 
+                        'days_left': days_left, 
+                        'days_left_text': days_text, 
+                        'screen_limit': p.screen_limit
+                    })
             except (ValueError, TypeError): continue
+        
+        # Ordenamos para que os que vencem "Hoje" (0 dias) apareçam sempre no topo da lista
+        upcoming_expirations.sort(key=lambda x: x['days_left'])
         
         return {
             "total_revenue": total_revenue, 
