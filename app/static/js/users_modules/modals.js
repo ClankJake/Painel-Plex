@@ -396,12 +396,11 @@ export async function showLibraryManagementModal(user = null) {
     const isBulkUpdate = user === null;
     const title = isBulkUpdate ? i18n.updateLibsForAll : `${i18n.manageLibsFor} ${sanitizeHTML(user.username)}`;
     
-    // Configura os containers dinâmicos com IDs (resolve o erro TypeError: innerHTML is null)
     const body = `
         <div id="lib-modal-dynamic-body">
             <div class="flex flex-col justify-center items-center py-10">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mb-4"></div>
-                <span class="text-gray-500 dark:text-gray-400 font-medium">Acessando a biblioteca...</span>
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+                <span class="text-gray-500 dark:text-gray-400 font-medium">Acessando a bilioteca...</span>
             </div>
         </div>`;
         
@@ -410,6 +409,7 @@ export async function showLibraryManagementModal(user = null) {
     const modal = createModal('libraryManagementModal', title, body, footer);
 
     try {
+        // Se for atualização global, não há ID. Caso contrário, pede a lista real via backend
         const fetchUrl = isBulkUpdate ? null : `/api/users/libraries/${user.id}?t=${new Date().getTime()}`;
         
         let userLibraries = [];
@@ -422,7 +422,7 @@ export async function showLibraryManagementModal(user = null) {
                 userLibraries = responseData.libraries || [];
                 allowSync = responseData.allow_sync || false;
             } else {
-                throw new Error(responseData.message || "Erro na sincronização");
+                throw new Error(responseData.message || "Erro na sincronização com o Plex.");
             }
         }
 
@@ -431,47 +431,42 @@ export async function showLibraryManagementModal(user = null) {
         let checkboxesHtml = allLibraries.map(lib => {
             const isChecked = userLibraries.includes(lib.title) ? 'checked' : '';
             return `
-                <label class="flex items-center space-x-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-gray-200 dark:hover:border-gray-600">
-                    <input type="checkbox" value="${sanitizeHTML(lib.title)}" class="library-checkbox form-checkbox h-5 w-5 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-500 rounded text-yellow-500 focus:ring-yellow-500 focus:ring-offset-0" ${isChecked}>
-                    <span class="text-sm font-medium text-gray-800 dark:text-gray-200">${sanitizeHTML(lib.title)}</span>
+                <label class="flex items-center p-3 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
+                    <input type="checkbox" value="${sanitizeHTML(lib.title)}" class="library-checkbox w-5 h-5 text-blue-600 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600" ${isChecked}>
+                    <span class="ml-3 text-gray-700 dark:text-gray-200 font-medium">${sanitizeHTML(lib.title)}</span>
                 </label>
             `;
         }).join('');
 
         if (allLibraries.length === 0) {
-            checkboxesHtml = `<p class="text-yellow-600 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-xl text-center">Nenhuma biblioteca disponível no servidor.</p>`;
+            checkboxesHtml = `<p class="text-yellow-600 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-xl text-center">Nenhuma biblioteca disponível para partilhar no seu Servidor Plex.</p>`;
         }
 
-        // Interruptor visual de "Permitir Downloads"
+        // 🛡️ CORREÇÃO: Toggle Switch Padronizado TailwindCSS
         const allowSyncHtml = isBulkUpdate ? '' : `
             <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <label class="flex items-center justify-between w-full p-3 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors group">
-                    <div>
-                        <span class="text-sm font-bold text-gray-900 dark:text-white block group-hover:text-yellow-600 transition-colors">Permitir Downloads</span>
-                        <span class="text-xs text-gray-500 dark:text-gray-400">Permite que o utilizador descarregue filmes e séries (Offline)</span>
+                    <div class="pr-4">
+                        <span class="text-sm font-bold text-gray-900 dark:text-white block group-hover:text-blue-600 transition-colors">Permitir Downloads</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400 block">Permite que o utilizador descarregue filmes e séries (Offline)</span>
                     </div>
-                    <div class="relative inline-block w-10 mr-2 align-middle select-none">
-                        <input type="checkbox" id="modalAllowSync" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 border-gray-300 dark:border-gray-600 appearance-none cursor-pointer transition-transform duration-200 ease-in-out" ${allowSync ? 'checked' : ''} style="${allowSync ? 'transform: translateX(100%); border-color: #EAB308;' : ''}">
-                        <label for="modalAllowSync" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 dark:bg-gray-700 cursor-pointer transition-colors duration-200 ease-in-out" style="${allowSync ? 'background-color: #EAB308;' : ''}"></label>
+                    <div class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                        <input type="checkbox" id="modalAllowSync" class="sr-only peer" ${allowSync ? 'checked' : ''}>
+                        <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                     </div>
                 </label>
             </div>
-            <style>
-                .toggle-checkbox:checked { right: 0; border-color: #EAB308; }
-                .toggle-checkbox:checked + .toggle-label { background-color: #EAB308; }
-                .toggle-checkbox { transition: all 0.3s; z-index: 1; }
-            </style>
         `;
 
         const modalBody = modal.querySelector('#lib-modal-dynamic-body');
         const modalFooter = modal.querySelector('#lib-modal-dynamic-footer');
-
+        
         modalBody.innerHTML = `
             <div class="flex justify-between items-center mb-4">
                 <p class="text-sm text-gray-500 dark:text-gray-400">Selecione o acesso permitido:</p>
                 <button type="button" id="modalSelectAllLibs" class="text-xs bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 px-3 py-1.5 rounded-md transition-colors font-bold">${i18n.selectAll}</button>
             </div>
-            <div class="space-y-1 max-h-[40vh] overflow-y-auto custom-scrollbar pr-2 bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div class="space-y-2 max-h-[40vh] overflow-y-auto custom-scrollbar pr-2">
                 ${checkboxesHtml}
             </div>
             ${allowSyncHtml}
@@ -479,25 +474,9 @@ export async function showLibraryManagementModal(user = null) {
 
         modalFooter.className = "flex flex-col sm:flex-row justify-end gap-3 w-full";
         modalFooter.innerHTML = `
-            <button id="saveLibraryBtn" class="btn bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-500/30 w-full sm:w-auto transition-transform transform hover:-translate-y-0.5">${i18n.save}</button>
+            <button id="saveLibraryBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30 w-full sm:w-auto transition-transform transform hover:-translate-y-0.5">Guardar Alterações</button>
             <button id="libMgmtCancel" class="${btnCancelClass}">${i18n.cancel}</button>
         `;
-
-        // Listener de animação do Toggle (Botão de Downloads)
-        const allowSyncToggle = modal.querySelector('#modalAllowSync');
-        if (allowSyncToggle) {
-            allowSyncToggle.addEventListener('change', function() {
-                if (this.checked) {
-                    this.style.transform = 'translateX(100%)';
-                    this.style.borderColor = '#EAB308';
-                    this.nextElementSibling.style.backgroundColor = '#EAB308';
-                } else {
-                    this.style.transform = 'translateX(0)';
-                    this.style.borderColor = '';
-                    this.nextElementSibling.style.backgroundColor = '';
-                }
-            });
-        }
 
         const selectAllButton = modal.querySelector('#modalSelectAllLibs');
         const saveButton = modal.querySelector('#saveLibraryBtn');
@@ -507,18 +486,25 @@ export async function showLibraryManagementModal(user = null) {
         modal.querySelector('#libMgmtCancel').onclick = () => modal.classList.add('hidden');
 
         saveButton.onclick = async () => {
-            saveButton.disabled = true; 
-            saveButton.innerHTML = 'Salvando...';
-
             const selectedLibs = Array.from(libsContainer.querySelectorAll('.library-checkbox:checked')).map(cb => cb.value);
-            const allowSyncChecked = allowSyncToggle ? allowSyncToggle.checked : null;
+            
+            // Validação de segurança: Obriga a selecionar pelo menos uma biblioteca
+            if (selectedLibs.length === 0) {
+                showToast(i18n.selectOneLibrary || 'Pelo menos uma biblioteca deve ser selecionada.', 'error');
+                return;
+            }
 
+            saveButton.disabled = true; 
+            saveButton.innerHTML = 'A Guardar...';
+            
+            const allowSyncToggle = modal.querySelector('#modalAllowSync');
+            const allowSyncChecked = allowSyncToggle ? allowSyncToggle.checked : null;
+            
             try {
                 let result;
                 if (isBulkUpdate) {
                     result = await api.updateAllLibraries(selectedLibs);
                 } else {
-                    // Comunica diretamente com o endpoint para enviar as bibliotecas + permissão de download
                     const payload = { plex_user_id: user.id, libraries: selectedLibs, allow_sync: allowSyncChecked };
                     const response = await fetch('/api/users/update-libraries', {
                         method: 'POST',
@@ -528,8 +514,8 @@ export async function showLibraryManagementModal(user = null) {
                     result = await response.json();
                 }
 
-                showToast(result.message, result.success ? 'success' : 'error');
                 if (result.success) {
+                    showToast(result.message, 'success');
                     modal.classList.add('hidden');
                     document.dispatchEvent(new CustomEvent('data-refresh-requested'));
                 } else {
@@ -538,20 +524,20 @@ export async function showLibraryManagementModal(user = null) {
             } catch (err) {
                 showToast(err.message, 'error');
                 saveButton.disabled = false; 
-                saveButton.innerHTML = i18n.save;
+                saveButton.innerHTML = 'Guardar Alterações';
             }
         };
 
     } catch (e) {
         const modalBody = modal.querySelector('#lib-modal-dynamic-body');
         const modalFooter = modal.querySelector('#lib-modal-dynamic-footer');
-
+        
         modalBody.innerHTML = `
             <div class="text-center">
-                <div class="inline-flex p-4 bg-red-100 dark:bg-red-900/30 text-red-500 rounded-full mb-4"><svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
+                <div class="inline-flex p-4 bg-red-100 dark:bg-red-900/30 text-red-500 rounded-full mb-4"><svg class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
                 <p class="text-red-500 dark:text-red-400 font-medium">Erro ao sincronizar: ${e.message}</p>
             </div>`;
-
+            
         modalFooter.className = "w-full flex justify-end";
         modalFooter.innerHTML = `<button id="libMgmtCancel" class="${btnCancelClass} w-full sm:w-auto">${i18n.close}</button>`;
         modal.querySelector('#libMgmtCancel').onclick = () => modal.classList.add('hidden');
@@ -563,8 +549,8 @@ export async function showUserProfileModal(user) {
         <button id="saveProfileButton" class="btn bg-green-600 hover:bg-green-500 text-white transition-colors w-full sm:w-auto disabled:opacity-50">${i18n.save}</button>
         <button id="modalCancel" class="${btnCancelClass}">${i18n.cancel}</button>`;
         
-    const modal = createModal('userProfileModal', `${i18n.manageProfileTitle} <span class="text-yellow-600 dark:text-yellow-500">${sanitizeHTML(user.username)}</span>`, 
-        `<div id="profile-modal-dynamic-body"><div class="flex justify-center py-10"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500"></div></div></div>`, footer);
+    const modal = createModal('userProfileModal', `${i18n.manageProfileTitle} <span class="text-blue-600 dark:text-blue-500">${sanitizeHTML(user.username)}</span>`, 
+        `<div id="profile-modal-dynamic-body"><div class="flex justify-center py-10"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div></div></div>`, footer);
         
     const modalBody = modal.querySelector('#profile-modal-dynamic-body');
 
@@ -594,43 +580,43 @@ export async function showUserProfileModal(user) {
             <div class="space-y-4">
                 <div>
                     <label for="profileName" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.fullName}</label>
-                    <input type="text" id="profileName" class="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white transition-shadow">
+                    <input type="text" id="profileName" class="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white transition-shadow">
                 </div>
                 <div id="telegram-field-container" class="${notificationSettings.telegram_enabled ? '' : 'hidden'}">
                     <label for="profileTelegram" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.telegramUser}</label>
-                    <input type="text" id="profileTelegram" class="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white transition-shadow">
+                    <input type="text" id="profileTelegram" class="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white transition-shadow">
                 </div>
                 <div id="discord-field-container" class="${notificationSettings.discord_enabled ? '' : 'hidden'}">
                     <label for="profileDiscord" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.discordUserId}</label>
-                    <input type="text" id="profileDiscord" class="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white transition-shadow">
+                    <input type="text" id="profileDiscord" class="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white transition-shadow">
                 </div>
                 <div id="phone-field-container" class="${notificationSettings.webhook_enabled ? '' : 'hidden'}">
                     <label for="profilePhone" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.phoneNumber}</label>
-                    <input type="tel" id="profilePhone" class="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white transition-shadow">
+                    <input type="tel" id="profilePhone" class="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white transition-shadow">
                 </div>
                 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label for="profileExpiration" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.expirationDate}</label>
-                        <input type="date" id="profileExpiration" class="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white transition-shadow">
+                        <input type="date" id="profileExpiration" class="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white transition-shadow">
                     </div>
                     <div id="expiration-time-container">
                         <label for="profileExpirationTime" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.blockTime}</label>
-                        <input type="time" id="profileExpirationTime" class="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white disabled:opacity-50 transition-shadow" ${universalExpiration.enabled ? 'disabled' : ''}>
-                        <p id="universal-time-notice" class="${universalExpiration.enabled ? '' : 'hidden'} text-xs font-semibold text-yellow-600 dark:text-yellow-500 mt-1">${i18n.universalTimeActive}: ${universalExpiration.time}</p>
+                        <input type="time" id="profileExpirationTime" class="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white disabled:opacity-50 transition-shadow" ${universalExpiration.enabled ? 'disabled' : ''}>
+                        <p id="universal-time-notice" class="${universalExpiration.enabled ? '' : 'hidden'} text-xs font-semibold text-blue-600 dark:text-blue-500 mt-1">${i18n.universalTimeActive}: ${universalExpiration.time}</p>
                     </div>
                 </div>
                 
                 <div class="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
                     <label for="profileOverseerrAccess" class="text-sm font-bold text-gray-700 dark:text-gray-300 cursor-pointer">${i18n.overseerrAccess}</label>
-                    <input type="checkbox" id="profileOverseerrAccess" class="form-checkbox h-5 w-5 rounded text-yellow-500 focus:ring-yellow-500" ${profile.overseerr_access ? 'checked' : ''}>
+                    <input type="checkbox" id="profileOverseerrAccess" class="form-checkbox h-5 w-5 rounded text-blue-500 focus:ring-blue-500" ${profile.overseerr_access ? 'checked' : ''}>
                 </div>
                 
                 <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700/50">
                     <label class="block mb-2 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.renewSubscription}</label>
                     <div class="space-y-2">
                         <div class="flex items-center gap-2">
-                            <input type="number" id="renew-months" value="1" min="1" class="w-24 text-center bg-gray-50 border border-gray-300 dark:bg-gray-800 dark:border-gray-600 rounded-lg p-2 focus:ring-yellow-500">
+                            <input type="number" id="renew-months" value="1" min="1" class="w-24 text-center bg-gray-50 border border-gray-300 dark:bg-gray-800 dark:border-gray-600 rounded-lg p-2 focus:ring-blue-500">
                             <button type="button" id="confirm-renew" class="btn bg-sky-600 hover:bg-sky-500 text-white flex-1 transition-colors">${i18n.addMonths}</button>
                         </div>
                         <button type="button" id="renew-same-day" class="btn bg-gray-600 hover:bg-gray-500 text-white w-full transition-colors">${i18n.renewSameDay}</button>
@@ -770,11 +756,11 @@ export function showExtendTrialModal(user) {
         <div class="grid grid-cols-2 gap-4">
             <div>
                 <label for="extend-trial-hours-modal" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.hours}</label>
-                <input type="number" id="extend-trial-hours-modal" value="24" min="0" class="w-full text-center bg-gray-50 border border-gray-300 dark:bg-gray-800 dark:border-gray-600 rounded-lg p-2 focus:ring-yellow-500">
+                <input type="number" id="extend-trial-hours-modal" value="24" min="0" class="w-full text-center bg-gray-50 border border-gray-300 dark:bg-gray-800 dark:border-gray-600 rounded-lg p-2 focus:ring-blue-500">
             </div>
             <div>
                 <label for="extend-trial-minutes-modal" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.minutes}</label>
-                <input type="number" id="extend-trial-minutes-modal" value="0" min="0" step="15" class="w-full text-center bg-gray-50 border border-gray-300 dark:bg-gray-800 dark:border-gray-600 rounded-lg p-2 focus:ring-yellow-500">
+                <input type="number" id="extend-trial-minutes-modal" value="0" min="0" step="15" class="w-full text-center bg-gray-50 border border-gray-300 dark:bg-gray-800 dark:border-gray-600 rounded-lg p-2 focus:ring-blue-500">
             </div>
         </div>
     `;
@@ -821,14 +807,14 @@ export function showExtendTrialModal(user) {
 export async function showPaymentHistoryModal(user) {
     const loadingHtml = `
         <div class="text-center py-10">
-            <svg class="animate-spin h-8 w-8 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <svg class="animate-spin h-8 w-8 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
             <p class="mt-4 text-gray-500 dark:text-gray-400 font-medium">${i18n.loadingHistory}</p>
         </div>`;
         
     const body = `<div id="paymentHistoryContainer" class="max-h-[60vh] overflow-y-auto pr-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">${loadingHtml}</div>`;
     const footer = `<button id="modalClose" class="${btnCancelClass} w-full">${i18n.close}</button>`;
     
-    const modal = createModal('paymentHistoryModal', `${i18n.paymentHistory} - <span class="text-yellow-600 dark:text-yellow-500">${sanitizeHTML(user.username)}</span>`, body, footer);
+    const modal = createModal('paymentHistoryModal', `${i18n.paymentHistory} - <span class="text-blue-600 dark:text-blue-500">${sanitizeHTML(user.username)}</span>`, body, footer);
     modal.querySelector('#modalClose').onclick = () => modal.classList.add('hidden');
 
     const container = modal.querySelector('#paymentHistoryContainer');
@@ -882,7 +868,7 @@ export async function showReactivationModal(user) {
         <div id="modalLibsContainer" class="max-h-48 overflow-y-auto bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-200 dark:border-gray-700 space-y-1 modal-body">
             ${state.allLibraries.map(lib => `
                 <label class="flex items-center space-x-3 p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors cursor-pointer">
-                    <input type="checkbox" class="form-checkbox h-4 w-4 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-500 rounded text-yellow-500 focus:ring-yellow-500 focus:ring-offset-0" value="${sanitizeHTML(lib.title)}">
+                    <input type="checkbox" class="library-checkbox form-checkbox h-4 w-4 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-500 rounded text-blue-500 focus:ring-blue-500 focus:ring-offset-0" value="${sanitizeHTML(lib.title)}">
                     <span class="text-sm text-gray-800 dark:text-gray-200">${sanitizeHTML(lib.title)}</span>
                 </label>`).join('')}
         </div>`;
