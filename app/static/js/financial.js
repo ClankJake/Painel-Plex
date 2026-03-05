@@ -42,9 +42,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- FUNÇÕES DE SEGURANÇA E UTILIDADE ---
     
-    /**
-     * Sanitiza texto para evitar injeção de HTML/Scripts (XSS)
-     */
     const sanitizeHTML = (str) => {
         if (str == null) return '';
         const temp = document.createElement('div');
@@ -52,9 +49,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return temp.innerHTML;
     };
 
-    /**
-     * Modal de Confirmação Padronizado
-     */
     function showConfirmationModal({ title, message, confirmText, confirmClass, onConfirm }) {
         const btnCancelClass = "btn bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors w-full sm:w-auto";
         const modal = createModal('confirmationModal', title, `<p class="text-gray-700 dark:text-gray-300">${message}</p>`,
@@ -74,12 +68,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function getChartColors() {
         const isDark = document.documentElement.classList.contains('dark');
         return {
-            textColor: isDark ? '#9CA3AF' : '#4B5563', // gray-400 : gray-600
+            textColor: isDark ? '#9CA3AF' : '#4B5563', 
             gridColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
-            tooltipBg: isDark ? '#1F2937' : '#FFFFFF', // gray-800 : white
-            tooltipText: isDark ? '#F9FAFB' : '#111827', // gray-50 : gray-900
-            barColor: isDark ? 'rgba(34, 197, 94, 0.8)' : 'rgba(34, 197, 94, 0.6)', // Green-500 adaptado
-            barHoverColor: 'rgba(22, 163, 74, 0.9)', // Green-600
+            tooltipBg: isDark ? '#1F2937' : '#FFFFFF', 
+            tooltipText: isDark ? '#F9FAFB' : '#111827', 
+            barColor: isDark ? 'rgba(34, 197, 94, 0.8)' : 'rgba(34, 197, 94, 0.6)', 
+            barHoverColor: 'rgba(22, 163, 74, 0.9)', 
         };
     }
 
@@ -120,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const weeklyData = financialDataCache.summary.weekly_revenue || {};
             labels = Object.keys(weeklyData).map(k => `Semana ${k}`);
             data = Object.values(weeklyData);
-        } else { // daily view
+        } else { 
             const dailyData = financialDataCache.summary.daily_revenue || {};
             const daysInMonth = new Date(queryDate.year, queryDate.month, 0).getDate();
             labels = Array.from({ length: daysInMonth }, (_, i) => `${i + 1}`);
@@ -140,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     data: data,
                     backgroundColor: colors.barColor,
                     hoverBackgroundColor: colors.barHoverColor,
-                    borderRadius: 6, // Cantos mais suaves no gráfico
+                    borderRadius: 6,
                     borderSkipped: false,
                     barPercentage: 0.7,
                 }]
@@ -235,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 button.addEventListener('click', handleDeleteTransaction);
             });
         } else {
-            // Estado Vazio Otimizado
+            // Estado Vazio
             transactionsList.innerHTML = `
                 <div class="flex flex-col items-center justify-center py-10 text-gray-400 dark:text-gray-500">
                     <svg class="w-12 h-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -247,34 +241,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (summary.upcoming_expirations && summary.upcoming_expirations.length > 0) {
             renewalsList.innerHTML = summary.upcoming_expirations.map(user => {
                 const safeUsername = sanitizeHTML(user.username);
+                const daysText = sanitizeHTML(user.days_left_text) || 'Hoje'; 
                 
-                // 🛡️ MÁGICA JAVASCRIPT: Recalcula os dias com base no fuso horário do SEU navegador
-                // Ignora os cálculos do servidor que podem estar num fuso diferente (ex: UTC)
-                let daysLeft = parseInt(user.days_left, 10);
-                if (user.expiration_date) {
-                    const parts = user.expiration_date.split('/'); // Formato: DD/MM/YYYY
-                    if (parts.length === 3) {
-                        const expDate = new Date(parts[2], parts[1] - 1, parts[0]);
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        daysLeft = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
-                    }
-                }
-
-                // Cria o texto dinâmico com base nos dias calculados pelo Javascript
-                let daysText = daysLeft > 1 ? `${daysLeft} dias restantes` : (daysLeft === 1 ? '1 dia restante' : 'Hoje');
-                if (daysLeft < 0) daysText = 'Expirado';
-
-                let textColor = 'text-yellow-600 dark:text-yellow-500'; // Padrão: Falta alguns dias
+                const daysLeft = parseInt(user.days_left, 10);
+                let textColor = 'text-yellow-600 dark:text-yellow-500';
                 let alertBadge = '';
 
                 if (daysLeft < 0) {
-                    textColor = 'text-red-600 dark:text-red-500'; // Expirado (Negativo)
+                    textColor = 'text-red-600 dark:text-red-500';
                 } else if (daysLeft === 0) {
-                    textColor = 'text-orange-600 dark:text-orange-500 font-black'; // HOJE! (Alerta Máximo)
+                    textColor = 'text-orange-600 dark:text-orange-500 font-black animate-pulse';
                     alertBadge = `<span class="ml-2 px-2 py-0.5 text-[10px] uppercase font-black tracking-widest rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900/60 dark:text-orange-300 border border-orange-200 dark:border-orange-800 animate-pulse">Vence Hoje!</span>`;
                 } else if (daysLeft > 15) {
-                    textColor = 'text-gray-500 dark:text-gray-400'; // Falta muito tempo
+                    textColor = 'text-gray-500 dark:text-gray-400';
                 }
 
                 const planDescription = user.screen_limit > 0 ? `${user.screen_limit} Tela(s)` : 'Padrão';
@@ -347,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const result = await fetchAPI(url, 'POST');
                     showToast(result.message, result.success ? 'success' : 'error');
                     if (result.success) {
-                        loadFinancialData(); // Refresh data
+                        loadFinancialData(); 
                     }
                 } catch (error) {
                     showToast(error.message, 'error');
@@ -455,7 +434,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast(result.message, result.success ? 'success' : 'error');
             } catch (error) {
                 showToast(error.message, 'error');
-                loadCoupons(); // Reverte o switch caso dê erro
+                loadCoupons();
             }
         }
     }
@@ -517,7 +496,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Ouve a mudança de tema nativa do base.js para forçar a recoloração do gráfico em tempo real
     window.addEventListener('themeChanged', () => {
         if (revenueChart) {
             const colors = getChartColors();
@@ -535,37 +513,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
     renewalsFilter.addEventListener('change', loadFinancialData);
 
-    const financialTabs = document.getElementById('financial-tabs');
-    if (financialTabs) {
-        financialTabs.addEventListener('click', (e) => {
-            const button = e.target.closest('button');
-            if (button && button.dataset.tab) {
+    // ==========================================
+    // GESTÃO DE ABAS (TABS) - BLINDADO
+    // ==========================================
+    const tabButtons = document.querySelectorAll('#financial-tabs button[data-tab]');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    if (tabButtons.length > 0) {
+        tabButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault(); 
                 const tabId = button.dataset.tab;
                 
-                // Limpa classes de todas as abas (CORRIGIDO PARA PREMIUM TABS)
-                document.querySelectorAll('#financial-tabs .tab-button').forEach(btn => {
+                // 1. Limpa as classes de ativo de TODOS os botões
+                tabButtons.forEach(btn => {
                     btn.classList.remove('active', 'bg-white', 'dark:bg-gray-700', 'text-gray-900', 'dark:text-white', 'shadow-sm', 'ring-1', 'ring-gray-200', 'dark:ring-gray-600');
                     btn.classList.add('text-gray-500', 'dark:text-gray-400');
                 });
                 
-                // Aplica classe ativa na aba clicada
+                // 2. Adiciona as classes de ativo APENAS ao botão clicado
                 button.classList.remove('text-gray-500', 'dark:text-gray-400');
                 button.classList.add('active', 'bg-white', 'dark:bg-gray-700', 'text-gray-900', 'dark:text-white', 'shadow-sm', 'ring-1', 'ring-gray-200', 'dark:ring-gray-600');
 
-                // Esconde e Mostra os conteúdos
-                document.querySelectorAll('#financial-tab-content .tab-content').forEach(content => content.classList.add('hidden'));
-                document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+                // 3. Oculta todos os painéis de conteúdo
+                tabContents.forEach(content => {
+                    content.classList.add('hidden');
+                });
+                
+                // 4. Mostra o painel de conteúdo alvo
+                const targetPanel = document.getElementById(`tab-${tabId}`);
+                if (targetPanel) {
+                    targetPanel.classList.remove('hidden');
+                }
 
+                // 5. Aciona as ações específicas de cada aba
                 if (tabId === 'coupons') {
                     loadCoupons();
                 } else if (tabId === 'reports') {
                     const today = new Date();
-                    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-                    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
-                    document.getElementById('startDate').value = firstDay;
-                    document.getElementById('endDate').value = lastDay;
+                    const y = today.getFullYear();
+                    const m = String(today.getMonth() + 1).padStart(2, '0');
+                    const lastDate = new Date(y, today.getMonth() + 1, 0).getDate();
+                    
+                    document.getElementById('startDate').value = `${y}-${m}-01`;
+                    document.getElementById('endDate').value = `${y}-${m}-${lastDate}`;
+                } else if (tabId === 'summary') {
+                    if (financialDataCache) renderRevenueChart();
                 }
-            }
+            });
         });
     }
 
