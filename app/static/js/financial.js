@@ -1,7 +1,62 @@
 import { fetchAPI, showToast, createModal } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-    // --- ELEMENTOS E DADOS GLOBAIS ---
+    // ==========================================
+    // 1. GESTÃO DE ABAS (PRIORIDADE MÁXIMA)
+    // ==========================================
+    const financialTabs = document.getElementById('financial-tabs');
+    
+    if (financialTabs) {
+        financialTabs.addEventListener('click', (e) => {
+            // Garante que o clique regista o botão, mesmo se clicar no ícone SVG
+            const button = e.target.closest('button[data-tab]');
+            if (!button) return;
+            
+            const tabId = button.dataset.tab;
+            
+            // 1. Limpa a classe 'active' de todos os botões
+            document.querySelectorAll('#financial-tabs button.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // 2. Dá a classe 'active' ao botão clicado (O seu CSS @apply faz o resto!)
+            button.classList.add('active');
+
+            // 3. Esconde todos os painéis de conteúdo
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+                content.classList.remove('active'); // Limpeza de segurança
+            });
+            
+            // 4. Mostra o painel alvo
+            const targetPanel = document.getElementById(`tab-${tabId}`);
+            if (targetPanel) {
+                targetPanel.classList.remove('hidden');
+                targetPanel.classList.add('active');
+            }
+
+            // 5. Dispara as lógicas exclusivas de cada aba
+            if (tabId === 'coupons') {
+                loadCoupons();
+            } else if (tabId === 'reports') {
+                const today = new Date();
+                const y = today.getFullYear();
+                const m = String(today.getMonth() + 1).padStart(2, '0');
+                const lastDate = new Date(y, today.getMonth() + 1, 0).getDate();
+                
+                const startInput = document.getElementById('startDate');
+                const endInput = document.getElementById('endDate');
+                if(startInput) startInput.value = `${y}-${m}-01`;
+                if(endInput) endInput.value = `${y}-${m}-${lastDate}`;
+            } else if (tabId === 'summary') {
+                if (financialDataCache) renderRevenueChart();
+            }
+        });
+    }
+
+    // ==========================================
+    // 2. ELEMENTOS E DADOS GLOBAIS
+    // ==========================================
     const loadingIndicator = document.getElementById('loadingIndicator');
     const dashboard = document.getElementById('financialDashboard');
     const errorContainer = document.getElementById('errorContainer');
@@ -17,7 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
                 i18n[i18nKey] = scriptTag.dataset[key];
             } else {
-                // Converte kebab-case para camelCase para as URLs
                 const urlKey = key.replace(/-(\w)/g, (match, letter) => letter.toUpperCase());
                 urls[urlKey] = scriptTag.dataset[key];
             }
@@ -29,7 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let activeChartView = 'daily';
     let financialDataCache = null;
 
-    // Elementos do DOM
     const renewalsFilter = document.getElementById('renewalsFilter');
     const upcomingRenewalsLabel = document.getElementById('upcomingRenewalsLabel');
     const renewalsList = document.getElementById('renewalsList');
@@ -40,7 +93,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const couponsListContainer = document.getElementById('couponsListContainer');
     const createCouponForm = document.getElementById('createCouponForm');
 
-    // --- FUNÇÕES DE SEGURANÇA E UTILIDADE ---
+    // ==========================================
+    // 3. FUNÇÕES DE UTILIDADE E INTERFACE
+    // ==========================================
     
     const sanitizeHTML = (str) => {
         if (str == null) return '';
@@ -62,8 +117,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatCurrency(value) {
         return (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     }
-
-    // --- GRÁFICO E INTERFACE ---
 
     function getChartColors() {
         const isDark = document.documentElement.classList.contains('dark');
@@ -183,12 +236,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- RENDERIZAÇÃO DE TABELAS ---
-
     function renderTables(summary) {
         const transactionsList = document.getElementById('transactionsList');
 
-        // Renderização do Histórico de Transações
+        // Histórico de Transações
         if (summary.recent_transactions && summary.recent_transactions.length > 0) {
             transactionsList.innerHTML = summary.recent_transactions.map(tx => {
                 const safeUsername = sanitizeHTML(tx.username);
@@ -229,7 +280,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 button.addEventListener('click', handleDeleteTransaction);
             });
         } else {
-            // Estado Vazio
             transactionsList.innerHTML = `
                 <div class="flex flex-col items-center justify-center py-10 text-gray-400 dark:text-gray-500">
                     <svg class="w-12 h-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -237,20 +287,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>`;
         }
 
-        // Renderização de Próximas Renovações
+        // Próximas Renovações com Lógica Vence Hoje
         if (summary.upcoming_expirations && summary.upcoming_expirations.length > 0) {
             renewalsList.innerHTML = summary.upcoming_expirations.map(user => {
                 const safeUsername = sanitizeHTML(user.username);
-                const daysText = sanitizeHTML(user.days_left_text) || 'Hoje'; 
                 
-                const daysLeft = parseInt(user.days_left, 10);
+                let daysLeft = parseInt(user.days_left, 10);
+                if (user.expiration_date) {
+                    const parts = user.expiration_date.split('/'); 
+                    if (parts.length === 3) {
+                        const expDate = new Date(parts[2], parts[1] - 1, parts[0]);
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        daysLeft = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
+                    }
+                }
+
+                let daysText = daysLeft > 1 ? `${daysLeft} dias restantes` : (daysLeft === 1 ? '1 dia restante' : 'Hoje');
+                if (daysLeft < 0) daysText = 'Expirado';
+
                 let textColor = 'text-yellow-600 dark:text-yellow-500';
                 let alertBadge = '';
 
                 if (daysLeft < 0) {
                     textColor = 'text-red-600 dark:text-red-500';
                 } else if (daysLeft === 0) {
-                    textColor = 'text-orange-600 dark:text-orange-500 font-black animate-pulse';
+                    textColor = 'text-orange-600 dark:text-orange-500 font-black';
                     alertBadge = `<span class="ml-2 px-2 py-0.5 text-[10px] uppercase font-black tracking-widest rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900/60 dark:text-orange-300 border border-orange-200 dark:border-orange-800 animate-pulse">Vence Hoje!</span>`;
                 } else if (daysLeft > 15) {
                     textColor = 'text-gray-500 dark:text-gray-400';
@@ -281,6 +343,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>`;
         }
     }
+
+    // ==========================================
+    // 4. API FETCH E CUPÕES
+    // ==========================================
 
     async function loadFinancialData() {
         loadingIndicator.style.display = 'flex';
@@ -325,17 +391,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     const url = urls.deleteTransactionBaseUrl.replace('__TXID__', txid);
                     const result = await fetchAPI(url, 'POST');
                     showToast(result.message, result.success ? 'success' : 'error');
-                    if (result.success) {
-                        loadFinancialData(); 
-                    }
+                    if (result.success) loadFinancialData(); 
                 } catch (error) {
                     showToast(error.message, 'error');
                 }
             }
         });
     }
-
-    // --- LÓGICA DE CUPÕES ---
 
     function renderCouponsTable(coupons) {
         if (!couponsListContainer) return;
@@ -401,9 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadCoupons() {
         try {
             const data = await fetchAPI(urls.couponsListUrl);
-            if (data.success) {
-                renderCouponsTable(data.coupons);
-            }
+            if (data.success) renderCouponsTable(data.coupons);
         } catch (error) {
             showToast(error.message, 'error');
         }
@@ -472,7 +532,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // --- INICIALIZAÇÃO E EVENTOS ---
+    // ==========================================
+    // 5. INICIALIZAÇÃO DE EVENTOS ESTÁTICOS
+    // ==========================================
 
     prevMonthBtn.addEventListener('click', () => {
         currentDate.setMonth(currentDate.getMonth() - 1);
@@ -513,57 +575,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     renewalsFilter.addEventListener('change', loadFinancialData);
 
-    // ==========================================
-    // GESTÃO DE ABAS (TABS) - BLINDADO
-    // ==========================================
-    const tabButtons = document.querySelectorAll('#financial-tabs button[data-tab]');
-    const tabContents = document.querySelectorAll('.tab-content');
-
-    if (tabButtons.length > 0) {
-        tabButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                e.preventDefault(); 
-                const tabId = button.dataset.tab;
-                
-                // 1. Limpa as classes de ativo de TODOS os botões
-                tabButtons.forEach(btn => {
-                    btn.classList.remove('active', 'bg-white', 'dark:bg-gray-700', 'text-gray-900', 'dark:text-white', 'shadow-sm', 'ring-1', 'ring-gray-200', 'dark:ring-gray-600');
-                    btn.classList.add('text-gray-500', 'dark:text-gray-400');
-                });
-                
-                // 2. Adiciona as classes de ativo APENAS ao botão clicado
-                button.classList.remove('text-gray-500', 'dark:text-gray-400');
-                button.classList.add('active', 'bg-white', 'dark:bg-gray-700', 'text-gray-900', 'dark:text-white', 'shadow-sm', 'ring-1', 'ring-gray-200', 'dark:ring-gray-600');
-
-                // 3. Oculta todos os painéis de conteúdo
-                tabContents.forEach(content => {
-                    content.classList.add('hidden');
-                });
-                
-                // 4. Mostra o painel de conteúdo alvo
-                const targetPanel = document.getElementById(`tab-${tabId}`);
-                if (targetPanel) {
-                    targetPanel.classList.remove('hidden');
-                }
-
-                // 5. Aciona as ações específicas de cada aba
-                if (tabId === 'coupons') {
-                    loadCoupons();
-                } else if (tabId === 'reports') {
-                    const today = new Date();
-                    const y = today.getFullYear();
-                    const m = String(today.getMonth() + 1).padStart(2, '0');
-                    const lastDate = new Date(y, today.getMonth() + 1, 0).getDate();
-                    
-                    document.getElementById('startDate').value = `${y}-${m}-01`;
-                    document.getElementById('endDate').value = `${y}-${m}-${lastDate}`;
-                } else if (tabId === 'summary') {
-                    if (financialDataCache) renderRevenueChart();
-                }
-            });
-        });
-    }
-
     const exportCsvBtn = document.getElementById('exportCsvBtn');
     if (exportCsvBtn) {
         exportCsvBtn.addEventListener('click', () => {
@@ -578,7 +589,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Initial Load
+    // Arranque Inicial
     updateMonthLabel();
     loadFinancialData();
 });
