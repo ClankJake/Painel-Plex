@@ -12,7 +12,7 @@ from tzlocal import get_localzone_name
 from datetime import datetime
 
 # Importa 'limiter' das extensões
-from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter
+from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager
 from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
 from ..auth import admin_required, login_required
@@ -88,11 +88,11 @@ def get_dashboard_summary():
 @system_api_bp.route('/active-streams')
 @login_required
 @admin_required
-@limiter.exempt # O coração do Tempo Real! Sem limites para o Admin.
+@limiter.exempt
 def get_active_streams():
     """Retorna detalhes das sessões ativas."""
     try:
-        sessions_data = plex_manager.get_active_sessions()
+        sessions_data = stream_manager.get_now_playing()
         return jsonify(sessions_data)
     except Exception as e:
         logger.error(f"Erro ao obter streams ativos: {e}", exc_info=True)
