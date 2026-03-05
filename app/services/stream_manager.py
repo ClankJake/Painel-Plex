@@ -4,11 +4,13 @@ import logging
 import requests
 import time
 import threading
+import base64
 from collections import defaultdict
 from datetime import datetime
+from urllib.parse import urlparse, parse_qsl, urlencode
 from tzlocal import get_localzone
 
-from flask import current_app
+from flask import current_app, url_for
 from flask_babel import gettext as _, ngettext
 from plexapi.exceptions import NotFound
 
@@ -50,14 +52,13 @@ class StreamManager:
         self._listener = None
         self._app = None
         
-        # Controlo de Concorrência para Verificações Atrasadas (Thundering Herd Prevention)
+        # Controlo de Concorrência para Verificações Atrasadas
         self._delayed_check_lock = threading.Lock()
         self._delayed_check_pending = False
 
     # --- LÓGICA DE TEMPO REAL (SSE) ---
 
     def start_listener(self, app):
-        """Inicia o ouvinte de eventos em tempo real (Websocket) do Plex."""
         if not self.conn.plex:
             return
 
@@ -76,14 +77,12 @@ class StreamManager:
             logger.error(f"Falha ao iniciar o Plex Listener SSE: {e}")
 
     def stop_listener(self):
-        """Pára o ouvinte de eventos."""
         if getattr(self, '_listener', None):
             self._listener.stop()
             self._listener = None
             logger.debug("📡 Plex Real-Time Listener (SSE) desligado.")
 
     def _on_plex_event(self, data):
-        """Callback acionado no milissegundo em que algo muda no Plex."""
         if isinstance(data, dict) and data.get('type') == 'playing':
             state_notifications = data.get('PlaySessionStateNotification', [])
             
@@ -95,33 +94,30 @@ class StreamManager:
             
             if should_check and self._app:
                 with self._app.app_context():
-                    from app.extensions import cache
-                    
-                    # 🛡️ DEBOUNCE GLOBAL: Impede que rajadas de eventos do Plex sobrecarreguem o servidor
-                    if cache.get("sse_event_lock"):
-                        return
-                    cache.set("sse_event_lock", True, timeout=2)
-
-                    # Avisa Frontend imediatamente (Latência 0ms) para atualizar a grelha
+                    # 1. ATUALIZAÇÃO VISUAL IMEDIATA (Sem Lock/Debounce)
+                    # Garante que os botões de Pausa/Play reagem instantaneamente no Frontend
                     try:
                         from app.extensions import socketio
                         socketio.emit('dashboard_update_streams', namespace='/dashboard')
                     except Exception:
                         pass
 
-                    # Executa a verificação numa thread separada (daemon=True evita prender o encerramento do Gunicorn)
-                    def background_check():
-                        with self._app.app_context():
-                            self.check_and_enforce_streams(from_event=True)
-                            
-                    threading.Thread(target=background_check, daemon=True).start()
+                    # 2. VERIFICAÇÃO PESADA COM DEBOUNCE (Proteção do Servidor)
+                    # Só verifica limites e cortes a cada 2 segundos para não sobrecarregar
+                    from app.extensions import cache
+                    if not cache.get("sse_event_lock"):
+                        cache.set("sse_event_lock", True, timeout=2)
+                        
+                        def background_check():
+                            with self._app.app_context():
+                                self.check_and_enforce_streams(from_event=True)
+                                
+                        threading.Thread(target=background_check, daemon=True).start()
 
     # --- MÉTODOS PÚBLICOS ---
 
     def block_user_sessions(self, plex_user_id, reason):
-        """Termina todas as sessões ativas de um utilizador específico (Usado no Bloqueio Manual/Vencimento)."""
         if not self.conn.plex:
-            logger.warning(f"Não foi possível bloquear as sessões do utilizador ID {plex_user_id}: Conexão com o Plex não disponível.")
             return
             
         try:
@@ -133,11 +129,6 @@ class StreamManager:
             logger.error(f"Erro ao bloquear as sessões do utilizador ID {plex_user_id}: {e}", exc_info=True)
 
     def check_and_enforce_streams(self, from_event=False):
-        """Verifica todas as sessões ativas e impõe as regras de bloqueio e limite de telas."""
-        if not from_event:
-            logger.debug("A executar a verificação de streams (Job Fallback/Sweep)...")
-
-        # Auto-recuperação do Websocket se ele tiver caído (ex: reinício do Plex)
         if HAS_WEBSOCKET and (not getattr(self, '_listener', None) or not self._listener.is_alive()):
             try:
                 app = current_app._get_current_object()
@@ -150,7 +141,6 @@ class StreamManager:
         if not self.conn.plex:
             success, _ = self.conn.reload(from_job=True)
             if not success:
-                logger.debug("StreamManager: Conexão com o Plex não disponível. A saltar a verificação.")
                 return
         
         try:
@@ -182,31 +172,225 @@ class StreamManager:
                 else:
                     self._enforce_screen_limits(user_id, username, user_session_list, profile, config)
 
-        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout) as e:
-            # Captura otimizada para evitar crashes se o Plex estiver lento ou em manutenção
-            logger.warning(f"Atraso/Falha de rede ao verificar streams: {type(e).__name__}. A saltar ciclo.")
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout):
+            pass
         except Exception as e:
             logger.error(f"Erro inesperado ao verificar e impor streams: {e}", exc_info=True)
+
+    # --- EXTRAÇÃO DE DADOS EM TEMPO REAL ("REPRODUZINDO AGORA") ---
+
+    def get_now_playing(self):
+        """Retorna as sessões ativas com Tratamento Visual Perfeito para o Frontend."""
+        if not self.conn.plex:
+            return {"success": False, "stream_count": 0, "sessions": []}
+            
+        try:
+            sessions = self.conn.plex.sessions()
+            now_playing_sessions = []
+            
+            all_users = self.user_manager.get_all_plex_users() or []
+            id_to_username_map = {u['id']: u['username'] for u in all_users}
+            user_thumb_map = {u['id']: u['thumb'] for u in all_users}
+            
+            if self.conn.account:
+                admin_id = getattr(self.conn.account, 'id', None)
+                if admin_id and admin_id not in id_to_username_map:
+                    id_to_username_map[admin_id] = getattr(self.conn.account, 'username', 'Admin')
+                    user_thumb_map[admin_id] = getattr(self.conn.account, 'thumb', None)
+
+            for session in sessions:
+                view_offset = getattr(session, "viewOffset", 0)
+                duration = getattr(session, "duration", 0)
+                
+                progress = 0.0
+                if duration and view_offset:
+                    progress = max(0.0, min(100.0, (view_offset / duration) * 100))
+
+                media_type = getattr(session, "type", "unknown").lower()
+                
+                # 🛡️ CORREÇÃO: Deteção de Estado Imune a Maiúsculas e Casos Ocultos
+                raw_state = getattr(session, "state", "stopped")
+                players = getattr(session, "players", [])
+                
+                if players and hasattr(players[0], "state"):
+                    raw_state = players[0].state
+                elif hasattr(session, "player") and session.player and hasattr(session.player, "state"):
+                    raw_state = session.player.state
+                elif hasattr(session, "session") and session.session and hasattr(session.session, "state"):
+                    raw_state = session.session.state
+
+                # O lower() previne que estados como "Paused" passem despercebidos
+                safe_state = str(raw_state).lower()
+                
+                # NOVO: Correspondência parcial imbatível (Lida com 'pause', 'paused', 'playing', etc.)
+                if 'pause' in safe_state:
+                    state = 'paused'
+                elif 'play' in safe_state:
+                    state = 'playing'
+                elif 'buffer' in safe_state:
+                    state = 'buffering'
+                else:
+                    state = 'stopped'
+
+                # Identidade e Foto do Utilizador
+                user_id = self._get_session_user_id(session)
+                username = id_to_username_map.get(user_id, getattr(session.user, 'title', 'Desconhecido') if hasattr(session, 'user') else 'Desconhecido')
+                
+                raw_user_thumb = user_thumb_map.get(user_id)
+                user_thumb = None
+                if raw_user_thumb:
+                    try:
+                        if '/image/' not in raw_user_thumb:
+                            parsed_thumb = urlparse(raw_user_thumb)
+                            clean_query = urlencode([(k, v) for k, v in parse_qsl(parsed_thumb.query) if k.lower() != 'x-plex-token'])
+                            clean_url = parsed_thumb._replace(query=clean_query).geturl()
+                            
+                            if 'plex.tv' in parsed_thumb.netloc or not parsed_thumb.netloc:
+                                payload_str = f"plex_account:{clean_url}"
+                            else:
+                                payload_str = f"url:{clean_url}"
+                                
+                            b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                            try:
+                                user_thumb = url_for('image.proxy_image', source=b64_payload)
+                            except RuntimeError:
+                                user_thumb = f"/image/?source={b64_payload}"
+                        else:
+                            user_thumb = raw_user_thumb
+                    except Exception:
+                        user_thumb = raw_user_thumb
+
+                # Plataforma, Dispositivo e CSS
+                client_name = getattr(players[0], "product", "") if players else (getattr(session.player, 'product', '') if hasattr(session, 'player') else '')
+                device_name = getattr(players[0], "title", "") if players else (getattr(session.player, 'title', '') if hasattr(session, 'player') else '')
+                
+                platform_css_class = self._get_platform_info(session) 
+                player_string = f"{client_name} - {device_name}" if client_name and device_name else client_name or device_name or "Desconhecido"
+
+                # LÓGICA DE CAPAS / ARTWORK
+                thumb_key = None
+                images_attr = getattr(session, "image", None)
+                if images_attr:
+                    images_list = images_attr if isinstance(images_attr, (list, tuple, set)) else [images_attr]
+                    for img in images_list:
+                        if getattr(img, "type", None) == "coverPoster":
+                            thumb_key = getattr(img, "key", None) or getattr(img, "thumb", None)
+                            if thumb_key: break
+                            
+                if not thumb_key:
+                    # CORREÇÃO: "thumb" (Póster do Filme) movido para antes de "art" (Plano de Fundo)
+                    for attr in ("grandparentThumb", "parentThumb", "thumb", "thumbUrl", "art"):
+                        val = getattr(session, attr, None)
+                        if val:
+                            thumb_key = val
+                            break
+
+                safe_thumb_url = None
+                if thumb_key:
+                    if str(thumb_key).startswith('http'):
+                        parsed_thumb = urlparse(thumb_key)
+                        clean_query = urlencode([(k, v) for k, v in parse_qsl(parsed_thumb.query) if k.lower() != 'x-plex-token'])
+                        clean_url = parsed_thumb._replace(query=clean_query).geturl()
+                        payload_str = f"url:{clean_url}"
+                    else:
+                        payload_str = f"plex:{thumb_key}"
+                        
+                    b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                    try:
+                        safe_thumb_url = url_for('image.proxy_image', source=b64_payload)
+                    except RuntimeError:
+                        safe_thumb_url = f"/image/?source={b64_payload}"
+
+                # Duplo check de Transcoding
+                is_transcoding = False
+                transcode_speed = None
+                video_decision = "Direct Play"
+                audio_decision = "Direct Play"
+
+                transcode_session = getattr(session, "transcodeSession", None)
+                transcode_sessions = getattr(session, "transcodeSessions", [])
+                active_ts = transcode_session if transcode_session else (transcode_sessions[0] if transcode_sessions else None)
+
+                if active_ts:
+                    v_dec = getattr(active_ts, "videoDecision", None)
+                    a_dec = getattr(active_ts, "audioDecision", None)
+                    if v_dec == "transcode":
+                        is_transcoding, video_decision = True, "Transcode"
+                    if a_dec == "transcode":
+                        is_transcoding, audio_decision = True, "Transcode"
+                    if is_transcoding:
+                        transcode_speed = getattr(active_ts, "speed", None)
+
+                media_list = getattr(session, "media", [])
+                video_codec = audio_codec = container = video_resolution = "N/A"
+                if media_list:
+                    media_obj = media_list[0]
+                    video_codec = str(getattr(media_obj, "videoCodec", "N/A")).upper()
+                    audio_codec = str(getattr(media_obj, "audioCodec", "N/A")).upper()
+                    container = str(getattr(media_obj, "container", "N/A")).upper()
+                    v_res = getattr(media_obj, "videoResolution", "N/A")
+                    video_resolution = f"{v_res}p" if str(v_res).isdigit() else str(v_res).upper()
+
+                title = getattr(session, 'grandparentTitle', self._get_media_title(session)) if media_type == 'episode' else self._get_media_title(session)
+                subtitle = getattr(session, 'title', '') if media_type == 'episode' else str(getattr(session, 'year', ''))
+
+                if media_type == 'episode':
+                     season_num = getattr(session, 'parentIndex', None)
+                     episode_num = getattr(session, 'index', None)
+                     if season_num is not None and episode_num is not None:
+                         subtitle = f"S{int(season_num):02d} · E{int(episode_num):02d} - {getattr(session, 'title', '')}"
+
+                session_info = {
+                    "session_key": str(getattr(session, "sessionKey", "")),
+                    "user": username,
+                    "user_thumb": user_thumb,
+                    "title": title,
+                    "subtitle": subtitle,
+                    "type": media_type,
+                    "progress": round(progress, 2),
+                    "state": state,
+                    "platform": platform_css_class, 
+                    "player": player_string, 
+                    "view_offset": view_offset,
+                    "duration": duration,
+                    "thumb_url": safe_thumb_url,
+                    "stream_details": {
+                        "is_transcoding": is_transcoding,
+                        "stream": "Transcode" if is_transcoding else "Direct Play",
+                        "video_decision": video_decision,
+                        "audio_decision": audio_decision,
+                        "video_codec": video_codec,
+                        "audio_codec": audio_codec,
+                        "container": container,
+                        "video_resolution": video_resolution,
+                        "transcode_speed": transcode_speed,
+                        "transcode_progress": int(getattr(active_ts, "progress", 0)) if active_ts else None
+                    }
+                }
+
+                now_playing_sessions.append(session_info)
+
+            return {
+                "success": True,
+                "stream_count": len(now_playing_sessions),
+                "sessions": now_playing_sessions
+            }
+
+        except Exception as e:
+            logger.error(f"Falha ao obter estado 'Reproduzindo Agora': {e}", exc_info=True)
+            return {"success": False, "stream_count": 0, "sessions": []}
 
     # --- MÉTODOS AUXILIARES E DE LÓGICA DE NEGÓCIO ---
 
     def _schedule_delayed_check(self):
-        """
-        Agenda uma varredura para o futuro. 
-        Garante que apenas UM agendamento existe de cada vez (Thundering Herd Prevention).
-        """
         with self._delayed_check_lock:
-            if self._delayed_check_pending:
-                return # Já existe uma verificação na calha, não criar outra
+            if self._delayed_check_pending: return
             self._delayed_check_pending = True
 
         def delayed_run():
-            time.sleep(3.0) # Tempo para o Plex gerar os IDs e estabilizar
-            
-            # Liberta o Lock antes de executar para permitir novos agendamentos futuros
+            time.sleep(3.0)
             with self._delayed_check_lock:
                 self._delayed_check_pending = False
-                
             if self._app:
                 try:
                     with self._app.app_context():
@@ -217,21 +401,17 @@ class StreamManager:
         threading.Thread(target=delayed_run, daemon=True).start()
 
     def _enforce_block_rules(self, user_id, username, sessions, profile, block_info, config):
-        """Aplica a regra de bloqueio: Termina todas as sessões ativas deste utilizador."""
         from app.extensions import cache
         block_reason = block_info.get('block_reason', 'manual')
-        
         spam_timeout = config.get("STREAM_CHECK_INTERVAL_SECONDS", 15)
         
         valid_sessions = []
         for s in sessions:
             session_key = getattr(s, 'sessionKey', None)
-            if session_key and cache.get(f"kill_spam_{session_key}"):
-                continue
+            if session_key and cache.get(f"kill_spam_{session_key}"): continue
             valid_sessions.append(s)
 
-        if not valid_sessions:
-            return
+        if not valid_sessions: return
 
         logger.info(f"🚫 A terminar {len(valid_sessions)} stream(s) para o utilizador bloqueado: '{username}' (Motivo: {block_reason}).")
         
@@ -258,16 +438,14 @@ class StreamManager:
                 cache.set(buffer_lock_key, True, timeout=5)
 
             self.data_manager.log_stream_termination(
-                plex_user_id=user_id,
-                username=username,
+                plex_user_id=user_id, username=username,
                 media_title=self._get_media_title(session),
-                platform=getattr(session.player, 'platform', 'Desconhecido') if session.player else 'Desconhecido',
+                platform=self._get_platform_info(session), 
                 reason=f'blocked_{block_reason}'
             )
             self._terminate_session(session, reason_text)
 
     def _enforce_screen_limits(self, user_id, username, sessions, profile, config):
-        """Aplica a regra de limite de ecrãs simultâneos."""
         from app.extensions import cache
         screen_limit = profile.get('screen_limit', 0)
         spam_timeout = config.get("STREAM_CHECK_INTERVAL_SECONDS", 15)
@@ -275,8 +453,7 @@ class StreamManager:
         active_sessions = []
         for s in sessions:
             session_key = getattr(s, 'sessionKey', None)
-            if session_key and cache.get(f"kill_spam_{session_key}"):
-                continue
+            if session_key and cache.get(f"kill_spam_{session_key}"): continue
             active_sessions.append(s)
         
         if screen_limit > 0 and len(active_sessions) > screen_limit:
@@ -291,91 +468,147 @@ class StreamManager:
 
             for i in range(excess_count):
                 session_to_terminate = sorted_sessions[i]
-                
                 session_key = getattr(session_to_terminate, 'sessionKey', None)
                 if session_key:
                     cache.set(f"kill_spam_{session_key}", True, timeout=spam_timeout)
                 
                 self.data_manager.log_stream_termination(
-                    plex_user_id=user_id,
-                    username=username,
+                    plex_user_id=user_id, username=username,
                     media_title=self._get_media_title(session_to_terminate),
-                    platform=getattr(session_to_terminate.player, 'platform', 'Desconhecido') if session_to_terminate.player else 'Desconhecido',
+                    platform=self._get_platform_info(session_to_terminate),
                     reason='limit_exceeded'
                 )
                 self._terminate_session(session_to_terminate, reason_text)
 
     def _terminate_session(self, session, reason):
-        """Envia o comando de paragem (stop) para a API do Plex com Prevenção Proativa de Erros."""
         from app.extensions import cache
         try:
             session_key = getattr(session, 'sessionKey', None)
-            
-            # PREVENÇÃO PROATIVA: Verifica se o objeto interno da sessão já tem o 'id' criado pelo Plex
-            # Se não tiver, o PlexAPI iria "crashar". Nós abortamos antes que isso aconteça!
             plex_internal_session = getattr(session, 'session', None)
             internal_id = getattr(plex_internal_session, 'id', None) if plex_internal_session else None
 
             if session_key and internal_id:
-                logger.info(f"⚡ A enviar comando de término (KILL) para a sessão {session_key} (Utilizador: '{getattr(session.user, 'title', 'Desconhecido')}') | Motivo: '{reason}'")
-                
                 try:
                     session.stop(reason=str(reason))
                 except AttributeError as e:
-                    if "'NoneType' object has no attribute 'id'" in str(e):
-                        logger.warning(f"Sessão {session_key} instável. O Plex está ainda a carregar o buffer interno.")
-                    else:
-                        raise
+                    if "'NoneType' object has no attribute 'id'" not in str(e): raise
                 
                 try:
                     from app.extensions import socketio
                     socketio.emit('dashboard_update_streams', namespace='/dashboard')
-                except Exception:
-                    pass
+                except Exception: pass
             else:
-                # Sessão em "Limbo" (Buffering inicial sem ID atribuído no Plex). Mandamos aguardar.
                 user_title = getattr(session.user, 'title', 'Desconhecido') if hasattr(session, 'user') else 'Desconhecido'
-                platform_info = getattr(session.player, 'platform', 'Device') if hasattr(session, 'player') else 'Device'
-                
-                # Chave ultra-específica para evitar falsos positivos se o mesmo utilizador abrir 2 coisas iguais
+                platform_info = self._get_platform_info(session)
                 buffer_lock_key = f"buffer_wait_{user_title}_{self._get_media_title(session)}_{platform_info}"
                 
                 if not cache.get(buffer_lock_key):
                     cache.set(buffer_lock_key, True, timeout=5)
-                    logger.info(f"⏳ A sessão ({session.title}) de '{user_title}' está no buffer inicial e ainda não tem ID. A reagendar corte consolidado...")
                     self._schedule_delayed_check()
         
-        except NotFound:
-            # O utilizador percebeu e fechou sozinho ou o servidor já cortou. Tudo bem!
-            user_title = getattr(session.user, 'title', 'Desconhecido') if hasattr(session, 'user') else 'Desconhecido'
-            logger.info(f"✅ Sessão de '{user_title}' já não existe no Plex (Foi terminada com sucesso).")
-        except Exception as e:
-            # Captura qualquer outro erro estranho que possa surgir de rede.
-            user_title = getattr(session.user, 'title', 'Desconhecido') if hasattr(session, 'user') else 'Desconhecido'
-            logger.error(f"Falha ao terminar a sessão do utilizador '{user_title}': {e}", exc_info=True)
+        except NotFound: pass
+        except Exception as e: pass
+
+    # =========================================================================
+    # NORMALIZAÇÕES E UTILITÁRIOS 
+    # ==========================================
+
+    def _get_platform_info(self, session):
+        """Extrai o nome da plataforma e devolve a classe normalizada para o CSS Frontend."""
+        
+        # 1. Recupera as informações base (Platform e Product)
+        platform = ""
+        product = ""
+        title = ""
+
+        players = getattr(session, "players", [])
+        if players:
+            platform = getattr(players[0], "platform", "")
+            product = getattr(players[0], "product", "")
+            title = getattr(players[0], "title", "")
+        elif hasattr(session, 'player') and session.player:
+            platform = getattr(session.player, 'platform', "")
+            product = getattr(session.player, 'product', "")
+            title = getattr(session.player, 'title', "")
+
+        # Junta todas as strings para procurar de forma mais abrangente
+        full_string = f"{platform} {product} {title}".lower()
+
+        # 2. Lógica de Deteção Prioritária (Navegadores Primeiro)
+        if 'chrome' in full_string: return 'chrome'
+        if 'safari' in full_string: return 'safari'
+        if 'firefox' in full_string: return 'firefox'
+        if 'edge' in full_string or 'microsoft edge' in full_string: return 'msedge'
+        if 'opera' in full_string: return 'opera'
+        if 'brave' in full_string: return 'chrome' # Brave costuma usar o ícone do Chrome como fallback
+        
+        # 3. Dispositivos Específicos
+        if 'android' in full_string: return 'android'
+        if 'roku' in full_string: return 'roku'
+        if 'tvos' in full_string or 'apple tv' in full_string: return 'atv'
+        if 'ios' in full_string or 'iphone' in full_string or 'ipad' in full_string or 'apple' in full_string: return 'ios'
+        if 'playstation' in full_string or 'ps4' in full_string or 'ps5' in full_string: return 'playstation'
+        if 'xbox' in full_string: return 'xbox'
+        if 'samsung' in full_string or 'tizen' in full_string: return 'samsung'
+        if 'lg' in full_string or 'webos' in full_string: return 'lg'
+        if 'kodi' in full_string or 'xbmc' in full_string: return 'kodi'
+        if 'plexamp' in full_string: return 'plexamp'
+        if 'dlna' in full_string: return 'dlna'
+        if 'chromecast' in full_string: return 'chromecast'
+        if 'tivo' in full_string: return 'tivo'
+        if 'alexa' in full_string: return 'alexa'
+        
+        # 4. Sistemas Operacionais (Fallback final)
+        if 'mac' in full_string: return 'macos'
+        if 'windows' in full_string: return 'windows'
+        if 'linux' in full_string: return 'linux'
+        
+        # 5. Caso tudo falhe, usa o Plex genérico
+        if 'plex' in full_string: return 'plex'
+        
+        return 'default'
 
     def _get_session_user_id(self, session):
-        """Tenta obter o ID do utilizador de forma segura."""
         try:
             if hasattr(session, 'user') and session.user:
                 return getattr(session.user, 'id', None)
             if hasattr(session, 'userID'):
                 return session.userID
-        except Exception as e:
-            logger.warning(f"Utilizador da sessão não encontrado de forma segura: {e}")
+            users = getattr(session, 'users', [])
+            if users and hasattr(users[0], 'id'):
+                return users[0].id
+        except Exception: pass
         return None
 
+    def _get_media_title(self, session):
+        media_title = getattr(session, 'title', 'Desconhecido')
+        media_type = getattr(session, 'type', None)
+        
+        if media_type == 'episode':
+            grandparent_title = getattr(session, 'grandparentTitle', '')
+            season_num = getattr(session, 'parentIndex', None)
+            episode_num = getattr(session, 'index', None)
+            
+            if grandparent_title:
+                media_title = f"{grandparent_title}"
+
+                if season_num is not None and episode_num is not None:
+                    try: media_title += f" S{int(season_num):02d}E{int(episode_num):02d}"
+                    except (ValueError, TypeError): pass
+                
+                episode_title = getattr(session, 'title', '')
+                if episode_title: media_title += f" - {episode_title}"
+                    
+        return media_title
+
     def _group_sessions_by_user(self, sessions):
-        """Agrupa uma lista de sessões num dicionário tendo o ID do utilizador como chave."""
         user_sessions_by_id = defaultdict(list)
         for session in sessions:
             user_id = self._get_session_user_id(session)
-            if user_id:
-                user_sessions_by_id[user_id].append(session)
+            if user_id: user_sessions_by_id[user_id].append(session)
         return user_sessions_by_id
 
     def _build_user_maps(self):
-        """Constrói o mapa de ID -> Username e identifica o Admin."""
         all_users = self.user_manager.get_all_plex_users() or []
         admin_account = self.conn.account
         admin_user_id = getattr(admin_account, 'id', None)
@@ -386,14 +619,7 @@ class StreamManager:
             
         return id_to_username_map, admin_user_id
 
-    def _get_media_title(self, session):
-        """Extrai o título formatado da sessão (séries vs filmes)."""
-        if getattr(session, 'type', None) == 'episode' and hasattr(session, 'grandparentTitle'):
-            return f"{session.grandparentTitle} - {session.title}"
-        return getattr(session, 'title', 'Desconhecido')
-
     def _build_placeholders(self, user_id, username, profile, session, context=None):
-        """Constrói um dicionário com os placeholders para as mensagens."""
         placeholders = {
             'username': username,
             'name': profile.get('name') or username,
@@ -403,6 +629,5 @@ class StreamManager:
             'discord_user_id': profile.get('discord_user_id', ''),
             'phone_number': profile.get('phone_number', '')
         }
-        if context:
-            placeholders.update(context)
+        if context: placeholders.update(context)
         return placeholders
