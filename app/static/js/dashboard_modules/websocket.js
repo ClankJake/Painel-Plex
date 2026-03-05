@@ -98,6 +98,8 @@ const setupBulkNotificationHandlers = (socket, i18n) => {
 export function setupWebSocket() {
     const { i18n } = state;
     let streamUpdateTimeout = null;
+    let fastUpdateTimeout = null; // 🛡️ NOVO: Guarda o timer rápido
+    let fetchCounter = 0; // 🛡️ NOVO: Previne atropelamento de dados (Race Condition)
     
     // Conexão Inteligente: Usa Polling inicial e depois atualiza para WebSocket (Evita erros na Cloudflare/Nginx)
     const socket = io('/dashboard', {
@@ -149,15 +151,21 @@ export function setupWebSocket() {
     // --- PLEX SSE: O MILAGRE DO TEMPO REAL ⚡ ---
     socket.on('dashboard_update_streams', () => {
         if (streamUpdateTimeout) clearTimeout(streamUpdateTimeout);
+        if (fastUpdateTimeout) clearTimeout(fastUpdateTimeout); // Limpa o timer rápido se houver cliques seguidos
         
         console.log("⚡ Sinal Plex detetado! A atualizar instantaneamente...");
 
         const fetchAndUpdate = async () => {
+            const currentFetch = ++fetchCounter; // Assina este pedido com um ID único
+            
             try {
                 const scriptTag = document.getElementById('dashboard-script');
                 const activeStreamsUrl = scriptTag ? scriptTag.dataset.activeStreamsUrl : '/api/system/active-streams';
                 
                 const data = await fetchAPI(activeStreamsUrl);
+                
+                // 🛡️ MÁGICA: Se o Plex demorou a responder e o utilizador já clicou de novo, descarta esta resposta velha!
+                if (currentFetch !== fetchCounter) return;
                 
                 if (data && data.success && typeof renderActiveStreamsDashboard === 'function') {
                     renderActiveStreamsDashboard(data.sessions);
@@ -167,8 +175,8 @@ export function setupWebSocket() {
             }
         };
 
-        // 1ª Chamada Rápida (400ms): Limpa imediatamente os streams quando o utilizador faz "Stop"
-        setTimeout(fetchAndUpdate, 400);
+        // 1ª Chamada Rápida (400ms): Limpa imediatamente os streams quando o utilizador faz "Stop" ou "Pause"
+        fastUpdateTimeout = setTimeout(fetchAndUpdate, 400);
 
         // 2ª Chamada Tardia (3000ms): Atualiza o ecrã com os novos filmes (Plex demora a gerar a sessão no arranque)
         streamUpdateTimeout = setTimeout(fetchAndUpdate, 3000); 
@@ -202,4 +210,3 @@ export function setupWebSocket() {
         }
     }, 15000);
 }
-
