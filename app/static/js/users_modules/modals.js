@@ -400,7 +400,7 @@ export async function showLibraryManagementModal(user = null) {
         <div id="lib-modal-dynamic-body">
             <div class="flex flex-col justify-center items-center py-10">
                 <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-                <span class="text-gray-500 dark:text-gray-400 font-medium">Acessando a bilioteca...</span>
+                <span class="text-gray-500 dark:text-gray-400 font-medium">Acessando a biblioteca...</span>
             </div>
         </div>`;
         
@@ -911,3 +911,4 @@ export async function showReactivationModal(user) {
         }
     };
 }
+
