@@ -35,36 +35,27 @@ DEFAULT_TEMPLATES = {
 }
 
 def get_greeting():
-    """Retorna a saudação baseada na hora local real do servidor."""
     current_hour = datetime.now(get_localzone()).hour
     if 5 <= current_hour < 12: return _("Bom dia")
     elif 12 <= current_hour < 18: return _("Boa tarde")
     else: return _("Boa noite")
 
 class NotifierManager:
-    """
-    Gere o envio de notificações assíncronas para os utilizadores (Telegram, Discord, Webhooks).
-    """
     def __init__(self, link_shortener_service=None, socketio_instance=None):
         self.link_shortener = link_shortener_service
         self.socketio = socketio_instance
         self._bot = None
 
     def _get_bot(self):
-        """Inicializa o bot apenas para envio de mensagens (Push)."""
         config = load_or_create_config()
         token = config.get("TELEGRAM_BOT_TOKEN")
         if not token: 
             return None
-            
         if self._bot is None or self._bot.token != token:
             self._bot = telebot.TeleBot(token, threaded=False)
         return self._bot
 
-    # --- PROCESSAMENTO DE TEMPLATES ---
-
     def _convert_md_to_html(self, text):
-        """Converte Markdown básico para HTML do Telegram para evitar erros de parsing."""
         if not text: return ""
         text = re.sub(r'\*(.*?)\*', r'<b>\1</b>', text)
         text = re.sub(r'_(.*?)_', r'<i>\1</i>', text)
@@ -72,7 +63,6 @@ class NotifierManager:
         return text
 
     def _format_template(self, template_str, placeholders, is_json=False, use_html_escape=False):
-        """Preenche o template com as variáveis, aplicando escapes necessários."""
         if not template_str: return None
         
         safe_placeholders = {}
@@ -99,8 +89,6 @@ class NotifierManager:
                 logger.error(f"Falha ao processar template JSON: {e}")
                 return None
 
-    # --- DESPACHO DE MENSAGENS (DISPATCHERS) ---
-
     def _send_telegram_notification(self, message, chat_id, request_id, reply_markup=None, plex_user_id=None, photo_url=None):
         bot = self._get_bot()
         if not bot: return
@@ -119,22 +107,22 @@ class NotifierManager:
                     reply_markup=reply_markup, disable_web_page_preview=True
                 )
         except telebot.apihelper.ApiTelegramException as e:
-            # Tratamento de Rate Limit (429)
             if e.error_code == 429:
                 retry_after = e.result_json.get('parameters', {}).get('retry_after', 5)
                 logger.warning(f"Telegram Rate Limit atingido. A aguardar {retry_after}s...")
                 time.sleep(retry_after + 1)
                 return self._send_telegram_notification(message, chat_id, request_id, reply_markup, plex_user_id, photo_url)
                 
-            # Tratamento de Bloqueio do Bot (403)
             if e.error_code == 403 and plex_user_id:
                 logger.warning(f"[ID: {request_id}] Bot bloqueado pelo utilizador {plex_user_id}. A remover contacto.")
                 from .. import extensions
                 extensions.data_manager.update_user_profile(plex_user_id, {'telegram_id': None, 'telegram_user': None})
             else:
                 logger.error(f"[ID: {request_id}] Erro Telegram: {e.description}")
+                raise e
         except Exception as e:
             logger.error(f"[ID: {request_id}] Erro inesperado ao enviar Telegram: {e}")
+            raise e
 
     def _send_webhook_notification(self, payload, request_id, config):
         webhook_url = config.get("WEBHOOK_URL")
@@ -159,6 +147,7 @@ class NotifierManager:
         except requests.exceptions.RequestException as e:
             error_response = e.response.text if e.response else "Sem resposta do servidor"
             logger.error(f"[ID: {request_id}] Falha no Webhook: {e} | Resposta: {error_response}")
+            raise Exception(f"Falha de Webhook: {error_response}")
 
     def _send_discord_notification(self, payload, request_id, config):
         webhook_url = config.get("DISCORD_WEBHOOK_URL")
@@ -168,11 +157,9 @@ class NotifierManager:
             requests.post(webhook_url, json=payload, headers={'Content-Type': 'application/json'}, timeout=30).raise_for_status()
         except requests.exceptions.RequestException as e:
             logger.error(f"[ID: {request_id}] Falha no Discord: {e}")
-
-    # --- LÓGICA DE PREPARAÇÃO DA MENSAGEM (SRP) ---
+            raise e
 
     def _get_price_and_plan(self, config, user_screen_limit):
-        """Determina o preço correto e o nome do plano do utilizador."""
         from flask_babel import ngettext, gettext as _
         
         screen_prices = config.get("SCREEN_PRICES", {})
@@ -188,7 +175,6 @@ class NotifierManager:
         return formatted_price, plan_name
 
     def _get_payment_link(self, config, event_type, user_profile):
-        """Gera o link de pagamento, forçando o uso do APP_BASE_URL nas rotinas de Background."""
         if event_type == 'renewal' or not user_profile.get('payment_token'):
             return None
             
@@ -210,7 +196,6 @@ class NotifierManager:
             return long_url if 'long_url' in locals() else None
 
     def _prepare_and_send(self, event_type, user, user_profile, context):
-        """Orquestra a montagem e o envio da notificação."""
         config = load_or_create_config()
         request_id = str(uuid.uuid4())
         
@@ -222,8 +207,25 @@ class NotifierManager:
         if not (can_notify_telegram or can_notify_webhook or can_notify_discord): 
             return
 
+        t_tpl = config.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE", "")
+        w_tpl = config.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE", "")
+        d_tpl = config.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE", "")
+        bulk_msg = context.get('message', '')
+        
+        all_text = f"{t_tpl} {w_tpl} {d_tpl} {bulk_msg}"
+        
+        needs_payment_link = (
+            "{payment_link}" in all_text or 
+            "{paymentlink}" in all_text or 
+            event_type in ['expiration', 'trial_end']
+        )
+        
+        if needs_payment_link:
+            payment_link = self._get_payment_link(config, event_type, user_profile)
+        else:
+            payment_link = None
+
         formatted_price, plan_name = self._get_price_and_plan(config, user_profile.get('screen_limit', 0))
-        payment_link = self._get_payment_link(config, event_type, user_profile)
 
         now = datetime.now(get_localzone())
         placeholders = {
@@ -265,29 +267,20 @@ class NotifierManager:
             if payload: 
                 self._send_discord_notification(payload, request_id, config)
 
-    # --- API PÚBLICA DE EVENTOS ---
-
     def send_expiration_notification(self, user, days_left, user_profile):
         expiration_date_str = user_profile.get('expiration_date')
         formatted_date = ""
-        
-        # --- CORREÇÃO DO FUSO HORÁRIO (TIMEZONE) NA DATA DE VENCIMENTO ---
         if expiration_date_str:
             try:
                 exp_dt = datetime.fromisoformat(expiration_date_str)
-                # Converte o UTC da Base de Dados de volta para o Fuso Horário Local (ex: Brasil)
                 if exp_dt.tzinfo:
                     exp_dt = exp_dt.astimezone(get_localzone())
                 formatted_date = exp_dt.strftime('%d/%m/%Y')
             except (ValueError, TypeError):
-                # Fallback de segurança se a data vier num formato inesperado
                 formatted_date = expiration_date_str[:10]
-        # -----------------------------------------------------------------
-                
         self._prepare_and_send('expiration', user, user_profile, {'days': days_left, 'date': formatted_date})
 
     def send_renewal_notification(self, user, new_expiration_date, user_profile):
-        # --- CORREÇÃO DO FUSO HORÁRIO (TIMEZONE) NA DATA DE RENOVAÇÃO ---
         if isinstance(new_expiration_date, datetime):
             if new_expiration_date.tzinfo:
                 new_expiration_date = new_expiration_date.astimezone(get_localzone())
@@ -300,8 +293,6 @@ class NotifierManager:
                 formatted_date = exp_dt.strftime('%d/%m/%Y')
             except (ValueError, TypeError):
                 formatted_date = str(new_expiration_date)[:10]
-        # -----------------------------------------------------------------
-        
         self._prepare_and_send('renewal', user, user_profile, {'new_date': formatted_date, 'date': formatted_date})
 
     def send_trial_end_notification(self, user, user_profile):
@@ -319,63 +310,131 @@ class NotifierManager:
             **context
         }
 
-    # --- PROCESSAMENTO DE MENSAGENS EM MASSA (BULK) ---
+    # --- PROCESSAMENTO DE MENSAGENS EM MASSA (BULK) EM TEMPO REAL ---
 
     def process_bulk_notification_task(self, task):
-        """Processa a tarefa de envio em massa (background job)."""
         from .. import extensions
+        from flask import current_app
+        
+        # 🛡️ PROTEÇÃO TOTAL CONTRA O ERRO DE "DICT"
+        # Garante que extraímos o ID e o Payload quer seja um objeto SQLAlchemy ou um Dicionário nativo
+        if isinstance(task, dict):
+            task_id = task.get('id')
+            raw_payload = task.get('payload', '{}')
+        else:
+            task_id = getattr(task, 'id', None)
+            raw_payload = getattr(task, 'payload', '{}')
+
+        if not task_id:
+            logger.error("Tarefa sem ID não pode ser processada.")
+            return
+
+        app_obj = current_app._get_current_object() if current_app else None
+
         try:
-            payload = json.loads(task.payload or '{}')
+            payload = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
+            
             message = payload.get('message')
             if not message: 
                 raise ValueError("Mensagem vazia.")
 
             users_to_notify = self._get_bulk_target_users(payload, extensions)
-            
             total_users = len(users_to_notify)
-            extensions.data_manager.update_task(task.id, {'status': 'running', 'progress_total': total_users})
             
-            if extensions.socketio:
-                extensions.socketio.emit('bulk_notification_start', {'total': total_users}, namespace='/dashboard')
+            # Usando a task_id segura!
+            extensions.data_manager.update_task(task_id, {'status': 'running', 'progress_total': total_users})
             
-            all_profiles = {p['plex_user_id']: p for p in extensions.data_manager.get_all_user_profiles()}
-            processed_count = 0
-            
-            for user in users_to_notify:
-                profile = all_profiles.get(user['id'], {})
-                
-                has_contact = profile.get('telegram_id') or profile.get('telegram_user') or profile.get('phone_number') or profile.get('discord_user_id')
-                if not has_contact: 
-                    continue
-                
-                self._prepare_and_send('bulk', user, profile, {'message': message})
-                processed_count += 1
-                
-                if processed_count % 5 == 0: 
-                    extensions.data_manager.update_task(task.id, {'progress_current': processed_count})
-                    if extensions.socketio:
-                        extensions.socketio.emit('bulk_notification_progress', {'current': processed_count, 'total': total_users}, namespace='/dashboard')
+            # O worker empacotado para o SocketIO
+            def bulk_worker():
+                if app_obj:
+                    ctx = app_obj.test_request_context('/')
+                    ctx.push()
 
-                time.sleep(0.4)
-                
-            extensions.data_manager.update_task(task.id, {
-                'status': 'completed', 
-                'completed_at': datetime.now(timezone.utc), 
-                'result': f'{processed_count} notificações enviadas.'
-            })
-            
+                try:
+                    def emit_ws(event, data):
+                        try:
+                            if extensions.socketio:
+                                extensions.socketio.emit(event, data, namespace='/dashboard')
+                                extensions.socketio.emit(event, data, namespace='/users')
+                        except Exception as e:
+                            logger.debug(f"Aviso ao tentar emitir evento WS: {e}")
+
+                    if extensions.socketio: extensions.socketio.sleep(1)
+
+                    emit_ws('bulk_notification_start', {'total': total_users})
+                    emit_ws('bulk_console_log', {'msg': "========================================================="})
+                    emit_ws('bulk_console_log', {'msg': f"🚀 INÍCIO DO ENVIO EM MASSA ({total_users} utilizadores elegíveis)"})
+                    emit_ws('bulk_console_log', {'msg': "========================================================="})
+                    
+                    all_profiles = {p['plex_user_id']: p for p in extensions.data_manager.get_all_user_profiles()}
+                    processed_count = 0
+                    
+                    for index, user in enumerate(users_to_notify, 1):
+                        username = user.get('username', f'ID {user.get("id")}')
+                        profile = all_profiles.get(user['id'], {})
+                        
+                        emit_ws('bulk_notification_progress', {'current': index, 'total': total_users})
+                        
+                        # Usando a task_id segura!
+                        if index % 10 == 0 or index == total_users:
+                            extensions.data_manager.update_task(task_id, {'progress_current': index})
+
+                        has_contact = profile.get('telegram_id') or profile.get('telegram_user') or profile.get('phone_number') or profile.get('discord_user_id')
+                        if not has_contact: 
+                            emit_ws('bulk_console_log', {'msg': f"[{index}/{total_users}] ⏭️ Ignorado: {username} (Sem dados de contacto)"})
+                            if extensions.socketio: extensions.socketio.sleep(0.1)
+                            continue
+                        
+                        try:
+                            emit_ws('bulk_console_log', {'msg': f"[{index}/{total_users}] ⏳ A processar envio para {username}..."})
+                            self._prepare_and_send('bulk', user, profile, {'message': message})
+                            processed_count += 1
+                            emit_ws('bulk_console_log', {'msg': f"[{index}/{total_users}] ✅ Sucesso: Entregue a {username}."})
+                            
+                        except Exception as user_err:
+                            logger.error(f"Erro no envio em massa para {username}: {user_err}")
+                            emit_ws('bulk_console_log', {'msg': f"[{index}/{total_users}] ❌ Erro ({username}): {str(user_err)}"})
+                        
+                        if extensions.socketio:
+                            extensions.socketio.sleep(0.5)
+                        else:
+                            time.sleep(0.5)
+                        
+                    # Usando a task_id segura!
+                    extensions.data_manager.update_task(task_id, {
+                        'status': 'completed', 
+                        'completed_at': datetime.now(timezone.utc), 
+                        'result': f'{processed_count} notificações enviadas.'
+                    })
+                    
+                    emit_ws('bulk_console_log', {'msg': f"🎉 Concluído! Mensagens entregues com sucesso: {processed_count}"})
+                    emit_ws('bulk_notification_end', {'message': f'{processed_count} mensagens enviadas com sucesso.'})
+                    
+                finally:
+                    if app_obj:
+                        ctx.pop()
+
             if extensions.socketio:
-                extensions.socketio.emit('bulk_notification_end', {'message': f'{processed_count} enviadas.'}, namespace='/dashboard')
+                extensions.socketio.start_background_task(bulk_worker)
+            else:
+                bulk_worker()
             
         except Exception as e:
-            logger.error(f"Erro no processamento Bulk: {e}", exc_info=True)
-            extensions.data_manager.update_task(task.id, {'status': 'failed', 'result': str(e)})
+            logger.error(f"Erro crítico no processamento Bulk: {e}", exc_info=True)
             
-            if extensions.socketio:
-                extensions.socketio.emit('bulk_notification_error', {'message': str(e)}, namespace='/dashboard')
+            # Fallback seguro em caso de erro crítico usando a task_id segura
+            if task_id:
+                extensions.data_manager.update_task(task_id, {'status': 'failed', 'result': str(e)})
+            
+            try:
+                if extensions.socketio:
+                    extensions.socketio.emit('bulk_console_log', {'msg': f"💥 ERRO CRÍTICO NA TAREFA: {str(e)}"})
+                    extensions.socketio.emit('bulk_notification_error', {'message': str(e)}, namespace='/dashboard')
+                    extensions.socketio.emit('bulk_notification_error', {'message': str(e)}, namespace='/users')
+            except Exception:
+                pass
 
     def _get_bulk_target_users(self, payload, extensions):
-        """Filtra quais os utilizadores devem receber a mensagem em massa."""
         target_audience = payload.get('target_audience', 'active')
         target_user_ids = payload.get('user_ids', [])
         
@@ -391,5 +450,5 @@ class NotifierManager:
             blocked_ids = {str(u['user_plex_id']) for u in extensions.data_manager.get_blocked_users_list()}
             if target_audience == 'blocked':
                 return [u for u in all_plex_users if str(u['id']) in blocked_ids]
-            else: # 'active'
+            else: 
                 return [u for u in all_plex_users if str(u['id']) not in blocked_ids]
