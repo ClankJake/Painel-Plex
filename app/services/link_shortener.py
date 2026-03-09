@@ -21,16 +21,33 @@ class LinkShortener:
 
     def create_short_link(self, original_url):
         """
-        Cria um novo link curto ou retorna um existente se a URL já foi encurtada.
+        Cria um novo link curto para a URL especificada e apaga quaisquer 
+        links curtos antigos que apontassem para o mesmo destino (Inutilização Segura).
         """
+        try:
+            # 🛡️ AUTO-LIMPEZA: Procura e apaga links antigos para esta mesma URL final
+            old_links = ShortLink.query.filter_by(original_url=original_url).all()
+            for old_link in old_links:
+                db.session.delete(old_link)
+                logger.info(f"Link curto antigo '{old_link.short_code}' apagado para evitar duplicações.")
+            
+            # Se encontrou links antigos, efetua o "commit" da eliminação
+            if old_links:
+                db.session.commit()
+                
+        except Exception as e:
+            logger.warning(f"Erro ao tentar apagar links curtos antigos: {e}")
+            db.session.rollback()
+
+        # Cria o novo link curto "fresco"
         code = self._generate_short_code()
         new_link = ShortLink(short_code=code, original_url=original_url)
         db.session.add(new_link)
         db.session.commit()
         
-        logger.info(f"Link curto '{code}' criado para a URL: {original_url}")
+        logger.info(f"Novo Link curto '{code}' criado com sucesso para: {original_url}")
         
-        # --- CORREÇÃO: Forçar o uso do Domínio Público (APP_BASE_URL) ---
+        # --- LÓGICA DE MONTAGEM DA URL PÚBLICA ---
         config = load_or_create_config()
         app_base_url = config.get("APP_BASE_URL", "").strip().rstrip('/')
         
