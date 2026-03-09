@@ -1,18 +1,12 @@
 import { dom, state } from './config.js';
 import { renderSummaryCards, renderCharts, renderActiveStreamsDashboard, prependTerminationLog } from './ui.js';
-import { resetBulkNotificationUI } from './handlers.js';
+import { 
+    resetBulkNotificationUI, 
+    handleBulkProgressUpdate, 
+    handleBulkProgressEnd, 
+    handleBulkProgressError 
+} from './handlers.js';
 import { showToast, fetchAPI } from '../utils.js';
-
-/**
- * Função utilitária para limpar temporizadores de segurança pendentes
- * e evitar o congelamento do UI.
- */
-const clearSafetyTimeout = () => {
-    if (state.safetyTimeout) {
-        clearTimeout(state.safetyTimeout);
-        state.safetyTimeout = null;
-    }
-};
 
 /**
  * Atualiza o ícone e o texto do indicador de ligação no cabeçalho do Dashboard.
@@ -48,47 +42,33 @@ const updateRealtimeIndicator = (status, text, i18n) => {
 
 /**
  * Regista os event listeners relacionados com o envio em massa (Bulk Notifications).
+ * Agora ligado diretamente ao handlers.js para sincronia perfeita e animação!
  */
 const setupBulkNotificationHandlers = (socket, i18n) => {
-    if (!dom.progressContainer || !dom.progressBar || !dom.progressText || !dom.progressPercent) {
-        return;
+    // Liga a transição suave do CSS para que a barra tenha animação ao encher
+    if (dom.progressBar) {
+        dom.progressBar.style.transition = 'width 0.4s ease-in-out';
     }
 
     socket.on('bulk_notification_start', (data) => {
-        clearSafetyTimeout();
-        dom.progressContainer.classList.remove('hidden');
-        dom.progressBar.style.width = '0%';
-        dom.progressBar.classList.remove('bg-red-600', 'bg-green-600');
-        dom.progressBar.classList.add('bg-blue-600');
-        dom.progressPercent.textContent = '0%';
-        dom.progressText.textContent = i18n.bulkSendProgress.replace('{current}', 0).replace('{total}', data.total);
+        if (dom.progressContainer) dom.progressContainer.classList.remove('hidden');
+        handleBulkProgressUpdate(0, data.total);
     });
 
     socket.on('bulk_notification_progress', (data) => {
-        const percent = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
-        dom.progressBar.style.width = `${percent}%`;
-        dom.progressPercent.textContent = `${percent}%`;
-        dom.progressText.textContent = i18n.bulkSendProgress.replace('{current}', data.current).replace('{total}', data.total);
+        if (dom.progressContainer) dom.progressContainer.classList.remove('hidden');
+        handleBulkProgressUpdate(data.current, data.total);
     });
 
-    socket.on('bulk_notification_end', () => {
-        clearSafetyTimeout();
-        dom.progressBar.style.width = '100%';
-        dom.progressBar.classList.remove('bg-blue-600');
-        dom.progressBar.classList.add('bg-green-600');
-        dom.progressPercent.textContent = '100%';
-        dom.progressText.textContent = i18n.bulkSendComplete;
-        showToast(i18n.bulkSendComplete, 'success');
-        resetBulkNotificationUI(3000); 
+    socket.on('bulk_notification_end', (data) => {
+        handleBulkProgressEnd(data.message || i18n.bulkSendComplete);
     });
 
     socket.on('bulk_notification_error', (data) => {
-        clearSafetyTimeout();
-        showToast(`${i18n.bulkSendError}: ${data.message}`, 'error');
-        dom.progressText.textContent = i18n.bulkSendError;
-        dom.progressBar.classList.remove('bg-blue-600');
-        dom.progressBar.classList.add('bg-red-600');
-        resetBulkNotificationUI(5000); 
+        handleBulkProgressError(data.message || i18n.bulkSendError);
+    });
+    socket.on('bulk_console_log', (data) => {
+        console.log(`%c[SERVIDOR] %c${data.msg}`, "color: #3B82F6; font-weight: bold", "color: inherit");
     });
 };
 
@@ -98,10 +78,10 @@ const setupBulkNotificationHandlers = (socket, i18n) => {
 export function setupWebSocket() {
     const { i18n } = state;
     let streamUpdateTimeout = null;
-    let fastUpdateTimeout = null; // 🛡️ NOVO: Guarda o timer rápido
-    let fetchCounter = 0; // 🛡️ NOVO: Previne atropelamento de dados (Race Condition)
+    let fastUpdateTimeout = null; // Guarda o timer rápido
+    let fetchCounter = 0; // Previne atropelamento de dados (Race Condition)
     
-    // Conexão Inteligente: Usa Polling inicial e depois atualiza para WebSocket (Evita erros na Cloudflare/Nginx)
+    // Conexão Inteligente: Usa Polling inicial e depois atualiza para WebSocket
     const socket = io('/dashboard', {
         transports: ['polling', 'websocket'],
         reconnection: true,
@@ -151,12 +131,12 @@ export function setupWebSocket() {
     // --- PLEX SSE: O MILAGRE DO TEMPO REAL ⚡ ---
     socket.on('dashboard_update_streams', () => {
         if (streamUpdateTimeout) clearTimeout(streamUpdateTimeout);
-        if (fastUpdateTimeout) clearTimeout(fastUpdateTimeout); // Limpa o timer rápido se houver cliques seguidos
+        if (fastUpdateTimeout) clearTimeout(fastUpdateTimeout);
         
         console.log("⚡ Sinal Plex detetado! A atualizar instantaneamente...");
 
         const fetchAndUpdate = async () => {
-            const currentFetch = ++fetchCounter; // Assina este pedido com um ID único
+            const currentFetch = ++fetchCounter; 
             
             try {
                 const scriptTag = document.getElementById('dashboard-script');
@@ -164,7 +144,6 @@ export function setupWebSocket() {
                 
                 const data = await fetchAPI(activeStreamsUrl);
                 
-                // 🛡️ MÁGICA: Se o Plex demorou a responder e o utilizador já clicou de novo, descarta esta resposta velha!
                 if (currentFetch !== fetchCounter) return;
                 
                 if (data && data.success && typeof renderActiveStreamsDashboard === 'function') {
@@ -175,10 +154,10 @@ export function setupWebSocket() {
             }
         };
 
-        // 1ª Chamada Rápida (400ms): Limpa imediatamente os streams quando o utilizador faz "Stop" ou "Pause"
+        // 1ª Chamada Rápida (400ms)
         fastUpdateTimeout = setTimeout(fetchAndUpdate, 400);
 
-        // 2ª Chamada Tardia (3000ms): Atualiza o ecrã com os novos filmes (Plex demora a gerar a sessão no arranque)
+        // 2ª Chamada Tardia (3000ms)
         streamUpdateTimeout = setTimeout(fetchAndUpdate, 3000); 
     });
 
@@ -189,11 +168,10 @@ export function setupWebSocket() {
         }
     });
 
+    // Anexa os eventos de Bulk Notifications configurados acima
     setupBulkNotificationHandlers(socket, i18n);
 
     // --- LOOP DE SEGURANÇA (FALLBACK) ---
-    // Garante que o painel é atualizado a cada 15 segundos mesmo que os websockets falhem,
-    // mas SÓ SE a aba estiver aberta e visível.
     setInterval(async () => {
         if (document.hidden) return; 
 
@@ -206,7 +184,7 @@ export function setupWebSocket() {
                 renderActiveStreamsDashboard(data.sessions);
             }
         } catch (e) {
-            // Falha silenciosa no background
+            // Falha silenciosa
         }
     }, 15000);
 }
