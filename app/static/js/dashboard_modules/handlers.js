@@ -5,10 +5,10 @@ import { renderTerminationLogs, updateSpecificUserLabel, openUserSelectionModal 
 import { showToast, createModal } from '../utils.js';
 
 // ==========================================
-// HELPERS DE UI LOCAIS
+// HELPERS DE UI LOCAIS (AGORA EXPORTADOS)
 // ==========================================
 
-const setProgressBarState = (status, percent = 0, text = '') => {
+export const setProgressBarState = (status, percent = 0, text = '') => {
     if (!dom.progressBar || !dom.progressContainer) return;
     
     dom.progressBar.style.width = `${percent}%`;
@@ -127,7 +127,12 @@ export function resetBulkNotificationUI(delay = 0) {
     }, delay);
 }
 
-export function handleSendBulkNotification() {
+// 🛡️ CORREÇÃO PRINCIPAL: Recebe o evento "e" e impede o reload da página!
+export function handleSendBulkNotification(e) {
+    if (e && typeof e.preventDefault === 'function') {
+        e.preventDefault(); // Impede que o formulário recarregue a página
+    }
+
     const { i18n } = state;
     const messageEl = document.getElementById('bulk_message');
     const message = messageEl ? messageEl.value.trim() : '';
@@ -163,10 +168,11 @@ export function handleSendBulkNotification() {
 
 function _promptBulkConfirmation(message, payload) {
     const { i18n } = state;
+    // 🛡️ CORREÇÃO: Adicionado type="button" para não acionar submits nativos
     createModal('confirmationModal', i18n.confirmBulkSendTitle,
         `<p>${message}</p>`,
-        `<button id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmSendButton}</button>
-         <button id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
+        `<button type="button" id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmSendButton}</button>
+         <button type="button" id="modalCancel" class="btn bg-gray-200 dark:bg-gray-600">${i18n.cancel}</button>`
     );
 
     const confirmBtn = document.getElementById('modalConfirm');
@@ -174,13 +180,15 @@ function _promptBulkConfirmation(message, payload) {
     const confirmationModal = document.getElementById('confirmationModal');
 
     if (confirmBtn) {
-        confirmBtn.onclick = () => {
+        confirmBtn.onclick = (e) => {
+            e.preventDefault();
             if (confirmationModal) confirmationModal.classList.add('hidden');
             _executeBulkNotification(payload);
         };
     }
     if (cancelBtn) {
-        cancelBtn.onclick = () => {
+        cancelBtn.onclick = (e) => {
+            e.preventDefault();
             if (confirmationModal) confirmationModal.classList.add('hidden');
         };
     }
@@ -190,7 +198,7 @@ async function _executeBulkNotification(payload) {
     const { i18n } = state;
     
     if (dom.sendBulkNotificationBtn) dom.sendBulkNotificationBtn.disabled = true;
-    if (dom.sendBulkBtnText) dom.sendBulkBtnText.textContent = i18n.sendingBulkNotification;
+    if (dom.sendBulkBtnText) dom.sendBulkBtnText.textContent = i18n.sendingBulkNotification || 'A enviar...';
     if (dom.progressContainer) dom.progressContainer.classList.remove('hidden');
     
     setProgressBarState('active', 0, i18n.bulkSendStart || 'A iniciar...');
@@ -199,16 +207,16 @@ async function _executeBulkNotification(payload) {
         const result = await sendBulkNotification(payload);
         
         if (result.success) {
-            // MOSTRA FEEDBACK DE SUCESSO IMEDIATAMENTE AO CLICAR
+            // MOSTRA FEEDBACK INICIAL
             showToast('A tarefa de envio em massa foi iniciada! Acompanhe o progresso.', 'success');
 
-            // Temporizador de Segurança: caso a API/Sockets falhem
+            // Temporizador de Segurança alargado (60s)
             state.safetyTimeout = setTimeout(() => {
                 if (dom.sendBulkNotificationBtn && dom.sendBulkNotificationBtn.disabled) {
-                    showToast('O envio continua no servidor, mas a barra de progresso expirou o tempo de espera.', 'warning');
+                    showToast('O envio concluiu no servidor, mas a interface não recebeu o sinal final.', 'info');
                     resetBulkNotificationUI(0);
                 }
-            }, 30000);
+            }, 60000);
         } else {
             showToast(result.message, 'error');
             resetBulkNotificationUI(0);
@@ -217,4 +225,34 @@ async function _executeBulkNotification(payload) {
         showToast(error.message, 'error');
         resetBulkNotificationUI(0);
     }
+}
+
+// ==========================================
+// EXPORTAÇÕES PARA O WEBSOCKET
+// Estas funções devem ser chamadas pelo seu websocket.js!
+// ==========================================
+
+export function handleBulkProgressUpdate(current, total) {
+    const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+    setProgressBarState('active', percent, `Enviando: ${current} / ${total}`);
+}
+
+export function handleBulkProgressEnd(message) {
+    if (state.safetyTimeout) {
+        clearTimeout(state.safetyTimeout);
+        state.safetyTimeout = null;
+    }
+    setProgressBarState('success', 100, message || 'Envio Concluído!');
+    showToast(message || 'Envio em massa concluído com sucesso!', 'success');
+    resetBulkNotificationUI(3000); // Retira a barra após 3 segundos
+}
+
+export function handleBulkProgressError(message) {
+    if (state.safetyTimeout) {
+        clearTimeout(state.safetyTimeout);
+        state.safetyTimeout = null;
+    }
+    setProgressBarState('error', 100, message || 'Falha no envio.');
+    showToast(message || 'Ocorreu um erro durante o envio.', 'error');
+    resetBulkNotificationUI(4000);
 }
