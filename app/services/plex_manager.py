@@ -3,11 +3,14 @@
 import logging
 import base64
 import time
+import os
+import pytz
 from urllib.parse import urlparse, parse_qsl, urlencode
 from flask import current_app, url_for
 from flask_babel import gettext as _
 from requests.exceptions import ConnectTimeout, ReadTimeout, ConnectionError, RequestException
 from datetime import date, datetime, timezone, timedelta
+from tzlocal import get_localzone_name
 
 from .plex.connection import PlexConnectionManager
 from .plex.user_manager import PlexUserManager
@@ -15,6 +18,20 @@ from .plex.invite_manager import PlexInviteManager
 from .plex.subscription_manager import PlexSubscriptionManager
 
 logger = logging.getLogger(__name__)
+
+# --- HELPER DE FUSO HORÁRIO ---
+def _get_local_tz():
+    """Obtém o fuso horário real do sistema respeitando o Docker (ex: America/Sao_Paulo)."""
+    tz_env = os.environ.get('TZ')
+    if tz_env:
+        try:
+            return pytz.timezone(tz_env)
+        except pytz.UnknownTimeZoneError:
+            pass
+    try: 
+        return pytz.timezone(get_localzone_name())
+    except Exception: 
+        return pytz.UTC
 
 class PlexManager:
     """
@@ -95,10 +112,6 @@ class PlexManager:
 
     # --- SESSÕES E STREAMING ---
     def get_active_sessions(self):
-        """
-        Delega a obtenção de sessões ativas para o Motor de Streams (stream_manager), 
-        que possui lógica avançada de proteção, deteção de players e extração de artwork.
-        """
         if not self.conn.plex or not self.stream_manager:
             return {"success": False, "sessions": [], "stream_count": 0}
         
@@ -117,7 +130,6 @@ class PlexManager:
         last_sync = cache.get('last_plex_user_sync')
         current_time = time.time()
         
-        # 1. AUTO-RENOVAÇÃO BLINDADA (A cada 6 horas)
         if not force_refresh and (not last_sync or (current_time - last_sync > 21600)):
             force_refresh = True
             logger.debug("🔄 Auto-sincronização global de utilizadores ativada.")
@@ -133,18 +145,15 @@ class PlexManager:
 
         processed_users = []
         
-        # 2. CLONE DE SEGURANÇA E PROXY LIMPO
         for u in cached_users:
-            user = dict(u)  # Clona para não envenenar a cache
+            user = dict(u) 
             original_thumb = user.get('thumb')
             
             if original_thumb:
                 try:
-                    # Filtro crítico: Se a URL já tiver /image/, ignora para não criar double proxy
                     if '/image/' not in original_thumb:
                         parsed_thumb = urlparse(original_thumb)
                         
-                        # Remove o token antigo para não cachear links mortos
                         query_params = parse_qsl(parsed_thumb.query)
                         clean_query = urlencode([(k, v) for k, v in query_params if k.lower() != 'x-plex-token'])
                         clean_url = parsed_thumb._replace(query=clean_query).geturl()
@@ -161,7 +170,6 @@ class PlexManager:
                         except RuntimeError:
                             user['thumb'] = f"/image/?source={b64_payload}"
                     else:
-                        # Se já for um proxy gerado por nós, usa-o sem tocar
                         user['thumb'] = original_thumb
                         
                 except Exception as e:
@@ -202,14 +210,23 @@ class PlexManager:
             return []
         
         user_expirations = self.data_manager.get_all_user_expirations()
-        today = datetime.now(timezone.utc).date()
+        
+        local_tz = _get_local_tz()
+        today_local = datetime.now(local_tz).date()
         users_to_check = []
         
         for plex_id, data in user_expirations.items():
             try:
                 if data.get('expiration_date'):
-                    exp_date = datetime.fromisoformat(data['expiration_date']).date()
-                    if 0 <= (exp_date - today).days <= days_to_notify:
+                    exp_date_utc = datetime.fromisoformat(data['expiration_date'])
+                    if exp_date_utc.tzinfo is None:
+                        exp_date_utc = exp_date_utc.replace(tzinfo=timezone.utc)
+                    
+                    exp_date_local = exp_date_utc.astimezone(local_tz).date()
+                    
+                    days_left = (exp_date_local - today_local).days
+
+                    if 0 <= days_left < days_to_notify:
                         users_to_check.append(plex_id)
             except (ValueError, TypeError): 
                 continue
@@ -222,6 +239,10 @@ class PlexManager:
         if not profile:
             return
         
+        from app.config import load_or_create_config
+        config = load_or_create_config()
+        days_to_notify = config.get("DAYS_TO_NOTIFY_EXPIRATION", 0)
+
         last_sent_str = profile.get('last_notification_sent')
         if last_sent_str:
             try:
@@ -238,7 +259,22 @@ class PlexManager:
         expiration_date_str = profile.get('expiration_date')
         if expiration_date_str:
             try:
-                days_left = (datetime.fromisoformat(expiration_date_str).date() - datetime.now(timezone.utc).date()).days
+                local_tz = _get_local_tz()
+                today_local = datetime.now(local_tz).date()
+
+                exp_date_utc = datetime.fromisoformat(expiration_date_str)
+                if exp_date_utc.tzinfo is None:
+                    exp_date_utc = exp_date_utc.replace(tzinfo=timezone.utc)
+
+                days_left = (exp_date_utc.astimezone(local_tz).date() - today_local).days
+
+                if days_left >= days_to_notify:
+                    return
+
+                if days_left < 0:
+                    logger.debug(f"Utilizador {user_info.get('username')} expirou há {abs(days_left)} dia(s). Notificação preventiva ignorada.")
+                    return
+
                 self.notifier_manager.send_expiration_notification(user_info, days_left, profile)
                 self.data_manager.update_user_notification_timestamp(plex_user_id)
             except (ValueError, TypeError) as e:
@@ -256,7 +292,8 @@ class PlexManager:
         if not blocked_users_data: 
             return []
 
-        today = datetime.now(timezone.utc).date()
+        local_tz = _get_local_tz()
+        today_local = datetime.now(local_tz).date()
         users_to_remove = []
         
         for plex_id, block_data in blocked_users_data.items():
@@ -265,9 +302,13 @@ class PlexManager:
                 if not blocked_at_str:
                     continue
 
-                blocked_date = datetime.fromisoformat(blocked_at_str).date()
+                blocked_utc = datetime.fromisoformat(blocked_at_str)
+                if blocked_utc.tzinfo is None:
+                    blocked_utc = blocked_utc.replace(tzinfo=timezone.utc)
+
+                blocked_local = blocked_utc.astimezone(local_tz).date()
                 
-                if (today - blocked_date).days >= days_to_remove:
+                if (today_local - blocked_local).days >= days_to_remove:
                     users_to_remove.append(plex_id)
 
             except (ValueError, TypeError, AttributeError): 
