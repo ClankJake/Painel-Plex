@@ -282,11 +282,20 @@ function renderUserCard(user) {
     if (user.expiration_date) {
         try {
             const expDate = new Date(user.expiration_date);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0); 
-            const daysLeft = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
-            const dateColor = daysLeft < 0 ? 'text-red-500 font-semibold' : (daysLeft <= 7 ? 'text-yellow-500 font-semibold' : 'text-gray-400 dark:text-gray-500');
-            statusHtml = `<div class="mt-1 text-xs flex items-center ${dateColor}"><span>${i18n.expiresOn} ${expDate.toLocaleDateString()}</span></div>`;
+            const now = new Date();
+            
+            // 🛡️ CORREÇÃO TIMEZONE FRONTEND: Remove as horas de ambas as datas para avaliar puramente os dias
+            const expDateOnly = new Date(expDate.getFullYear(), expDate.getMonth(), expDate.getDate());
+            const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            
+            const daysLeft = Math.round((expDateOnly - todayOnly) / (1000 * 3600 * 24));
+            const isExpired = expDate < now; // Usa a hora exata real para definir se já expirou completamente
+            
+            // Cores: Vermelho se expirado (isExpired = true ou daysLeft < 0), Amarelo se faltarem <= 7 dias.
+            const dateColor = isExpired ? 'text-red-600 dark:text-red-500 font-bold' : (daysLeft <= 7 ? 'text-yellow-600 dark:text-yellow-500 font-bold' : 'text-gray-500 dark:text-gray-400');
+            const labelText = isExpired ? 'Vencido em:' : i18n.expiresOn;
+
+            statusHtml = `<div class="mt-1 text-xs flex items-center ${dateColor}"><span>${labelText} ${expDate.toLocaleDateString('pt-BR')}</span></div>`;
         } catch(e) { }
     } else if (user.trial_end_date) {
         try {
