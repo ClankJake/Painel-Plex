@@ -11,8 +11,8 @@ from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 from datetime import datetime
 
-# Importa 'limiter' das extensões
-from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager
+# 🛡️ CORREÇÃO 1: 'notifier_manager' adicionado aos imports das extensões
+from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager, notifier_manager
 from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
 from ..auth import admin_required, login_required
@@ -212,11 +212,8 @@ def api_settings():
             if field in new_data:
                 value = new_data[field]
                 
-                # --- CORREÇÃO CRÍTICA AQUI ---
-                # Ignora dicionários mascarados do frontend para que não corrompam os dados verdadeiros
                 if isinstance(value, dict) and "is_set" in value:
                     continue
-                # ------------------------------
 
                 if field in numeric_fields: config_to_update[field] = int(value) if value else 0
                 elif isinstance(value, bool): config_to_update[field] = value
@@ -255,7 +252,6 @@ def api_settings():
                     if trigger_type == 'cron':
                         hour, minute = map(int, new_value.split(':')[:2])
                         
-                        # --- CORREÇÃO DO FUSO HORÁRIO PARA O DOCKER ---
                         tz_env = os.environ.get('TZ')
                         if tz_env:
                             try: 
@@ -267,7 +263,6 @@ def api_settings():
                                 tz_str = get_localzone_name()
                             except: 
                                 tz_str = 'UTC'
-                        # ----------------------------------------------
                         
                         scheduler.reschedule_job(job_id, trigger=CronTrigger(hour=hour, minute=minute, timezone=tz_str))
                         logger.info(f"Tarefa '{job_id}' reagendada para as {hour:02d}:{minute:02d} ({tz_str}).")
@@ -284,11 +279,9 @@ def api_settings():
         reschedule_job('cleanup_image_cache_job', 'IMAGE_CACHE_CLEANUP_TIME', old_config, config_to_update)
         reschedule_job('stream_check_job', 'STREAM_CHECK_INTERVAL_SECONDS', old_config, config_to_update, trigger_type='interval')
 
-
         success, message = plex_manager.reload_connections()
         return jsonify({"success": success, "message": message})
 
-    # GET Request Logic
     config_to_send = load_or_create_config()
 
     sensitive_keys = [
@@ -365,11 +358,9 @@ def save_setup():
     config['IS_CONFIGURED'] = True
     save_app_config(config)
     
-    # RECARREGAMENTO SEGURO
     tautulli_manager.reload_credentials()
     efi_manager.reload_credentials() 
     
-    # Correção Específica para Overseerr
     if hasattr(overseerr_manager, 'reload_credentials'):
         overseerr_manager.reload_credentials()
     elif hasattr(overseerr_manager, 'reload_config'):
@@ -442,36 +433,49 @@ def test_overseerr_connection():
 @login_required
 @admin_required
 def bulk_notify():
-    data = request.get_json()
-    message = data.get('message')
-    target_audience = data.get('target_audience', 'active')
-    target_user_ids = data.get('user_ids')
+    try:
+        data = request.get_json()
+        message = data.get('message')
+        target_audience = data.get('target_audience', 'active')
+        target_user_ids = data.get('user_ids')
 
-    if not message:
-        return jsonify({"success": False, "message": _("A mensagem não pode estar vazia.")}), 400
+        if not message:
+            return jsonify({"success": False, "message": _("A mensagem não pode estar vazia.")}), 400
 
-    if target_audience == 'specific':
-        if not target_user_ids or not isinstance(target_user_ids, list):
-            return jsonify({"success": False, "message": _("Lista de IDs de utilizadores inválida ou ausente para o público 'specific'.")}), 400
-        try:
-            target_user_ids = [int(uid) for uid in target_user_ids]
-        except (ValueError, TypeError):
-             return jsonify({"success": False, "message": _("Lista de IDs de utilizadores contém valores inválidos.")}), 400
+        if target_audience == 'specific':
+            if not target_user_ids or not isinstance(target_user_ids, list):
+                return jsonify({"success": False, "message": _("Lista de IDs de utilizadores inválida ou ausente para o público 'specific'.")}), 400
+            try:
+                target_user_ids = [int(uid) for uid in target_user_ids]
+            except (ValueError, TypeError):
+                 return jsonify({"success": False, "message": _("Lista de IDs de utilizadores contém valores inválidos.")}), 400
 
-    config = load_or_create_config()
-    is_any_notifier_enabled = (
-        config.get("TELEGRAM_ENABLED", False) or
-        config.get("DISCORD_ENABLED", False) or
-        config.get("WEBHOOK_ENABLED", False)
-    )
-    if not is_any_notifier_enabled:
-        return jsonify({"success": False, "message": _("Nenhum agente de notificação (Telegram, Discord, etc.) está ativado nas configurações.")}), 400
+        config = load_or_create_config()
+        is_any_notifier_enabled = (
+            config.get("TELEGRAM_ENABLED", False) or
+            config.get("DISCORD_ENABLED", False) or
+            config.get("WEBHOOK_ENABLED", False)
+        )
+        if not is_any_notifier_enabled:
+            return jsonify({"success": False, "message": _("Nenhum agente de notificação (Telegram, Discord, etc.) está ativado nas configurações.")}), 400
 
-    task_payload = {
-        'message': message,
-        'target_audience': target_audience,
-        'user_ids': target_user_ids if target_audience == 'specific' else None 
-    }
-    task = data_manager.create_task('bulk_notification', task_payload)
+        task_payload = {
+            'message': message,
+            'target_audience': target_audience,
+            'user_ids': target_user_ids if target_audience == 'specific' else None 
+        }
+        
+        # 1. Cria a tarefa na base de dados
+        task = data_manager.create_task('bulk_notification', task_payload)
+        task_id = task['id'] if isinstance(task, dict) else task.id
 
-    return jsonify({"success": True, "message": _("A tarefa de envio de notificações em massa foi agendada e será iniciada em breve."), "task_id": task['id']})
+        # 2. Marcamos logo como 'running' para o Agendador antigo ignorar
+        data_manager.update_task(task_id, {'status': 'running'})
+        
+        # 3. Disparamos o envio em massa IMEDIATAMENTE e no ambiente correto
+        notifier_manager.process_bulk_notification_task(task)
+
+        return jsonify({"success": True, "message": _("A tarefa de envio de notificações em massa foi iniciada e está a correr em tempo real!"), "task_id": task_id})
+    except Exception as e:
+        logger.error(f"Erro na rota bulk-notify: {e}", exc_info=True)
+        return jsonify({"success": False, "message": str(e)}), 500
