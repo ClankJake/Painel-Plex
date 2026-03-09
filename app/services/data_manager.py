@@ -66,6 +66,7 @@ class DataManager:
     def create_task(self, name, payload):
         task = Task(name=name, payload=json.dumps(payload))
         db.session.add(task)
+        db.session.flush() # 🛡️ CORREÇÃO: Força a BD a gerar o ID antes de devolver o resultado!
         logger.info(f"Tarefa '{name}' criada na base de dados.")
         return self._row_to_dict(task)
 
@@ -87,6 +88,7 @@ class DataManager:
     def create_coupon(self, details):
         new_coupon = Coupon(**details)
         db.session.add(new_coupon)
+        db.session.flush() # 🛡️ CORREÇÃO: Força a BD a gerar o ID
         return self._row_to_dict(new_coupon)
 
     def get_coupon_by_code(self, code):
@@ -156,6 +158,7 @@ class DataManager:
             user_plex_id=user_plex_id, timestamp=datetime.now(timezone.utc)
         )
         db.session.add(notification)
+        db.session.flush() # 🛡️ CORREÇÃO: Força a BD a gerar o ID
         return self._row_to_dict(notification)
 
     def get_notifications(self, user_plex_id=None, limit=10, include_read=False):
