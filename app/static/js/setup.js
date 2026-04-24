@@ -104,7 +104,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 try {
                     const checkUrl = urls.checkPlexPin.replace('__CLIENT_ID__', client_id).replace('999999', pin_id);
-                    const checkResponse = await fetch(checkUrl);
+                    const checkResponse = await fetch(checkUrl, {
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    
+                    const contentType = checkResponse.headers.get("content-type");
+                    if (!contentType || !contentType.includes("application/json")) {
+                        console.error("Recebeu resposta não-JSON. Código:", checkResponse.status);
+                        
+                        if (checkResponse.status === 429) {
+                            showToast(i18n.authCheckError || "Demasiados pedidos. Aguarde.", 'error');
+                            return; // Continua a tentar no próximo ciclo
+                        }
+
+                        throw new Error("Erro no servidor: Resposta não é JSON.");
+                    }
+
                     const checkData = await checkResponse.json();
 
                     if (checkData.success) {
