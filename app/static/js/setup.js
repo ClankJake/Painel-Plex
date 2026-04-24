@@ -165,7 +165,13 @@ document.addEventListener('DOMContentLoaded', () => {
         serverListDiv.innerHTML = `<p class="text-center p-8 text-gray-600 dark:text-gray-400">${i18n.fetchingServers}</p>`;
         
         try {
-            const response = await fetch(urls.getPlexServers);
+            const response = await fetch(urls.getPlexServers, {
+                headers: { 'Accept': 'application/json' }
+            });
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                throw new Error("O servidor retornou uma página HTML em vez de dados JSON. Certifique-se de que REINICIOU o terminal/backend em Python (com CTRL+C e subindo novamente) para ler as atualizações feitas.");
+            }
             const data = await response.json();
 
             if (response.ok && data.success && data.servers.length > 0) {
