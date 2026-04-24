@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  painel-plex:
+    build: .
+    container_name: painel-plex
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config:/app/config
+      - ./certs:/app/certs
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Sao_Paulo
+      - PYTHONIOENCODING=utf-8
+    restart: unless-stopped
