@@ -210,11 +210,26 @@ def create_app() -> Flask:
 
     @app.errorhandler(429)
     def ratelimit_handler(e):
-        if request.path.startswith('/api/') or request.is_json:
+        wants_json = request.path.startswith('/api/') or request.path.startswith('/auth/plex/') or request.is_json or request.accept_mimetypes.accept_json
+        if wants_json:
             return jsonify({"success": False, "message": _("Demasiados pedidos. Aguarde um momento e tente de novo.")}), 429
         return render_template('payment_unavailable.html', 
                                reason_title=_("Limite Excedido"),
                                reason_message=_("Por segurança, limitámos os acessos temporariamente. Tente novamente dentro de alguns minutos.")), 429
+
+    @app.errorhandler(500)
+    def internal_error(e):
+        wants_json = request.path.startswith('/api/') or request.path.startswith('/auth/plex/') or request.is_json or request.accept_mimetypes.accept_json
+        if wants_json:
+            return jsonify({"success": False, "message": _("Erro interno do servidor.")}), 500
+        return "500 Internal Server Error", 500
+
+    @app.errorhandler(404)
+    def not_found_error(e):
+        wants_json = request.path.startswith('/api/') or request.path.startswith('/auth/plex/') or request.is_json or request.accept_mimetypes.accept_json
+        if wants_json:
+            return jsonify({"success": False, "message": _("Recurso não encontrado.")}), 404
+        return "404 Not Found", 404
 
     @app.before_request
     def check_configuration_and_user():

@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginButton = document.getElementById('login-button');
     const loginButtonText = document.getElementById('login-button-text');
     const scriptTag = document.getElementById('login-script');
-    
+
     const urls = {};
     const i18n = {};
 
@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-    
+
     let pinCheckInterval = null;
     let authWindow = null;
 
@@ -54,10 +54,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.removeEventListener('message', handleAuthMessage);
                 return;
             }
-            
+
             try {
                 const checkUrl = urls.checkPlexPin.replace('__CLIENT_ID__', client_id).replace('999999', pin_id);
-                const checkResponse = await fetch(checkUrl);
+                const checkResponse = await fetch(checkUrl, {
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                const contentType = checkResponse.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    console.error("Recebeu resposta não-JSON. Código:", checkResponse.status);
+
+                    if (checkResponse.status === 429) {
+                        showFlashMessage(i18n.authCheckError || "Demasiados pedidos. Aguarde.", 'error');
+                        return; // Continua a tentar no próximo ciclo
+                    }
+
+                    throw new Error("Erro no servidor: Resposta não é JSON.");
+                }
+
                 const checkData = await checkResponse.json();
 
                 if (checkData.success) {
@@ -67,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     window.location.href = checkData.redirect_url || '/';
                 } else if (checkData.message === 'auth_denied') {
                     clearInterval(pinCheckInterval);
-                    if(!authWindow.closed) authWindow.close();
+                    if (!authWindow.closed) authWindow.close();
                     showFlashMessage(checkData.error || i18n.authDenied, 'error');
                     loginButton.disabled = false;
                     loginButtonText.textContent = i18n.loginWithPlex;
@@ -101,9 +116,9 @@ document.addEventListener('DOMContentLoaded', () => {
         loginButton.disabled = true;
         loginButtonText.textContent = i18n.waitingAuth;
         loginButton.classList.add('animate-pulse');
-        
+
         window.addEventListener('message', handleAuthMessage, false);
-        
+
         authWindow = window.open(urls.redirectToAuth, 'plexAuth', 'width=800,height=700,status=no,scrollbars=yes,resizable=yes');
     }
 
