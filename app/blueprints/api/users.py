@@ -129,7 +129,7 @@ def finalize_reactivation_route():
 def get_account_details():
     config = load_or_create_config()
     plex_user_id = int(current_user.id)
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    profile = extensions.data_manager.get_user_profile(plex_user_id) or {}
     
     is_blocked_info = extensions.data_manager.get_blocked_user(plex_user_id)
 
@@ -188,7 +188,7 @@ def get_account_details():
 def update_account_profile(validated_data):
     data = validated_data.dict(exclude_unset=True)
     plex_user_id = int(current_user.id)
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    profile = extensions.data_manager.get_user_profile(plex_user_id) or {}
     profile.update(data)
     extensions.data_manager.set_user_profile(plex_user_id, profile)
     return jsonify({"success": True, "message": _("Perfil atualizado com sucesso.")})
@@ -201,7 +201,7 @@ def update_privacy_settings():
         return jsonify({"success": False, "message": _("Valor inválido.")}), 400
     
     plex_user_id = int(current_user.id)
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    profile = extensions.data_manager.get_user_profile(plex_user_id) or {}
     profile['hide_from_leaderboard'] = hide_setting
     extensions.data_manager.set_user_profile(plex_user_id, profile)
     return jsonify({"success": True, "message": _("Configuração de privacidade atualizada com sucesso.")})
@@ -283,7 +283,7 @@ def user_profile_route(plex_user_id):
     username = user_info['username']
 
     if request.method == 'GET':
-        profile = extensions.data_manager.get_user_profile(plex_user_id)
+        profile = extensions.data_manager.get_user_profile(plex_user_id) or {}
         config = load_or_create_config()
         
         is_on_trial = False
@@ -315,7 +315,7 @@ def user_profile_route(plex_user_id):
     data = validated_data.dict(exclude_unset=True)
     local_datetime_str = data.pop('expiration_datetime_local', None)
     
-    profile_to_update = extensions.data_manager.get_user_profile(plex_user_id)
+    profile_to_update = extensions.data_manager.get_user_profile(plex_user_id) or {}
     profile_to_update.update(data)
 
     _update_manual_expiration_job(plex_user_id, username, profile_to_update, local_datetime_str)
@@ -337,7 +337,7 @@ def extend_trial_route(user, validated_data):
     plex_user_id = user['id']
     username = user['username']
     extend_minutes = validated_data.extend_minutes
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    profile = extensions.data_manager.get_user_profile(plex_user_id) or {}
     
     try:
         now_utc = datetime.now(timezone.utc)
@@ -393,7 +393,7 @@ def reactivate_user_route():
     if not plex_user_id or not libraries:
         return jsonify({"success": False, "message": _("Dados incompletos fornecidos.")}), 400
 
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    profile = extensions.data_manager.get_user_profile(plex_user_id) or {}
     if not profile or profile.get('status') != 'inactive':
         return jsonify({"success": False, "message": _("Apenas utilizadores inativos podem ser reativados.")}), 404
 
@@ -441,7 +441,7 @@ def renew_user_subscription_route(user, validated_data):
         )
 
         config = load_or_create_config()
-        profile = extensions.data_manager.get_user_profile(user['id'])
+        profile = extensions.data_manager.get_user_profile(user['id']) or {}
         monthly_price_str = config.get("SCREEN_PRICES", {}).get(str(profile.get('screen_limit', 0)), config.get("RENEWAL_PRICE", "0.00"))
         total_value = float(monthly_price_str.replace(',', '.')) * data.months
 
@@ -482,7 +482,7 @@ def renew_user_subscription_route(user, validated_data):
 @admin_required
 def delete_permanently_route():
     plex_user_id = request.json.get('plex_user_id')
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    profile = extensions.data_manager.get_user_profile(plex_user_id) or {}
     if not profile or profile.get('status') != 'inactive':
         return jsonify({"success": False, "message": _("Apenas utilizadores inativos podem ser apagados permanentemente.")}), 400
 
@@ -500,7 +500,7 @@ def delete_permanently_route():
 @admin_required
 @user_lookup_by_id
 def notify_user_route(user):
-    profile = extensions.data_manager.get_user_profile(user['id'])
+    profile = extensions.data_manager.get_user_profile(user['id']) or {}
     if not profile.get('expiration_date'):
         return jsonify({"success": False, "message": _("Utilizador sem data de vencimento.")})
     
@@ -569,7 +569,7 @@ def unblock_user_route(user):
 @user_lookup_by_id
 def update_limit_route(user):
     screens = request.json.get('screens', 0)
-    profile = extensions.data_manager.get_user_profile(user['id'])
+    profile = extensions.data_manager.get_user_profile(user['id']) or {}
     profile['screen_limit'] = screens
     extensions.data_manager.set_user_profile(user['id'], profile)
     logger.info(f"Admin '{current_user.username}' alterou limite de telas de '{user['username']}' para {screens}.")

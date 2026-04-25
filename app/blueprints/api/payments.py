@@ -239,7 +239,9 @@ def get_payment_options():
         user_profile = extensions.data_manager.get_user_profile(int(current_user.id))
     
     if not user_profile:
-        return jsonify({"success": False, "message": _("Utilizador não especificado ou token inválido.")}), 400
+        if is_public_request:
+            return jsonify({"success": False, "message": _("Utilizador não especificado ou token inválido.")}), 400
+        return jsonify({"success": True, "prices": {}, "providers": {}})
 
     config = load_or_create_config()
     available_prices = extensions.pricing_manager.get_available_plans(user_profile, is_public_request)
