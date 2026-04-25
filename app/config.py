@@ -54,6 +54,14 @@ def load_or_create_config():
             "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
             "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}',
             "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}',
+            "WHATSAPP_ENABLED": False,
+            "WHATSAPP_API_URL": "",
+            "WHATSAPP_INSTANCE": "",
+            "WHATSAPP_API_KEY": "",
+            "WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\nEste é um lembrete de que sua fatura está com o vencimento próximo.\nVencimento: *{date}*\nValor: *{price}*\nPlano: *{plan_name}*\n\nPara evitar a interrupção, realize o pagamento copiando o link: {payment_link}",
+            "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\nOlá {name}!\nA sua subscrição foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
+            "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n{name}, o seu período de teste terminou.\nPara manter o seu acesso, realize a renovação acessando: {payment_link}",
+            "WHATSAPP_WELCOME_MESSAGE_TEMPLATE": "🎉 *Bem-vindo(a) ao Plex!* 🎉\nOlá {name}! O seu pagamento foi aprovado e a sua conta está ativa.\n\n*Como instalar e entrar no Plex na sua Smart TV:*\n1. Baixe o aplicativo Plex na loja de aplicativos da sua TV.\n2. Abra o app e clique em 'Entrar'.\n3. Acesse plex.tv/link no seu celular ou PC e digite o código que aparece na TV.\n\nAproveite todo o conteúdo!",
             "TELEGRAM_BOT_TOKEN": "",
             "TELEGRAM_CHAT_ID": "", 
             "TELEGRAM_ENABLED": False,
@@ -155,6 +163,14 @@ def load_or_create_config():
                 config.setdefault("WEBHOOK_RENEWAL_MESSAGE_TEMPLATE", '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}')
                 config.setdefault("WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE", '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}')
                 config.setdefault("WEBHOOK_BULK_MESSAGE_TEMPLATE", '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}')
+                config.setdefault("WHATSAPP_ENABLED", False)
+                config.setdefault("WHATSAPP_API_URL", "")
+                config.setdefault("WHATSAPP_INSTANCE", "")
+                config.setdefault("WHATSAPP_API_KEY", "")
+                config.setdefault("WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE", "Olá {name}, {greeting}!\nEste é um lembrete de que sua fatura está com o vencimento próximo.\nVencimento: *{date}*\nValor: *{price}*\nPlano: *{plan_name}*\n\nPara evitar a interrupção, realize o pagamento copiando o link: {payment_link}")
+                config.setdefault("WHATSAPP_RENEWAL_MESSAGE_TEMPLATE", "✅ *Renovação Confirmada*\nOlá {name}!\nA sua subscrição foi renovada com sucesso.\nNovo vencimento: *{new_date}*.")
+                config.setdefault("WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE", "⌛ *Fim do Período de Teste*\n{name}, o seu período de teste terminou.\nPara manter o seu acesso, realize a renovação acessando: {payment_link}")
+                config.setdefault("WHATSAPP_WELCOME_MESSAGE_TEMPLATE", "🎉 *Bem-vindo(a) ao Plex!* 🎉\nOlá {name}! O seu pagamento foi aprovado e a sua conta está ativa.\n\n*Como instalar e entrar no Plex na sua Smart TV:*\n1. Baixe o aplicativo Plex na loja de aplicativos da sua TV.\n2. Abra o app e clique em 'Entrar'.\n3. Acesse plex.tv/link no seu celular ou PC e digite o código que aparece na TV.\n\nAproveite todo o conteúdo!")
                 config.setdefault("TELEGRAM_BOT_TOKEN", "")
                 config.setdefault("TELEGRAM_CHAT_ID", "")
                 config.setdefault("TELEGRAM_ENABLED", False)

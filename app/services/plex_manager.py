@@ -226,7 +226,7 @@ class PlexManager:
                     
                     days_left = (exp_date_local - today_local).days
 
-                    if 0 <= days_left < days_to_notify:
+                    if days_left in [3, 1, 0]:
                         users_to_check.append(plex_id)
             except (ValueError, TypeError): 
                 continue
@@ -268,11 +268,7 @@ class PlexManager:
 
                 days_left = (exp_date_utc.astimezone(local_tz).date() - today_local).days
 
-                if days_left >= days_to_notify:
-                    return
-
-                if days_left < 0:
-                    logger.debug(f"Utilizador {user_info.get('username')} expirou há {abs(days_left)} dia(s). Notificação preventiva ignorada.")
+                if days_left not in [3, 1, 0]:
                     return
 
                 self.notifier_manager.send_expiration_notification(user_info, days_left, profile)

@@ -159,6 +159,35 @@ class NotifierManager:
             logger.error(f"[ID: {request_id}] Falha no Discord: {e}")
             raise e
 
+    def _send_whatsapp_notification(self, message, request_id, phone_number, config):
+        api_url = config.get("WHATSAPP_API_URL", "").rstrip("/")
+        instance = config.get("WHATSAPP_INSTANCE", "")
+        api_key = config.get("WHATSAPP_API_KEY", "")
+        
+        if not api_url or not instance or not phone_number:
+            return
+            
+        endpoint = f"{api_url}/message/sendText/{instance}"
+        headers = {
+            "Content-Type": "application/json",
+            "apikey": api_key
+        }
+        
+        clean_phone = re.sub(r'\D', '', str(phone_number))
+        
+        payload = {
+            "number": clean_phone,
+            "text": message
+        }
+        
+        try:
+            response = requests.post(endpoint, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            error_response = e.response.text if e.response else "Sem resposta do servidor"
+            logger.error(f"[ID: {request_id}] Falha no WhatsApp (Evolution API): {e} | Resposta: {error_response}")
+            raise Exception(f"Falha de WhatsApp: {error_response}")
+
     def _get_price_and_plan(self, config, user_screen_limit):
         from flask_babel import ngettext, gettext as _
         
@@ -203,16 +232,18 @@ class NotifierManager:
         can_notify_telegram = config.get("TELEGRAM_ENABLED") and telegram_chat_id
         can_notify_webhook = config.get("WEBHOOK_ENABLED") and user_profile.get('phone_number')
         can_notify_discord = config.get("DISCORD_ENABLED") and user_profile.get('discord_user_id')
+        can_notify_whatsapp = config.get("WHATSAPP_ENABLED") and user_profile.get('phone_number')
         
-        if not (can_notify_telegram or can_notify_webhook or can_notify_discord): 
+        if not (can_notify_telegram or can_notify_webhook or can_notify_discord or can_notify_whatsapp): 
             return
 
         t_tpl = config.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE", "")
         w_tpl = config.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE", "")
         d_tpl = config.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE", "")
+        wa_tpl = config.get(f"WHATSAPP_{event_type.upper()}_MESSAGE_TEMPLATE", "")
         bulk_msg = context.get('message', '')
         
-        all_text = f"{t_tpl} {w_tpl} {d_tpl} {bulk_msg}"
+        all_text = f"{t_tpl} {w_tpl} {d_tpl} {wa_tpl} {bulk_msg}"
         
         needs_payment_link = (
             "{payment_link}" in all_text or 
@@ -267,6 +298,13 @@ class NotifierManager:
             if payload: 
                 self._send_discord_notification(payload, request_id, config)
 
+        if can_notify_whatsapp:
+            template_str = config.get(f"WHATSAPP_{event_type.upper()}_MESSAGE_TEMPLATE")
+            if template_str:
+                message = self._format_template(template_str, placeholders, use_html_escape=False)
+                if message:
+                    self._send_whatsapp_notification(message, request_id, user_profile.get('phone_number'), config)
+
     def send_expiration_notification(self, user, days_left, user_profile):
         expiration_date_str = user_profile.get('expiration_date')
         formatted_date = ""
@@ -297,6 +335,9 @@ class NotifierManager:
 
     def send_trial_end_notification(self, user, user_profile):
         self._prepare_and_send('trial_end', user, user_profile, {})
+
+    def send_welcome_notification(self, user, user_profile):
+        self._prepare_and_send('welcome', user, user_profile, {})
 
     def _build_placeholders(self, user, user_profile, context):
         return {

@@ -193,7 +193,10 @@ def api_settings():
             'DISCORD_ENABLED', 'DISCORD_WEBHOOK_URL', 'DISCORD_EXPIRATION_MESSAGE_TEMPLATE',
             'DISCORD_RENEWAL_MESSAGE_TEMPLATE', 'DISCORD_TRIAL_END_MESSAGE_TEMPLATE',
             'STREAM_CHECK_INTERVAL_SECONDS', 'TERMINATION_MSG_BLOCKED_MANUAL', 'TERMINATION_MSG_BLOCKED_EXPIRED',
-            'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED', 'TERMINATION_MSG_SCREEN_LIMIT'
+            'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED', 'TERMINATION_MSG_SCREEN_LIMIT',
+            'WHATSAPP_ENABLED', 'WHATSAPP_API_URL', 'WHATSAPP_INSTANCE', 'WHATSAPP_API_KEY',
+            'WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE', 'WHATSAPP_RENEWAL_MESSAGE_TEMPLATE',
+            'WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE', 'WHATSAPP_WELCOME_MESSAGE_TEMPLATE'
         ]
         numeric_fields = [
             'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION',
@@ -287,7 +290,8 @@ def api_settings():
     sensitive_keys = [
         'SECRET_KEY', 'PLEX_TOKEN', 'INTERNAL_TRIGGER_KEY',
         'TELEGRAM_BOT_TOKEN', 'TAUTULLI_API_KEY', 'EFI_CLIENT_SECRET',
-        'MERCADOPAGO_ACCESS_TOKEN', 'BPIX_AUTH_TOKEN', 'OVERSEERR_API_KEY'
+        'MERCADOPAGO_ACCESS_TOKEN', 'BPIX_AUTH_TOKEN', 'OVERSEERR_API_KEY',
+        'WHATSAPP_API_KEY'
     ]
 
     for key in sensitive_keys:
@@ -454,7 +458,8 @@ def bulk_notify():
         is_any_notifier_enabled = (
             config.get("TELEGRAM_ENABLED", False) or
             config.get("DISCORD_ENABLED", False) or
-            config.get("WEBHOOK_ENABLED", False)
+            config.get("WEBHOOK_ENABLED", False) or
+            config.get("WHATSAPP_ENABLED", False)
         )
         if not is_any_notifier_enabled:
             return jsonify({"success": False, "message": _("Nenhum agente de notificação (Telegram, Discord, etc.) está ativado nas configurações.")}), 400

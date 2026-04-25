@@ -33,6 +33,8 @@ class PlexSubscriptionManager:
         if not profile:
             raise ValueError("Perfil de utilizador não encontrado.")
 
+        is_first_sub = not profile.get('expiration_date')
+
         # 1. Atualizar o estado básico do perfil (Status e Limite de Telas)
         self._update_basic_profile_state(profile, plex_user_id, screens, is_reactivation)
 
@@ -51,6 +53,16 @@ class PlexSubscriptionManager:
 
         # 5. Salvar na Base de Dados
         self.data_manager.set_user_profile(plex_user_id, profile)
+
+        # 6. Notificação de Boas-vindas
+        if is_reactivation or is_first_sub:
+            if self.plex_manager and hasattr(self.plex_manager, 'notifier_manager'):
+                user_info = self.plex_manager.get_user_by_id(plex_user_id)
+                if user_info:
+                    try:
+                        self.plex_manager.notifier_manager.send_welcome_notification(user_info, profile)
+                    except Exception as e:
+                        logger.error(f"Erro ao enviar notificação de boas vindas para {plex_user_id}: {e}")
 
         return new_expiration_date
 
