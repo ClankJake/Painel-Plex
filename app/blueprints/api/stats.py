@@ -25,7 +25,7 @@ def get_statistics_data():
     tautulli_data = tautulli_manager.get_watch_stats(days=days, plex_users_info=plex_users_info)
 
     if not tautulli_data.get("success"):
-        return jsonify(tautulli_data)
+        return jsonify(tautulli_data), 502
 
     tautulli_user_ids = {user_stat['user_id'] for user_stat in tautulli_data.get("stats", [])}
     plex_user_ids = {u['id'] for u in plex_users}

@@ -177,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderAdminSummary = (stats) => {
-        if (!dom.adminSummaryCards) return;
+        if (!dom.adminSummaryCards || !Array.isArray(stats)) return;
         const totalDuration = stats.reduce((sum, user) => sum + user.total_duration, 0);
         const totalPlays = stats.reduce((sum, user) => sum + user.plays, 0);
         const activeUsers = new Set(stats.map(user => user.username)).size;
@@ -516,11 +516,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentUser.role !== 'admin') {
                 const newlyAddedPromise = fetchAPI(`${urls.recentlyAdded}?days=${days}`);
                 const [data, newlyAddedData] = await Promise.all([dataPromise, newlyAddedPromise]);
-                state.allUsersData = data.stats;
+                state.allUsersData = data.stats || [];
                 if (newlyAddedData.success) renderNewlyAdded(newlyAddedData.media);
             } else {
                 const data = await dataPromise;
-                state.allUsersData = data.stats;
+                state.allUsersData = data.stats || [];
             }
 
             if (currentUser.role === 'admin') {
