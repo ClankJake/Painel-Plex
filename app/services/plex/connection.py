@@ -24,7 +24,7 @@ class PlexConnectionManager:
         self.account = None
 
     def _create_resilient_session(self) -> requests.Session:
-        """Cria uma sessão HTTP com estratégia de retentativa automática (Retry Backoff)."""
+        """Cria uma sessão HTTP com estratégia de retentativa automática e pool expandido."""
         session = requests.Session()
         retry_strategy = Retry(
             total=3,  # Número total de retentativas
@@ -32,7 +32,13 @@ class PlexConnectionManager:
             status_forcelist=[429, 500, 502, 503, 504],  # Códigos que acionam retentativa
             allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
         )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
+        
+        # Aumento do pool_connections e pool_maxsize de 10 (padrão) para 50
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=50,
+            pool_maxsize=50
+        )
         session.mount("http://", adapter)
         session.mount("https://", adapter)
 
