@@ -14,7 +14,7 @@ from ..models import (
     Invitation, BlockedUser, UserProfile, PixPayment, Notification, 
     UnlockedAchievement, ShortLink, Coupon, CouponUsage, Task, StreamTerminationLog
 )
-from sqlalchemy import func, extract, not_
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from flask_babel import gettext as _, ngettext
 from collections import defaultdict
@@ -66,7 +66,7 @@ class DataManager:
     def create_task(self, name, payload):
         task = Task(name=name, payload=json.dumps(payload))
         db.session.add(task)
-        db.session.flush() # 🛡️ CORREÇÃO: Força a BD a gerar o ID antes de devolver o resultado!
+        db.session.flush() # 🛡️ Força a BD a gerar o ID antes de devolver o resultado!
         logger.info(f"Tarefa '{name}' criada na base de dados.")
         return self._row_to_dict(task)
 
@@ -88,7 +88,7 @@ class DataManager:
     def create_coupon(self, details):
         new_coupon = Coupon(**details)
         db.session.add(new_coupon)
-        db.session.flush() # 🛡️ CORREÇÃO: Força a BD a gerar o ID
+        db.session.flush()
         return self._row_to_dict(new_coupon)
 
     def get_coupon_by_code(self, code):
@@ -129,11 +129,12 @@ class DataManager:
         return True
 
     def has_user_used_coupon(self, plex_user_id, code):
-        usage = db.session.query(CouponUsage).join(Coupon).filter(
+        # 🚀 OTIMIZAÇÃO: Busca apenas o ID para ser instantâneo, em vez de carregar a linha toda
+        usage_exists = db.session.query(CouponUsage.id).join(Coupon).filter(
             Coupon.code == code,
             CouponUsage.user_plex_id == plex_user_id
         ).first()
-        return usage is not None
+        return usage_exists is not None
 
     # --- MÉTODOS DE GAMIFICAÇÃO ---
     def get_unlocked_achievements(self, plex_user_id):
@@ -158,7 +159,7 @@ class DataManager:
             user_plex_id=user_plex_id, timestamp=datetime.now(timezone.utc)
         )
         db.session.add(notification)
-        db.session.flush() # 🛡️ CORREÇÃO: Força a BD a gerar o ID
+        db.session.flush() 
         return self._row_to_dict(notification)
 
     def get_notifications(self, user_plex_id=None, limit=10, include_read=False):
@@ -173,12 +174,13 @@ class DataManager:
 
     @db_transaction
     def mark_all_as_read(self, user_plex_id=None):
-        updated_rows = Notification.query.filter_by(user_plex_id=user_plex_id, is_read=False).update({'is_read': True})
+        # 🚀 OTIMIZAÇÃO: synchronize_session=False previne consumo excessivo de RAM
+        updated_rows = Notification.query.filter_by(user_plex_id=user_plex_id, is_read=False).update({'is_read': True}, synchronize_session=False)
         return updated_rows
             
     @db_transaction
     def delete_all_notifications(self, user_plex_id=None):
-        num_rows_deleted = db.session.query(Notification).filter_by(user_plex_id=user_plex_id).delete()
+        num_rows_deleted = db.session.query(Notification).filter_by(user_plex_id=user_plex_id).delete(synchronize_session=False)
         return num_rows_deleted
 
     @db_transaction
@@ -213,7 +215,7 @@ class DataManager:
 
     @db_transaction
     def clear_all_stream_termination_logs(self):
-        num_rows_deleted = db.session.query(StreamTerminationLog).delete()
+        num_rows_deleted = db.session.query(StreamTerminationLog).delete(synchronize_session=False)
         return num_rows_deleted
 
     # --- MÉTODOS FINANCEIROS OTIMIZADOS ---
@@ -267,12 +269,9 @@ class DataManager:
         sorted_weeks = sorted(weekly_revenue_map.keys())
         weekly_revenue_dict = {f"Semana {idx + 1}": weekly_revenue_map[w] for idx, w in enumerate(sorted_weeks)}
 
-        # 3. Otimização de Utilizadores a Expirar (CORRIGIDA)
+        # 3. Otimização de Utilizadores a Expirar
         today_local = datetime.now(local_tz).date()
         
-        # 🛡️ CORREÇÃO: Ampliamos a janela da query (+2 dias para a frente e para trás)
-        # O SQL usa comparações de texto nas datas ISO (ex: "2024-05-10T23:00" < "2024-05-11").
-        # Isso causava o "corte" de utilizadores que expiravam hoje devido às horas!
         search_start_str = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
         search_end_str = (datetime.now(timezone.utc) + timedelta(days=renewal_days + 2)).isoformat()
         
@@ -294,7 +293,6 @@ class DataManager:
                 # Cálculo matemático perfeito (Data Local - Hoje Local = Dias Restantes)
                 days_left = (exp_date_utc.astimezone(local_tz).date() - today_local).days
                 
-                # 🛡️ CORREÇÃO: >= 0 garante que 'Hoje' (0 dias) entra na lista!
                 if 0 <= days_left <= renewal_days:
                     days_text = ngettext('%(num)d dia restante', '%(num)d dias restantes', days_left) % {'num': days_left} if days_left > 0 else _("Hoje")
                     
@@ -602,9 +600,29 @@ class DataManager:
         return False
             
     def _row_to_dict(self, row, process_json=False):
+        """
+        Converte uma linha do SQLAlchemy para um dicionário Python nativo.
+        Implementa proteção contra erros de tipo de JSON.
+        """
         if not row: return None
         d = {c.name: getattr(row, c.name) for c in row.__table__.columns}
+        
         if process_json:
-            if 'libraries' in d and d['libraries']: d['libraries'] = json.loads(d['libraries'])
-            if 'claimed_by_users' in d and d['claimed_by_users']: d['claimed_by_users'] = json.loads(d['claimed_by_users'])
+            # 🚀 OTIMIZAÇÃO: Proteção Type-Safe. Previne que json.loads quebre se a DB (ex: Postgres) já devolver um List
+            if d.get('libraries') and isinstance(d['libraries'], str): 
+                try:
+                    d['libraries'] = json.loads(d['libraries'])
+                except json.JSONDecodeError:
+                    d['libraries'] = []
+            elif not d.get('libraries'):
+                d['libraries'] = []
+                
+            if d.get('claimed_by_users') and isinstance(d['claimed_by_users'], str):
+                try:
+                    d['claimed_by_users'] = json.loads(d['claimed_by_users'])
+                except json.JSONDecodeError:
+                    d['claimed_by_users'] = []
+            elif not d.get('claimed_by_users'):
+                d['claimed_by_users'] = []
+                
         return d
