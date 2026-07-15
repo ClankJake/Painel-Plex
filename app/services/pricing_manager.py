@@ -134,10 +134,30 @@ class PricingManager:
         return max(0.0, discounted_price)
 
     def _get_public_plans(self, current_screens, screen_prices, renewal_price):
-        """Filtra os planos para requisições de links públicos (apenas renovação exata)."""
-        price_for_current_plan = screen_prices.get(str(current_screens), renewal_price)
+        """Filtra os planos para requisições de links públicos (apenas renovação exata ou fallback inteligente)."""
+        price_for_current_plan = screen_prices.get(str(current_screens))
+        
+        # 1. Se tem preço exato para a tela atual, retorna
         if price_for_current_plan and float(price_for_current_plan) > 0:
             return {str(current_screens): price_for_current_plan}
+            
+        # 2. Se não tem preço para tela, usa o fallback geral
+        if renewal_price and float(renewal_price) > 0:
+            return {str(current_screens): renewal_price}
+            
+        # 3. Fallback Inteligente: O admin apagou o fallback e o usuário tem telas '0' ou não cadastradas.
+        # Pega o plano mais barato disponível.
+        valid_screen_prices = {int(k): float(v) for k, v in screen_prices.items() if v and float(v) > 0}
+        
+        if valid_screen_prices:
+            # Encontra a chave (número de telas) do menor preço
+            min_screens = min(valid_screen_prices, key=valid_screen_prices.get)
+            min_price = valid_screen_prices[min_screens]
+            logger.info(f"Link público: Nenhum preço exato para {current_screens} telas. Usando o menor preço disponível ({min_screens} telas: R$ {min_price}).")
+            # Devolvemos a chave exata para que a criação da cobrança bata com o dicionário
+            return {str(min_screens): str(min_price)}
+
+        # Se chegar aqui, o admin não configurou nenhum preço no painel.
         return {}
 
     def _get_private_plans(self, current_screens, screen_prices, renewal_price, user_profile, config):
