@@ -54,7 +54,16 @@ def setup_logging(app, log_level='INFO'):
 
     # Reduz o ruído de bibliotecas barulhentas
     logging.getLogger('apscheduler').setLevel(logging.WARNING)
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
+
+    # --- ADIÇÕES PARA SILENCIAR AVISOS DE REDE/PLEX ---
+    # Isso vai calar os avisos de "Retrying" e "Connection pool is full"
+    logging.getLogger('urllib3').setLevel(logging.ERROR)
+    logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
+    logging.getLogger('urllib3.util.retry').setLevel(logging.ERROR)
+    
+    # Isso cala as desconexões espontâneas do websocket do plex
+    logging.getLogger('plexapi').setLevel(logging.CRITICAL)
+    logging.getLogger('websocket').setLevel(logging.CRITICAL)
 
     logger.info(f"Sistema de logging inicializado. Nível: {log_level}, Arquivo: {log_file}")
