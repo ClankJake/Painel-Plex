@@ -84,6 +84,12 @@ class PlexUserManager:
                     })
 
             return users_with_access
+            
+        # Tratamento otimizado: falhas de rede registam log limpo, bugs mantêm traceback
+        except RequestException as e:
+            logger.error(_("A API do Plex.tv está temporariamente inacessível (Timeout/Rede). Detalhes: %(error)s", error=e))
+            self.invalidate_user_cache()
+            return None
         except Exception as e:
             logger.error(_("Erro inesperado ao obter utilizadores do Plex: %(error)s", error=e), exc_info=True)
             self.invalidate_user_cache()
@@ -297,7 +303,8 @@ class PlexUserManager:
             err_msg = ""
             if req_e.response is not None:
                 err_msg = f" (Código: {req_e.response.status_code}) {req_e.response.text}"
-            logger.error(f"Erro HTTP ao atualizar Plex API: {req_e}{err_msg}", exc_info=True)
+            # Aqui também removemos o exc_info=True para não cuspir traceback de erros de rede
+            logger.error(f"Erro HTTP ao atualizar Plex API: {req_e}{err_msg}")
             return {"success": False, "message": f"Erro de comunicação com a Plex: Falha de Rede ou Servidor Ocupado."}
         except Exception as e:
             logger.error(f"Erro inesperado ao atualizar bibliotecas e downloads: {e}", exc_info=True)
