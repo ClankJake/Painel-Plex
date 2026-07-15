@@ -52,9 +52,11 @@ class StreamManager:
         self._listener = None
         self._app = None
         
-        # Controlo de Concorrência para Verificações Atrasadas
+        # Controlo de Concorrência Otimizado
         self._delayed_check_lock = threading.Lock()
         self._delayed_check_pending = False
+        self._sse_debounce_lock = threading.Lock()
+        self._sse_debounce_timer = None
 
     # --- LÓGICA DE TEMPO REAL (SSE) ---
 
@@ -70,7 +72,8 @@ class StreamManager:
             return
 
         try:
-            self._app = app
+            # Pega a instância real da App para usar nas threads
+            self._app = app._get_current_object() if hasattr(app, '_get_current_object') else app
             self._listener = self.conn.plex.startAlertListener(self._on_plex_event)
             logger.debug("📡 Plex Real-Time Listener (SSE) iniciado com sucesso! Controlo de streams instantâneo ativado.")
         except Exception as e:
@@ -78,9 +81,25 @@ class StreamManager:
 
     def stop_listener(self):
         if getattr(self, '_listener', None):
-            self._listener.stop()
-            self._listener = None
-            logger.debug("📡 Plex Real-Time Listener (SSE) desligado.")
+            try:
+                self._listener.stop()
+            except Exception as e:
+                logger.debug(f"Aviso silencioso ao parar SSE: {e}")
+            finally:
+                self._listener = None
+                logger.debug("📡 Plex Real-Time Listener (SSE) desligado.")
+
+    def _execute_debounced_check(self):
+        """Executa a verificação após o tempo do debounce expirar."""
+        with self._sse_debounce_lock:
+            self._sse_debounce_timer = None
+            
+        if self._app:
+            try:
+                with self._app.app_context():
+                    self.check_and_enforce_streams(from_event=True)
+            except Exception as e:
+                logger.error(f"Falha na verificação de streams por evento SSE: {e}")
 
     def _on_plex_event(self, data):
         if isinstance(data, dict) and data.get('type') == 'playing':
@@ -102,17 +121,14 @@ class StreamManager:
                     except Exception:
                         pass
 
-                    # 2. VERIFICAÇÃO PESADA COM DEBOUNCE (Proteção do Servidor)
-                    # Só verifica limites e cortes a cada 2 segundos para não sobrecarregar
-                    from app.extensions import cache
-                    if not cache.get("sse_event_lock"):
-                        cache.set("sse_event_lock", True, timeout=2)
-                        
-                        def background_check():
-                            with self._app.app_context():
-                                self.check_and_enforce_streams(from_event=True)
-                                
-                        threading.Thread(target=background_check, daemon=True).start()
+                # 2. VERIFICAÇÃO PESADA COM DEBOUNCE OTIMIZADO (Proteção do Servidor)
+                # Usa threading Timer ao invés da Cache para maior performance e isolamento
+                with self._sse_debounce_lock:
+                    if self._sse_debounce_timer:
+                        self._sse_debounce_timer.cancel()
+                    self._sse_debounce_timer = threading.Timer(2.0, self._execute_debounced_check)
+                    self._sse_debounce_timer.daemon = True
+                    self._sse_debounce_timer.start()
 
     # --- MÉTODOS PÚBLICOS ---
 
@@ -301,7 +317,7 @@ class StreamManager:
                     except RuntimeError:
                         safe_thumb_url = f"/image/?source={b64_payload}"
 
-                # Duplo check de Transcoding
+                # Duplo check de Transcoding Otimizado
                 is_transcoding = False
                 transcode_speed = None
                 video_decision = "Direct Play"
@@ -311,18 +327,10 @@ class StreamManager:
                 transcode_sessions = getattr(session, "transcodeSessions", [])
                 active_ts = transcode_session if transcode_session else (transcode_sessions[0] if transcode_sessions else None)
 
-                if active_ts:
-                    v_dec = getattr(active_ts, "videoDecision", None)
-                    a_dec = getattr(active_ts, "audioDecision", None)
-                    if v_dec == "transcode":
-                        is_transcoding, video_decision = True, "Transcode"
-                    if a_dec == "transcode":
-                        is_transcoding, audio_decision = True, "Transcode"
-                    if is_transcoding:
-                        transcode_speed = getattr(active_ts, "speed", None)
-
                 media_list = getattr(session, "media", [])
                 video_codec = audio_codec = container = video_resolution = "N/A"
+                
+                # Puxa informações básicas da Media em execução
                 if media_list:
                     media_obj = media_list[0]
                     video_codec = str(getattr(media_obj, "videoCodec", "N/A")).upper()
@@ -330,6 +338,20 @@ class StreamManager:
                     container = str(getattr(media_obj, "container", "N/A")).upper()
                     v_res = getattr(media_obj, "videoResolution", "N/A")
                     video_resolution = f"{v_res}p" if str(v_res).isdigit() else str(v_res).upper()
+
+                # Decisões de conversão e Speed extraídas na hora
+                if active_ts:
+                    v_dec = getattr(active_ts, "videoDecision", None)
+                    a_dec = getattr(active_ts, "audioDecision", None)
+                    if v_dec == "transcode" or v_dec == "copy":
+                        is_transcoding = True
+                        video_decision = v_dec.capitalize()
+                    if a_dec == "transcode" or a_dec == "copy":
+                        is_transcoding = True
+                        audio_decision = a_dec.capitalize()
+                    
+                    if is_transcoding:
+                        transcode_speed = getattr(active_ts, "speed", None)
 
                 title = getattr(session, 'grandparentTitle', self._get_media_title(session)) if media_type == 'episode' else self._get_media_title(session)
                 subtitle = getattr(session, 'title', '') if media_type == 'episode' else str(getattr(session, 'year', ''))
