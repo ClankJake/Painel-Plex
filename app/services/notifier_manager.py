@@ -57,9 +57,10 @@ class NotifierManager:
 
     def _convert_md_to_html(self, text):
         if not text: return ""
-        text = re.sub(r'\*(.*?)\*', r'<b>\1</b>', text)
-        text = re.sub(r'_(.*?)_', r'<i>\1</i>', text)
-        text = re.sub(r'`(.*?)`', r'<code>\1</code>', text)
+        # Uso do modificador flag in-line (?s) = re.DOTALL para que o .* cubra quebras de linha de forma contida
+        text = re.sub(r'\*(.*?)\*', r'<b>\1</b>', text, flags=re.DOTALL)
+        text = re.sub(r'_(.*?)_', r'<i>\1</i>', text, flags=re.DOTALL)
+        text = re.sub(r'`(.*?)`', r'<code>\1</code>', text, flags=re.DOTALL)
         return text
 
     def _format_template(self, template_str, placeholders, is_json=False, use_html_escape=False):
@@ -94,35 +95,41 @@ class NotifierManager:
         if not bot: return
         
         html_message = self._convert_md_to_html(message)
+        max_retries = 3
         
-        try:
-            if photo_url:
-                bot.send_photo(
-                    chat_id=chat_id, photo=photo_url, caption=html_message,
-                    parse_mode='HTML', reply_markup=reply_markup
-                )
-            else:
-                bot.send_message(
-                    chat_id=chat_id, text=html_message, parse_mode='HTML',
-                    reply_markup=reply_markup, disable_web_page_preview=True
-                )
-        except telebot.apihelper.ApiTelegramException as e:
-            if e.error_code == 429:
-                retry_after = e.result_json.get('parameters', {}).get('retry_after', 5)
-                logger.warning(f"Telegram Rate Limit atingido. A aguardar {retry_after}s...")
-                time.sleep(retry_after + 1)
-                return self._send_telegram_notification(message, chat_id, request_id, reply_markup, plex_user_id, photo_url)
+        # 🚀 OTIMIZAÇÃO: Substituição de Recursão por Loop Iterativo Seguro
+        for attempt in range(max_retries):
+            try:
+                if photo_url:
+                    bot.send_photo(
+                        chat_id=chat_id, photo=photo_url, caption=html_message,
+                        parse_mode='HTML', reply_markup=reply_markup
+                    )
+                else:
+                    bot.send_message(
+                        chat_id=chat_id, text=html_message, parse_mode='HTML',
+                        reply_markup=reply_markup, disable_web_page_preview=True
+                    )
+                return  # Sucesso! Sai do loop.
                 
-            if e.error_code == 403 and plex_user_id:
-                logger.warning(f"[ID: {request_id}] Bot bloqueado pelo utilizador {plex_user_id}. A remover contacto.")
-                from .. import extensions
-                extensions.data_manager.update_user_profile(plex_user_id, {'telegram_id': None, 'telegram_user': None})
-            else:
-                logger.error(f"[ID: {request_id}] Erro Telegram: {e.description}")
+            except telebot.apihelper.ApiTelegramException as e:
+                if e.error_code == 429:
+                    retry_after = e.result_json.get('parameters', {}).get('retry_after', 5)
+                    logger.warning(f"Telegram Rate Limit atingido. A aguardar {retry_after}s... (Tentativa {attempt + 1}/{max_retries})")
+                    time.sleep(retry_after + 1)
+                    continue  # Tenta de novo na próxima iteração do loop
+                    
+                if e.error_code == 403 and plex_user_id:
+                    logger.warning(f"[ID: {request_id}] Bot bloqueado pelo utilizador {plex_user_id}. A remover contacto.")
+                    from .. import extensions
+                    extensions.data_manager.update_user_profile(plex_user_id, {'telegram_id': None, 'telegram_user': None})
+                    return
+                else:
+                    logger.error(f"[ID: {request_id}] Erro Telegram: {e.description}")
+                    raise e
+            except Exception as e:
+                logger.error(f"[ID: {request_id}] Erro inesperado ao enviar Telegram: {e}")
                 raise e
-        except Exception as e:
-            logger.error(f"[ID: {request_id}] Erro inesperado ao enviar Telegram: {e}")
-            raise e
 
     def _send_webhook_notification(self, payload, request_id, config):
         webhook_url = config.get("WEBHOOK_URL")
@@ -145,7 +152,7 @@ class NotifierManager:
             response = requests.post(webhook_url, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            error_response = e.response.text if e.response else "Sem resposta do servidor"
+            error_response = e.response.text if hasattr(e, 'response') and e.response else "Sem resposta do servidor"
             logger.error(f"[ID: {request_id}] Falha no Webhook: {e} | Resposta: {error_response}")
             raise Exception(f"Falha de Webhook: {error_response}")
 
@@ -182,10 +189,13 @@ class NotifierManager:
             token = user_profile['payment_token']
             app_base_url = config.get("APP_BASE_URL", "").strip().rstrip('/')
             
+            # 🚀 OTIMIZAÇÃO: Prioriza sempre a APP_BASE_URL.
+            # O url_for via Scheduler em background costuma falhar pois não tem o SERVER_NAME injetado na thread.
             if app_base_url:
                 long_url = f"{app_base_url}/pay/{token}"
             else:
                 from flask import url_for
+                # Fallback perigoso se executado fora de uma web request (ex: Tarefas CRON)
                 long_url = url_for('main.payment_page', token=token, _external=True)
 
             if config.get("ENABLE_LINK_SHORTENER") and self.link_shortener:
@@ -214,6 +224,7 @@ class NotifierManager:
         
         all_text = f"{t_tpl} {w_tpl} {d_tpl} {bulk_msg}"
         
+        # Inteligência: Só gera link se a mensagem realmente pedir
         needs_payment_link = (
             "{payment_link}" in all_text or 
             "{paymentlink}" in all_text or 
@@ -316,7 +327,6 @@ class NotifierManager:
         from .. import extensions
         from flask import current_app
         
-        # 🛡️ PROTEÇÃO TOTAL CONTRA O ERRO DE "DICT"
         # Garante que extraímos o ID e o Payload quer seja um objeto SQLAlchemy ou um Dicionário nativo
         if isinstance(task, dict):
             task_id = task.get('id')
@@ -341,7 +351,6 @@ class NotifierManager:
             users_to_notify = self._get_bulk_target_users(payload, extensions)
             total_users = len(users_to_notify)
             
-            # Usando a task_id segura!
             extensions.data_manager.update_task(task_id, {'status': 'running', 'progress_total': total_users})
             
             # O worker empacotado para o SocketIO
@@ -375,7 +384,7 @@ class NotifierManager:
                         
                         emit_ws('bulk_notification_progress', {'current': index, 'total': total_users})
                         
-                        # Usando a task_id segura!
+                        # Atualiza a base de dados a cada 10 envios para poupar conexões
                         if index % 10 == 0 or index == total_users:
                             extensions.data_manager.update_task(task_id, {'progress_current': index})
 
@@ -400,7 +409,6 @@ class NotifierManager:
                         else:
                             time.sleep(0.5)
                         
-                    # Usando a task_id segura!
                     extensions.data_manager.update_task(task_id, {
                         'status': 'completed', 
                         'completed_at': datetime.now(timezone.utc), 
@@ -422,7 +430,6 @@ class NotifierManager:
         except Exception as e:
             logger.error(f"Erro crítico no processamento Bulk: {e}", exc_info=True)
             
-            # Fallback seguro em caso de erro crítico usando a task_id segura
             if task_id:
                 extensions.data_manager.update_task(task_id, {'status': 'failed', 'result': str(e)})
             
