@@ -69,7 +69,7 @@ def get_data_for_socket():
         return None, None
 
     with app_instance.app_context():
-        # RESTAURADO: O test_request_context é estritamente necessário 
+        # O test_request_context é estritamente necessário 
         # para que o Flask consiga usar o url_for() e gerar as capas/posters em background!
         with app_instance.test_request_context('/'):
             active_streams_count, active_sessions_details = _safe_get_active_sessions()
@@ -83,30 +83,31 @@ def background_task():
     Termina imediatamente de forma elegante se não houver clientes.
     """
     logger.debug("Socket: Tarefa de background (Dashboard) INICIADA.")
+    global background_task_greenlet
     
     while True:
-        # Verifica a condição no início do loop de forma thread-safe
+        # Verifica a condição de parada cravando o Lock de forma segura
         with task_lock:
             if connected_clients <= 0:
+                background_task_greenlet = None
+                logger.debug("Socket: Tarefa de background PARADA (0 clientes).")
                 break
-                
-        summary_data, active_sessions = get_data_for_socket()
         
-        if summary_data:
-            extensions.socketio.emit('dashboard_update', {'summary': summary_data}, namespace='/dashboard')
+        # O try/except global impede que a Thread morra se houver erro isolado (ex: BD travada)
+        try:
+            summary_data, active_sessions = get_data_for_socket()
             
-        if active_sessions is not None:
-            extensions.socketio.emit('active_streams_update', {'sessions': active_sessions}, namespace='/dashboard')
+            if summary_data:
+                extensions.socketio.emit('dashboard_update', {'summary': summary_data}, namespace='/dashboard')
+                
+            if active_sessions is not None:
+                extensions.socketio.emit('active_streams_update', {'sessions': active_sessions}, namespace='/dashboard')
+                
+        except Exception as e:
+            logger.error(f"Socket: Falha na iteração do background task: {e}")
 
         # Dorme por 5 segundos. O SocketIO gere o sleep para não bloquear a thread principal (Eventlet)
         extensions.socketio.sleep(5)
-
-    # Marca a tarefa como morta de forma segura
-    global background_task_greenlet
-    with task_lock:
-        background_task_greenlet = None
-        logger.debug("Socket: Tarefa de background PARADA (0 clientes).")
-
 
 # ==========================================
 # EVENTOS DE LIGAÇÃO (CONNECT/DISCONNECT)
@@ -121,7 +122,8 @@ def handle_dashboard_connect():
         connected_clients += 1
         logger.debug(f"Socket: Novo cliente conectado ao Dashboard. Total: {connected_clients}")
         
-        if connected_clients == 1 and background_task_greenlet is None:
+        # Inicia a tarefa de background apenas se ela não estiver rodando
+        if background_task_greenlet is None:
             background_task_greenlet = extensions.socketio.start_background_task(background_task)
 
 @extensions.socketio.on('disconnect', namespace='/dashboard')
