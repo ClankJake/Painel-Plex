@@ -19,8 +19,9 @@ from .locks import single_instance_job
 
 logger = logging.getLogger(__name__)
 
+# Reduzido de 10s para 5s para evitar Thread Starvation no pool do APScheduler
 MAX_RETRIES = 3
-RETRY_DELAY = 10 
+RETRY_DELAY = 5 
 
 _app = None
 
@@ -57,13 +58,9 @@ def get_app_timezone():
     except Exception: 
         return 'UTC'
 
-
 # ==========================================
 # DEFINIÇÃO DAS TAREFAS (BACKGROUND JOBS)
 # ==========================================
-
-def sweep_expired_users_job():
-    pass
 
 @single_instance_job('task_processor_job')
 def task_processor_job():
@@ -78,7 +75,7 @@ def task_processor_job():
 @single_instance_job('stream_check_job')
 def stream_check_job():
     if not _app: return
-    with _app.test_request_context('/'):
+    with _app.app_context(): # Stream check não precisa de request context (url_for)
         from . import extensions
         extensions.stream_manager.check_and_enforce_streams()
 
@@ -119,7 +116,7 @@ def end_trial_job(plex_user_id):
 def end_subscription_job(plex_user_id):
     """Tarefa individual acionada no fim exato da assinatura."""
     if not _app: return
-    with _app.test_request_context('/'):
+    with _app.app_context():
         from . import extensions
         user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
         user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
@@ -141,11 +138,10 @@ def end_subscription_job(plex_user_id):
         else:
             logger.warning(f"O usuário '{plex_user_id}' não foi encontrado durante a tarefa de fim de assinatura.")
 
-
 @single_instance_job('removal_job')
 def removal_job():
     if not _app: return
-    with _app.test_request_context('/'):
+    with _app.app_context():
         from . import extensions
         config = load_or_create_config()
         logger.info("Iniciando a tarefa 'removal_job' para remover usuários bloqueados.")
@@ -193,7 +189,7 @@ def removal_job():
 @single_instance_job('cleanup_job')
 def cleanup_job():
     if not _app: return
-    with _app.test_request_context('/'):
+    with _app.app_context():
         from . import extensions
         config = load_or_create_config()
         if config.get("CLEANUP_PENDING_PAYMENTS_ENABLED", False):
@@ -231,6 +227,8 @@ def setup_scheduler(app):
     """Configura e inicia o agendador com as tarefas recorrentes da aplicação."""
     
     try:
+        # Fcntl File Lock: Previne múltiplos schedulers de rodar simultaneamente
+        # em ambientes Multi-Worker (Ex: Gunicorn)
         if fcntl:
             lock_path = os.path.join(CONFIG_DIR, "scheduler_master.lock")
             lock_file = open(lock_path, "w")
@@ -248,15 +246,13 @@ def setup_scheduler(app):
     tz_str = get_app_timezone()
     logger.info(f"O agendador iniciará no fuso horário: {tz_str}")
 
-    try:
-        extensions.scheduler.remove_job('hourly_sweep_job')
-    except Exception:
-        pass
-    try:
-        extensions.scheduler.remove_job('startup_sweep_job')
-    except Exception:
-        pass
+    # Remove tarefas obsoletas antigas se existirem
+    try: extensions.scheduler.remove_job('hourly_sweep_job')
+    except Exception: pass
+    try: extensions.scheduler.remove_job('startup_sweep_job')
+    except Exception: pass
 
+    # Cadastrando as tarefas...
     extensions.scheduler.add_job(
         id='stream_check_job', func=stream_check_job,
         trigger='interval', seconds=config.get("STREAM_CHECK_INTERVAL_SECONDS", 15),
