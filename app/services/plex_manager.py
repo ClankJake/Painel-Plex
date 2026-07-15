@@ -8,8 +8,7 @@ import pytz
 from urllib.parse import urlparse, parse_qsl, urlencode
 from flask import current_app, url_for
 from flask_babel import gettext as _
-from requests.exceptions import ConnectTimeout, ReadTimeout, ConnectionError, RequestException
-from datetime import date, datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 from tzlocal import get_localzone_name
 
 from .plex.connection import PlexConnectionManager
@@ -70,8 +69,8 @@ class PlexManager:
                 with self.app.app_context():
                     from app.extensions import cache
                     cache.set('last_plex_user_sync', time.time(), timeout=86400)
-                from app.config import load_or_create_config
-                self.app.config.update(load_or_create_config())
+                    from app.config import load_or_create_config
+                    self.app.config.update(load_or_create_config())
                 
         return success, message
 
@@ -166,8 +165,10 @@ class PlexManager:
                         b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
                         
                         try:
+                            # Tenta usar o contexto do app se estiver disponível para a url
                             user['thumb'] = url_for('image.proxy_image', source=b64_payload)
                         except RuntimeError:
+                            # Fallback para rota manual se executado por worker assíncrono (Scheduler)
                             user['thumb'] = f"/image/?source={b64_payload}"
                     else:
                         user['thumb'] = original_thumb
