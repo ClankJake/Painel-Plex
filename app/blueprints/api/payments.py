@@ -197,6 +197,11 @@ def _run_payment_processing_in_thread(app, txid):
                 extensions.data_manager.update_pix_payment_status(txid, 'FALHOU')
                 extensions.db.session.commit()
             break
+        finally:
+            # 🚀 OTIMIZAÇÃO CRÍTICA: Segurança em Threads
+            # Limpa a sessão criada pela thread atual para evitar 'database is locked' e exaustão do pool
+            with app.app_context():
+                extensions.db.session.remove()
 
 def _process_successful_payment(txid):
     """Inicia o processamento verificando atomicamente o estado."""
@@ -288,6 +293,12 @@ def create_charge_route():
     coupon_code = data.get('coupon_code')
     token = data.get('token')
 
+    # 🚀 OTIMIZAÇÃO: Conversão segura inicial de telas para evitar crash nos provedores
+    try:
+        screens = int(screens_str) if screens_str is not None else 0
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": _("Número de telas inválido.")}), 400
+
     plex_user_id, username = None, None
 
     # 🛡️ CORREÇÃO CRÍTICA: PRIORIDADE ABSOLUTA AO TOKEN DA URL
@@ -356,7 +367,7 @@ def create_charge_route():
             expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
             
             new_expiration_date = extensions.plex_manager.renew_subscription(
-                plex_user_id, 1, screens=int(screens_str), base_mode=renewal_base_mode,
+                plex_user_id, 1, screens=screens, base_mode=renewal_base_mode,
                 expiration_time_str=expiration_time, is_reactivation=is_reactivation
             )
             
@@ -398,14 +409,21 @@ def create_charge_route():
             return jsonify({"success": False, "message": _("Ocorreu um erro interno ao ativar.")}), 500
 
     config = load_or_create_config()
-    result = {"success": False, "message": _("O provedor %(provider)s não está habilitado.", provider=provider)}
     
-    if provider == 'EFI' and config.get('EFI_ENABLED'):
-        result = extensions.efi_manager.create_pix_charge(user_info, final_price, int(screens_str), coupon_code)
-    elif provider == 'MERCADOPAGO' and config.get('MERCADOPAGO_ENABLED'):
-        result = extensions.mercado_pago_manager.create_pix_payment(user_info, final_price, int(screens_str), coupon_code)
-    elif provider == 'BPIX' and config.get('BPIX_ENABLED'):
-        result = extensions.bpix_manager.create_pix_charge(user_info, final_price, int(screens_str), coupon_code)
+    # 🚀 OTIMIZAÇÃO: Dispatcher de Provedores. 
+    # Remove a corrente pesada de if/elif e torna a adição de novos provedores instantânea.
+    provider_map = {
+        'EFI': ('EFI_ENABLED', extensions.efi_manager.create_pix_charge if hasattr(extensions, 'efi_manager') else None),
+        'MERCADOPAGO': ('MERCADOPAGO_ENABLED', extensions.mercado_pago_manager.create_pix_payment if hasattr(extensions, 'mercado_pago_manager') else None),
+        'BPIX': ('BPIX_ENABLED', extensions.bpix_manager.create_pix_charge if hasattr(extensions, 'bpix_manager') else None)
+    }
+
+    config_key, charge_func = provider_map.get(provider, (None, None))
+
+    if charge_func and config.get(config_key):
+        result = charge_func(user_info, final_price, screens, coupon_code)
+    else:
+        result = {"success": False, "message": _("O provedor %(provider)s não está habilitado ou é inválido.", provider=provider)}
 
     return jsonify(result)
 
@@ -432,7 +450,7 @@ def get_payment_status_route(txid):
                 is_confirmed = True
         elif provider == 'MERCADOPAGO':
             status_result = extensions.mercado_pago_manager.get_payment_details(txid)
-            if status_result.get("success") and status_result.get("data", {}).get("status") == 'approved':
+            if status_result.get("success") and status_result.get("data", {}).get("status") == "approved":
                 is_confirmed = True
         elif provider == 'BPIX':
             status_result = extensions.bpix_manager.detail_pix_charge(txid)
@@ -615,26 +633,43 @@ def export_financial_csv():
         end_date = f"{end_str}T23:59:59+00:00"
         payments = extensions.data_manager.get_payments_for_export(start_date, end_date)
 
-        si = StringIO()
-        si.write('\ufeff') 
-        cw = csv.writer(si, delimiter=';')
+        # 🚀 OTIMIZAÇÃO CRÍTICA: Uso de Generator para streams pesados.
+        # Em vez de manter o ficheiro inteiro na RAM (o que causaria crashes com milhares de transações), 
+        # enviamos o ficheiro aos bocados diretamente para o cliente usando 'yield'.
+        def generate():
+            si = StringIO()
+            si.write('\ufeff') # Suporte UTF-8 Excel
+            cw = csv.writer(si, delimiter=';')
 
-        cw.writerow(['Data', 'Utilizador', 'Descricao', 'Valor (R$)', 'Provedor', 'Cupao', 'TXID'])
+            # Cabeçalho
+            cw.writerow(['Data', 'Utilizador', 'Descricao', 'Valor (R$)', 'Provedor', 'Cupao', 'TXID'])
+            yield si.getvalue()
+            si.seek(0)
+            si.truncate(0)
 
-        for p in payments:
-            cw.writerow([
-                datetime.fromisoformat(p['created_at']).strftime('%Y-%m-%d %H:%M:%S'),
-                p['username'], p['description'] or f"{p.get('screens', 'N/A')} Telas",
-                f"{p['value']:.2f}".replace('.', ','), p['provider'], p.get('coupon_code', ''), p['txid']
-            ])
+            total_value = 0
+            
+            # Linhas (Processamento individual evitando saturação da memória)
+            for p in payments:
+                total_value += p['value']
+                cw.writerow([
+                    datetime.fromisoformat(p['created_at']).strftime('%Y-%m-%d %H:%M:%S'),
+                    p['username'], p['description'] or f"{p.get('screens', 'N/A')} Telas",
+                    f"{p['value']:.2f}".replace('.', ','), p['provider'], p.get('coupon_code', ''), p['txid']
+                ])
+                yield si.getvalue()
+                si.seek(0)
+                si.truncate(0)
 
-        cw.writerow([])
-        cw.writerow(['', '', _('RESUMO DO PERÍODO')])
-        cw.writerow(['', '', _('Total Arrecadado'), f"{sum(p['value'] for p in payments):.2f}".replace('.', ',')])
-        cw.writerow(['', '', _('Total de Transações'), len(payments)])
+            # Rodapé (Totais)
+            cw.writerow([])
+            cw.writerow(['', '', _('RESUMO DO PERÍODO')])
+            cw.writerow(['', '', _('Total Arrecadado'), f"{total_value:.2f}".replace('.', ',')])
+            cw.writerow(['', '', _('Total de Transações'), len(payments)])
+            yield si.getvalue()
 
         return Response(
-            si.getvalue(), mimetype="text/csv",
+            generate(), mimetype="text/csv",
             headers={ "Content-disposition": f"attachment; filename=relatorio_{start_str}_a_{end_str}.csv", "Content-Type": "text/csv; charset=utf-8-sig" }
         )
     except Exception as e:
