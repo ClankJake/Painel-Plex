@@ -4,8 +4,9 @@ import { deleteLog, clearAllLogs, sendBulkNotification } from './api.js';
 import { renderTerminationLogs, updateSpecificUserLabel, openUserSelectionModal } from './ui.js';
 import { showToast, createModal } from '../utils.js';
 
+
 // ==========================================
-// HELPERS DE UI LOCAIS (AGORA EXPORTADOS)
+// HELPERS DE UI LOCAIS
 // ==========================================
 
 export const setProgressBarState = (status, percent = 0, text = '') => {
@@ -14,13 +15,20 @@ export const setProgressBarState = (status, percent = 0, text = '') => {
     dom.progressBar.style.width = `${percent}%`;
     dom.progressBar.classList.remove('bg-blue-600', 'bg-green-600', 'bg-red-600');
     
-    if (status === 'active') dom.progressBar.classList.add('bg-blue-600');
-    if (status === 'success') dom.progressBar.classList.add('bg-green-600');
-    if (status === 'error') dom.progressBar.classList.add('bg-red-600');
+    const statusColors = {
+        'active': 'bg-blue-600',
+        'success': 'bg-green-600',
+        'error': 'bg-red-600'
+    };
+    
+    if (statusColors[status]) {
+        dom.progressBar.classList.add(statusColors[status]);
+    }
 
     if (dom.progressPercent) dom.progressPercent.textContent = `${percent}%`;
     if (dom.progressText && text) dom.progressText.textContent = text;
 };
+
 
 // ==========================================
 // LOGS DE AUDITORIA (TERMINATION)
@@ -34,20 +42,27 @@ export async function handleDeleteLog(logId) {
         if (result.success) {
             const logElement = document.querySelector(`[data-log-id="${logId}"]`);
             if (logElement) {
+                // Animação de remoção suave
                 Object.assign(logElement.style, {
-                    transition: 'all 0.3s ease-out', opacity: '0', maxHeight: '0', padding: '0', margin: '0', border: 'none'
+                    transition: 'all 0.3s ease-out',
+                    opacity: '0',
+                    maxHeight: '0',
+                    padding: '0',
+                    margin: '0',
+                    border: 'none'
                 });
                 
                 setTimeout(() => {
                     logElement.remove();
-                    if (dom.auditLogContainer && dom.auditLogContainer.children.length === 0) {
+                    // Renderiza estado vazio se não houver mais logs
+                    if (dom.auditLogContainer?.children.length === 0) {
                         renderTerminationLogs([]); 
                     }
                 }, 300);
             }
         }
     } catch (error) {
-        showToast(error.message, 'error');
+        showToast(error.message || 'Erro ao apagar log.', 'error');
     }
 }
 
@@ -59,6 +74,7 @@ export async function handleClearAllLogs() {
         if (result.success && dom.auditLogContainer) {
             const children = Array.from(dom.auditLogContainer.children);
             
+            // Efeito cascata para apagar os logs visualmente
             children.forEach((child, index) => {
                 setTimeout(() => {
                     child.style.transition = 'opacity 0.2s ease-out';
@@ -70,9 +86,10 @@ export async function handleClearAllLogs() {
             setTimeout(() => renderTerminationLogs([]), totalDelay);
         }
     } catch (error) {
-        showToast(error.message, 'error');
+        showToast(error.message || 'Erro ao limpar logs.', 'error');
     }
 }
+
 
 // ==========================================
 // NOTIFICAÇÕES EM MASSA (BULK)
@@ -127,25 +144,22 @@ export function resetBulkNotificationUI(delay = 0) {
     }, delay);
 }
 
-// 🛡️ CORREÇÃO PRINCIPAL: Recebe o evento "e" e impede o reload da página!
+
 export function handleSendBulkNotification(e) {
-    if (e && typeof e.preventDefault === 'function') {
-        e.preventDefault(); // Impede que o formulário recarregue a página
-    }
+    // 🛡️ Previne recarregamento nativo da página
+    e?.preventDefault?.(); 
 
     const { i18n } = state;
     const messageEl = document.getElementById('bulk_message');
-    const message = messageEl ? messageEl.value.trim() : '';
+    const message = messageEl?.value.trim() || '';
 
     if (!message) {
-        showToast(i18n.writeAMessage, 'error');
-        return;
+        return showToast(i18n.writeAMessage, 'error');
     }
 
     const selectedTargetInput = document.querySelector('input[name="notification_target"]:checked');
     if (!selectedTargetInput) {
-        showToast(i18n.selectTargetAudience, 'error');
-        return;
+        return showToast(i18n.selectTargetAudience, 'error');
     }
     
     const targetAudience = selectedTargetInput.value;
@@ -156,8 +170,7 @@ export function handleSendBulkNotification(e) {
         const selectedUserIds = Array.from(state.selectedUserIds);
         if (selectedUserIds.length === 0) {
             showToast(i18n.selectAtLeastOneUser, 'warning');
-            openUserSelectionModal();
-            return;
+            return openUserSelectionModal();
         }
         confirmationMessage = i18n.confirmBulkSendSpecificMessage.replace('{count}', selectedUserIds.length);
         payload.user_ids = selectedUserIds;
@@ -168,7 +181,8 @@ export function handleSendBulkNotification(e) {
 
 function _promptBulkConfirmation(message, payload) {
     const { i18n } = state;
-    // 🛡️ CORREÇÃO: Adicionado type="button" para não acionar submits nativos
+    
+    // 🛡️ Adicionado type="button" para evitar submits indesejados no modal
     createModal('confirmationModal', i18n.confirmBulkSendTitle,
         `<p>${message}</p>`,
         `<button type="button" id="modalConfirm" class="btn bg-red-600 text-white">${i18n.confirmSendButton}</button>
@@ -179,17 +193,20 @@ function _promptBulkConfirmation(message, payload) {
     const cancelBtn = document.getElementById('modalCancel');
     const confirmationModal = document.getElementById('confirmationModal');
 
+    const closeModal = () => confirmationModal?.classList.add('hidden');
+
     if (confirmBtn) {
         confirmBtn.onclick = (e) => {
             e.preventDefault();
-            if (confirmationModal) confirmationModal.classList.add('hidden');
+            closeModal();
             _executeBulkNotification(payload);
         };
     }
+    
     if (cancelBtn) {
         cancelBtn.onclick = (e) => {
             e.preventDefault();
-            if (confirmationModal) confirmationModal.classList.add('hidden');
+            closeModal();
         };
     }
 }
@@ -207,25 +224,25 @@ async function _executeBulkNotification(payload) {
         const result = await sendBulkNotification(payload);
         
         if (result.success) {
-            // MOSTRA FEEDBACK INICIAL
             showToast('A tarefa de envio em massa foi iniciada! Acompanhe o progresso.', 'success');
 
-            // Temporizador de Segurança alargado (60s)
+            // Temporizador de Segurança alargado (60s) para reset em caso de falha de socket
             state.safetyTimeout = setTimeout(() => {
-                if (dom.sendBulkNotificationBtn && dom.sendBulkNotificationBtn.disabled) {
+                if (dom.sendBulkNotificationBtn?.disabled) {
                     showToast('O envio concluiu no servidor, mas a interface não recebeu o sinal final.', 'info');
                     resetBulkNotificationUI(0);
                 }
             }, 60000);
         } else {
-            showToast(result.message, 'error');
+            showToast(result.message || 'Erro ao iniciar envio.', 'error');
             resetBulkNotificationUI(0);
         }
     } catch (error) {
-        showToast(error.message, 'error');
+        showToast(error.message || 'Erro de conexão.', 'error');
         resetBulkNotificationUI(0);
     }
 }
+
 
 // ==========================================
 // EXPORTAÇÕES PARA O WEBSOCKET
