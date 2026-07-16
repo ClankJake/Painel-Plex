@@ -4,6 +4,8 @@ import logging
 import base64
 from datetime import datetime, timedelta, timezone
 from collections import Counter
+from typing import Dict, List, Any, Optional
+
 from flask_babel import gettext as _
 from requests.exceptions import RequestException
 from flask import url_for
@@ -12,21 +14,25 @@ from app.config import load_or_create_config
 
 logger = logging.getLogger(__name__)
 
-def _safe_int_float(value, default=0):
-    """Converte um valor para int de forma segura, lidando com strings vazias ou nulas."""
+
+def _safe_int_float(value: Any, default: int = 0) -> int:
+    """Converte um valor para int de forma segura, lidando com strings vazias, nulas ou objetos inválidos."""
     if value is None or value == '':
         return default
     try:
         return int(float(value))
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, OverflowError):
         return default
 
+
 class StatsHandler:
+    """Gere toda a lógica de análise de dados e gamificação baseada na API do Tautulli."""
+    
     def __init__(self, api_client, data_manager=None):
         self.api = api_client
         self.data_manager = data_manager
 
-    def _get_achievement_definitions(self, days):
+    def _get_achievement_definitions(self, days: int) -> Dict[str, Any]:
         """Retorna as definições dinâmicas de conquistas baseadas nas configurações atuais."""
         config = load_or_create_config()
         return {
@@ -80,7 +86,7 @@ class StatsHandler:
             }
         }
 
-    def _calculate_achievements(self, stats, days, plex_user_id, username, current_user):
+    def _calculate_achievements(self, stats: Dict[str, Any], days: int, plex_user_id: str, username: str, current_user: Any) -> List[Dict[str, Any]]:
         if not self.data_manager: 
             return []
             
@@ -92,7 +98,7 @@ class StatsHandler:
             current_value = definition["check"](stats)
             unlocked_level = None
             
-            # Testa as regras do Ouro para o Bronze
+            # Testa as regras começando do Ouro e descendo para o Bronze
             for level in ["gold", "silver", "bronze"]:
                 if level in definition["levels"] and current_value >= definition["levels"][level]["goal"]:
                     unlocked_level = level
@@ -138,7 +144,7 @@ class StatsHandler:
                 
         return final_achievements
 
-    def get_watch_stats(self, days=7, plex_users_info=None):
+    def get_watch_stats(self, days: int = 7, plex_users_info: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """Devolve o top visualizadores de todos os utilizadores (Estatística Global)."""
         try:
             after_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%d')
@@ -173,7 +179,7 @@ class StatsHandler:
             logger.error(f"Erro em get_watch_stats: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
 
-    def get_user_watch_details(self, plex_user_id, username, days=7, current_user=None):
+    def get_user_watch_details(self, plex_user_id: str, username: str, days: int = 7, current_user: Any = None) -> Dict[str, Any]:
         """Devolve as métricas profundas de um utilizador específico."""
         try:
             days = int(days)
@@ -203,7 +209,7 @@ class StatsHandler:
 
     # --- HELPERS DA LÓGICA DE DETALHES ---
 
-    def _initialize_stats_dict(self):
+    def _initialize_stats_dict(self) -> Dict[str, Any]:
         """Inicializa as variáveis com estruturas de dados explícitas e limpas."""
         return {
             "plays": 0,
@@ -226,7 +232,7 @@ class StatsHandler:
             "unique_decades": set()
         }
 
-    def _process_history_item(self, item, stats, series_genre_cache):
+    def _process_history_item(self, item: Dict[str, Any], stats: Dict[str, Any], series_genre_cache: Dict[str, Any]) -> None:
         """Trata cada entrada do histórico alimentando as métricas parciais."""
         dt = datetime.fromtimestamp(item.get('date', 0), tz=timezone.utc)
         duration = item.get('duration', 0)
@@ -244,7 +250,6 @@ class StatsHandler:
         if 0 <= dt.hour < 4: 
             stats["late_night_plays"] += 1
             
-        # Processamento de Géneros (Com cache local de Séries para poupar pedidos API)
         item_genres = item.get("genres")
         if not item_genres and media_type == 'episode':
             grandparent_rating_key = item.get('grandparent_rating_key')
@@ -261,7 +266,6 @@ class StatsHandler:
             stats["genre_counts"].update(item_genres)
             stats["unique_genres"].update(item_genres)
 
-        # Distinção entre Filmes e Episódios de Séries
         if media_type == 'movie':
             stats["movie_count"] += 1
             stats["total_movie_duration"] += duration
@@ -279,17 +283,18 @@ class StatsHandler:
             stats["total_episode_duration"] += duration
             stats["top_shows"][item.get("grandparent_title")] += 1
             
-        # Gravar histórico recente para posters front-end (Limita a 9)
         if len(stats["recent"]) < 9:
             poster_url = None
             if item.get('thumb'):
+                tautulli_path = f"/pms_image_proxy?img={item['thumb']}&width=200&height=300"
+                payload_str = f"tautulli:{tautulli_path}"
+                b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                
+                # 🛡️ Fallback Robusto: Previne crash quando não há contexto HTTP (ex: Background Thread)
                 try:
-                    tautulli_path = f"/pms_image_proxy?img={item['thumb']}&width=200&height=300"
-                    payload_str = f"tautulli:{tautulli_path}"
-                    b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
                     poster_url = url_for('image.proxy_image', source=b64_payload)
                 except RuntimeError:
-                    pass # Salvaguarda: Fora do contexto da rota, não cria link de imagem
+                    poster_url = f"/image/?source={b64_payload}"
             
             stats["recent"].append({
                 "type": media_type, 
@@ -299,7 +304,7 @@ class StatsHandler:
                 "play_date": dt.strftime('%d/%m/%Y %H:%M')
             })
 
-    def _finalize_stats(self, stats):
+    def _finalize_stats(self, stats: Dict[str, Any]) -> None:
         """Converte Sets para Listas de forma ao JSON serializar para a API final."""
         stats["favorite_genre"] = stats["genre_counts"].most_common(1)[0][0] if stats["genre_counts"] else _('N/D')
         
@@ -313,7 +318,7 @@ class StatsHandler:
 
     # --- RESTANTES MÉTODOS PÚBLICOS ---
 
-    def get_user_watch_history(self, user_id, page=1, length=25, search=""):
+    def get_user_watch_history(self, user_id: str, page: int = 1, length: int = 25, search: str = "") -> Dict[str, Any]:
         try:
             history_response = self.api.get_history(
                 user_id=user_id, start=(page - 1) * length, length=length, search=search
@@ -330,13 +335,15 @@ class StatsHandler:
                     thumb_key = item.get('grandparent_thumb')
 
                 if thumb_key:
+                    tautulli_path = f"/pms_image_proxy?img={thumb_key}&width=200&height=300"
+                    payload_str = f"tautulli:{tautulli_path}"
+                    b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                    
+                    # 🛡️ Fallback Robusto: URL Estática para processos Assíncronos
                     try:
-                        tautulli_path = f"/pms_image_proxy?img={thumb_key}&width=200&height=300"
-                        payload_str = f"tautulli:{tautulli_path}"
-                        b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
                         poster_url = url_for('image.proxy_image', source=b64_payload)
                     except RuntimeError:
-                        pass
+                        poster_url = f"/image/?source={b64_payload}"
                 
                 title = item.get("title")
                 subtitle = str(item.get("year")) if item.get("year") else ""
@@ -355,12 +362,14 @@ class StatsHandler:
                     "poster_url": poster_url,
                 })
 
+            total_pages = (total_count + length - 1) // length if length > 0 else 1
+
             return {
                 "success": True,
                 "history": processed_history,
                 "pagination": {
                     "current_page": page,
-                    "total_pages": (total_count // length) + (1 if total_count % length > 0 else 0),
+                    "total_pages": total_pages,
                     "total_records": total_count,
                 }
             }
@@ -371,7 +380,7 @@ class StatsHandler:
             logger.error(f"Erro inesperado ao buscar histórico para user_id {user_id}: {e}", exc_info=True)
             return {"success": False, "message": f"Erro inesperado: {e}"}
 
-    def get_recently_added(self, days=7):
+    def get_recently_added(self, days: int = 7) -> Dict[str, Any]:
         try:
             response = self.api.get_recently_added(count=250)
             all_media = response.get('recently_added', [])
@@ -390,13 +399,15 @@ class StatsHandler:
                         
                     poster_url = None
                     if thumb_key:
+                        tautulli_path = f"/pms_image_proxy?img={thumb_key}&width=300&height=450"
+                        payload_str = f"tautulli:{tautulli_path}"
+                        b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
+                        
+                        # 🛡️ Fallback Robusto
                         try:
-                            tautulli_path = f"/pms_image_proxy?img={thumb_key}&width=300&height=450"
-                            payload_str = f"tautulli:{tautulli_path}"
-                            b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
                             poster_url = url_for('image.proxy_image', source=b64_payload)
                         except RuntimeError:
-                            pass
+                            poster_url = f"/image/?source={b64_payload}"
                             
                     filtered_media.append({ 
                         'title': item.get('title'), 
@@ -417,7 +428,7 @@ class StatsHandler:
             logger.error(f"Erro em get_recently_added: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
 
-    def get_user_devices(self, plex_user_id):
+    def get_user_devices(self, plex_user_id: str) -> Dict[str, Any]:
         try:
             history_response = self.api.get_history(user_id=plex_user_id, length=500)
             history = history_response.get('data', [])
@@ -425,11 +436,15 @@ class StatsHandler:
             
             devices = {}
             for item in history:
-                device_key = f"{item.get('player', 'Desconhecido')}|{item.get('platform', 'Desconhecida')}"
+                # Usa nome limpo se existir para não causar chaves gigantes
+                player = item.get('player', 'Desconhecido')
+                platform = item.get('platform', 'Desconhecida')
+                device_key = f"{player}|{platform}"
+                
                 if device_key not in devices or item.get('date', 0) > devices[device_key]['last_seen']:
                     devices[device_key] = {
-                        'player': item.get('player', 'Desconhecido'), 
-                        'platform': item.get('platform', 'Desconhecida'), 
+                        'player': player, 
+                        'platform': platform, 
                         'last_seen': item.get('date', 0)
                     }
             return {"success": True, "devices": sorted(list(devices.values()), key=lambda x: x['last_seen'], reverse=True)}
