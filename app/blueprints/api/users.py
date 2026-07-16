@@ -26,7 +26,6 @@ users_api_bp = Blueprint('users_api', __name__)
 class ExtendTrialSchema(BaseModel):
     extend_minutes: int = Field(..., gt=0, description="Duração da extensão em minutos (deve ser maior que zero).")
 
-
 # ==========================================
 # ROTAS PÚBLICAS
 # ==========================================
@@ -50,7 +49,8 @@ def get_public_user_profile_by_token(token):
     expiration_date_formatted = None
     if profile.expiration_date:
         try:
-            exp_date = datetime.fromisoformat(profile.expiration_date).astimezone(get_localzone())
+            local_tz = get_localzone()
+            exp_date = datetime.fromisoformat(profile.expiration_date).astimezone(local_tz)
             expiration_date_formatted = exp_date.strftime('%d/%m/%Y')
         except (ValueError, TypeError): 
             pass
@@ -119,7 +119,6 @@ def finalize_reactivation_route():
         logger.error(f"Erro ao finalizar reativação local: {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Erro ao atualizar sistema local.")}), 500
 
-
 # ==========================================
 # ROTAS DO UTILIZADOR (MINHA CONTA)
 # ==========================================
@@ -138,7 +137,8 @@ def get_account_details():
     join_date = _("Não disponível")
     if join_date_str := extensions.data_manager.get_user_claim_date(plex_user_id):
         try: 
-            join_date = format_date(datetime.fromisoformat(join_date_str).astimezone(get_localzone()), 'd \'de\' MMMM \'de\' yyyy')
+            local_tz = get_localzone()
+            join_date = format_date(datetime.fromisoformat(join_date_str).astimezone(local_tz), 'd \'de\' MMMM \'de\' yyyy')
         except (ValueError, TypeError): 
             pass
 
@@ -186,7 +186,8 @@ def get_account_details():
 @login_required
 @validate_json(UpdateAccountProfileSchema)
 def update_account_profile(validated_data):
-    data = validated_data.dict(exclude_unset=True)
+    # Compatibilidade com Pydantic v1 e v2
+    data = validated_data.dict(exclude_unset=True) if hasattr(validated_data, 'dict') else validated_data.model_dump(exclude_unset=True)
     plex_user_id = int(current_user.id)
     profile = extensions.data_manager.get_user_profile(plex_user_id)
     profile.update(data)
@@ -220,7 +221,6 @@ def get_account_requests():
 @login_required
 def get_account_devices():
     return jsonify(extensions.tautulli_manager.get_user_devices(int(current_user.id)))
-
 
 # ==========================================
 # ROTAS ADMIN (GERENCIAMENTO)
@@ -266,7 +266,7 @@ def get_user_list():
                     'email': user.get('email', '')
                 })
 
-        return jsonify({"success": True, "users": sorted(filtered_users, key=lambda x: x['username'].lower())})
+        return jsonify({"success": True, "users": sorted(filtered_users, key=lambda x: str(x['username']).lower())})
     except Exception as e:
         logger.error(f"Erro ao listar utilizadores para seleção: {e}")
         return jsonify({"success": False, "message": _("Erro interno ao obter lista.")}), 500
@@ -312,7 +312,8 @@ def user_profile_route(plex_user_id):
     except ValidationError as e: 
         return jsonify({"success": False, "message": _("Dados inválidos."), "errors": {err['loc'][0]: err['msg'] for err in e.errors()}}), 400
 
-    data = validated_data.dict(exclude_unset=True)
+    # Compatibilidade Pydantic v1 / v2
+    data = validated_data.dict(exclude_unset=True) if hasattr(validated_data, 'dict') else validated_data.model_dump(exclude_unset=True)
     local_datetime_str = data.pop('expiration_datetime_local', None)
     
     profile_to_update = extensions.data_manager.get_user_profile(plex_user_id)
@@ -432,7 +433,6 @@ def renew_user_subscription_route(user, validated_data):
     try:
         data = validated_data
         
-        # LOG ADICIONADO AQUI: Regista o início da renovação manual.
         logger.info(f"Admin '{current_user.username}' solicitou a renovação manual de '{user['username']}' (ID: {user['id']}) por {data.months} mês/meses.")
 
         new_expiration_date = extensions.plex_manager.renew_subscription(
@@ -442,8 +442,39 @@ def renew_user_subscription_route(user, validated_data):
 
         config = load_or_create_config()
         profile = extensions.data_manager.get_user_profile(user['id'])
-        monthly_price_str = config.get("SCREEN_PRICES", {}).get(str(profile.get('screen_limit', 0)), config.get("RENEWAL_PRICE", "0.00"))
-        total_value = float(monthly_price_str.replace(',', '.')) * data.months
+        
+        # --- LÓGICA DE FALLBACK INTELIGENTE DE PREÇO ---
+        current_screens = profile.get('screen_limit', 0)
+        screen_prices = config.get("SCREEN_PRICES", {})
+        renewal_price = config.get("RENEWAL_PRICE")
+        
+        # 1. Tenta o preço exato do limite atual
+        monthly_price_str = screen_prices.get(str(current_screens))
+        
+        # 2. Tenta o fallback geral
+        if not monthly_price_str or not str(monthly_price_str).strip():
+            monthly_price_str = renewal_price
+            
+        # 3. Fallback inteligente (procura o menor valor ativo)
+        if not monthly_price_str or not str(monthly_price_str).strip():
+            valid_prices = []
+            for v in screen_prices.values():
+                try:
+                    if v and str(v).strip():
+                        valid_prices.append(float(str(v).replace(',', '.')))
+                except ValueError:
+                    continue
+            monthly_price_str = str(min(valid_prices)) if valid_prices else "0.00"
+
+        # 4. Conversão à prova de falhas
+        try:
+            clean_price = str(monthly_price_str).replace(',', '.').strip()
+            base_price = float(clean_price) if clean_price else 0.0
+        except (ValueError, TypeError):
+            base_price = 0.0
+            
+        total_value = base_price * data.months
+        # --- FIM DA LÓGICA DE PREÇO ---
 
         with extensions.db.session.begin_nested():
             # Cria a entrada no histórico de pagamentos (financeiro)
@@ -458,11 +489,10 @@ def renew_user_subscription_route(user, validated_data):
             )
         extensions.db.session.commit()
         
-        # Acende a luz do sino em tempo real para quem estiver na página
+        # Acende a luz do sino em tempo real
         if extensions.socketio:
             extensions.socketio.emit('new_notification', namespace='/')
             
-        # LOG ADICIONADO AQUI: Regista o sucesso financeiro e da renovação na DB
         logger.info(f"Renovação manual processada. Nova data de expiração para '{user['username']}': {new_expiration_date.strftime('%Y-%m-%d')}. Valor registado: R$ {total_value:.2f}")
         
         try:
@@ -504,8 +534,9 @@ def notify_user_route(user):
     if not profile.get('expiration_date'):
         return jsonify({"success": False, "message": _("Utilizador sem data de vencimento.")})
     
-    exp_date = datetime.fromisoformat(profile['expiration_date']).astimezone(get_localzone()).date()
-    days_left = (exp_date - datetime.now(get_localzone()).date()).days
+    local_tz = get_localzone()
+    exp_date = datetime.fromisoformat(profile['expiration_date']).astimezone(local_tz).date()
+    days_left = (exp_date - datetime.now(local_tz).date()).days
     extensions.plex_manager.notifier_manager.send_expiration_notification(user, days_left, profile)
     
     logger.info(f"Admin '{current_user.username}' disparou uma notificação manual de vencimento para '{user['username']}'.")
@@ -606,7 +637,6 @@ def get_user_payments_history(plex_user_id):
         return jsonify({"success": False, "message": _("Acesso não autorizado.")}), 403
     return jsonify({"success": True, "payments": extensions.data_manager.get_payments_by_user(plex_user_id)})
 
-
 # ==========================================
 # FUNÇÕES AUXILIARES (HELPERS PRIVADOS)
 # ==========================================
@@ -615,11 +645,12 @@ def _get_expiration_details(profile, config):
     expiration_info = {"date": None, "days_left": None, "status": "active"}
     if exp_str := profile.get('expiration_date'):
         try:
+            local_tz = get_localzone()
             exp_dt_aware = datetime.fromisoformat(exp_str)
-            exp_dt_local = exp_dt_aware.astimezone(get_localzone())
+            exp_dt_local = exp_dt_aware.astimezone(local_tz)
             expiration_info["date"] = format_date(exp_dt_local.date(), 'd \'de\' MMMM \'de\' yyyy')
             
-            now_local = datetime.now(get_localzone())
+            now_local = datetime.now(local_tz)
             if exp_dt_local < now_local:
                 expiration_info["status"] = "expired"
             else:
