@@ -1,6 +1,7 @@
+# app/sockets.py
+
 import logging
 from datetime import datetime
-import threading
 from flask_login import current_user
 
 from . import extensions
@@ -10,10 +11,9 @@ logger = logging.getLogger(__name__)
 # Referência global à aplicação (injetada no app/__init__.py)
 app_instance = None
 
-# Estado da Tarefa de Background (Protegido por Lock Thread-Safe)
+# Estado da Tarefa de Background
 background_task_greenlet = None
 connected_clients = 0
-task_lock = threading.Lock()
 
 def _safe_get_active_sessions():
     """Busca as sessões com tratamento seguro de erros de rede."""
@@ -68,14 +68,16 @@ def get_data_for_socket():
         logger.error("Socket: app_instance não definida.")
         return None, None
 
-    with app_instance.app_context():
-        # O test_request_context é estritamente necessário 
-        # para que o Flask consiga usar o url_for() e gerar as capas/posters em background!
+    # O test_request_context é estritamente necessário para gerar URLs de imagens (url_for)
+    try:
         with app_instance.test_request_context('/'):
             active_streams_count, active_sessions_details = _safe_get_active_sessions()
             summary_data = _build_summary_data(active_streams_count)
 
             return summary_data, active_sessions_details
+    except Exception as e:
+        logger.error(f"Socket: Falha na construção do Request Context: {e}")
+        return None, None
 
 def background_task():
     """
@@ -84,16 +86,17 @@ def background_task():
     """
     logger.debug("Socket: Tarefa de background (Dashboard) INICIADA.")
     global background_task_greenlet
+    global connected_clients
     
     while True:
-        # Verifica a condição de parada cravando o Lock de forma segura
-        with task_lock:
-            if connected_clients <= 0:
-                background_task_greenlet = None
-                logger.debug("Socket: Tarefa de background PARADA (0 clientes).")
-                break
+        # Verifica a condição de parada sem o bloqueio pesado do threading.Lock
+        # Em eventlet/gevent, como não há multi-threading preemptivo, isto é seguro
+        if connected_clients <= 0:
+            background_task_greenlet = None
+            logger.debug("Socket: Tarefa de background PARADA (0 clientes).")
+            break
         
-        # O try/except global impede que a Thread morra se houver erro isolado (ex: BD travada)
+        # O try/except global impede que a Thread morra se houver erro isolado
         try:
             summary_data, active_sessions = get_data_for_socket()
             
@@ -105,8 +108,13 @@ def background_task():
                 
         except Exception as e:
             logger.error(f"Socket: Falha na iteração do background task: {e}")
+        finally:
+            # 🛡️ PROTEÇÃO CRÍTICA: Limpa a sessão da DB neste greenlet para não travar a base de dados
+            if app_instance:
+                with app_instance.app_context():
+                    extensions.db.session.remove()
 
-        # Dorme por 5 segundos. O SocketIO gere o sleep para não bloquear a thread principal (Eventlet)
+        # Dorme por 5 segundos sem bloquear a thread principal
         extensions.socketio.sleep(5)
 
 # ==========================================
@@ -116,25 +124,24 @@ def background_task():
 @extensions.socketio.on('connect', namespace='/dashboard')
 def handle_dashboard_connect():
     """Acionado quando um utilizador entra no Painel de Controlo."""
-    global connected_clients, background_task_greenlet
+    global connected_clients
+    global background_task_greenlet
     
-    with task_lock:
-        connected_clients += 1
-        logger.debug(f"Socket: Novo cliente conectado ao Dashboard. Total: {connected_clients}")
-        
-        # Inicia a tarefa de background apenas se ela não estiver rodando
-        if background_task_greenlet is None:
-            background_task_greenlet = extensions.socketio.start_background_task(background_task)
+    connected_clients += 1
+    logger.debug(f"Socket: Novo cliente conectado ao Dashboard. Total: {connected_clients}")
+    
+    # Inicia a tarefa de background apenas se ela não estiver a correr
+    if background_task_greenlet is None:
+        background_task_greenlet = extensions.socketio.start_background_task(background_task)
 
 @extensions.socketio.on('disconnect', namespace='/dashboard')
 def handle_dashboard_disconnect():
     """Acionado quando um utilizador fecha a aba do Painel."""
     global connected_clients
     
-    with task_lock:
-        if connected_clients > 0:
-            connected_clients -= 1
-        logger.debug(f"Socket: Cliente desconectado do Dashboard. Restantes: {connected_clients}")
+    if connected_clients > 0:
+        connected_clients -= 1
+    logger.debug(f"Socket: Cliente desconectado do Dashboard. Restantes: {connected_clients}")
 
 @extensions.socketio.on('connect', namespace='/')
 def handle_main_connect():
