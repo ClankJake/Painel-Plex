@@ -3,15 +3,16 @@
 import logging
 import os
 import pytz
+from collections import deque
+from datetime import datetime
+
 from flask import Blueprint, jsonify, request, current_app, session, url_for
 from flask_login import login_user, current_user
 from plexapi.myplex import MyPlexAccount
 from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
-from datetime import datetime
 
-# 🛡️ CORREÇÃO 1: 'notifier_manager' adicionado aos imports das extensões
 from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager, notifier_manager
 from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
@@ -20,6 +21,24 @@ from ..auth import admin_required, login_required
 logger = logging.getLogger(__name__)
 system_api_bp = Blueprint('system_api', __name__)
 
+# --- HELPERS ---
+def _get_safe_timezone():
+    """Tenta obter o timezone de forma segura, respeitando variáveis do Docker."""
+    tz_env = os.environ.get('TZ')
+    if tz_env:
+        try: 
+            return pytz.timezone(tz_env).zone
+        except pytz.UnknownTimeZoneError: 
+            pass
+    try: 
+        return get_localzone_name()
+    except Exception: 
+        return 'UTC'
+
+# ==========================================
+# ROTAS DE MONITORIZAÇÃO E LOGS
+# ==========================================
+
 @system_api_bp.route('/logs')
 @login_required
 @admin_required
@@ -27,9 +46,12 @@ system_api_bp = Blueprint('system_api', __name__)
 def get_logs():
     try:
         log_file = current_app.config.get('LOG_FILE', 'app.log')
-        with open(log_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-            return jsonify({"success": True, "logs": "".join(lines[-500:])})
+        # 🚀 OTIMIZAÇÃO: Usa deque(maxlen=500) para ler apenas o fim do ficheiro.
+        # Evita picos gigantescos de RAM caso o ficheiro de log cresça muito!
+        # O errors='replace' impede crashs na leitura se houver caracteres estranhos no log.
+        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+            lines = deque(f, maxlen=500)
+            return jsonify({"success": True, "logs": "".join(lines)})
     except FileNotFoundError:
         return jsonify({"success": True, "logs": _("O ficheiro de log ainda não foi criado.")})
     except Exception as e:
@@ -43,7 +65,7 @@ def clear_logs():
     try:
         log_file = current_app.config.get('LOG_FILE', 'app.log')
         with open(log_file, 'w') as f:
-            pass
+            pass # Trunca o ficheiro para 0 bytes
         logger.info(f"O ficheiro de log '{log_file}' foi limpo pelo utilizador '{current_user.username}'.")
         return jsonify({"success": True, "message": _("Ficheiro de log limpo com sucesso.")})
     except Exception as e:
@@ -53,10 +75,8 @@ def clear_logs():
 @system_api_bp.route('/dashboard-summary')
 @login_required
 @admin_required
-@limiter.exempt # Painel do Admin precisa atualizar sem limites
+@limiter.exempt 
 def get_dashboard_summary():
-    from ...extensions import data_manager
-    from datetime import datetime
     try:
         active_streams_data = plex_manager.get_active_sessions()
         active_streams = active_streams_data.get('stream_count', 0)
@@ -101,7 +121,7 @@ def get_active_streams():
 @system_api_bp.route('/system-health')
 @login_required
 @admin_required
-@limiter.exempt # Isento para não bloquear o painel principal
+@limiter.exempt 
 def get_system_health():
     """Verifica e retorna o estado de todos os serviços integrados."""
     health_status = {
@@ -120,7 +140,7 @@ def get_system_health():
 @system_api_bp.route('/termination-logs')
 @login_required
 @admin_required
-@limiter.exempt # Isento para atualizações ao vivo do painel
+@limiter.exempt
 def get_termination_logs():
     """Endpoint para obter os logs de términos de sessões."""
     try:
@@ -159,6 +179,10 @@ def clear_all_termination_logs():
         logger.error(f"Erro ao limpar todos os logs de término: {e}", exc_info=True)
         return jsonify({"success": False, "message": "Falha ao limpar os logs."}), 500
 
+# ==========================================
+# CONFIGURAÇÕES DA APLICAÇÃO (SETTINGS)
+# ==========================================
+
 @system_api_bp.route('/settings', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -167,6 +191,7 @@ def api_settings():
         old_config = load_or_create_config()
         config_to_update = load_or_create_config()
         new_data = request.json
+        
         fields_to_update = [
             'APP_TITLE', 'LOG_LEVEL', 'DAYS_TO_REMOVE_BLOCKED_USER',
             'EXPIRATION_NOTIFICATION_TIME', 'BLOCK_REMOVAL_TIME', 'WEBHOOK_URL', 'WEBHOOK_ENABLED',
@@ -195,6 +220,7 @@ def api_settings():
             'STREAM_CHECK_INTERVAL_SECONDS', 'TERMINATION_MSG_BLOCKED_MANUAL', 'TERMINATION_MSG_BLOCKED_EXPIRED',
             'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED', 'TERMINATION_MSG_SCREEN_LIMIT'
         ]
+        
         numeric_fields = [
             'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION',
             'CLEANUP_PENDING_PAYMENTS_DAYS', 'IMAGE_CACHE_MAX_AGE_DAYS',
@@ -208,24 +234,37 @@ def api_settings():
 
         if 'SCREEN_PRICES' in new_data:
             config_to_update['SCREEN_PRICES'] = new_data['SCREEN_PRICES']
+            
         for field in fields_to_update:
             if field in new_data:
                 value = new_data[field]
                 
+                # Ignora as chaves escondidas pela interface
                 if isinstance(value, dict) and "is_set" in value:
                     continue
 
-                if field in numeric_fields: config_to_update[field] = int(value) if value else 0
-                elif isinstance(value, bool): config_to_update[field] = value
-                else: config_to_update[field] = value
+                if field in numeric_fields: 
+                    # 🚀 OTIMIZAÇÃO: Conversão segura (Evita ValueError e corrupção da DB)
+                    try: 
+                        config_to_update[field] = int(value) if value else 0
+                    except (ValueError, TypeError): 
+                        config_to_update[field] = old_config.get(field, 0)
+                elif isinstance(value, bool): 
+                    config_to_update[field] = value
+                else: 
+                    config_to_update[field] = value
+                    
         if new_data.get('plex_token') and new_data.get('plex_url'):
             config_to_update['PLEX_TOKEN'] = new_data['plex_token']
             config_to_update['PLEX_URL'] = new_data['plex_url']
             
         save_app_config(config_to_update)
+        
+        # Atualiza a configuração global da App
         app = current_app._get_current_object()
         app.config.update(config_to_update)
 
+        # Recarrega credenciais dos gestores independentes
         efi_manager.reload_credentials()
         mercado_pago_manager.reload_credentials()
         tautulli_manager.reload_credentials()
@@ -238,6 +277,7 @@ def api_settings():
         if config_to_update.get("EFI_ENABLED"):
             efi_manager.configure_webhook()
 
+        # Atualização dinâmica do Nível de Logs
         log_level_map = {'DEBUG': logging.DEBUG, 'INFO': logging.INFO, 'WARNING': logging.WARNING, 'ERROR': logging.ERROR}
         new_log_level = config_to_update.get('LOG_LEVEL', 'INFO')
         if new_log_level != old_config.get('LOG_LEVEL'):
@@ -245,24 +285,14 @@ def api_settings():
             app.logger.setLevel(log_level_map.get(new_log_level, logging.INFO))
             logger.info(f"Nível de log atualizado para {new_log_level}")
 
+        # Re-agendamento de Tarefas Inteligente
         def reschedule_job(job_id, config_key, old_config, new_config, trigger_type='cron'):
             new_value = new_config.get(config_key)
             if new_value and new_value != old_config.get(config_key):
                 try:
                     if trigger_type == 'cron':
                         hour, minute = map(int, new_value.split(':')[:2])
-                        
-                        tz_env = os.environ.get('TZ')
-                        if tz_env:
-                            try: 
-                                tz_str = pytz.timezone(tz_env).zone
-                            except: 
-                                tz_str = 'UTC'
-                        else:
-                            try: 
-                                tz_str = get_localzone_name()
-                            except: 
-                                tz_str = 'UTC'
+                        tz_str = _get_safe_timezone()
                         
                         scheduler.reschedule_job(job_id, trigger=CronTrigger(hour=hour, minute=minute, timezone=tz_str))
                         logger.info(f"Tarefa '{job_id}' reagendada para as {hour:02d}:{minute:02d} ({tz_str}).")
@@ -282,6 +312,7 @@ def api_settings():
         success, message = plex_manager.reload_connections()
         return jsonify({"success": success, "message": message})
 
+    # --- GET SETTINGS (Com Ocultação de Chaves Sensíveis) ---
     config_to_send = load_or_create_config()
 
     sensitive_keys = [
@@ -304,6 +335,10 @@ def api_settings():
     config_to_send.pop('INTERNAL_TRIGGER_KEY', None)
 
     return jsonify(config_to_send)
+
+# ==========================================
+# SETUP E DIAGNÓSTICO (TESTES)
+# ==========================================
 
 @system_api_bp.route('/setup/servers')
 def get_plex_servers():
