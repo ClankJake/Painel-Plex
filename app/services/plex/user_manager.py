@@ -173,7 +173,8 @@ class PlexUserManager:
             headers = {"Accept": "application/json"}
             session = getattr(self.conn.account, '_session', requests.Session())
             
-            resp = session.get(url, params=params, headers=headers)
+            # PROTEÇÃO: Adicionado timeout=15 para evitar que a thread congele se a API Plex.tv cair
+            resp = session.get(url, params=params, headers=headers, timeout=15)
             resp.raise_for_status()
             server_data = resp.json()
             
@@ -205,7 +206,8 @@ class PlexUserManager:
             headers = {"Accept": "application/json"}
             session = getattr(self.conn.account, '_session', requests.Session())
             
-            resp = session.get(url, params=params, headers=headers)
+            # PROTEÇÃO: Adicionado timeout=15
+            resp = session.get(url, params=params, headers=headers, timeout=15)
             resp.raise_for_status()
             shared_servers = resp.json()
             
@@ -217,7 +219,7 @@ class PlexUserManager:
             logger.error(f"Falha ao obter dados de partilha V2: {e}")
             return {}
 
-    def update_user_libraries(self, plex_user_id, library_titles, allow_sync=None):
+    def update_user_libraries(self, plex_user_id, library_titles, allow_sync=None, bulk_mode=False):
         """Atualiza as bibliotecas e Downloads usando a API V2 Nativa (Método POST rigoroso)."""
         if not self.conn.account or not self.conn.plex:
             return {"success": False, "message": _("Plex não configurado.")}
@@ -283,19 +285,21 @@ class PlexUserManager:
             
             session = getattr(self.conn.account, '_session', requests.Session())
 
-            resp = session.post(url, params=params, headers=headers, json=payload)
+            # PROTEÇÃO: Adicionado timeout=15
+            resp = session.post(url, params=params, headers=headers, json=payload, timeout=15)
             resp.raise_for_status()
             
-            # 5. Tempo para os servidores do Plex digerirem a alteração e Limpeza de Cache
-            time.sleep(1.0)
-            self.conn.account._users = None
-            self.invalidate_user_cache()
-            
-            # 6. Registo na Base de Dados Local
+            # 6. Registo na Base de Dados Local (Movido para antes da limpeza de cache)
             profile = self.data_manager.get_user_profile(plex_user_id)
             if profile:
                 profile['libraries'] = json.dumps(library_titles)
                 self.data_manager.set_user_profile(plex_user_id, profile)
+            
+            # 5. Otimização Bulk: Evita sobrecarga de API (sleep) e invalidações de cache constantes
+            if not bulk_mode:
+                time.sleep(1.0)
+                self.conn.account._users = None
+                self.invalidate_user_cache()
                 
             return {"success": True, "message": _("Bibliotecas e permissões de download atualizadas com sucesso!")}
             
@@ -311,14 +315,35 @@ class PlexUserManager:
             return {"success": False, "message": str(e)}
 
     def update_all_users_libraries(self, library_titles):
+        """Atualiza bibliotecas em massa de forma paralela, evitando timeouts do servidor web."""
         all_users = self.get_all_plex_users()
-        if not all_users: return {"success": False, "message": _("Falha ao ler utilizadores.")}
+        if not all_users: 
+            return {"success": False, "message": _("Falha ao ler utilizadores.")}
 
-        for user_data in all_users:
-            if str(user_data['id']) != str(self.conn.account.id):
-                self.update_user_libraries(user_data['id'], library_titles, allow_sync=None)
+        admin_id = str(self.conn.account.id)
+        success_count = 0
+        
+        # PERFORMANCE: Executa as atualizações na API em simultâneo
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = []
+            for user_data in all_users:
+                if str(user_data['id']) != admin_id:
+                    # Passa bulk_mode=True para não fazer cache flush por cada utilizador
+                    futures.append(executor.submit(self.update_user_libraries, user_data['id'], library_titles, None, True))
+            
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                    if result.get("success"):
+                        success_count += 1
+                except Exception as e:
+                    logger.error(f"Erro ao processar atualização de biblioteca em massa: {e}")
 
-        return {"success": True, "message": _("Bibliotecas atualizadas para todos.")}
+        # Limpa o cache apenas uma vez no final da operação em massa
+        self.conn.account._users = None
+        self.invalidate_user_cache()
+
+        return {"success": True, "message": _("Bibliotecas atualizadas para %(count)d utilizadores.", count=success_count)}
 
     def block_user(self, plex_user_id, reason='manual'):
         user_to_block = self.get_user_by_id(plex_user_id)
@@ -367,13 +392,15 @@ class PlexUserManager:
             if friend_to_remove:
                 self.conn.account.removeFriend(friend_to_remove)
                 user_removed = True
-        except Exception as e: pass
+        except Exception as e: 
+            logger.debug(f"Não foi possível remover amigo Plex pelo objeto de amigo: {e}")
 
         if not user_removed and (email or username):
             try:
                 self.conn.account._users = None 
                 self.conn.account.removeFriend(email or username)
-            except Exception as e: pass
+            except Exception as e: 
+                logger.debug(f"Não foi possível remover amigo Plex por email/username: {e}")
 
     def _deactivate_user_profile(self, plex_user_id, profile):
         from app.extensions import scheduler
