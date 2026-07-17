@@ -7,7 +7,6 @@ import hashlib
 import base64
 import binascii
 import tempfile
-import shutil
 import socket
 import ipaddress
 from pathlib import Path
@@ -24,8 +23,15 @@ image_bp = Blueprint('image', __name__)
 
 # --- CONFIGURAÇÃO DO CACHE EM DISCO ---
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+# Mantido em /config/cache/images para permitir controlo fácil por parte do utilizador
 IMAGE_CACHE_DIR = BASE_DIR / 'config' / 'cache' / 'images'
-IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+def ensure_cache_dir():
+    """Cria o diretório de cache de forma preguiçosa (lazy) para evitar erros de permissão no arranque (Docker)."""
+    try:
+        IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        logger.error(f"Erro ao criar diretório de cache de imagens {IMAGE_CACHE_DIR}: {e}")
 
 # Sessão persistente para acelerar múltiplos downloads da mesma fonte
 session = requests.Session()
@@ -106,15 +112,13 @@ def build_final_url(source: str, image_path: str) -> Tuple[Optional[str], dict]:
         final_url = validate_external_url(image_path)
         
     elif source == 'tautulli':
-        if tautulli_manager and tautulli_manager.api_client.is_configured:
-            # O endpoint /pms_image_proxy requer sessão (cookie). Devemos usar a API v2
-            # que aceita autenticação via apikey.
+        # Protege contra Tautulli não configurado/carregado no boot
+        if tautulli_manager and getattr(tautulli_manager, 'api_client', None) and tautulli_manager.api_client.is_configured:
             parsed_path = urlparse(image_path)
             query_params = parse_qs(parsed_path.query)
             final_url = f"{tautulli_manager.api_client.base_url}/api/v2"
             params['apikey'] = tautulli_manager.api_client.api_key
             params['cmd'] = 'pms_image_proxy'
-            # Extrai os parâmetros da query string original (img, width, height)
             for key, values in query_params.items():
                 params[key] = values[0]
             
@@ -133,7 +137,13 @@ def proxy_image():
         abort(400, "Parâmetro 'source' é obrigatório.")
 
     try:
-        decoded_payload = base64.urlsafe_b64decode(b64_payload.encode('utf-8')).decode('utf-8')
+        # Previne erros de Base64 calculando o padding necessário automaticamente
+        padding = '=' * (-len(b64_payload) % 4)
+        decoded_payload = base64.urlsafe_b64decode(b64_payload + padding).decode('utf-8')
+        
+        if ':' not in decoded_payload:
+            abort(400, "Formato do payload inválido.")
+            
         source, image_path = decoded_payload.split(':', 1)
     except (binascii.Error, UnicodeDecodeError, ValueError):
         abort(400, "Parâmetro 'source' inválido ou mal formatado.")
@@ -141,27 +151,39 @@ def proxy_image():
     try:
         final_url, params = build_final_url(source, image_path)
     except ValueError as e:
-        # Se falhar as verificações SSRF, devolve uma imagem genérica e regista o aviso
         logger.warning(f"Tentativa de Proxy bloqueada por segurança (SSRF): {e}")
         return redirect("https://placehold.co/150x225/1F2937/E5E7EB?text=Bloqueado")
         
     if not final_url:
         abort(404, "Fonte da imagem não encontrada ou não configurada.")
         
+    # Garante que a pasta existe apenas no momento de uso (resolve o Crash do Docker)
+    ensure_cache_dir()
+    
     cache_filepath = get_cache_filepath(decoded_payload)
+    mime_filepath = cache_filepath.with_suffix('.mime')
 
     # 1. Tenta servir a imagem a partir do cache (Extremamente rápido)
     if cache_filepath.exists():
+        # Tenta ler o mimetype correto (suporte a PNG/WebP além do JPEG)
+        mimetype = 'image/jpeg'
+        if mime_filepath.exists():
+            try:
+                mimetype = mime_filepath.read_text().strip()
+            except OSError:
+                pass
+                
         return send_from_directory(
             str(cache_filepath.parent),
             cache_filepath.name,
-            mimetype='image/jpeg',
+            mimetype=mimetype,
             max_age=86400 # Cache no browser do utilizador por 24 horas
         )
 
     # 2. Se não estiver em cache, descarrega com STREAMING e faz ATOMIC WRITE
+    temp_path = None
     try:
-        # timeout rigoroso para evitar bloqueio de threads
+        # Timeout rigoroso para evitar bloqueio de threads
         response = session.get(final_url, params=params, stream=True, timeout=10)
         response.raise_for_status()
         
@@ -174,8 +196,20 @@ def proxy_image():
                 if chunk:
                     f.write(chunk)
                     
-        # Substituição atómica: Move o ficheiro completo para a localização final
-        shutil.move(temp_path, str(cache_filepath))
+        # Substituição atómica via os.replace (nativo do Linux/Docker)
+        os.replace(temp_path, str(cache_filepath))
+        
+        # Corrige permissões restritivas (0600) do mkstemp para que o servidor web possa ler (0644)
+        try:
+            os.chmod(str(cache_filepath), 0o644)
+        except OSError:
+            pass
+            
+        # Guarda o mime_type de forma segura
+        try:
+            mime_filepath.write_text(content_type)
+        except OSError:
+            pass
         
         return send_from_directory(
             str(cache_filepath.parent),
@@ -187,3 +221,10 @@ def proxy_image():
     except requests.exceptions.RequestException as e:
         logger.debug(f"Erro ao descarregar a imagem proxy '{final_url}': {e}")
         return redirect("https://placehold.co/150x225/1F2937/E5E7EB?text=Erro+Capa")
+    finally:
+        # Previne File Leaks apagando o temporário caso o download falhe a meio
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
