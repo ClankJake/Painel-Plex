@@ -7,12 +7,11 @@ from flask_login import login_required, current_user
 from flask_babel import get_locale, gettext as _
 
 from ..models import UserProfile
-from ..decorators import admin_required
+from .auth import admin_required  # Otimizado: Importação direta do módulo irmão auth.py
 from ..config import is_configured, load_or_create_config
 
 main_bp = Blueprint('main', __name__)
 logger = logging.getLogger(__name__)
-
 
 @main_bp.route('/')
 @login_required
@@ -27,14 +26,12 @@ def index():
         
     return render_template('index.html')
 
-
 @main_bp.route('/users')
 @login_required
 @admin_required
 def users_page():
     """Página de gestão de utilizadores (Exclusivo Admin)."""
     return render_template('users.html')
-
 
 @main_bp.route('/invite/<string:code>')
 def claim_invite_page(code):
@@ -43,13 +40,11 @@ def claim_invite_page(code):
     """
     return render_template('invite.html', invite_code=code)
 
-
 @main_bp.route('/statistics')
 @login_required
 def statistics_page():
     """Página de estatísticas de consumo do utilizador e globais."""
     return render_template('statistics.html')
-
 
 @main_bp.route('/financial')
 @login_required
@@ -58,18 +53,21 @@ def financial_page():
     """Página de dashboard financeiro e pagamentos (Exclusivo Admin)."""
     return render_template('financial.html')
 
-
 @main_bp.route('/setup')
 def setup():
     """
     Página de configuração inicial da aplicação.
     Protege contra reconfiguração acidental bloqueando o acesso após configurado.
     """
-    if is_configured() and not request.args.get('force'):
-        return redirect(url_for('auth.login'))
+    if is_configured():
+        # PROTEÇÃO CRÍTICA: O parâmetro 'force' só funciona se for um Admin autenticado.
+        # Evita que qualquer utilizador externo tente reconfigurar a aplicação acedendo a /setup?force=true
+        if request.args.get('force') == 'true' and current_user.is_authenticated and current_user.is_admin():
+            pass
+        else:
+            return redirect(url_for('auth.login'))
     
     return render_template('setup.html', config=current_app.config, get_locale=get_locale)
-
 
 @main_bp.route('/settings')
 @login_required
@@ -78,13 +76,11 @@ def settings_page():
     """Página de configurações do sistema (Exclusivo Admin)."""
     return render_template('settings.html')
 
-
 @main_bp.route('/account')
 @login_required
 def account_page():
     """Página de gestão da conta, onde o utilizador logado vê o seu status."""
     return render_template('account.html')
-
 
 @main_bp.route('/pay/<string:token>')
 def payment_page(token):
@@ -108,8 +104,12 @@ def payment_page(token):
 
     if not is_reactivation and profile.expiration_date:
         try:
-            # Conversão segura para UTC (evita discrepâncias de dias devido a fusos horários do servidor Docker)
-            exp_date = datetime.fromisoformat(profile.expiration_date).astimezone(timezone.utc).date()
+            # Lida de forma segura com datas Naive (Sem TZ) vs Aware (Com TZ) guardadas na base de dados
+            exp_dt = datetime.fromisoformat(profile.expiration_date)
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                
+            exp_date = exp_dt.astimezone(timezone.utc).date()
             today = datetime.now(timezone.utc).date()
             
             days_left = (exp_date - today).days
