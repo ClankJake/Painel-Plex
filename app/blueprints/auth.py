@@ -1,7 +1,7 @@
 # app/blueprints/auth.py
 
 import uuid
-import urllib.parse
+import secrets
 import logging
 import requests
 import time
@@ -13,9 +13,9 @@ from flask_login import login_user, logout_user, login_required, current_user
 from plexapi.myplex import MyPlexAccount
 from flask_babel import gettext as _
 
-from ..models import User, UserProfile
+from ..models import User
 from ..config import is_configured, load_or_create_config
-from ..extensions import plex_manager, data_manager, limiter, db
+from ..extensions import plex_manager, data_manager, limiter
 
 # --- Configurações e Constantes ---
 logger = logging.getLogger(__name__)
@@ -56,9 +56,8 @@ def safe_log_request_info(force=False, identifier=None):
     """
     try:
         if not force:
-            # Usa o IP ou identificador fornecido para debounce
             key = identifier or request.remote_addr
-            if not should_log_access(key, cooldown=60): # Loga apenas 1x por minuto para polling
+            if not should_log_access(key, cooldown=60):
                 return
 
         user_agent = request.headers.get('User-Agent', 'unknown')
@@ -90,6 +89,26 @@ def _get_pin_status(pin_id, client_id):
         logger.error(f"Erro de rede ao verificar o PIN {pin_id}: {e}")
         raise e
 
+def _login_user_session(account, role, redirect_endpoint, from_settings=False, plex_token=None):
+    """Helper para DRY na lógica de login e inicialização da sessão Flask."""
+    user_details = {
+        'id': str(account.id), 'username': account.username, 'email': account.email,
+        'thumb': account.thumb, 'role': role
+    }
+    user_obj = User(**user_details)
+    login_user(user_obj, remember=True)
+    session.permanent = True
+    session['user_details'] = user_details
+
+    if from_settings:
+        session['plex_token'] = plex_token
+        session.pop('from_settings', None)
+        redirect_url = url_for('main.settings_page', _external=False)
+    else:
+        redirect_url = url_for(redirect_endpoint, _external=False)
+    
+    return jsonify({"success": True, "action": "login", "redirect_url": redirect_url})
+
 # --- MIDDLEWARE: Verificação Global de Status ---
 @auth_bp.before_app_request
 def check_user_active_status():
@@ -98,62 +117,64 @@ def check_user_active_status():
     Se o utilizador for removido do banco de dados ou marcado como inativo
     enquanto navega, esta função força o logout imediato.
     """
-    # 1. Se o utilizador não está logado, não há nada a verificar
     if not current_user.is_authenticated:
         return
 
-    # 2. Administradores geralmente não expiram da mesma forma, ou têm lógica separada
     if current_user.is_admin():
         return
 
-    # 3. Ignorar rotas de autenticação, estáticos e API pública de pagamentos para evitar loops
-    # 'main.payment_page' é permitida para que o usuário possa pagar para reativar
+    # Ignorar rotas de autenticação, estáticos e pagamentos para evitar loops de redirecionamento
     if request.endpoint and (
         'static' in request.endpoint or 
-        request.endpoint in ['auth.login', 'auth.logout', 'main.payment_page', 'payments_api.get_payment_options']
+        request.endpoint.startswith('auth.') or
+        request.endpoint in ['main.payment_page'] or
+        request.endpoint.startswith('payments_api.')
     ):
         return
 
     try:
-        # Tenta obter o perfil atualizado do disco/banco
         plex_user_id = int(current_user.id)
         user_profile = data_manager.get_user_profile(plex_user_id)
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/api/')
 
         # CASO 1: Utilizador foi apagado do banco de dados
         if not user_profile:
             logger.warning(f"Sessão encerrada: Perfil do utilizador '{current_user.username}' (ID: {plex_user_id}) não encontrado.")
             logout_user()
             session.clear()
+            
+            if is_ajax:
+                return jsonify({"success": False, "message": "unauthorized", "redirect_url": url_for('auth.login')}), 401
+                
             flash(_("A sua conta não foi encontrada ou foi removida."), "error")
             return redirect(url_for('auth.login'))
 
         # CASO 2: Utilizador ficou inativo (expirou enquanto navegava)
         if user_profile.get('status') == 'inactive':
             logger.info(f"Sessão encerrada: Utilizador '{current_user.username}' está marcado como inativo.")
-            
             logout_user()
             session.clear()
             
+            if is_ajax:
+                return jsonify({"success": False, "message": "unauthorized", "redirect_url": url_for('auth.login')}), 401
+                
             flash(_("A sua subscrição expirou. Por favor, faça login novamente para regularizar o acesso."), "warning")
             return redirect(url_for('auth.login'))
 
     except ValueError:
-        # ID do utilizador inválido na sessão
         logout_user()
         session.clear()
         return redirect(url_for('auth.login'))
     except Exception as e:
-        # Log de erro discreto para não spamar em caso de falha momentânea de IO
         logger.debug(f"Erro ao verificar status global do utilizador: {e}")
 
 # --- Decorators de Autorização ---
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Admin required logs can be forced or standard
         safe_log_request_info(force=True) 
         if not current_user.is_authenticated or not current_user.is_admin():
-            if request.path.startswith('/api/'):
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/api/'):
                 return jsonify({"success": False, "message": _("Acesso negado. Requer permissão de administrador.")}), 403
             flash(_("Acesso restrito a administradores."), "error")
             return redirect(url_for('main.statistics_page'))
@@ -162,7 +183,7 @@ def admin_required(f):
 
 # --- Rotas de Autenticação ---
 @auth_bp.route('/login')
-@limiter.limit("10 per minute") # Protege a página de login contra força bruta
+@limiter.limit("10 per minute")
 def login():
     safe_log_request_info(force=True)
     if current_user.is_authenticated:
@@ -179,10 +200,10 @@ def logout():
     return redirect(url_for('auth.login'))
 
 @auth_bp.route('/plex/auth-context', methods=['GET'])
-@limiter.limit("15 per minute") # Limita a criação de contextos de autenticação
+@limiter.limit("15 per minute")
 def get_plex_auth_context():
-    """Fornece o contexto necessário para o cliente iniciar la autenticação Plex."""
-    safe_log_request_info() # Debounced
+    """Fornece o contexto necessário para o cliente iniciar a autenticação Plex."""
+    safe_log_request_info()
     
     if request.args.get('from_settings') == 'true':
         session['from_settings'] = True
@@ -206,9 +227,8 @@ def get_plex_auth_context():
 
 
 @auth_bp.route('/plex/check-pin/<string:client_id>/<int:pin_id>', methods=['GET'])
-@limiter.limit("60 per minute") # Permite polling a cada 1s
+@limiter.limit("60 per minute")
 def check_plex_pin(client_id, pin_id):
-    # Log controlado: evita spam a cada segundo
     safe_log_request_info(identifier=f"check_pin_{pin_id}")
 
     try:
@@ -230,122 +250,95 @@ def check_plex_pin(client_id, pin_id):
             redirect_url = url_for('main.setup', _external=False)
             return jsonify({"success": True, "redirect_url": redirect_url})
         
-        admin_username = config.get('ADMIN_USER')
-        is_admin_login = account.username == admin_username
+        # Verificação robusta de administrador (Username ou Email ignorando cases)
+        admin_username = str(config.get('ADMIN_USER', '')).strip().lower()
+        plex_username = str(account.username).strip().lower()
+        plex_email = str(account.email or '').strip().lower()
+        
+        is_admin_login = admin_username != "" and admin_username in (plex_username, plex_email)
 
-        # Se for o administrador, processa o login imediatamente
+        # 1. Login do Administrador
         if is_admin_login:
-            user_details = {
-                'id': str(account.id), 'username': account.username, 'email': account.email,
-                'thumb': account.thumb, 'role': 'admin'
-            }
-            user_obj = User(**user_details)
-            login_user(user_obj, remember=True)
-            session.permanent = True
-            session['user_details'] = user_details
-
-            if session.get('from_settings'):
-                session['plex_token'] = plex_token
-                session.pop('from_settings', None)
-                redirect_url = url_for('main.settings_page', _external=False)
-            else:
-                redirect_url = url_for('main.index', _external=False)
-            
-            return jsonify({"success": True, "action": "login", "redirect_url": redirect_url})
+            return _login_user_session(
+                account, 'admin', 'main.index', 
+                from_settings=session.get('from_settings'), plex_token=plex_token
+            )
         
         # --- LÓGICA DE LOGIN PARA UTILIZADORES NORMAIS ---
         plex_users = plex_manager.get_all_plex_users()
-        
-        # 1. Sincronização: Tenta encontrar o perfil localmente pelo ID do Plex
         user_profile = data_manager.get_user_profile(int(account.id))
         
+        # Sincronização Local
         if user_profile:
             updates = {}
             if user_profile.get('username') != account.username:
-                logger.info(f"Sincronização: Username alterado de '{user_profile.get('username')}' para '{account.username}' (ID: {account.id}).")
+                logger.info(f"Sincronização: Username alterado de '{user_profile.get('username')}' para '{account.username}'.")
                 updates['username'] = account.username
             
             if account.email and user_profile.get('email') != account.email:
-                logger.info(f"Sincronização: Email alterado de '{user_profile.get('email')}' para '{account.email}' (ID: {account.id}).")
+                logger.info(f"Sincronização: Email alterado de '{user_profile.get('email')}' para '{account.email}'.")
                 updates['email'] = account.email
             
             if updates:
                 data_manager.set_user_profile(int(account.id), updates)
                 user_profile.update(updates)
         else:
-            # Fallback: Se não encontrou por ID, tenta pelo username
             user_profile = data_manager.get_user_profile_by_username(account.username)
 
-        # 2. Verifica acesso ao servidor
         has_plex_access = False
         if plex_users:
             for u in plex_users:
-                if str(u.get('id')) == str(account.id):
-                    has_plex_access = True
-                    break
-                if u.get('username') == account.username:
+                if str(u.get('id')) == str(account.id) or u.get('username') == account.username:
                     has_plex_access = True
                     break
 
         if has_plex_access:
-            # CORREÇÃO: Criação de Perfil para Novos Usuários
-            # Se o usuário tem acesso ao Plex mas não tem perfil local, criamos um.
             if not user_profile:
                 logger.info(f"Novo utilizador detetado '{account.username}' (ID: {account.id}). Criando perfil local.")
                 new_profile = {
                     'plex_user_id': int(account.id),
                     'username': account.username,
                     'email': account.email,
-                    'status': 'active', # Se já tem acesso, assume-se ativo inicialmente
-                    'payment_token': str(uuid.uuid4()), # Gera token de pagamento
-                    'created_at': datetime.now().isoformat(),
+                    'status': 'active',
+                    'payment_token': secrets.token_urlsafe(16),
+                    'created_at': datetime.now(timezone.utc).isoformat(),
                     'libraries': '[]'
                 }
                 data_manager.set_user_profile(int(account.id), new_profile)
                 user_profile = new_profile
 
-            # Atualização de status para usuários inativos que foram re-adicionados ao Plex
             if user_profile and user_profile.get('status') == 'inactive':
                 logger.info(f"Utilizador '{account.username}' está ativo no Plex mas inativo localmente. A atualizar para 'ativo'.")
                 user_profile['status'] = 'active'
                 data_manager.set_user_profile(user_profile['plex_user_id'], user_profile)
 
-            user_details = {
-                'id': str(account.id), 'username': account.username, 'email': account.email,
-                'thumb': account.thumb, 'role': 'user'
-            }
-            user_obj = User(**user_details)
-            login_user(user_obj, remember=True)
-            session.permanent = True
-            session['user_details'] = user_details
-            redirect_url = url_for('main.statistics_page', _external=False)
-            return jsonify({"success": True, "action": "login", "redirect_url": redirect_url})
+            return _login_user_session(account, 'user', 'main.statistics_page')
         else:
-            # O utilizador NÃO tem acesso ao servidor Plex.
             if not user_profile:
                 error_msg = _("Acesso negado. O usuário %(username)s não tem acesso a este servidor.", username=account.username)
                 return jsonify({"success": False, "message": "auth_denied", "error": error_msg})
 
-            # Verifica se está inativo (expirado/removido)
             if user_profile.get('status') == 'inactive':
-                logger.info(f"Tentativa de login do utilizador inativo '{account.username}' (ID: {account.id}). A redirecionar para pagamento.")
+                logger.info(f"Tentativa de login do utilizador inativo '{account.username}'. A redirecionar para pagamento.")
                 
-                if account.email and user_profile.get('email') != account.email:
-                    user_profile['email'] = account.email
+                # Garante que o token de pagamento existe
+                if not user_profile.get('payment_token'):
+                    user_profile['payment_token'] = secrets.token_urlsafe(16)
                     data_manager.set_user_profile(user_profile['plex_user_id'], user_profile)
                 
                 flash(_("A sua conta está inativa. Por favor, efetue o pagamento para reativar o seu acesso."), "info")
                 reactivation_url = url_for('main.payment_page', token=user_profile.get('payment_token'), _external=False)
                 return jsonify({"success": True, "action": "reactivate", "redirect_url": reactivation_url})
             
-            # Se está marcado como ativo mas não tem acesso ao Plex (ex: removido manualmente ou bug)
             if user_profile.get('status') == 'active':
                 latest_payment = data_manager.get_latest_completed_payment(user_profile['plex_user_id'])
                 is_recently_paid = False
                 if latest_payment and latest_payment.get('created_at'):
                     try:
-                        payment_time_utc = datetime.fromisoformat(latest_payment['created_at']).astimezone(timezone.utc)
-                        # Verifica se pagou nos últimos 15 minutos
+                        payment_time_utc = datetime.fromisoformat(latest_payment['created_at'])
+                        if payment_time_utc.tzinfo is None:
+                            payment_time_utc = payment_time_utc.replace(tzinfo=timezone.utc)
+                            
                         if (datetime.now(timezone.utc) - payment_time_utc) < timedelta(minutes=15):
                             is_recently_paid = True
                     except (ValueError, TypeError):
@@ -353,18 +346,14 @@ def check_plex_pin(client_id, pin_id):
                 
                 if is_recently_paid:
                     logger.info(f"Utilizador '{account.username}' tem pagamento recente, mas acesso ao Plex pendente. Permitindo login.")
-                    user_details = {
-                        'id': str(account.id), 'username': account.username, 'email': account.email,
-                        'thumb': account.thumb, 'role': 'user'
-                    }
-                    user_obj = User(**user_details)
-                    login_user(user_obj, remember=True)
-                    session.permanent = True
-                    session['user_details'] = user_details
-                    redirect_url = url_for('main.statistics_page', _external=False)
-                    return jsonify({"success": True, "action": "login", "redirect_url": redirect_url})
+                    return _login_user_session(account, 'user', 'main.statistics_page')
                 else:
                     logger.warning(f"Utilizador '{account.username}' em estado inconsistente. A forçar reativação.")
+                    
+                    if not user_profile.get('payment_token'):
+                        user_profile['payment_token'] = secrets.token_urlsafe(16)
+                        data_manager.set_user_profile(user_profile['plex_user_id'], user_profile)
+                        
                     flash(_("A sua conta está num estado inconsistente. Por favor, efetue o pagamento para garantir o seu acesso."), "warning")
                     reactivation_url = url_for('main.payment_page', token=user_profile.get('payment_token'), _external=False)
                     return jsonify({"success": True, "action": "reactivate", "redirect_url": reactivation_url})
