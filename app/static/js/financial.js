@@ -499,6 +499,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (dom.createCouponForm) {
+        // 1. Converte o texto para maiúsculas fisicamente enquanto o utilizador digita
+        const couponInput = document.getElementById('couponCode');
+        if (couponInput) {
+            couponInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.toUpperCase();
+            });
+        }
+
         dom.createCouponForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const button = e.target.querySelector('button[type="submit"]');
@@ -508,7 +516,8 @@ document.addEventListener('DOMContentLoaded', () => {
             button.textContent = 'A Criar...';
 
             const payload = {
-                code: document.getElementById('couponCode').value.trim(),
+                // 2. Garante que o valor enviado para a API está em maiúsculas (Caixa Alta)
+                code: document.getElementById('couponCode').value.trim().toUpperCase(),
                 discount_type: document.getElementById('discountType').value,
                 value: document.getElementById('discountValue').value,
                 max_uses: document.getElementById('maxUses').value || 0,
