@@ -1,133 +1,189 @@
 # app/blueprints/image.py
 
-import os
-import base64
-import hashlib
-import time
-import socket
 import logging
-import urllib.parse
-from ipaddress import ip_address
-
-from flask import Blueprint, request, send_file, abort
 import requests
+import os
+import hashlib
+import base64
+import binascii
+import tempfile
+import shutil
+import socket
+import ipaddress
+from pathlib import Path
+from typing import Tuple, Optional
+
+from flask import Blueprint, request, abort, send_from_directory, redirect
+from urllib.parse import urlparse, parse_qs
+
+# Importa os gestores para aceder às configurações e tokens de forma segura
+from ..extensions import plex_manager, tautulli_manager, limiter
 
 logger = logging.getLogger(__name__)
 image_bp = Blueprint('image', __name__)
 
-# Configuração da diretoria de cache de imagens
-IMAGE_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'image_cache')
-os.makedirs(IMAGE_CACHE_DIR, exist_ok=True)
+# --- CONFIGURAÇÃO DO CACHE EM DISCO ---
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+IMAGE_CACHE_DIR = BASE_DIR / 'config' / 'cache' / 'images'
+IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-def is_private_ip(ip_str):
-    """
-    Verifica se um IP é privado, local ou de loopback.
-    Essencial para prevenir ataques SSRF (Server-Side Request Forgery).
-    """
+# Sessão persistente para acelerar múltiplos downloads da mesma fonte
+session = requests.Session()
+session.headers.update({'Accept': 'image/webp,image/png,image/jpeg,image/*,*/*'})
+
+# =====================================================================
+# BLOCO DE SEGURANÇA: PREVENÇÃO CONTRA SSRF (Server-Side Request Forgery)
+# =====================================================================
+
+def is_private_ip(ip_str: str) -> bool:
+    """Verifica se o IP resolvido pertence a uma rede privada, loopback ou reservada."""
     try:
-        ip = ip_address(ip_str)
-        return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified
+        ip = ipaddress.ip_address(ip_str)
+        return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved
     except ValueError:
-        # Se não conseguir fazer parse do IP, assume que é perigoso
-        return True 
+        return True # Falha de forma segura se o IP não for válido
 
-def validate_external_url(url):
+def validate_external_url(url_str: str) -> str:
     """
-    Garante que a URL solicitada aponta para a internet pública 
-    e não para serviços internos da rede (SSRF Protection).
+    Valida URLs externas para evitar que o servidor seja usado como proxy 
+    para atacar a própria rede interna (Vulnerabilidade SSRF).
     """
+    parsed = urlparse(url_str)
+    
+    # 1. Apenas aceita HTTP e HTTPS
+    if parsed.scheme not in ('http', 'https'):
+        raise ValueError(f"Esquema de URL não suportado: {parsed.scheme}")
+    
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Hostname ausente no URL")
+
+    # 2. Resolve o domínio para garantir que não aponta para a rede interna
     try:
-        parsed = urllib.parse.urlparse(url)
-        if parsed.scheme not in ('http', 'https'):
-            raise ValueError("Esquema inválido. Apenas HTTP e HTTPS são permitidos.")
+        ip_address = socket.gethostbyname(hostname)
+        if is_private_ip(ip_address):
+            raise ValueError(f"O Hostname ({hostname}) resolve para um IP privado/local bloqueado por segurança.")
+    except socket.gaierror:
+        raise ValueError(f"Não foi possível resolver o hostname: {hostname}")
+
+    return url_str
+
+# =====================================================================
+
+def get_cache_filepath(unique_identifier: str) -> Path:
+    """Gera um caminho de ficheiro seguro e único para uma URL de imagem."""
+    url_hash = hashlib.sha256(unique_identifier.encode('utf-8')).hexdigest()
+    return IMAGE_CACHE_DIR / url_hash
+
+def build_final_url(source: str, image_path: str) -> Tuple[Optional[str], dict]:
+    """Isola a lógica de construção de URLs, com injeção de tokens e proteção SSRF."""
+    final_url = None
+    params = {}
+    
+    if source == 'plex':
+        if plex_manager and plex_manager.plex:
+            final_url = plex_manager.plex.url(image_path, includeToken=False)
+            params['X-Plex-Token'] = plex_manager.plex._token
+            
+    elif source == 'plex_account':
+         if plex_manager and plex_manager.account:
+            # FIX DE SEGURANÇA: Obriga as imagens a serem relativas a plex.tv
+            if image_path.startswith('http://') or image_path.startswith('https://'):
+                parsed = urlparse(image_path)
+                if 'plex.tv' in parsed.netloc:
+                    image_path = parsed.path + ("?" + parsed.query if parsed.query else "")
+                else:
+                    raise ValueError("URL absoluto inválido para o prefixo plex_account.")
+            
+            if not image_path.startswith('/'):
+                image_path = '/' + image_path
+                
+            final_url = f"https://plex.tv{image_path}"
+            params['X-Plex-Token'] = plex_manager.account._token
+            
+    elif source == 'url':
+        # FIX DE SEGURANÇA: Valida rigorosamente as URLs de avatares de terceiros
+        final_url = validate_external_url(image_path)
         
-        hostname = parsed.hostname
-        if not hostname:
-            raise ValueError("Hostname inválido ou ausente.")
+    elif source == 'tautulli':
+        if tautulli_manager and tautulli_manager.api_client.is_configured:
+            # O endpoint /pms_image_proxy requer sessão (cookie). Devemos usar a API v2
+            # que aceita autenticação via apikey.
+            parsed_path = urlparse(image_path)
+            query_params = parse_qs(parsed_path.query)
+            final_url = f"{tautulli_manager.api_client.base_url}/api/v2"
+            params['apikey'] = tautulli_manager.api_client.api_key
+            params['cmd'] = 'pms_image_proxy'
+            # Extrai os parâmetros da query string original (img, width, height)
+            for key, values in query_params.items():
+                params[key] = values[0]
             
-        # Resolve o domínio para IP e verifica se é interno
-        ip_addr = socket.gethostbyname(hostname)
-        if is_private_ip(ip_addr):
-            raise ValueError(f"Acesso negado a IPs internos ou privados ({ip_addr}).")
-            
-        return True
-    except Exception as e:
-        logger.error(f"Bloqueio de Segurança SSRF ativado para URL '{url}': {e}")
-        abort(403) # Devolve "403 Forbidden" em caso de tentativa maliciosa
+    return final_url, params
 
 @image_bp.route('/')
+@limiter.exempt
 def proxy_image():
     """
-    Proxy que serve, descarrega e faz cache de imagens do Plex, Tautulli 
-    ou de URLs externas seguras.
+    Atua como um proxy seguro para imagens do Plex e de Avatares Externos.
+    Protegido contra SSRF e contra picos de RAM através de atomic writes em disco.
     """
-    source_b64 = request.args.get('source')
-    if not source_b64:
-        return abort(400)
-        
+    b64_payload = request.args.get('source')
+
+    if not b64_payload:
+        abort(400, "Parâmetro 'source' é obrigatório.")
+
     try:
-        # O input base64 vem como urlsafe sem padding, logo adicionamos '==' para compensar
-        decoded_source = base64.urlsafe_b64decode(source_b64 + '==').decode('utf-8')
-        
-        # O formato do payload esperado é "tipo:url"
-        if ':' not in decoded_source:
-             return abort(400)
-             
-        source_type, final_url = decoded_source.split(':', 1)
-        
-        if source_type not in ('url', 'plex', 'plex_account', 'tautulli'):
-            return abort(400)
+        decoded_payload = base64.urlsafe_b64decode(b64_payload.encode('utf-8')).decode('utf-8')
+        source, image_path = decoded_payload.split(':', 1)
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        abort(400, "Parâmetro 'source' inválido ou mal formatado.")
 
-        # Gera uma chave única MD5 para o ficheiro no disco
-        cache_key = hashlib.md5(decoded_source.encode('utf-8')).hexdigest()
-        cache_path = os.path.join(IMAGE_CACHE_DIR, cache_key)
+    try:
+        final_url, params = build_final_url(source, image_path)
+    except ValueError as e:
+        # Se falhar as verificações SSRF, devolve uma imagem genérica e regista o aviso
+        logger.warning(f"Tentativa de Proxy bloqueada por segurança (SSRF): {e}")
+        return redirect("https://placehold.co/150x225/1F2937/E5E7EB?text=Bloqueado")
         
-        # Se a imagem já existe no cache local, serve-a imediatamente e poupa a rede
-        if os.path.exists(cache_path):
-            return send_file(cache_path)
+    if not final_url:
+        abort(404, "Fonte da imagem não encontrada ou não configurada.")
+        
+    cache_filepath = get_cache_filepath(decoded_payload)
 
-        session = requests.Session()
-        params = {}
+    # 1. Tenta servir a imagem a partir do cache (Extremamente rápido)
+    if cache_filepath.exists():
+        return send_from_directory(
+            str(cache_filepath.parent),
+            cache_filepath.name,
+            mimetype='image/jpeg',
+            max_age=86400 # Cache no browser do utilizador por 24 horas
+        )
+
+    # 2. Se não estiver em cache, descarrega com STREAMING e faz ATOMIC WRITE
+    try:
+        # timeout rigoroso para evitar bloqueio de threads
+        response = session.get(final_url, params=params, stream=True, timeout=10)
+        response.raise_for_status()
         
-        from app.config import load_or_create_config
-        config = load_or_create_config()
+        content_type = response.headers.get('Content-Type', 'image/jpeg')
+
+        # Cria ficheiro temporário para evitar corrupção por acessos simultâneos
+        fd, temp_path = tempfile.mkstemp(dir=str(IMAGE_CACHE_DIR))
+        with os.fdopen(fd, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192): # Guarda em pedaços de 8KB
+                if chunk:
+                    f.write(chunk)
+                    
+        # Substituição atómica: Move o ficheiro completo para a localização final
+        shutil.move(temp_path, str(cache_filepath))
         
-        # Adiciona autenticações dependendo de onde vem a imagem
-        if source_type == 'plex':
-            final_url = f"{config.get('PLEX_URL', '').rstrip('/')}{final_url}"
-            params['X-Plex-Token'] = config.get('PLEX_TOKEN', '')
-        elif source_type == 'tautulli':
-            final_url = f"{config.get('TAUTULLI_URL', '').rstrip('/')}{final_url}"
-            params['apikey'] = config.get('TAUTULLI_API_KEY', '')
-            
-        try:
-            # 🛡️ GARANTIA DE SEGURANÇA (FIX SSRF GitHub)
-            # A validação é feita *exatamente* antes do session.get()
-            if source_type == 'url':
-                validate_external_url(final_url)
-                
-            # Timeout rigoroso e stream=True para não prender threads
-            response = session.get(final_url, params=params, stream=True, timeout=10)
-            response.raise_for_status()
-            
-            content_type = response.headers.get('Content-Type', 'image/jpeg')
-            
-            # Atomic Write: Escreve num .tmp e só depois de concluído renomeia.
-            # Isto previne que um utilizador apanhe uma imagem cortada a meio
-            temp_cache_path = f"{cache_path}.tmp.{time.time()}"
-            with open(temp_cache_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            
-            os.replace(temp_cache_path, cache_path)
-            
-            return send_file(cache_path, mimetype=content_type)
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Erro de rede ao buscar imagem na origem: {e}")
-            return abort(502) # Bad Gateway
-            
-    except Exception as e:
-        logger.error(f"Erro interno no processamento do proxy de imagem: {e}")
-        return abort(500)
+        return send_from_directory(
+            str(cache_filepath.parent),
+            cache_filepath.name,
+            mimetype=content_type,
+            max_age=86400
+        )
+
+    except requests.exceptions.RequestException as e:
+        logger.debug(f"Erro ao descarregar a imagem proxy '{final_url}': {e}")
+        return redirect("https://placehold.co/150x225/1F2937/E5E7EB?text=Erro+Capa")
