@@ -262,8 +262,13 @@ def get_payment_options():
 @payments_api_bp.route('/validate-coupon', methods=['POST'])
 @limiter.limit("5 per minute")
 def validate_coupon_route():
-    data = request.json
-    token = data.get('token')
+    data = request.json or {}
+    
+    # 🛡️ CORREÇÃO: Tenta pegar o token do JSON, da Query String ou da URL do navegador (Referer)
+    token = data.get('token') or request.args.get('token')
+    if not token and request.referrer and '/pay/' in request.referrer:
+        token = request.referrer.split('/pay/')[-1].split('?')[0].split('/')[0]
+        
     plex_user_id = None
     
     # 🛡️ PROTEÇÃO APLICADA: Uso exclusivo do Token ou Sessão Real
@@ -271,7 +276,8 @@ def validate_coupon_route():
         profile = UserProfile.query.filter_by(payment_token=token).first()
         if profile:
             plex_user_id = profile.plex_user_id
-    elif current_user.is_authenticated:
+            
+    if not plex_user_id and current_user.is_authenticated:
         plex_user_id = int(current_user.id)
         
     if not plex_user_id:
@@ -287,11 +293,15 @@ def validate_coupon_route():
 @payments_api_bp.route('/create-charge', methods=['POST'])
 @limiter.limit("3 per minute")
 def create_charge_route():
-    data = request.json
+    data = request.json or {}
     provider = data.get('provider')
     screens_str = data.get('screens')
     coupon_code = data.get('coupon_code')
-    token = data.get('token')
+    
+    # 🛡️ CORREÇÃO: Tenta pegar o token do JSON, Query String ou URL do navegador (Referer)
+    token = data.get('token') or request.args.get('token')
+    if not token and request.referrer and '/pay/' in request.referrer:
+        token = request.referrer.split('/pay/')[-1].split('?')[0].split('/')[0]
 
     # 🚀 OTIMIZAÇÃO: Conversão segura inicial de telas para evitar crash nos provedores
     try:
@@ -306,7 +316,8 @@ def create_charge_route():
         profile_model = UserProfile.query.filter_by(payment_token=token).first()
         if profile_model:
             plex_user_id, username = profile_model.plex_user_id, profile_model.username
-    elif current_user.is_authenticated:
+            
+    if not plex_user_id and current_user.is_authenticated:
         plex_user_id, username = int(current_user.id), current_user.username
     
     if not plex_user_id:
