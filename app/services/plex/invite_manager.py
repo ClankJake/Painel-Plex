@@ -192,7 +192,11 @@ class PlexInviteManager:
 
         self.data_manager.increment_invitation_use(code, username)
         self.user_manager.invalidate_user_cache()
-        self.data_manager.create_notification(message=f"'{username}' resgatou um convite.", category='success', link=url_for('main.users_page'))
+        
+        try:
+            self.data_manager.create_notification(message=_("'%(username)s' resgatou um convite.", username=username), category='success', link=url_for('main.users_page'))
+        except RuntimeError:
+             self.data_manager.create_notification(message=_("'%(username)s' resgatou um convite.", username=username), category='success')
 
         user_data_response = self._setup_local_profile_and_integrations(
             plex_user_account, invitation, telegram_id_from_invite
@@ -277,7 +281,7 @@ class PlexInviteManager:
         
         trial_end_utc = datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
         naive_run_date = trial_end_utc.astimezone(scheduler.timezone).replace(tzinfo=None)
-        job_id = f"trial_end_{plex_user_id}"
+        job_id = f"trial_end_{plex_user_id}_{secrets.token_hex(4)}"
         
         scheduler.add_job(
             id=job_id, func=end_trial_job, args=[plex_user_id], 
