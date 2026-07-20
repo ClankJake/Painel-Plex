@@ -1,6 +1,9 @@
 # app/services/efi_manager.py
 
+import os
 import logging
+from typing import Dict, Any, Optional
+
 from efipay import EfiPay
 from flask_babel import gettext as _
 
@@ -16,10 +19,10 @@ class EfiManager:
     def __init__(self, data_manager):
         self.data_manager = data_manager
         self.config = None
-        self.efi = None
+        self.efi: Optional[EfiPay] = None
         self.reload_credentials()
 
-    def reload_credentials(self):
+    def reload_credentials(self) -> None:
         """Recarrega as configurações e reinicializa o cliente da API Efí."""
         self.config = load_or_create_config()
         
@@ -29,6 +32,12 @@ class EfiManager:
         sandbox = self.config.get('EFI_SANDBOX', True)
         
         if all([client_id, client_secret, certificate]):
+            # 🛡️ PROTEÇÃO: Verifica se o arquivo do certificado existe no disco antes de avançar
+            if not os.path.exists(str(certificate)):
+                logger.error(f"Falha de Configuração: Certificado Efí não encontrado no caminho especificado: '{certificate}'")
+                self.efi = None
+                return
+
             credentials = {
                 'client_id': client_id,
                 'client_secret': client_secret,
@@ -45,7 +54,7 @@ class EfiManager:
             logger.warning("Credenciais da Efí incompletas. O serviço PIX Efí está desativado.")
             self.efi = None
 
-    def check_status(self):
+    def check_status(self) -> Dict[str, str]:
         """Verifica o status da configuração da Efí."""
         config = load_or_create_config()
         if not config.get("EFI_ENABLED"):
@@ -56,7 +65,7 @@ class EfiManager:
         
         return {"status": "OFFLINE", "message": _("Serviço ativado, mas as credenciais são inválidas ou estão em falta.")}
 
-    def configure_webhook(self):
+    def configure_webhook(self) -> None:
         """Configura a URL de Webhook na API da Efí para receber notificações de pagamento."""
         if not self.efi:
             logger.warning("Configuração de webhook ignorada: Cliente Efí não inicializado.")
@@ -105,8 +114,7 @@ class EfiManager:
         except Exception as e:
             logger.error(f"Falha ao tentar registar o Webhook na Efí para a chave '{pix_key}': {e}", exc_info=True)
 
-
-    def create_pix_charge(self, user_info, price, screens, coupon_code=None):
+    def create_pix_charge(self, user_info: Dict[str, Any], price: float, screens: int, coupon_code: Optional[str] = None) -> Dict[str, Any]:
         """Gera uma cobrança PIX imediata (QR Code e Copia/Cola)."""
         if not self.efi:
             return {"success": False, "message": _("O provedor de pagamentos Efí não está disponível no momento.")}
@@ -165,8 +173,13 @@ class EfiManager:
                 coupon_code=coupon_code
             )
             
-            # Solicita a imagem do QR Code usando o locator ID
+            # 🛡️ PROTEÇÃO: Valida se 'loc.id' existe antes de pedir o QR Code
             loc_id = response.get('loc', {}).get('id')
+            if not loc_id:
+                logger.error(f"Efí: Resposta sem ID de Location ('loc.id') para o TXID {txid}.")
+                return {"success": False, "message": _("Cobrança gerada, mas o provedor não retornou o identificador do QR Code.")}
+
+            # Solicita a imagem do QR Code usando o locator ID
             qr_code_response = self.efi.pix_generate_qrcode(params={'id': loc_id})
             
             logger.info(f"Efí: Cobrança criada com sucesso. TXID: {txid}")
@@ -181,7 +194,7 @@ class EfiManager:
         except Exception as e:
             error_message = _("Ocorreu uma falha de comunicação com o sistema bancário. Tente novamente mais tarde.")
             
-            # Tenta extrair a mensagem de erro formatada pela biblioteca efipay (geralmente uma exceção personalizada ou com atributo response)
+            # Tenta extrair a mensagem de erro formatada pela biblioteca efipay
             try:
                 if hasattr(e, 'response') and getattr(e, 'response') is not None:
                     error_data = e.response.json()
@@ -195,7 +208,7 @@ class EfiManager:
             logger.error(f"Efí: Erro não tratado durante a criação da cobrança PIX: {e}", exc_info=True)
             return {"success": False, "message": error_message}
 
-    def detail_pix_charge(self, txid):
+    def detail_pix_charge(self, txid: str) -> Dict[str, Any]:
         """
         Consulta o status atual de uma cobrança PIX na API da Efí pelo seu TXID.
         """
