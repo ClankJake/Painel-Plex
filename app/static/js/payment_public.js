@@ -56,6 +56,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (loadingIndicator) loadingIndicator.style.display = 'flex';
             if (paymentSection) paymentSection.classList.add('hidden');
             if (errorContainer) errorContainer.classList.add('hidden');
+            if (container) container.classList.add('hidden'); // Garantir que está oculto inicialmente
 
             const url = urls.paymentOptionsUrl || `/api/payments/options?token=${token}`;
             const response = await fetchAPI(url);
@@ -63,6 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (response.success) {
                 renderPaymentInfo(response.prices, response.providers);
                 if (paymentSection) paymentSection.classList.remove('hidden');
+                if (container) container.classList.remove('hidden'); // FIX: Exibir o contentor principal
             } else {
                 throw new Error(response.message || 'Falha ao carregar opções de pagamento.');
             }
@@ -87,15 +89,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        // Seleciona o primeiro plano por defeito
-        screens = Object.keys(prices)[0];
+        // FIX: Seleciona o primeiro plano ordenado numericamente (impede seleções erradas se a ordem da API variar)
+        const sortedScreens = Object.keys(prices).sort((a,b) => parseInt(a) - parseInt(b));
+        screens = sortedScreens[0];
         const price = parseFloat(prices[screens]);
         originalPrice = price;
 
         const isReactivation = container.dataset.isReactivation === 'true';
         let optionsHtml = '<div class="space-y-3">';
 
-        Object.keys(prices).sort((a,b) => parseInt(a) - parseInt(b)).forEach((scr, index) => {
+        sortedScreens.forEach((scr, index) => {
             const pVal = parseFloat(prices[scr]);
             const priceStr = pVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             let planText = scr === "0" ? (i18n.standardPlan || "Plano Padrão") : `${scr} ${parseInt(scr) > 1 ? i18n.screenPlural || 'Telas' : i18n.screenSingular || 'Tela'}`;
@@ -189,6 +192,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 statusDiv.innerHTML = '';
                 couponInput.value = '';
                 validatedCouponCode = null;
+                
+                // FIX: Restaura todos os preços originais das labels caso um cupão tivesse sido aplicado noutra antes
+                document.querySelectorAll('input[name="payment-plan"]').forEach(r => {
+                    const label = r.closest('label');
+                    const span = label.querySelector('span.font-black');
+                    const basePrice = parseFloat(r.dataset.price);
+                    span.textContent = basePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                });
                 
                 // Restaura a cor verde original do botão
                 pixBtn.className = "w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white text-lg py-3.5 rounded-xl shadow-xl shadow-green-500/30 font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex justify-center items-center gap-2 group";
