@@ -110,7 +110,7 @@
                             {{ _('Acesso Ativo') }}
                         </div>
                         <h2 class="text-2xl font-black text-gray-900 dark:text-white tracking-tight" id="user-username">{{ _('Olá, %(username)s!', username=username) }}</h2>
-                        <p class="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1" id="user-expiration">{{ _('A aguardar dados...') }}</p>
+                        <p class="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1" id="user-expiration">{{ _('Aguardando dados...') }}</p>
                         {% endif %}
                     </div>
 
@@ -166,7 +166,7 @@
 
                         <!-- Botão normal de Login para Renovações -->
                         <div id="default-login-btn-container" class="hidden">
-                            <a id="login-button" href="#" class="w-full sm:w-auto btn bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 text-white text-lg py-3.5 px-8 rounded-xl shadow-lg font-bold transition-transform transform hover:-translate-y-0.5">{{ _('Aceder à Minha Conta') }}</a>
+                            <a id="login-button" href="#" class="w-full sm:w-auto btn bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 text-white text-lg py-3.5 px-8 rounded-xl shadow-lg font-bold transition-transform transform hover:-translate-y-0.5">{{ _('Acessar Minha Conta') }}</a>
                         </div>
 
                         <!-- Botão Especial para Reativações Pendentes -->
@@ -215,7 +215,7 @@
         data-i18n-promotional-code="{{ _('Código Promocional') }}"
         data-i18n-insert-coupon="{{ _('INSERIR CUPÃO') }}"
         data-i18n-apply="{{ _('Aplicar') }}"
-        data-i18n-reactivate-for-price="{{ _('Reativar por') }} "
+        data-i18n-reactivate-for-price="{{ _('Reativar por R$ {price}') }} "
         data-i18n-generate-pix-for-price="{{ _('Gerar PIX de R$ {price}') }}"
         data-i18n-pix-copied="{{ _('Código PIX copiado com sucesso!') }}"
         data-i18n-activate-free-subscription="{{ _('Ativar Assinatura Grátis') }}"
