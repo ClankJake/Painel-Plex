@@ -53,11 +53,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- INICIALIZAÇÃO ---
     async function loadPaymentOptions() {
         try {
-            // Configurar Avatar do Usuário Inicial
+            // Configurar Avatar do Usuário Inicial e Fallback
             const userThumb = document.getElementById('user-thumb');
             if (userThumb && baseUsername) {
                 const initial = baseUsername.charAt(0).toUpperCase();
-                userThumb.src = `https://placehold.co/128x128/1F2937/E5E7EB?text=${initial}`;
+                const fallbackUrl = `https://placehold.co/128x128/1F2937/E5E7EB?text=${initial}`;
+                
+                // Tratamento de erro: se a imagem oficial do Plex ou Cache falhar (ex: link 404),
+                // o navegador reverte automaticamente para a imagem com a letra inicial.
+                userThumb.onerror = function() {
+                    if (this.src !== fallbackUrl) {
+                        this.src = fallbackUrl;
+                    }
+                };
+
+                // Define a imagem inicial enquanto a página carrega
+                userThumb.src = fallbackUrl;
             }
 
             if (loadingIndicator) loadingIndicator.style.display = 'flex';
