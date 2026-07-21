@@ -138,4 +138,4 @@ def payment_page(token):
         except (ValueError, TypeError) as e:
              logger.error(f"Erro ao processar cálculos de datas de expiração no portal de pagamentos para '{username}': {e}")
 
-    return render_template('payment_public.html', token=token, username=username, is_reactivation=is_reactivation)
+    return render_template('payment_public.html', token=token, username=username, is_reactivation=is_reactivation, current_year=datetime.utcnow().year)
