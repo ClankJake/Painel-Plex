@@ -16,6 +16,9 @@ from .plex.user_manager import PlexUserManager
 from .plex.invite_manager import PlexInviteManager
 from .plex.subscription_manager import PlexSubscriptionManager
 
+# Importação da instância global do scheduler
+from ..extensions import scheduler as global_scheduler
+
 logger = logging.getLogger(__name__)
 
 # --- HELPER DE FUSO HORÁRIO ---
@@ -40,7 +43,8 @@ class PlexManager:
         self.conn = PlexConnectionManager()
         self.users = PlexUserManager(self.conn, data_manager, tautulli_manager, overseerr_manager)
         self.invites = PlexInviteManager(self.conn, self.users, data_manager, self, overseerr_manager, notifier_manager)
-        self.subscriptions = PlexSubscriptionManager(data_manager, self.users)
+        # 🛡️ CORREÇÃO: Injeta o global_scheduler no SubscriptionManager
+        self.subscriptions = PlexSubscriptionManager(data_manager, self.users, scheduler=global_scheduler)
         self.subscriptions.plex_manager = self
         self.stream_manager = None
         self.data_manager = data_manager
