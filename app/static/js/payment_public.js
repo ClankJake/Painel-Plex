@@ -58,26 +58,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!anyProviderEnabled || !prices || Object.keys(prices).length === 0) {
             paymentSection.innerHTML = `
                 <div class="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl text-center border border-red-100 dark:border-red-800/50">
-                    <p class="text-red-600 dark:text-red-400 font-medium">${i18n.noProvider || 'Nenhum provedor de pagamento disponível no momento.'}</p>
+                    <p class="text-red-600 dark:text-red-400 font-medium">${i18n.noProvider}</p>
                 </div>`;
             return;
         }
 
-        // Seleciona o primeiro plano ordenado numericamente
-        const sortedScreens = Object.keys(prices).sort((a,b) => parseInt(a) - parseInt(b));
-        screens = sortedScreens[0];
+        // Seleciona o primeiro plano por defeito
+        screens = Object.keys(prices)[0];
         const price = parseFloat(prices[screens]);
         originalPrice = price;
 
         const isReactivation = container.dataset.isReactivation === 'true';
         let optionsHtml = '<div class="space-y-3">';
 
-        sortedScreens.forEach((scr, index) => {
+        Object.keys(prices).sort((a,b) => parseInt(a) - parseInt(b)).forEach((scr, index) => {
             const pVal = parseFloat(prices[scr]);
             const priceStr = pVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            let planText = scr === "0" ? (i18n.standardPlan || "Plano Padrão") : `${scr} ${parseInt(scr) > 1 ? i18n.screenPlural || 'Telas' : i18n.screenSingular || 'Tela'}`;
+            let planText = scr === "0" ? "Plano Padrão" : `${scr} ${parseInt(scr) > 1 ? i18n.screenPlural : i18n.screenSingular}`;
             
-            // Design Premium
+            // Design Premium com pseudo-class has-[:checked]
             optionsHtml += `
                 <label class="flex items-center justify-between p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 cursor-pointer transition-all duration-200 hover:border-yellow-300 dark:hover:border-yellow-600 has-[:checked]:border-yellow-500 has-[:checked]:bg-yellow-50/50 dark:has-[:checked]:bg-yellow-900/20 has-[:checked]:shadow-md group">
                     <div class="flex items-center gap-3">
@@ -89,7 +88,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                     <div class="text-right">
                         <span class="font-black text-lg text-gray-900 dark:text-white">${priceStr}</span>
-                        ${index === 0 ? `<span class="block text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 tracking-wider">${i18n.currentPlan || 'Atual'}</span>` : ''}
+                        ${index === 0 ? `<span class="block text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 tracking-wider">${i18n.currentPlan}</span>` : ''}
                     </div>
                 </label>
             `;
@@ -99,25 +98,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         const priceText = price.toFixed(2).replace('.', ',');
         const buttonText = isReactivation
             ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', priceText)
-            : (i18n.generatePixForPrice || 'Gerar PIX de R$ {price}').replace('{price}', priceText);
+            : i18n.generatePixForPrice.replace('{price}', priceText);
 
         paymentSection.innerHTML = `
             ${optionsHtml}
             
+            <!-- Secção de Cupão Premium -->
             <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700/50">
-                <label for="couponCodeInput" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider">${i18n.promotionalCode || 'Código Promocional'}</label>
+                <label for="couponCodeInput" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider">Código Promocional</label>
                 <div class="flex gap-2">
                     <div class="relative flex-grow">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
                         </div>
-                        <input type="text" id="couponCodeInput" class="w-full py-3 pl-10 pr-3 text-sm font-mono uppercase tracking-wider rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm transition-shadow" placeholder="${i18n.insertCoupon || 'INSERIR CUPÃO'}">
+                        <input type="text" id="couponCodeInput" class="w-full py-3 pl-10 pr-3 text-sm font-mono uppercase tracking-wider rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm transition-shadow" placeholder="INSERIR CUPÃO">
                     </div>
-                    <button id="applyCouponBtn" class="btn bg-gray-800 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white px-6 font-bold shadow-md rounded-xl transition-colors">${i18n.apply || 'Aplicar'}</button>
+                    <button id="applyCouponBtn" class="btn bg-gray-800 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white px-6 font-bold shadow-md rounded-xl transition-colors">Aplicar</button>
                 </div>
                 <div id="coupon-status" class="text-xs font-medium mt-2 min-h-[20px] transition-all"></div>
             </div>
 
+            <!-- Botão de Ação Principal -->
             <button id="initiatePixButton" class="w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white text-lg py-3.5 rounded-xl shadow-xl shadow-green-500/30 font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex justify-center items-center gap-2 group">
                 <svg class="w-5 h-5 transition-transform group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
                 <span id="btn-text-content">${buttonText}</span>
@@ -135,35 +136,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const statusDiv = document.getElementById('coupon-status');
         const isReactivation = container.dataset.isReactivation === 'true';
 
-        const copyPixBtn = document.getElementById('copy-pix-btn');
-        const pixCopyPasteInput = document.getElementById('pix-copy-paste');
-        if (copyPixBtn && pixCopyPasteInput) {
-            // Remove clones para evitar listeners duplicados
-            const newCopyBtn = copyPixBtn.cloneNode(true);
-            copyPixBtn.parentNode.replaceChild(newCopyBtn, copyPixBtn);
-            
-            newCopyBtn.addEventListener('click', () => {
-                pixCopyPasteInput.select();
-                pixCopyPasteInput.setSelectionRange(0, 99999);
-                
-                // Cópia Universal (Funciona em HTTP e HTTPS)
-                try {
-                    const successful = document.execCommand('copy');
-                    if (successful) {
-                        showToast(i18n.pixCopied || 'Código PIX copiado com sucesso!', 'success');
-                    } else {
-                        throw new Error("execCommand falhou");
-                    }
-                } catch (err) {
-                    if (navigator.clipboard && window.isSecureContext) {
-                        navigator.clipboard.writeText(pixCopyPasteInput.value)
-                            .then(() => showToast(i18n.pixCopied || 'Código PIX copiado com sucesso!', 'success'))
-                            .catch(() => showToast('Erro ao copiar código.', 'error'));
-                    }
-                }
-            });
-        }
-
         // Mudança de plano selecionado
         document.querySelectorAll('input[name="payment-plan"]').forEach(radio => {
             radio.addEventListener('change', () => {
@@ -173,22 +145,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const priceText = originalPrice.toFixed(2).replace('.', ',');
                 btnTextContent.textContent = isReactivation 
                     ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', priceText)
-                    : (i18n.generatePixForPrice || 'Gerar PIX de R$ {price}').replace('{price}', priceText);
+                    : i18n.generatePixForPrice.replace('{price}', priceText);
                 
                 pixBtn.disabled = false;
                 applyCouponBtn.disabled = false;
                 
+                // Reset Cupão ao mudar de plano
                 statusDiv.innerHTML = '';
                 couponInput.value = '';
                 validatedCouponCode = null;
                 
-                document.querySelectorAll('input[name="payment-plan"]').forEach(r => {
-                    const label = r.closest('label');
-                    const span = label.querySelector('span.font-black');
-                    const basePrice = parseFloat(r.dataset.price);
-                    span.textContent = basePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                });
-                
+                // Restaura a cor verde original do botão
                 pixBtn.className = "w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white text-lg py-3.5 rounded-xl shadow-xl shadow-green-500/30 font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex justify-center items-center gap-2 group";
             });
         });
@@ -203,12 +170,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 applyCouponBtn.disabled = true;
                 applyCouponBtn.innerHTML = `<svg class="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
                 
-                const result = await fetchAPI(urls.validateCouponUrl, 'POST', { token, code, screens: selectedPlan.value, username: baseUsername });
+                const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens: selectedPlan.value, username: baseUsername });
                 
                 if (result.success) {
                     statusDiv.innerHTML = `<span class="text-green-600 dark:text-green-400 flex items-center gap-1 font-bold"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg> ${result.message}</span>`;
                     validatedCouponCode = code;
                     
+                    // Atualiza o preço na label do rádio ativo visualmente
                     const activeRadioLabel = selectedPlan.closest('label');
                     const priceSpan = activeRadioLabel.querySelector('span.font-black');
                     priceSpan.innerHTML = `<s class="text-gray-400 dark:text-gray-500 text-sm font-medium mr-1">${result.original_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</s> ${result.discounted_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
@@ -216,12 +184,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const newPriceText = result.discounted_price.toFixed(2).replace('.', ',');
 
                     if (result.discounted_price <= 0) {
-                        btnTextContent.textContent = i18n.activateFreeSubscription || "Ativar Assinatura Grátis";
+                        btnTextContent.textContent = i18n.activateFreeSubscription;
+                        // Estilo "Mágico" para o botão 100% grátis
                         pixBtn.className = "w-full mt-6 btn bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-white text-lg py-3.5 rounded-xl shadow-xl shadow-yellow-500/40 font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex justify-center items-center gap-2 group";
                     } else {
                         btnTextContent.textContent = isReactivation
                             ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', newPriceText)
-                            : (i18n.generatePixForPrice || 'Gerar PIX de R$ {price}').replace('{price}', newPriceText);
+                            : i18n.generatePixForPrice.replace('{price}', newPriceText);
                     }
                 } else {
                     throw new Error(result.message);
@@ -230,6 +199,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 statusDiv.innerHTML = `<span class="text-red-500 flex items-center gap-1 font-semibold"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg> ${error.message}</span>`;
                 validatedCouponCode = null;
                 
+                // Reverte preço no cartão
                 const activeRadioLabel = selectedPlan.closest('label');
                 const priceSpan = activeRadioLabel.querySelector('span.font-black');
                 priceSpan.textContent = originalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -237,12 +207,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const originalPriceText = originalPrice.toFixed(2).replace('.', ',');
                 btnTextContent.textContent = isReactivation
                     ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', originalPriceText)
-                    : (i18n.generatePixForPrice || 'Gerar PIX de R$ {price}').replace('{price}', originalPriceText);
+                    : i18n.generatePixForPrice.replace('{price}', originalPriceText);
                     
+                // Reverte classe do botão
                 pixBtn.className = "w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white text-lg py-3.5 rounded-xl shadow-xl shadow-green-500/30 font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex justify-center items-center gap-2 group";
             } finally {
                 applyCouponBtn.disabled = false;
-                applyCouponBtn.textContent = i18n.apply || 'Aplicar';
+                applyCouponBtn.textContent = 'Aplicar';
             }
         });
 
@@ -261,10 +232,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function initiatePixPayment(payload, providers) {
         const activeProviders = Object.keys(providers).filter(p => providers[p]).map(p => p.toUpperCase());
         const btnTextContent = document.getElementById('btn-text-content').textContent;
-        const isFree = btnTextContent === (i18n.activateFreeSubscription || "Ativar Assinatura Grátis");
+        const isFree = btnTextContent === i18n.activateFreeSubscription;
 
         if (isFree) {
-            await generatePix(payload); 
+            await generatePix(payload); // Ignora provedores se for gratuito
             return;
         }
 
@@ -274,25 +245,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else if (activeProviders.length > 1) {
             showProviderChoiceModal(payload, activeProviders);
         } else {
-             showToast(i18n.noProvider || 'Nenhum provedor disponível.', "error");
+             showToast(i18n.noProvider, "error");
         }
     }
 
     function showProviderChoiceModal(payload, providers) {
         let buttonsHtml = '';
         
+        // Estilização Premium para os botões do Modal de Provedores
         if (providers.includes('EFI')) {
-            buttonsHtml += `<button data-provider="EFI" class="btn bg-green-600 hover:bg-green-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold">${i18n.payWithEfi || 'Pagar com Efí (PIX)'}</button>`;
+            buttonsHtml += `<button data-provider="EFI" class="btn bg-green-600 hover:bg-green-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold">${i18n.payWithEfi}</button>`;
         }
         if (providers.includes('MERCADOPAGO')) {
-            buttonsHtml += `<button data-provider="MERCADOPAGO" class="btn bg-blue-600 hover:bg-blue-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold mt-3">${i18n.payWithMp || 'Pagar com Mercado Pago (PIX)'}</button>`;
+            buttonsHtml += `<button data-provider="MERCADOPAGO" class="btn bg-blue-600 hover:bg-blue-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold mt-3">${i18n.payWithMp}</button>`;
         }
         if (providers.includes('BPIX')) {
-            buttonsHtml += `<button data-provider="BPIX" class="btn bg-purple-600 hover:bg-purple-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold mt-3">${i18n.payWithBpix || 'Pagar com BPIX (PIX)'}</button>`;
+            buttonsHtml += `<button data-provider="BPIX" class="btn bg-purple-600 hover:bg-purple-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold mt-3">${i18n.payWithBpix || 'Pagar com BPIX'}</button>`;
         }
 
         const body = `<div class="space-y-3 mt-2">${buttonsHtml}</div>`;
-        const modal = createModal('providerChoiceModal', i18n.chooseProvider || 'Escolha o Provedor', body, `<button id="cancel-provider" class="btn bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 w-full py-3 rounded-xl transition-colors font-bold">${i18n.cancel || 'Cancelar'}</button>`);
+        const modal = createModal('providerChoiceModal', i18n.chooseProvider, body, `<button id="cancel-provider" class="btn bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 w-full py-3 rounded-xl transition-colors font-bold">${i18n.cancel}</button>`);
 
         if(modal){
             modal.querySelectorAll('button[data-provider]').forEach(button => {
@@ -315,7 +287,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const originalIcon = iconSvg ? iconSvg.outerHTML : '';
         
         btn.disabled = true;
-        textSpan.textContent = i18n.wait || 'A aguardar...';
+        textSpan.textContent = i18n.wait;
         if(iconSvg) {
              iconSvg.outerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
         }
@@ -327,7 +299,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (result && result.success && result.free_renewal) {
                 const isReactivation = container.dataset.isReactivation === 'true';
-                showSuccessState(isReactivation, result.user_status);
+                showSuccessState(isReactivation);
                 return;
             }
 
@@ -353,38 +325,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function startPaymentStatusPolling(txid) {
-        if (pollingIntervalId) clearTimeout(pollingIntervalId);
-
-        const checkUrlBase = urls.paymentStatusUrl || `/api/payments/status/__TXID__`;
-        const checkUrl = checkUrlBase.replace('__TXID__', txid);
-
-        const poll = async () => {
-            try {
-                const response = await fetchAPI(checkUrl);
-                if (response && response.success) {
-                    if (response.status === 'CONCLUIDA' || response.status === 'PROCESSANDO') {
-                        const isReactivation = container.dataset.isReactivation === 'true';
-                        setTimeout(() => {
-                            showSuccessState(isReactivation, response.user_status);
-                        }, 1000);
-                        return; 
-                    } else if (response.status === 'FALHOU' || response.status === 'CANCELADA') {
-                        showToast(i18n.paymentFailed || 'O pagamento falhou ou foi cancelado.', 'error');
-                        if (paymentSection) paymentSection.style.display = 'block';
-                        if (pixDisplay) pixDisplay.style.display = 'none';
-                        return; 
-                    }
-                }
-            } catch (error) {
-                console.warn("Polling PIX status erro:", error.message);
-            }
-            pollingIntervalId = setTimeout(poll, 5000);
-        };
-        
-        poll();
-    }
-
+    // --- LÓGICA DE SUCESSO E REATIVAÇÃO ---
     function showSuccessState(isReactivation, userStatus) {
         if (paymentSection) paymentSection.style.display = 'none';
         if (pixDisplay) pixDisplay.style.display = 'none';
@@ -398,9 +339,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (successTitle && successMessage && loginButton && successDisplay) {
             if (isReactivation) {
+                // Se o status ainda for 'inactive', convite está pendente.
                 if (userStatus === 'inactive') {
-                    successTitle.textContent = i18n.reactivationCheckEmailTitle || "Verifique o seu E-mail";
-                    successMessage.textContent = i18n.reactivationCheckEmailMessage || "O pagamento foi confirmado! Enviamos um convite de reativação para o seu e-mail do Plex.";
+                    successTitle.textContent = i18n.reactivationCheckEmailTitle;
+                    successMessage.textContent = i18n.reactivationCheckEmailMessage;
                     
                     if (reactivationArea) {
                         reactivationArea.classList.remove('hidden');
@@ -410,47 +352,46 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if(btn) btn.onclick = startPlexAuthFlow;
                     }
                 } else {
-                    successTitle.textContent = i18n.reactivationSuccessTitle || "Reativação Concluída!";
-                    successMessage.textContent = i18n.reactivationSuccessMessage || "O seu acesso foi restaurado. Já pode aceder ao Plex normalmente.";
+                    // Reativação já efetivada pelo backend
+                    successTitle.textContent = i18n.reactivationSuccessTitle;
+                    successMessage.textContent = i18n.reactivationSuccessMessage;
                     if (reactivationArea) reactivationArea.classList.add('hidden');
                     if(defaultBtnContainer) defaultBtnContainer.classList.remove('hidden');
                 }
             } else {
-                successTitle.textContent = i18n.renewalSuccessTitle || "Pagamento Confirmado!";
-                successMessage.textContent = i18n.renewalSuccessMessage || "A sua assinatura foi renovada com sucesso. Obrigado!";
+                // Renovação normal
+                successTitle.textContent = i18n.renewalSuccessTitle;
+                successMessage.textContent = i18n.renewalSuccessMessage;
                 if (reactivationArea) reactivationArea.classList.add('hidden');
                 if(defaultBtnContainer) defaultBtnContainer.classList.remove('hidden');
             }
             
-            loginButton.textContent = i18n.loginButtonText || "Aceder à Minha Conta";
-            loginButton.href = urls.loginPageUrl || '/';
+            loginButton.textContent = i18n.loginButtonText;
+            loginButton.href = urls.loginPageUrl;
             
             successDisplay.classList.remove('hidden');
         } else {
+            // Fallback seguro
             window.location.href = urls.loginPageUrl || '/';
         }
     }
+
+    // --- NOVA LÓGICA DE AUTH PLEX (Para Reativação) ---
 
     function startPlexAuthFlow() {
         const btn = document.getElementById('reactivate-plex-login-btn');
         const originalHtml = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ${i18n.wait || 'A aguardar...'}`;
+        btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ${i18n.wait}`;
 
         window.addEventListener('message', handleAuthMessage, false);
         
+        // Centra a janela de popup
         const width = 800;
         const height = 700;
         const left = (window.innerWidth / 2) - (width / 2);
         const top = (window.innerHeight / 2) - (height / 2);
         authWindow = window.open(urls.redirectToAuth, 'plexAuth', `width=${width},height=${height},top=${top},left=${left},status=no,scrollbars=yes,resizable=yes`);
-        
-        if (!authWindow) {
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-            showToast(i18n.popupBlocked || 'Janela bloqueada pelo navegador. Permita os pop-ups para continuar.', 'error');
-            window.removeEventListener('message', handleAuthMessage);
-        }
     }
 
     function handleAuthMessage(event) {
@@ -464,49 +405,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function pollPlexPin(pin_id, client_id) {
-        if (pinCheckIntervalAuth) clearTimeout(pinCheckIntervalAuth);
+        if (pinCheckIntervalAuth) clearInterval(pinCheckIntervalAuth);
         const btn = document.getElementById('reactivate-plex-login-btn');
         let attempts = 0;
 
-        const poll = async () => {
+        pinCheckIntervalAuth = setInterval(async () => {
             attempts++;
             if (!authWindow || authWindow.closed || attempts > 100) {
+                clearInterval(pinCheckIntervalAuth);
                 btn.disabled = false;
                 btn.innerHTML = `<svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg> Tentar Novamente`; 
                 return;
             }
             
             try {
-                const checkUrlBase = urls.checkPlexPin || `/plex/check-pin-for-token/__CLIENT_ID__/999999`;
-                const checkUrl = checkUrlBase.replace('__CLIENT_ID__', client_id).replace('999999', pin_id);
-                const checkResponse = await fetchAPI(checkUrl);
+                const checkUrl = urls.checkPlexPin.replace('__CLIENT_ID__', client_id).replace('999999', pin_id);
+                const checkResponse = await fetch(checkUrl);
+                const checkData = await checkResponse.json();
 
-                if (checkResponse.success && checkResponse.token) {
+                if (checkData.success && checkData.token) {
+                    clearInterval(pinCheckIntervalAuth);
                     authWindow.close();
-                    btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ${i18n.activating || 'A ativar...'}`;
-                    finalizeReactivation(checkResponse.token);
-                    return;
-                } else if (checkResponse.message === 'auth_denied') {
+                    btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ${i18n.activating || 'Ativando...'}`;
+                    finalizeReactivation(checkData.token);
+                } else if (checkData.message === 'auth_denied') {
+                    clearInterval(pinCheckIntervalAuth);
                     authWindow.close();
-                    showToast(i18n.authDenied || 'Autenticação recusada.', 'error');
+                    showToast(i18n.authDenied, 'error');
                     btn.disabled = false;
                     btn.innerHTML = `<svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg> Tentar Novamente`;
-                    return;
                 }
             } catch (e) {
                 console.warn("Polling Auth:", e);
             }
-            
-            pinCheckIntervalAuth = setTimeout(poll, 2000);
-        };
-        
-        poll();
+        }, 2000);
     }
 
     async function finalizeReactivation(plexToken) {
         try {
-            const url = urls.finalizeReactivation || '/api/users/public/finalize-reactivation';
-            const response = await fetchAPI(url, 'POST', {
+            const response = await fetchAPI(urls.finalizeReactivation, 'POST', {
                 plex_token: plexToken,
                 payment_token: token
             });
@@ -522,107 +459,121 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } catch (error) {
             showToast(error.message, 'error');
+            const btn = document.getElementById('reactivate-plex-login-btn');
+            btn.disabled = false;
+            btn.innerHTML = `<svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg> Tentar Novamente`;
         }
+    }
+
+    function startPaymentStatusPolling(txid) {
+        if (pollingIntervalId) clearInterval(pollingIntervalId);
+        const pollingStatus = document.getElementById('polling-status');
+
+        pollingIntervalId = setInterval(async () => {
+            try {
+                const statusResult = await fetchAPI(urls.getPaymentStatusBaseUrl.replace('__TXID__', txid));
+                if (statusResult.success && statusResult.status === 'CONCLUIDA') {
+                    clearInterval(pollingIntervalId);
+                    const isReactivation = container.dataset.isReactivation === 'true';
+                    
+                    showToast(i18n.paymentConfirmed || 'Pagamento confirmado!', "success");
+                    
+                    if(pollingStatus) {
+                        pollingStatus.innerHTML = `
+                            <div class="flex items-center justify-center gap-2 text-sm font-bold text-green-600 dark:text-green-500 bg-green-50 dark:bg-green-900/20 px-4 py-2 rounded-full border border-green-200 dark:border-green-800">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                ${i18n.pollingConfirmed || 'Pagamento confirmado! A atualizar...'}
+                            </div>`;
+                    }
+                    
+                    setTimeout(() => showSuccessState(isReactivation, statusResult.user_status), 2000);
+                }
+            } catch (error) {
+                console.warn(`${i18n.pollingError}:`, error.message);
+            }
+        }, 5000);
+    }
+
+    const copyButton = document.getElementById('copy-pix-code');
+    if (copyButton) {
+        copyButton.onclick = () => {
+            const input = document.getElementById('pix-copy-paste');
+            input.select();
+            document.execCommand('copy');
+            showToast(i18n.codeCopied, 'success');
+        };
     }
 
     async function main() {
         try {
-            if (loadingIndicator) loadingIndicator.style.display = 'flex';
-            if (paymentSection) paymentSection.classList.add('hidden');
-            if (errorContainer) errorContainer.classList.add('hidden');
-            if (container) container.classList.add('hidden');
+            const profileData = await fetchAPI(urls.getPublicProfileUrl);
+            if (!profileData.success) throw new Error(profileData.message);
 
-            // 1. CARREGAMENTO DAS OPÇÕES DE PAGAMENTO (Este é o que fornece a Foto + Datas sem dar 404!)
-            let payUrl = urls.paymentOptionsUrl || `/api/payments/options`;
-            payUrl += (payUrl.includes('?') ? '&' : '?') + `token=${token}`;
-            
-            if (baseUsername && baseUsername.toLowerCase() !== 'none' && baseUsername.toLowerCase() !== 'null' && baseUsername.trim() !== '') {
-                payUrl += `&username=${encodeURIComponent(baseUsername)}`;
+            const paymentOptions = await fetchAPI(`${urls.getPaymentOptionsUrl}?token=${token}`);
+            if(paymentOptions.success) {
+                renderPaymentInfo(paymentOptions.prices, paymentOptions.providers);
+            } else {
+                paymentSection.innerHTML = `<div class="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-xl text-center border border-yellow-200 dark:border-yellow-700/50"><p class="text-yellow-700 dark:text-yellow-500 font-medium">${paymentOptions.message || i18n.noPlanPrice}</p></div>`;
             }
 
-            const paymentOptions = await fetchAPI(payUrl);
-            if (!paymentOptions.success) throw new Error(paymentOptions.message || 'Falha ao carregar opções.');
-
-            // 2. LÓGICA DO AVATAR E FALLBACKS INTELIGENTES
+            const thumbUrl = profileData.profile.thumb;
             const isReactivation = container.dataset.isReactivation === 'true';
             
-            // O backend na rota de options deve fornecer os dados de "user" (Se existir)
-            const userData = paymentOptions.user || {};
-            const displayUsername = userData.username || baseUsername || '?';
             const thumbElement = document.getElementById('user-thumb');
             
-            if (thumbElement) {
-                const initial = displayUsername !== '?' ? displayUsername.charAt(0).toUpperCase() : '?';
-                const cacheUrl = `/image/user/${encodeURIComponent(displayUsername)}`;
-                const fallbackUrl = `https://placehold.co/128x128/1F2937/E5E7EB?text=${initial}`;
+            // Lógica aperfeiçoada para encontrar a inicial
+            const displayUsername = profileData.profile.username || baseUsername || '?';
+            let initial = '?';
+            if (displayUsername && displayUsername !== '?') {
+                initial = displayUsername.charAt(0).toUpperCase();
+            }
 
-                // Se houver falha, lida sem criar ciclos infinitos de 404
-                thumbElement.onerror = function() {
-                    const currentPath = new URL(this.src, window.location.origin).pathname;
-                    const cachePath = new URL(cacheUrl, window.location.origin).pathname;
-                    
-                    if (currentPath === cachePath) {
-                        // Se falhou ao buscar do cache, exibe o placeholder (sem loop)
-                        if (this.src !== fallbackUrl) this.src = fallbackUrl;
-                    } else if (!this.src.includes('placehold.co')) {
-                        // Se falhou o URL externo original do Plex, tenta o cache primeiro
-                        this.src = cacheUrl;
-                    }
-                };
-
-                // Vasculhar onde a imagem real possa estar aninhada na resposta
-                let thumbUrl = paymentOptions.avatar_url || paymentOptions.user_thumb || userData.avatar_url || userData.thumb || null;
-
-                if (thumbUrl && !thumbUrl.includes("placehold.co")) {
-                    if (thumbUrl.startsWith('http://')) {
-                        thumbElement.src = thumbUrl.replace('http://', 'https://');
-                    } else if (thumbUrl.startsWith('/')) {
-                        thumbElement.src = `${window.location.origin}${thumbUrl}`;
-                    } else {
-                        thumbElement.src = thumbUrl;
-                    }
-                } else {
-                    // Sem link fornecido: tenta ler direto da pasta de cache local!
-                    thumbElement.src = cacheUrl;
+            // Configurar fallback fiável em caso de erro no link da imagem
+            const fallbackUrl = `https://placehold.co/128x128/1F2937/E5E7EB?text=${initial}`;
+            thumbElement.onerror = () => {
+                if (thumbElement.src !== fallbackUrl) {
+                     thumbElement.src = fallbackUrl;
                 }
-            }
+            };
 
-            // Atualiza Nome do Utilizador Visual
-            if (!isReactivation) {
-                const nameElem = document.getElementById('user-username');
-                if (nameElem) nameElem.textContent = (i18n.hello || 'Olá, {username}!').replace('{username}', displayUsername).replace('%(username)s', displayUsername);
+            // Aplicação da imagem original ou do fallback imediato
+            if (thumbUrl && !thumbUrl.includes("placehold.co")) {
+                if (thumbUrl.startsWith('http')) {
+                    thumbElement.src = thumbUrl;
+                } else if (thumbUrl.startsWith('/')) {
+                    thumbElement.src = `${window.location.origin}${thumbUrl}`;
+                } else {
+                    thumbElement.src = thumbUrl;
+                }
+            } else {
+                thumbElement.src = fallbackUrl;
             }
-
-            // Atualiza Data de Expiração (lida diretamente das Opções de Pagamento)
-            const expirationElem = document.getElementById('user-expiration');
-            const expDateIso = paymentOptions.expiration_date_iso || userData.expiration_date_iso;
-            const expDateFmt = paymentOptions.expiration_date_formatted || userData.expiration_date_formatted;
             
-            if (expDateIso && expDateFmt && expirationElem) {
-                const expDate = new Date(expDateIso);
+            if (!isReactivation) {
+                document.getElementById('user-username').textContent = displayUsername;
+            }
+
+            const expirationElem = document.getElementById('user-expiration');
+            if (profileData.profile.expiration_date_iso && expirationElem) {
+                const expDate = new Date(profileData.profile.expiration_date_iso);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
 
                 if (expDate < today) {
-                    expirationElem.textContent = `${i18n.expiredOn || 'Expirado em'} ${expDateFmt}`;
+                    expirationElem.textContent = `${i18n.expiredOn} ${profileData.profile.expiration_date_formatted}`;
                     expirationElem.classList.add('text-red-500', 'dark:text-red-400');
                 } else {
-                    expirationElem.textContent = `${i18n.expiresOn || 'Expira em'} ${expDateFmt}`;
+                    expirationElem.textContent = `${i18n.expiresOn} ${profileData.profile.expiration_date_formatted}`;
                 }
-            } else if (expirationElem) {
-                 expirationElem.style.display = 'none'; // Esconde se não existirem datas
             }
 
-            // 3. CONCLUSÃO E RENDERIZAÇÃO
-            renderPaymentInfo(paymentOptions.prices, paymentOptions.providers);
-            if (paymentSection) paymentSection.classList.remove('hidden');
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
             if (container) container.classList.remove('hidden');
 
         } catch (error) {
-            if (errorContainer) errorContainer.classList.remove('hidden');
-            if (errorMessage) errorMessage.textContent = error.message;
-        } finally {
             if (loadingIndicator) loadingIndicator.style.display = 'none';
+            if (errorMessage) errorMessage.textContent = error.message;
+            if (errorContainer) errorContainer.classList.remove('hidden');
         }
     }
 
