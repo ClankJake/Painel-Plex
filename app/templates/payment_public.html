@@ -109,8 +109,8 @@
                         <div class="inline-block px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
                             {{ _('Acesso Ativo') }}
                         </div>
-                        <h2 class="text-2xl font-black text-gray-900 dark:text-white tracking-tight" id="user-username"></h2>
-                        <p class="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1" id="user-expiration"></p>
+                        <h2 class="text-2xl font-black text-gray-900 dark:text-white tracking-tight" id="user-username">{{ _('Olá, %(username)s!', username=username) }}</h2>
+                        <p class="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1" id="user-expiration">{{ _('A aguardar dados...') }}</p>
                         {% endif %}
                     </div>
 
@@ -127,117 +127,119 @@
                         <div class="bg-gray-50 dark:bg-gray-900/50 rounded-2xl p-5 border border-gray-100 dark:border-gray-700/50 shadow-inner">
                             <h3 class="font-bold text-gray-900 dark:text-white flex items-center justify-center gap-2 mb-4">
                                 <svg class="w-5 h-5 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
-                                {{ _('Pagamento PIX Gerado') }}
+                                {{ _('Escaneie o QR Code') }}
                             </h3>
                             
-                            <div class="bg-white p-3 rounded-xl shadow-sm inline-block mb-5">
-                                <img id="pix-qr-code" src="" class="w-48 h-48 sm:w-56 sm:h-56" alt="QR Code PIX">
+                            <div class="bg-white p-3 rounded-xl shadow-sm inline-block mb-4 border border-gray-200">
+                                <img id="pix-qr-code" src="" alt="QR Code PIX" class="w-48 h-48 sm:w-56 sm:h-56 mx-auto">
                             </div>
                             
-                            <div class="relative flex items-center w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm focus-within:ring-2 focus-within:ring-yellow-500/50 transition-shadow">
-                                <input type="text" id="pix-copy-paste" readonly class="w-full p-3.5 text-sm font-mono text-gray-600 dark:text-gray-300 bg-transparent border-none focus:outline-none no-scrollbar whitespace-nowrap overflow-x-scroll">
-                                <button id="copy-pix-code" class="absolute right-1 top-1 bottom-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 px-4 rounded-lg font-bold text-sm transition-colors flex items-center gap-1.5 border border-gray-200 dark:border-gray-600">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                                    {{ _('Copiar') }}
-                                </button>
+                            <div class="relative mt-2">
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 text-left">{{ _('PIX Copia e Cola') }}</label>
+                                <div class="flex bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-600 overflow-hidden shadow-sm">
+                                    <input type="text" id="pix-copy-paste" class="flex-1 bg-transparent border-none text-sm text-gray-600 dark:text-gray-300 px-4 py-3 focus:ring-0 no-scrollbar" readonly>
+                                    <button id="copy-pix-btn" class="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 px-4 py-3 font-bold transition-colors flex items-center gap-2 border-l border-gray-200 dark:border-gray-600">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                        {{ _('Copiar') }}
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-6 flex flex-col items-center justify-center space-y-2">
+                                <div class="flex gap-1">
+                                    <div class="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style="animation-delay: -0.3s"></div>
+                                    <div class="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style="animation-delay: -0.15s"></div>
+                                    <div class="w-2 h-2 bg-yellow-500 rounded-full animate-bounce"></div>
+                                </div>
+                                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('A aguardar confirmação do pagamento...') }}</p>
                             </div>
                         </div>
+                    </div>
+                    
+                    <!-- Ecrã de Sucesso -->
+                    <div id="success-display" class="hidden text-center py-6 animate-fade-in-up">
+                        <div class="inline-flex items-center justify-center w-20 h-20 bg-green-100 dark:bg-green-900/30 text-green-500 rounded-full mb-6 shadow-inner">
+                            <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        <h2 id="success-title" class="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white mb-3 tracking-tight"></h2>
+                        <p id="success-message" class="text-gray-600 dark:text-gray-300 font-medium mb-8 leading-relaxed"></p>
 
-                        <div class="mt-6 flex flex-col items-center">
-                            <div class="flex items-center gap-2 text-sm font-semibold text-yellow-600 dark:text-yellow-500 mb-2 bg-yellow-50 dark:bg-yellow-500/10 px-4 py-1.5 rounded-full">
-                                <span class="relative flex h-2.5 w-2.5">
-                                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-                                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-yellow-500"></span>
-                                </span>
-                                <span id="polling-status">{{ _('A aguardar confirmação...') }}</span>
+                        <!-- Botão normal de Login para Renovações -->
+                        <div id="default-login-btn-container" class="hidden">
+                            <a id="login-button" href="#" class="w-full sm:w-auto btn bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-gray-900 text-white text-lg py-3.5 px-8 rounded-xl shadow-lg font-bold transition-transform transform hover:-translate-y-0.5">{{ _('Aceder à Minha Conta') }}</a>
+                        </div>
+
+                        <!-- Botão Especial para Reativações Pendentes -->
+                        <div id="reactivation-action-area" class="hidden mt-4">
+                            <div class="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800/30 mb-6 text-left">
+                                <h4 class="font-bold text-blue-800 dark:text-blue-300 mb-1 flex items-center gap-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> 
+                                    {{ _('Ação Necessária') }}
+                                </h4>
+                                <p class="text-sm text-blue-700/80 dark:text-blue-300/80 font-medium">{{ _('Para finalizar a reativação da sua conta, precisa autorizar o acesso ao Plex clicando no botão abaixo.') }}</p>
                             </div>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 px-4">{{ _('Não feche esta página. A ativação será feita automaticamente assim que pagar.') }}</p>
+                            
+                            <button id="reactivate-plex-login-btn" class="w-full btn bg-[#e5a00d] hover:bg-[#c98d0b] text-white text-lg py-3.5 rounded-xl shadow-xl shadow-yellow-500/20 font-bold transition-all transform hover:-translate-y-0.5 flex justify-center items-center gap-2">
+                                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
+                                {{ _('Autorizar e Reativar Conta') }}
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Ecrã de Sucesso Mágico -->
-                    <div id="success-display" class="hidden text-center space-y-5 animate-fade-in-up py-4">
-                        <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 text-green-500 mb-2">
-                            <svg class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
-                        </div>
-                        <h2 id="success-title" class="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight"></h2>
-                        <p id="success-message" class="text-base text-gray-600 dark:text-gray-400 font-medium"></p>
-                        
-                        <!-- Botão de Reativação Automática -->
-                        <div id="reactivation-action-area" class="hidden pt-6 mt-6 border-t border-gray-100 dark:border-gray-700/50">
-                            <div class="bg-blue-50 dark:bg-blue-900/10 p-5 rounded-2xl border border-blue-100 dark:border-blue-800/30">
-                                <p class="text-sm text-blue-800 dark:text-blue-300 mb-4 font-semibold">{{ _('Último passo! Clique abaixo para aceitar o convite e voltar a assistir:') }}</p>
-                                <button id="reactivate-plex-login-btn" class="w-full btn bg-[#e5a00d] hover:bg-[#c98c0b] text-white shadow-xl shadow-[#e5a00d]/30 py-3.5 text-base font-bold transform hover:-translate-y-0.5 transition-all flex justify-center items-center gap-2">
-                                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
-                                    {{ _('Entrar no Plex') }}
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Botão de Voltar padrão -->
-                        <div class="pt-4" id="default-login-btn-container">
-                            <a id="login-button" href="#" class="inline-flex w-full sm:w-auto items-center justify-center px-8 py-3.5 border border-transparent text-sm font-bold rounded-xl shadow-lg text-white bg-gray-900 hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 transition-all transform hover:-translate-y-0.5">
-                                <!-- Texto injetado por JS -->
-                            </a>
-                        </div>
-                    </div>
                 </div>
             </div>
+            
+            <p class="text-center text-gray-400 dark:text-gray-500 text-xs mt-6 font-medium">
+                &copy; {{ moment().format('YYYY') }} {{ app_title }}. {{ _('Todos os direitos reservados.') }}
+            </p>
         </div>
     </div>
 
-    <!-- Modais e Notificações Injetáveis -->
-    <div id="providerChoiceModal" class="modal-backdrop hidden"></div>
-    <div id="toast" class="toast"></div>
-
+    <!-- Scripts e Dados -->
     <script id="payment-public-script"
-        type="module"
-        src="{{ url_for('static', filename='js/payment_public.js') }}"
         data-token="{{ token }}"
         data-username="{{ username }}"
-        
-        data-urls-get-plex-auth-context="{{ url_for('auth.get_plex_auth_context') }}"
-        data-urls-check-plex-pin="{{ url_for('auth.check_plex_pin_for_token', client_id='__CLIENT_ID__', pin_id=999999) }}"
+        data-urls-payment-options-url="{{ url_for('payments_api.get_payment_options') }}"
+        data-urls-validate-coupon-url="{{ url_for('payments_api.validate_coupon_route') }}"
+        data-urls-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
+        data-urls-payment-status-url="{{ url_for('payments_api.get_payment_status_route', txid='__TXID__') }}"
+        data-urls-login-page-url="{{ url_for('auth.login') }}"
         data-urls-redirect-to-auth="{{ url_for('auth.redirect_to_auth') }}"
+        data-urls-check-plex-pin="{{ url_for('auth.check_plex_pin_for_token', client_id='__CLIENT_ID__', pin_id=999999) }}"
         data-urls-finalize-reactivation="{{ url_for('users_api.finalize_reactivation_route') }}"
-
-        data-get-public-profile-url="{{ url_for('users_api.get_public_user_profile_by_token', token=token) }}"
-        data-get-payment-options-url="{{ url_for('payments_api.get_payment_options') }}"
-        data-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
-        data-get-payment-status-base-url="{{ url_for('payments_api.get_payment_status_route', txid='__TXID__') }}"
-        data-validate-coupon-url="{{ url_for('payments_api.validate_coupon_route') }}"
-        data-login-page-url="{{ url_for('auth.login') }}"
-        data-i18n-error="{{ _('Erro') }}"
-        data-i18n-no-provider="{{ _('Nenhum provedor de pagamento ou plano está habilitado pelo administrador.') }}"
-        data-i18n-generate-pix="{{ _('Gerar PIX') }}"
-        data-i18n-generate-pix-for-price="{{ _('Renovar por R$ {price}') }}"
-        data-i18n-reactivate-for-price="{{ _('Reativar por R$ {price}') }}"
-        data-i18n-activate-free-subscription="{{ _('Ativar Assinatura Gratuita') }}"
-        data-i18n-choose-provider="{{ _('Escolha um Provedor') }}"
-        data-i18n-pay-with-efi="{{ _('Pagar com Efí') }}"
-        data-i18n-pay-with-mp="{{ _('Pagar com Mercado Pago') }}"
-        data-i18n-cancel="{{ _('Cancelar') }}"
-        data-i18n-wait="{{ _('Aguarde...') }}"
-        data-i18n-polling-error="{{ _('Erro ao verificar o estado do pagamento (a tentar novamente):') }}"
-        data-i18n-payment-confirmed="{{ _('Pagamento confirmado!') }}"
-        data-i18n-polling-confirmed="{{ _('Pagamento confirmado! Atualizando...') }}"
-        data-i18n-code-copied="{{ _('Código PIX copiado!') }}"
-        data-i18n-screen-singular="{{ _('Tela') }}"
+        data-i18n-no-provider="{{ _('Nenhum provedor de pagamento disponível no momento.') }}"
+        data-i18n-standard-plan="{{ _('Plano Padrão') }}"
         data-i18n-screen-plural="{{ _('Telas') }}"
-        data-i18n-expires-on="{{ _('Vence em:') }}"
-        data-i18n-expired-on="{{ _('Vencido em:') }}"
-        data-i18n-current-plan="{{ _('Seu Plano Atual') }}"
-        data-i18n-no-plan-price="{{ _('O seu plano atual não possui um preço de renovação definido. Por favor, contacte o administrador.') }}"
-        data-i18n-login-button-text="{{ _('Acessar Painel') }}"
-        data-i18n-reactivation-success-title="{{ _('Conta Reativada com Sucesso!') }}"
-        data-i18n-reactivation-success-message="{{ _('Seu pagamento foi confirmado. Você já pode aceder ao seu painel.') }}"
-        data-i18n-renewal-success-title="{{ _('Renovação Confirmada!') }}"
-        data-i18n-renewal-success-message="{{ _('Sua assinatura foi estendida com sucesso.') }}"
-        data-i18n-reactivation-check-email-title="{{ _('Pagamento Recebido!') }}"
-        data-i18n-reactivation-check-email-message="{{ _('Para completar a reativação, precisamos confirmar o acesso à sua conta Plex.') }}"
-        data-i18n-auth-denied="{{ _('A autenticação foi cancelada ou falhou.') }}"
-        data-i18n-auth-check-error="{{ _('Erro ao verificar autenticação.') }}"
-        data-i18n-activating="{{ _('Ativando...') }}"
+        data-i18n-screen-singular="{{ _('Tela') }}"
+        data-i18n-current-plan="{{ _('Atual') }}"
+        data-i18n-promotional-code="{{ _('Código Promocional') }}"
+        data-i18n-insert-coupon="{{ _('INSERIR CUPÃO') }}"
+        data-i18n-apply="{{ _('Aplicar') }}"
+        data-i18n-reactivate-for-price="{{ _('Reativar por') }} "
+        data-i18n-generate-pix-for-price="{{ _('Gerar PIX de R$ {price}') }}"
+        data-i18n-pix-copied="{{ _('Código PIX copiado com sucesso!') }}"
+        data-i18n-activate-free-subscription="{{ _('Ativar Assinatura Grátis') }}"
+        data-i18n-wait="{{ _('A aguardar...') }}"
+        data-i18n-choose-provider="{{ _('Escolha o Provedor') }}"
+        data-i18n-pay-with-efi="{{ _('Pagar com Efí (PIX)') }}"
+        data-i18n-pay-with-mp="{{ _('Pagar com Mercado Pago (PIX)') }}"
+        data-i18n-pay-with-bpix="{{ _('Pagar com BPIX (PIX)') }}"
+        data-i18n-cancel="{{ _('Cancelar') }}"
+        data-i18n-payment-failed="{{ _('O pagamento falhou ou foi cancelado.') }}"
+        data-i18n-reactivation-check-email-title="{{ _('Verifique o seu E-mail') }}"
+        data-i18n-reactivation-check-email-message="{{ _('O pagamento foi confirmado! Enviamos um convite de reativação para o seu e-mail do Plex.') }}"
+        data-i18n-reactivation-success-title="{{ _('Reativação Concluída!') }}"
+        data-i18n-reactivation-success-message="{{ _('O seu acesso foi restaurado. Já pode aceder ao Plex normalmente.') }}"
+        data-i18n-renewal-success-title="{{ _('Pagamento Confirmado!') }}"
+        data-i18n-renewal-success-message="{{ _('A sua assinatura foi renovada com sucesso. Obrigado!') }}"
+        data-i18n-login-button-text="{{ _('Aceder à Minha Conta') }}"
+        data-i18n-popup-blocked="{{ _('Janela bloqueada pelo navegador. Permita os pop-ups para continuar.') }}"
+        data-i18n-activating="{{ _('A ativar...') }}"
+        data-i18n-auth-denied="{{ _('Autenticação recusada.') }}"
     ></script>
+    <script type="module" src="{{ url_for('static', filename='js/payment_public.js') }}"></script>
+    
+    <!-- Modal Base Container -->
+    <div id="modal-container"></div>
 </body>
 </html>
