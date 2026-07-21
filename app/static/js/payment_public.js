@@ -53,15 +53,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- INICIALIZAÇÃO ---
     async function loadPaymentOptions() {
         try {
+            // Configurar Avatar do Usuário Inicial
+            const userThumb = document.getElementById('user-thumb');
+            if (userThumb && baseUsername) {
+                const initial = baseUsername.charAt(0).toUpperCase();
+                userThumb.src = `https://placehold.co/128x128/1F2937/E5E7EB?text=${initial}`;
+            }
+
             if (loadingIndicator) loadingIndicator.style.display = 'flex';
             if (paymentSection) paymentSection.classList.add('hidden');
             if (errorContainer) errorContainer.classList.add('hidden');
             if (container) container.classList.add('hidden'); // Garantir que está oculto inicialmente
 
-            const url = urls.paymentOptionsUrl || `/api/payments/options?token=${token}`;
+            // FIX: Garantir que o token e o username são enviados na query string mesmo que a URL venha do dataset sem eles
+            let url = urls.paymentOptionsUrl || `/api/payments/options`;
+            url += (url.includes('?') ? '&' : '?') + `token=${token}`;
+            if (baseUsername) {
+                url += `&username=${encodeURIComponent(baseUsername)}`;
+            }
+
             const response = await fetchAPI(url);
             
             if (response.success) {
+                // Atualizar imagem do utilizador caso a API devolva o avatar oficial
+                if ((response.avatar_url || response.user_thumb) && userThumb) {
+                    userThumb.src = response.avatar_url || response.user_thumb;
+                }
+
                 renderPaymentInfo(response.prices, response.providers);
                 if (paymentSection) paymentSection.classList.remove('hidden');
                 if (container) container.classList.remove('hidden'); // FIX: Exibir o contentor principal
@@ -167,10 +185,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         const copyPixBtn = document.getElementById('copy-pix-btn');
         const pixCopyPasteInput = document.getElementById('pix-copy-paste');
         if (copyPixBtn && pixCopyPasteInput) {
-            copyPixBtn.addEventListener('click', () => {
-                navigator.clipboard.writeText(pixCopyPasteInput.value)
-                    .then(() => showToast(i18n.pixCopied || 'Código PIX copiado com sucesso!', 'success'))
-                    .catch(() => showToast('Erro ao copiar código.', 'error'));
+            // Prevenir múltiplos event listeners clonando o botão
+            const newCopyBtn = copyPixBtn.cloneNode(true);
+            copyPixBtn.parentNode.replaceChild(newCopyBtn, copyPixBtn);
+            
+            newCopyBtn.addEventListener('click', () => {
+                pixCopyPasteInput.select();
+                pixCopyPasteInput.setSelectionRange(0, 99999); // Para dispositivos móveis
+                
+                // Fallback de cópia universal (Garante que funciona mesmo sem HTTPS)
+                const fallbackCopy = () => {
+                    try {
+                        document.execCommand('copy');
+                        showToast(i18n.pixCopied || 'Código PIX copiado com sucesso!', 'success');
+                    } catch (err) {
+                        showToast('Erro ao copiar código.', 'error');
+                    }
+                };
+
+                try {
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(pixCopyPasteInput.value)
+                            .then(() => showToast(i18n.pixCopied || 'Código PIX copiado com sucesso!', 'success'))
+                            .catch(fallbackCopy);
+                    } else {
+                        fallbackCopy(); // Força o fallback se não estiver num ambiente seguro
+                    }
+                } catch (err) {
+                    fallbackCopy();
+                }
             });
         }
 
