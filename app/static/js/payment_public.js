@@ -50,6 +50,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         return temp.innerHTML;
     };
 
+    // --- INICIALIZAÇÃO ---
+    async function loadPaymentOptions() {
+        try {
+            if (loadingIndicator) loadingIndicator.style.display = 'flex';
+            if (paymentSection) paymentSection.classList.add('hidden');
+            if (errorContainer) errorContainer.classList.add('hidden');
+
+            const url = urls.paymentOptionsUrl || `/api/payments/options?token=${token}`;
+            const response = await fetchAPI(url);
+            
+            if (response.success) {
+                renderPaymentInfo(response.prices, response.providers);
+                if (paymentSection) paymentSection.classList.remove('hidden');
+            } else {
+                throw new Error(response.message || 'Falha ao carregar opções de pagamento.');
+            }
+        } catch (error) {
+            if (errorContainer) errorContainer.classList.remove('hidden');
+            if (errorMessage) errorMessage.textContent = error.message;
+        } finally {
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+        }
+    }
+
     // --- LÓGICA DE PAGAMENTO ---
     function renderPaymentInfo(prices, providers) {
         if (!paymentSection) return;
@@ -58,7 +82,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!anyProviderEnabled || !prices || Object.keys(prices).length === 0) {
             paymentSection.innerHTML = `
                 <div class="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl text-center border border-red-100 dark:border-red-800/50">
-                    <p class="text-red-600 dark:text-red-400 font-medium">${i18n.noProvider}</p>
+                    <p class="text-red-600 dark:text-red-400 font-medium">${i18n.noProvider || 'Nenhum provedor de pagamento disponível no momento.'}</p>
                 </div>`;
             return;
         }
@@ -74,7 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         Object.keys(prices).sort((a,b) => parseInt(a) - parseInt(b)).forEach((scr, index) => {
             const pVal = parseFloat(prices[scr]);
             const priceStr = pVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            let planText = scr === "0" ? "Plano Padrão" : `${scr} ${parseInt(scr) > 1 ? i18n.screenPlural : i18n.screenSingular}`;
+            let planText = scr === "0" ? (i18n.standardPlan || "Plano Padrão") : `${scr} ${parseInt(scr) > 1 ? i18n.screenPlural || 'Telas' : i18n.screenSingular || 'Tela'}`;
             
             // Design Premium com pseudo-class has-[:checked]
             optionsHtml += `
@@ -88,7 +112,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                     <div class="text-right">
                         <span class="font-black text-lg text-gray-900 dark:text-white">${priceStr}</span>
-                        ${index === 0 ? `<span class="block text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 tracking-wider">${i18n.currentPlan}</span>` : ''}
+                        ${index === 0 ? `<span class="block text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 tracking-wider">${i18n.currentPlan || 'Atual'}</span>` : ''}
                     </div>
                 </label>
             `;
@@ -98,22 +122,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         const priceText = price.toFixed(2).replace('.', ',');
         const buttonText = isReactivation
             ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', priceText)
-            : i18n.generatePixForPrice.replace('{price}', priceText);
+            : (i18n.generatePixForPrice || 'Gerar PIX de R$ {price}').replace('{price}', priceText);
 
         paymentSection.innerHTML = `
             ${optionsHtml}
             
             <!-- Secção de Cupão Premium -->
             <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700/50">
-                <label for="couponCodeInput" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider">Código Promocional</label>
+                <label for="couponCodeInput" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider">${i18n.promotionalCode || 'Código Promocional'}</label>
                 <div class="flex gap-2">
                     <div class="relative flex-grow">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
                         </div>
-                        <input type="text" id="couponCodeInput" class="w-full py-3 pl-10 pr-3 text-sm font-mono uppercase tracking-wider rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm transition-shadow" placeholder="INSERIR CUPÃO">
+                        <input type="text" id="couponCodeInput" class="w-full py-3 pl-10 pr-3 text-sm font-mono uppercase tracking-wider rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm transition-shadow" placeholder="${i18n.insertCoupon || 'INSERIR CUPÃO'}">
                     </div>
-                    <button id="applyCouponBtn" class="btn bg-gray-800 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white px-6 font-bold shadow-md rounded-xl transition-colors">Aplicar</button>
+                    <button id="applyCouponBtn" class="btn bg-gray-800 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white px-6 font-bold shadow-md rounded-xl transition-colors">${i18n.apply || 'Aplicar'}</button>
                 </div>
                 <div id="coupon-status" class="text-xs font-medium mt-2 min-h-[20px] transition-all"></div>
             </div>
@@ -136,6 +160,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const statusDiv = document.getElementById('coupon-status');
         const isReactivation = container.dataset.isReactivation === 'true';
 
+        // Evento para Copiar Chave PIX (Acionado apenas quando pixDisplay é visível)
+        const copyPixBtn = document.getElementById('copy-pix-btn');
+        const pixCopyPasteInput = document.getElementById('pix-copy-paste');
+        if (copyPixBtn && pixCopyPasteInput) {
+            copyPixBtn.addEventListener('click', () => {
+                navigator.clipboard.writeText(pixCopyPasteInput.value)
+                    .then(() => showToast(i18n.pixCopied || 'Código PIX copiado com sucesso!', 'success'))
+                    .catch(() => showToast('Erro ao copiar código.', 'error'));
+            });
+        }
+
         // Mudança de plano selecionado
         document.querySelectorAll('input[name="payment-plan"]').forEach(radio => {
             radio.addEventListener('change', () => {
@@ -145,7 +180,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const priceText = originalPrice.toFixed(2).replace('.', ',');
                 btnTextContent.textContent = isReactivation 
                     ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', priceText)
-                    : i18n.generatePixForPrice.replace('{price}', priceText);
+                    : (i18n.generatePixForPrice || 'Gerar PIX de R$ {price}').replace('{price}', priceText);
                 
                 pixBtn.disabled = false;
                 applyCouponBtn.disabled = false;
@@ -170,7 +205,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 applyCouponBtn.disabled = true;
                 applyCouponBtn.innerHTML = `<svg class="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
                 
-                const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens: selectedPlan.value, username: baseUsername });
+                const result = await fetchAPI(urls.validateCouponUrl, 'POST', { token, code, screens: selectedPlan.value, username: baseUsername });
                 
                 if (result.success) {
                     statusDiv.innerHTML = `<span class="text-green-600 dark:text-green-400 flex items-center gap-1 font-bold"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg> ${result.message}</span>`;
@@ -184,13 +219,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const newPriceText = result.discounted_price.toFixed(2).replace('.', ',');
 
                     if (result.discounted_price <= 0) {
-                        btnTextContent.textContent = i18n.activateFreeSubscription;
+                        btnTextContent.textContent = i18n.activateFreeSubscription || "Ativar Assinatura Grátis";
                         // Estilo "Mágico" para o botão 100% grátis
                         pixBtn.className = "w-full mt-6 btn bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-white text-lg py-3.5 rounded-xl shadow-xl shadow-yellow-500/40 font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex justify-center items-center gap-2 group";
                     } else {
                         btnTextContent.textContent = isReactivation
                             ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', newPriceText)
-                            : i18n.generatePixForPrice.replace('{price}', newPriceText);
+                            : (i18n.generatePixForPrice || 'Gerar PIX de R$ {price}').replace('{price}', newPriceText);
                     }
                 } else {
                     throw new Error(result.message);
@@ -207,13 +242,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const originalPriceText = originalPrice.toFixed(2).replace('.', ',');
                 btnTextContent.textContent = isReactivation
                     ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', originalPriceText)
-                    : i18n.generatePixForPrice.replace('{price}', originalPriceText);
+                    : (i18n.generatePixForPrice || 'Gerar PIX de R$ {price}').replace('{price}', originalPriceText);
                     
                 // Reverte classe do botão
                 pixBtn.className = "w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white text-lg py-3.5 rounded-xl shadow-xl shadow-green-500/30 font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex justify-center items-center gap-2 group";
             } finally {
                 applyCouponBtn.disabled = false;
-                applyCouponBtn.textContent = 'Aplicar';
+                applyCouponBtn.textContent = i18n.apply || 'Aplicar';
             }
         });
 
@@ -232,7 +267,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function initiatePixPayment(payload, providers) {
         const activeProviders = Object.keys(providers).filter(p => providers[p]).map(p => p.toUpperCase());
         const btnTextContent = document.getElementById('btn-text-content').textContent;
-        const isFree = btnTextContent === i18n.activateFreeSubscription;
+        const isFree = btnTextContent === (i18n.activateFreeSubscription || "Ativar Assinatura Grátis");
 
         if (isFree) {
             await generatePix(payload); // Ignora provedores se for gratuito
@@ -245,7 +280,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else if (activeProviders.length > 1) {
             showProviderChoiceModal(payload, activeProviders);
         } else {
-             showToast(i18n.noProvider, "error");
+             showToast(i18n.noProvider || 'Nenhum provedor disponível.', "error");
         }
     }
 
@@ -254,17 +289,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Estilização Premium para os botões do Modal de Provedores
         if (providers.includes('EFI')) {
-            buttonsHtml += `<button data-provider="EFI" class="btn bg-green-600 hover:bg-green-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold">${i18n.payWithEfi}</button>`;
+            buttonsHtml += `<button data-provider="EFI" class="btn bg-green-600 hover:bg-green-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold">${i18n.payWithEfi || 'Pagar com Efí (PIX)'}</button>`;
         }
         if (providers.includes('MERCADOPAGO')) {
-            buttonsHtml += `<button data-provider="MERCADOPAGO" class="btn bg-blue-600 hover:bg-blue-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold mt-3">${i18n.payWithMp}</button>`;
+            buttonsHtml += `<button data-provider="MERCADOPAGO" class="btn bg-blue-600 hover:bg-blue-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold mt-3">${i18n.payWithMp || 'Pagar com Mercado Pago (PIX)'}</button>`;
         }
         if (providers.includes('BPIX')) {
-            buttonsHtml += `<button data-provider="BPIX" class="btn bg-purple-600 hover:bg-purple-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold mt-3">${i18n.payWithBpix || 'Pagar com BPIX'}</button>`;
+            buttonsHtml += `<button data-provider="BPIX" class="btn bg-purple-600 hover:bg-purple-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold mt-3">${i18n.payWithBpix || 'Pagar com BPIX (PIX)'}</button>`;
         }
 
         const body = `<div class="space-y-3 mt-2">${buttonsHtml}</div>`;
-        const modal = createModal('providerChoiceModal', i18n.chooseProvider, body, `<button id="cancel-provider" class="btn bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 w-full py-3 rounded-xl transition-colors font-bold">${i18n.cancel}</button>`);
+        const modal = createModal('providerChoiceModal', i18n.chooseProvider || 'Escolha o Provedor', body, `<button id="cancel-provider" class="btn bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 w-full py-3 rounded-xl transition-colors font-bold">${i18n.cancel || 'Cancelar'}</button>`);
 
         if(modal){
             modal.querySelectorAll('button[data-provider]').forEach(button => {
@@ -287,7 +322,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const originalIcon = iconSvg ? iconSvg.outerHTML : '';
         
         btn.disabled = true;
-        textSpan.textContent = i18n.wait;
+        textSpan.textContent = i18n.wait || 'A aguardar...';
         if(iconSvg) {
              iconSvg.outerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
         }
@@ -299,7 +334,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (result && result.success && result.free_renewal) {
                 const isReactivation = container.dataset.isReactivation === 'true';
-                showSuccessState(isReactivation);
+                showSuccessState(isReactivation, result.user_status);
                 return;
             }
 
@@ -325,6 +360,44 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // --- NOVA FUNÇÃO: POLLING DE STATUS DO PAGAMENTO ---
+    function startPaymentStatusPolling(txid) {
+        if (pollingIntervalId) clearTimeout(pollingIntervalId);
+
+        const checkUrlBase = urls.paymentStatusUrl || `/api/payments/status/__TXID__`;
+        const checkUrl = checkUrlBase.replace('__TXID__', txid);
+
+        // Otimização: Uso de setTimeout recursivo para evitar sobreposição de requisições de rede
+        const poll = async () => {
+            try {
+                const response = await fetchAPI(checkUrl);
+                if (response && response.success) {
+                    // O backend devolve "CONCLUIDA" se o pagamento for confirmado
+                    if (response.status === 'CONCLUIDA' || response.status === 'PROCESSANDO') {
+                        const isReactivation = container.dataset.isReactivation === 'true';
+                        // Adicionamos um delay pequeno caso o status seja PROCESSANDO para garantir completude
+                        setTimeout(() => {
+                            showSuccessState(isReactivation, response.user_status);
+                        }, 1000);
+                        return; // Para o polling com sucesso
+                    } else if (response.status === 'FALHOU' || response.status === 'CANCELADA') {
+                        showToast(i18n.paymentFailed || 'O pagamento falhou ou foi cancelado.', 'error');
+                        // Retorna à tela inicial de pagamento
+                        if (paymentSection) paymentSection.style.display = 'block';
+                        if (pixDisplay) pixDisplay.style.display = 'none';
+                        return; // Para o polling com erro
+                    }
+                }
+            } catch (error) {
+                console.warn("Erro ao consultar status do pagamento via polling:", error);
+            }
+            // Só agenda a próxima verificação após a atual terminar
+            pollingIntervalId = setTimeout(poll, 5000);
+        };
+        
+        poll(); // Inicia o ciclo
+    }
+
     // --- LÓGICA DE SUCESSO E REATIVAÇÃO ---
     function showSuccessState(isReactivation, userStatus) {
         if (paymentSection) paymentSection.style.display = 'none';
@@ -341,8 +414,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (isReactivation) {
                 // Se o status ainda for 'inactive', convite está pendente.
                 if (userStatus === 'inactive') {
-                    successTitle.textContent = i18n.reactivationCheckEmailTitle;
-                    successMessage.textContent = i18n.reactivationCheckEmailMessage;
+                    successTitle.textContent = i18n.reactivationCheckEmailTitle || "Verifique o seu E-mail";
+                    successMessage.textContent = i18n.reactivationCheckEmailMessage || "O pagamento foi confirmado! Enviamos um convite de reativação para o seu e-mail do Plex.";
                     
                     if (reactivationArea) {
                         reactivationArea.classList.remove('hidden');
@@ -353,21 +426,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 } else {
                     // Reativação já efetivada pelo backend
-                    successTitle.textContent = i18n.reactivationSuccessTitle;
-                    successMessage.textContent = i18n.reactivationSuccessMessage;
+                    successTitle.textContent = i18n.reactivationSuccessTitle || "Reativação Concluída!";
+                    successMessage.textContent = i18n.reactivationSuccessMessage || "O seu acesso foi restaurado. Já pode aceder ao Plex normalmente.";
                     if (reactivationArea) reactivationArea.classList.add('hidden');
                     if(defaultBtnContainer) defaultBtnContainer.classList.remove('hidden');
                 }
             } else {
                 // Renovação normal
-                successTitle.textContent = i18n.renewalSuccessTitle;
-                successMessage.textContent = i18n.renewalSuccessMessage;
+                successTitle.textContent = i18n.renewalSuccessTitle || "Pagamento Confirmado!";
+                successMessage.textContent = i18n.renewalSuccessMessage || "A sua assinatura foi renovada com sucesso. Obrigado!";
                 if (reactivationArea) reactivationArea.classList.add('hidden');
                 if(defaultBtnContainer) defaultBtnContainer.classList.remove('hidden');
             }
             
-            loginButton.textContent = i18n.loginButtonText;
-            loginButton.href = urls.loginPageUrl;
+            loginButton.textContent = i18n.loginButtonText || "Aceder à Minha Conta";
+            loginButton.href = urls.loginPageUrl || '/';
             
             successDisplay.classList.remove('hidden');
         } else {
@@ -376,13 +449,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // --- NOVA LÓGICA DE AUTH PLEX (Para Reativação) ---
+    // --- LÓGICA DE AUTH PLEX (Para Reativação) ---
 
     function startPlexAuthFlow() {
         const btn = document.getElementById('reactivate-plex-login-btn');
         const originalHtml = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ${i18n.wait}`;
+        btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ${i18n.wait || 'A aguardar...'}`;
 
         window.addEventListener('message', handleAuthMessage, false);
         
@@ -392,6 +465,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const left = (window.innerWidth / 2) - (width / 2);
         const top = (window.innerHeight / 2) - (height / 2);
         authWindow = window.open(urls.redirectToAuth, 'plexAuth', `width=${width},height=${height},top=${top},left=${left},status=no,scrollbars=yes,resizable=yes`);
+        
+        // Proteção: Verifica se o popup foi bloqueado pelo browser
+        if (!authWindow) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            showToast(i18n.popupBlocked || 'Janela bloqueada pelo navegador. Permita os pop-ups para continuar.', 'error');
+            window.removeEventListener('message', handleAuthMessage);
+        }
     }
 
     function handleAuthMessage(event) {
@@ -405,45 +486,52 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function pollPlexPin(pin_id, client_id) {
-        if (pinCheckIntervalAuth) clearInterval(pinCheckIntervalAuth);
+        if (pinCheckIntervalAuth) clearTimeout(pinCheckIntervalAuth);
         const btn = document.getElementById('reactivate-plex-login-btn');
         let attempts = 0;
 
-        pinCheckIntervalAuth = setInterval(async () => {
+        // Otimização: setTimeout recursivo substitui setInterval
+        const poll = async () => {
             attempts++;
             if (!authWindow || authWindow.closed || attempts > 100) {
-                clearInterval(pinCheckIntervalAuth);
                 btn.disabled = false;
                 btn.innerHTML = `<svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg> Tentar Novamente`; 
-                return;
+                return; // Para o polling
             }
             
             try {
-                const checkUrl = urls.checkPlexPin.replace('__CLIENT_ID__', client_id).replace('999999', pin_id);
-                const checkResponse = await fetch(checkUrl);
-                const checkData = await checkResponse.json();
+                // Previne crash caso a URL do template falhe no parsing
+                const checkUrlBase = urls.checkPlexPin || `/plex/check-pin-for-token/__CLIENT_ID__/999999`;
+                const checkUrl = checkUrlBase.replace('__CLIENT_ID__', client_id).replace('999999', pin_id);
+                
+                const checkResponse = await fetchAPI(checkUrl);
 
-                if (checkData.success && checkData.token) {
-                    clearInterval(pinCheckIntervalAuth);
+                if (checkResponse.success && checkResponse.token) {
                     authWindow.close();
-                    btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ${i18n.activating || 'Ativando...'}`;
-                    finalizeReactivation(checkData.token);
-                } else if (checkData.message === 'auth_denied') {
-                    clearInterval(pinCheckIntervalAuth);
+                    btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ${i18n.activating || 'A ativar...'}`;
+                    finalizeReactivation(checkResponse.token);
+                    return; // Para o polling após sucesso
+                } else if (checkResponse.message === 'auth_denied') {
                     authWindow.close();
-                    showToast(i18n.authDenied, 'error');
+                    showToast(i18n.authDenied || 'Autenticação recusada.', 'error');
                     btn.disabled = false;
                     btn.innerHTML = `<svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg> Tentar Novamente`;
+                    return; // Para o polling após recusa
                 }
             } catch (e) {
                 console.warn("Polling Auth:", e);
             }
-        }, 2000);
+            
+            pinCheckIntervalAuth = setTimeout(poll, 2000); // Agenda a próxima tentativa
+        };
+        
+        poll(); // Inicia o ciclo
     }
 
     async function finalizeReactivation(plexToken) {
         try {
-            const response = await fetchAPI(urls.finalizeReactivation, 'POST', {
+            const url = urls.finalizeReactivation || '/api/users/public/finalize-reactivation';
+            const response = await fetchAPI(url, 'POST', {
                 plex_token: plexToken,
                 payment_token: token
             });
@@ -459,123 +547,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } catch (error) {
             showToast(error.message, 'error');
-            const btn = document.getElementById('reactivate-plex-login-btn');
-            btn.disabled = false;
-            btn.innerHTML = `<svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg> Tentar Novamente`;
         }
     }
 
-    function startPaymentStatusPolling(txid) {
-        if (pollingIntervalId) clearInterval(pollingIntervalId);
-        const pollingStatus = document.getElementById('polling-status');
-
-        pollingIntervalId = setInterval(async () => {
-            try {
-                const statusResult = await fetchAPI(urls.getPaymentStatusBaseUrl.replace('__TXID__', txid));
-                if (statusResult.success && statusResult.status === 'CONCLUIDA') {
-                    clearInterval(pollingIntervalId);
-                    const isReactivation = container.dataset.isReactivation === 'true';
-                    
-                    showToast(i18n.paymentConfirmed || 'Pagamento confirmado!', "success");
-                    
-                    if(pollingStatus) {
-                        pollingStatus.innerHTML = `
-                            <div class="flex items-center justify-center gap-2 text-sm font-bold text-green-600 dark:text-green-500 bg-green-50 dark:bg-green-900/20 px-4 py-2 rounded-full border border-green-200 dark:border-green-800">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                ${i18n.pollingConfirmed || 'Pagamento confirmado! A atualizar...'}
-                            </div>`;
-                    }
-                    
-                    setTimeout(() => showSuccessState(isReactivation, statusResult.user_status), 2000);
-                }
-            } catch (error) {
-                console.warn(`${i18n.pollingError}:`, error.message);
-            }
-        }, 5000);
-    }
-
-    const copyButton = document.getElementById('copy-pix-code');
-    if (copyButton) {
-        copyButton.onclick = () => {
-            const input = document.getElementById('pix-copy-paste');
-            input.select();
-            document.execCommand('copy');
-            showToast(i18n.codeCopied, 'success');
-        };
-    }
-
-    async function main() {
-        try {
-            const profileData = await fetchAPI(urls.getPublicProfileUrl);
-            if (!profileData.success) throw new Error(profileData.message);
-
-            const paymentOptions = await fetchAPI(`${urls.getPaymentOptionsUrl}?token=${token}`);
-            if(paymentOptions.success) {
-                renderPaymentInfo(paymentOptions.prices, paymentOptions.providers);
-            } else {
-                paymentSection.innerHTML = `<div class="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-xl text-center border border-yellow-200 dark:border-yellow-700/50"><p class="text-yellow-700 dark:text-yellow-500 font-medium">${paymentOptions.message || i18n.noPlanPrice}</p></div>`;
-            }
-
-            const thumbUrl = profileData.profile.thumb;
-            const isReactivation = container.dataset.isReactivation === 'true';
-            
-            const thumbElement = document.getElementById('user-thumb');
-            
-            // Lógica aperfeiçoada para encontrar a inicial
-            const displayUsername = profileData.profile.username || baseUsername || '?';
-            let initial = '?';
-            if (displayUsername && displayUsername !== '?') {
-                initial = displayUsername.charAt(0).toUpperCase();
-            }
-
-            // Configurar fallback fiável em caso de erro no link da imagem
-            const fallbackUrl = `https://placehold.co/128x128/1F2937/E5E7EB?text=${initial}`;
-            thumbElement.onerror = () => {
-                if (thumbElement.src !== fallbackUrl) {
-                     thumbElement.src = fallbackUrl;
-                }
-            };
-
-            // Aplicação da imagem original ou do fallback imediato
-            if (thumbUrl && !thumbUrl.includes("placehold.co")) {
-                if (thumbUrl.startsWith('http')) {
-                    thumbElement.src = thumbUrl;
-                } else if (thumbUrl.startsWith('/')) {
-                    thumbElement.src = `${window.location.origin}${thumbUrl}`;
-                } else {
-                    thumbElement.src = thumbUrl;
-                }
-            } else {
-                thumbElement.src = fallbackUrl;
-            }
-            
-            if (!isReactivation) {
-                document.getElementById('user-username').textContent = displayUsername;
-            }
-
-            const expirationElem = document.getElementById('user-expiration');
-            if (profileData.profile.expiration_date_iso && expirationElem) {
-                const expDate = new Date(profileData.profile.expiration_date_iso);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-
-                if (expDate < today) {
-                    expirationElem.textContent = `${i18n.expiredOn} ${profileData.profile.expiration_date_formatted}`;
-                    expirationElem.classList.add('text-red-500', 'dark:text-red-400');
-                } else {
-                    expirationElem.textContent = `${i18n.expiresOn} ${profileData.profile.expiration_date_formatted}`;
-                }
-            }
-
-            if (loadingIndicator) loadingIndicator.style.display = 'none';
-            if (container) container.classList.remove('hidden');
-
-        } catch (error) {
-            if (loadingIndicator) loadingIndicator.style.display = 'none';
-            if (errorMessage) errorMessage.textContent = error.message;
-            if (errorContainer) errorContainer.classList.remove('hidden');
-        }
-    }
-
-    main();
+    // Chama o carregamento de opções mal a página carrega
+    loadPaymentOptions();
 });
