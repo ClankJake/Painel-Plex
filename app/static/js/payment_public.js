@@ -50,61 +50,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         return temp.innerHTML;
     };
 
-    // --- INICIALIZAÇÃO ---
-    async function loadPaymentOptions() {
-        try {
-            // Configurar Avatar do Usuário Inicial e Fallback
-            const userThumb = document.getElementById('user-thumb');
-            if (userThumb && baseUsername) {
-                const initial = baseUsername.charAt(0).toUpperCase();
-                const fallbackUrl = `https://placehold.co/128x128/1F2937/E5E7EB?text=${initial}`;
-                
-                // Tratamento de erro: se a imagem oficial do Plex ou Cache falhar (ex: link 404),
-                // o navegador reverte automaticamente para a imagem com a letra inicial.
-                userThumb.onerror = function() {
-                    if (this.src !== fallbackUrl) {
-                        this.src = fallbackUrl;
-                    }
-                };
-
-                // Define a imagem inicial enquanto a página carrega
-                userThumb.src = fallbackUrl;
-            }
-
-            if (loadingIndicator) loadingIndicator.style.display = 'flex';
-            if (paymentSection) paymentSection.classList.add('hidden');
-            if (errorContainer) errorContainer.classList.add('hidden');
-            if (container) container.classList.add('hidden'); // Garantir que está oculto inicialmente
-
-            // FIX: Garantir que o token e o username são enviados na query string mesmo que a URL venha do dataset sem eles
-            let url = urls.paymentOptionsUrl || `/api/payments/options`;
-            url += (url.includes('?') ? '&' : '?') + `token=${token}`;
-            if (baseUsername) {
-                url += `&username=${encodeURIComponent(baseUsername)}`;
-            }
-
-            const response = await fetchAPI(url);
-            
-            if (response.success) {
-                // Atualizar imagem do utilizador caso a API devolva o avatar oficial
-                if ((response.avatar_url || response.user_thumb) && userThumb) {
-                    userThumb.src = response.avatar_url || response.user_thumb;
-                }
-
-                renderPaymentInfo(response.prices, response.providers);
-                if (paymentSection) paymentSection.classList.remove('hidden');
-                if (container) container.classList.remove('hidden'); // FIX: Exibir o contentor principal
-            } else {
-                throw new Error(response.message || 'Falha ao carregar opções de pagamento.');
-            }
-        } catch (error) {
-            if (errorContainer) errorContainer.classList.remove('hidden');
-            if (errorMessage) errorMessage.textContent = error.message;
-        } finally {
-            if (loadingIndicator) loadingIndicator.style.display = 'none';
-        }
-    }
-
     // --- LÓGICA DE PAGAMENTO ---
     function renderPaymentInfo(prices, providers) {
         if (!paymentSection) return;
@@ -118,7 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        // FIX: Seleciona o primeiro plano ordenado numericamente (impede seleções erradas se a ordem da API variar)
+        // Seleciona o primeiro plano ordenado numericamente
         const sortedScreens = Object.keys(prices).sort((a,b) => parseInt(a) - parseInt(b));
         screens = sortedScreens[0];
         const price = parseFloat(prices[screens]);
@@ -159,7 +104,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         paymentSection.innerHTML = `
             ${optionsHtml}
             
-            <!-- Secção de Cupão Premium -->
             <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700/50">
                 <label for="couponCodeInput" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider">${i18n.promotionalCode || 'Código Promocional'}</label>
                 <div class="flex gap-2">
@@ -174,7 +118,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div id="coupon-status" class="text-xs font-medium mt-2 min-h-[20px] transition-all"></div>
             </div>
 
-            <!-- Botão de Ação Principal -->
             <button id="initiatePixButton" class="w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white text-lg py-3.5 rounded-xl shadow-xl shadow-green-500/30 font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex justify-center items-center gap-2 group">
                 <svg class="w-5 h-5 transition-transform group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
                 <span id="btn-text-content">${buttonText}</span>
@@ -192,38 +135,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         const statusDiv = document.getElementById('coupon-status');
         const isReactivation = container.dataset.isReactivation === 'true';
 
-        // Evento para Copiar Chave PIX (Acionado apenas quando pixDisplay é visível)
+        // 1. CÓPIA DE PIX (ROBUSTA) - Contorna bloqueios de HTTPS
         const copyPixBtn = document.getElementById('copy-pix-btn');
         const pixCopyPasteInput = document.getElementById('pix-copy-paste');
         if (copyPixBtn && pixCopyPasteInput) {
-            // Prevenir múltiplos event listeners clonando o botão
+            // Remove clones para evitar listeners duplicados
             const newCopyBtn = copyPixBtn.cloneNode(true);
             copyPixBtn.parentNode.replaceChild(newCopyBtn, copyPixBtn);
             
             newCopyBtn.addEventListener('click', () => {
                 pixCopyPasteInput.select();
-                pixCopyPasteInput.setSelectionRange(0, 99999); // Para dispositivos móveis
+                pixCopyPasteInput.setSelectionRange(0, 99999); // Mobile compatibility
                 
-                // Fallback de cópia universal (Garante que funciona mesmo sem HTTPS)
-                const fallbackCopy = () => {
-                    try {
-                        document.execCommand('copy');
-                        showToast(i18n.pixCopied || 'Código PIX copiado com sucesso!', 'success');
-                    } catch (err) {
-                        showToast('Erro ao copiar código.', 'error');
-                    }
-                };
-
+                // Tenta usar execCommand (Funciona sempre, mesmo em HTTP)
                 try {
+                    const successful = document.execCommand('copy');
+                    if (successful) {
+                        showToast(i18n.pixCopied || 'Código PIX copiado com sucesso!', 'success');
+                    } else {
+                        throw new Error("execCommand falhou");
+                    }
+                } catch (err) {
+                    // Fallback para API Moderna (Apenas HTTPS)
                     if (navigator.clipboard && window.isSecureContext) {
                         navigator.clipboard.writeText(pixCopyPasteInput.value)
                             .then(() => showToast(i18n.pixCopied || 'Código PIX copiado com sucesso!', 'success'))
-                            .catch(fallbackCopy);
+                            .catch(() => showToast('Erro ao copiar código.', 'error'));
                     } else {
-                        fallbackCopy(); // Força o fallback se não estiver num ambiente seguro
+                        showToast('Erro ao copiar. Selecione o texto e copie.', 'error');
                     }
-                } catch (err) {
-                    fallbackCopy();
                 }
             });
         }
@@ -247,7 +187,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 couponInput.value = '';
                 validatedCouponCode = null;
                 
-                // FIX: Restaura todos os preços originais das labels caso um cupão tivesse sido aplicado noutra antes
+                // Restaura preços originais
                 document.querySelectorAll('input[name="payment-plan"]').forEach(r => {
                     const label = r.closest('label');
                     const span = label.querySelector('span.font-black');
@@ -276,7 +216,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     statusDiv.innerHTML = `<span class="text-green-600 dark:text-green-400 flex items-center gap-1 font-bold"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg> ${result.message}</span>`;
                     validatedCouponCode = code;
                     
-                    // Atualiza o preço na label do rádio ativo visualmente
+                    // Atualiza o preço na label
                     const activeRadioLabel = selectedPlan.closest('label');
                     const priceSpan = activeRadioLabel.querySelector('span.font-black');
                     priceSpan.innerHTML = `<s class="text-gray-400 dark:text-gray-500 text-sm font-medium mr-1">${result.original_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</s> ${result.discounted_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
@@ -285,7 +225,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                     if (result.discounted_price <= 0) {
                         btnTextContent.textContent = i18n.activateFreeSubscription || "Ativar Assinatura Grátis";
-                        // Estilo "Mágico" para o botão 100% grátis
                         pixBtn.className = "w-full mt-6 btn bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-white text-lg py-3.5 rounded-xl shadow-xl shadow-yellow-500/40 font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex justify-center items-center gap-2 group";
                     } else {
                         btnTextContent.textContent = isReactivation
@@ -299,7 +238,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 statusDiv.innerHTML = `<span class="text-red-500 flex items-center gap-1 font-semibold"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg> ${error.message}</span>`;
                 validatedCouponCode = null;
                 
-                // Reverte preço no cartão
                 const activeRadioLabel = selectedPlan.closest('label');
                 const priceSpan = activeRadioLabel.querySelector('span.font-black');
                 priceSpan.textContent = originalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -309,7 +247,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ? (i18n.reactivateForPrice || 'Reativar por R$ {price}').replace('{price}', originalPriceText)
                     : (i18n.generatePixForPrice || 'Gerar PIX de R$ {price}').replace('{price}', originalPriceText);
                     
-                // Reverte classe do botão
                 pixBtn.className = "w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white text-lg py-3.5 rounded-xl shadow-xl shadow-green-500/30 font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex justify-center items-center gap-2 group";
             } finally {
                 applyCouponBtn.disabled = false;
@@ -335,7 +272,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const isFree = btnTextContent === (i18n.activateFreeSubscription || "Ativar Assinatura Grátis");
 
         if (isFree) {
-            await generatePix(payload); // Ignora provedores se for gratuito
+            await generatePix(payload); 
             return;
         }
 
@@ -352,7 +289,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     function showProviderChoiceModal(payload, providers) {
         let buttonsHtml = '';
         
-        // Estilização Premium para os botões do Modal de Provedores
         if (providers.includes('EFI')) {
             buttonsHtml += `<button data-provider="EFI" class="btn bg-green-600 hover:bg-green-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold">${i18n.payWithEfi || 'Pagar com Efí (PIX)'}</button>`;
         }
@@ -425,45 +361,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // --- NOVA FUNÇÃO: POLLING DE STATUS DO PAGAMENTO ---
     function startPaymentStatusPolling(txid) {
         if (pollingIntervalId) clearTimeout(pollingIntervalId);
 
         const checkUrlBase = urls.paymentStatusUrl || `/api/payments/status/__TXID__`;
         const checkUrl = checkUrlBase.replace('__TXID__', txid);
 
-        // Otimização: Uso de setTimeout recursivo para evitar sobreposição de requisições de rede
         const poll = async () => {
             try {
                 const response = await fetchAPI(checkUrl);
                 if (response && response.success) {
-                    // O backend devolve "CONCLUIDA" se o pagamento for confirmado
                     if (response.status === 'CONCLUIDA' || response.status === 'PROCESSANDO') {
                         const isReactivation = container.dataset.isReactivation === 'true';
-                        // Adicionamos um delay pequeno caso o status seja PROCESSANDO para garantir completude
                         setTimeout(() => {
                             showSuccessState(isReactivation, response.user_status);
                         }, 1000);
-                        return; // Para o polling com sucesso
+                        return; 
                     } else if (response.status === 'FALHOU' || response.status === 'CANCELADA') {
                         showToast(i18n.paymentFailed || 'O pagamento falhou ou foi cancelado.', 'error');
-                        // Retorna à tela inicial de pagamento
                         if (paymentSection) paymentSection.style.display = 'block';
                         if (pixDisplay) pixDisplay.style.display = 'none';
-                        return; // Para o polling com erro
+                        return; 
                     }
                 }
             } catch (error) {
                 console.warn("Erro ao consultar status do pagamento via polling:", error);
             }
-            // Só agenda a próxima verificação após a atual terminar
             pollingIntervalId = setTimeout(poll, 5000);
         };
         
-        poll(); // Inicia o ciclo
+        poll();
     }
 
-    // --- LÓGICA DE SUCESSO E REATIVAÇÃO ---
     function showSuccessState(isReactivation, userStatus) {
         if (paymentSection) paymentSection.style.display = 'none';
         if (pixDisplay) pixDisplay.style.display = 'none';
@@ -477,7 +406,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (successTitle && successMessage && loginButton && successDisplay) {
             if (isReactivation) {
-                // Se o status ainda for 'inactive', convite está pendente.
                 if (userStatus === 'inactive') {
                     successTitle.textContent = i18n.reactivationCheckEmailTitle || "Verifique o seu E-mail";
                     successMessage.textContent = i18n.reactivationCheckEmailMessage || "O pagamento foi confirmado! Enviamos um convite de reativação para o seu e-mail do Plex.";
@@ -490,14 +418,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if(btn) btn.onclick = startPlexAuthFlow;
                     }
                 } else {
-                    // Reativação já efetivada pelo backend
                     successTitle.textContent = i18n.reactivationSuccessTitle || "Reativação Concluída!";
                     successMessage.textContent = i18n.reactivationSuccessMessage || "O seu acesso foi restaurado. Já pode aceder ao Plex normalmente.";
                     if (reactivationArea) reactivationArea.classList.add('hidden');
                     if(defaultBtnContainer) defaultBtnContainer.classList.remove('hidden');
                 }
             } else {
-                // Renovação normal
                 successTitle.textContent = i18n.renewalSuccessTitle || "Pagamento Confirmado!";
                 successMessage.textContent = i18n.renewalSuccessMessage || "A sua assinatura foi renovada com sucesso. Obrigado!";
                 if (reactivationArea) reactivationArea.classList.add('hidden');
@@ -509,12 +435,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             successDisplay.classList.remove('hidden');
         } else {
-            // Fallback seguro
             window.location.href = urls.loginPageUrl || '/';
         }
     }
-
-    // --- LÓGICA DE AUTH PLEX (Para Reativação) ---
 
     function startPlexAuthFlow() {
         const btn = document.getElementById('reactivate-plex-login-btn');
@@ -524,14 +447,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         window.addEventListener('message', handleAuthMessage, false);
         
-        // Centra a janela de popup
         const width = 800;
         const height = 700;
         const left = (window.innerWidth / 2) - (width / 2);
         const top = (window.innerHeight / 2) - (height / 2);
         authWindow = window.open(urls.redirectToAuth, 'plexAuth', `width=${width},height=${height},top=${top},left=${left},status=no,scrollbars=yes,resizable=yes`);
         
-        // Proteção: Verifica se o popup foi bloqueado pelo browser
         if (!authWindow) {
             btn.disabled = false;
             btn.innerHTML = originalHtml;
@@ -555,42 +476,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         const btn = document.getElementById('reactivate-plex-login-btn');
         let attempts = 0;
 
-        // Otimização: setTimeout recursivo substitui setInterval
         const poll = async () => {
             attempts++;
             if (!authWindow || authWindow.closed || attempts > 100) {
                 btn.disabled = false;
                 btn.innerHTML = `<svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg> Tentar Novamente`; 
-                return; // Para o polling
+                return;
             }
             
             try {
-                // Previne crash caso a URL do template falhe no parsing
                 const checkUrlBase = urls.checkPlexPin || `/plex/check-pin-for-token/__CLIENT_ID__/999999`;
                 const checkUrl = checkUrlBase.replace('__CLIENT_ID__', client_id).replace('999999', pin_id);
-                
                 const checkResponse = await fetchAPI(checkUrl);
 
                 if (checkResponse.success && checkResponse.token) {
                     authWindow.close();
                     btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ${i18n.activating || 'A ativar...'}`;
                     finalizeReactivation(checkResponse.token);
-                    return; // Para o polling após sucesso
+                    return;
                 } else if (checkResponse.message === 'auth_denied') {
                     authWindow.close();
                     showToast(i18n.authDenied || 'Autenticação recusada.', 'error');
                     btn.disabled = false;
                     btn.innerHTML = `<svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg> Tentar Novamente`;
-                    return; // Para o polling após recusa
+                    return;
                 }
             } catch (e) {
                 console.warn("Polling Auth:", e);
             }
             
-            pinCheckIntervalAuth = setTimeout(poll, 2000); // Agenda a próxima tentativa
+            pinCheckIntervalAuth = setTimeout(poll, 2000);
         };
         
-        poll(); // Inicia o ciclo
+        poll();
     }
 
     async function finalizeReactivation(plexToken) {
@@ -615,6 +533,108 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Chama o carregamento de opções mal a página carrega
-    loadPaymentOptions();
+    async function main() {
+        try {
+            if (loadingIndicator) loadingIndicator.style.display = 'flex';
+            if (paymentSection) paymentSection.classList.add('hidden');
+            if (errorContainer) errorContainer.classList.add('hidden');
+            if (container) container.classList.add('hidden');
+
+            // 1. OBTENÇÃO DE PERFIL PÚBLICO (Vital para Avatares e Data de Expiração)
+            let profileData = null;
+            try {
+                let profileUrl = urls.getPublicProfileUrl || `/api/users/public/profile`;
+                profileUrl += profileUrl.includes('?') ? `&token=${token}` : `?token=${token}`;
+                profileData = await fetchAPI(profileUrl);
+            } catch (e) {
+                console.warn("Aviso: Não foi possível obter o perfil público. Prosseguindo...", e);
+            }
+
+            // 2. OBTENÇÃO DE OPÇÕES DE PAGAMENTO (Tornando username opcional se deslogado)
+            let payUrl = urls.paymentOptionsUrl || `/api/payments/options`;
+            payUrl += (payUrl.includes('?') ? '&' : '?') + `token=${token}`;
+            
+            // Só anexa o username se ele for válido (não for string "None" de templates deslogados)
+            if (baseUsername && baseUsername.toLowerCase() !== 'none' && baseUsername.toLowerCase() !== 'null' && baseUsername.trim() !== '') {
+                payUrl += `&username=${encodeURIComponent(baseUsername)}`;
+            }
+
+            const paymentOptions = await fetchAPI(payUrl);
+            if (!paymentOptions.success) throw new Error(paymentOptions.message || 'Falha ao carregar opções.');
+
+            // 3. APRESENTAÇÃO DE DADOS DE PERFIL E AVATAR
+            const isReactivation = container.dataset.isReactivation === 'true';
+            const displayUsername = (profileData && profileData.profile && profileData.profile.username) || baseUsername || '?';
+            const thumbElement = document.getElementById('user-thumb');
+            
+            if (thumbElement) {
+                const initial = displayUsername !== '?' ? displayUsername.charAt(0).toUpperCase() : '?';
+                const fallbackUrl = `https://placehold.co/128x128/1F2937/E5E7EB?text=${initial}`;
+
+                // Cascata inteligente em caso de falha de imagem
+                thumbElement.onerror = function() {
+                    if (this.src !== fallbackUrl && !this.src.includes('placehold.co')) {
+                        if (!this.dataset.triedCache) {
+                            this.dataset.triedCache = 'true';
+                            this.src = `/image/user/${encodeURIComponent(displayUsername)}`;
+                        } else {
+                            this.src = fallbackUrl;
+                        }
+                    }
+                };
+
+                // Procurar foto no Perfil, ou recorrer às Opções de Pagamento
+                let thumbUrl = (profileData && profileData.profile && profileData.profile.thumb) || 
+                               paymentOptions.avatar_url || paymentOptions.user_thumb || null;
+
+                if (thumbUrl && !thumbUrl.includes("placehold.co")) {
+                    if (thumbUrl.startsWith('http://') || thumbUrl.startsWith('https://')) {
+                        thumbElement.src = thumbUrl.replace('http://', 'https://'); // Força HTTPS
+                    } else if (thumbUrl.startsWith('/')) {
+                        thumbElement.src = `${window.location.origin}${thumbUrl}`;
+                    } else {
+                        thumbElement.src = thumbUrl;
+                    }
+                } else {
+                    // Cache local forçado como primeira tentativa
+                    thumbElement.src = `/image/user/${encodeURIComponent(displayUsername)}`;
+                }
+            }
+
+            // Atualiza Username visual
+            if (!isReactivation) {
+                const nameElem = document.getElementById('user-username');
+                if (nameElem) nameElem.textContent = (i18n.hello || 'Olá, {username}!').replace('{username}', displayUsername).replace('%(username)s', displayUsername);
+            }
+
+            // Atualiza Data de Expiração se disponível (Recuperado do script antigo!)
+            const expirationElem = document.getElementById('user-expiration');
+            if (profileData && profileData.profile && profileData.profile.expiration_date_iso && expirationElem) {
+                const expDate = new Date(profileData.profile.expiration_date_iso);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                if (expDate < today) {
+                    expirationElem.textContent = `${i18n.expiredOn || 'Expirado em'} ${profileData.profile.expiration_date_formatted}`;
+                    expirationElem.classList.add('text-red-500', 'dark:text-red-400');
+                } else {
+                    expirationElem.textContent = `${i18n.expiresOn || 'Expira em'} ${profileData.profile.expiration_date_formatted}`;
+                }
+            }
+
+            // 4. CONCLUSÃO
+            renderPaymentInfo(paymentOptions.prices, paymentOptions.providers);
+            if (paymentSection) paymentSection.classList.remove('hidden');
+            if (container) container.classList.remove('hidden');
+
+        } catch (error) {
+            if (errorContainer) errorContainer.classList.remove('hidden');
+            if (errorMessage) errorMessage.textContent = error.message;
+        } finally {
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+        }
+    }
+
+    // Arranque
+    main();
 });
