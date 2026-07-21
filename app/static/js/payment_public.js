@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const priceStr = pVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             let planText = scr === "0" ? (i18n.standardPlan || "Plano Padrão") : `${scr} ${parseInt(scr) > 1 ? i18n.screenPlural || 'Telas' : i18n.screenSingular || 'Tela'}`;
             
-            // Design Premium com pseudo-class has-[:checked]
+            // Design Premium
             optionsHtml += `
                 <label class="flex items-center justify-between p-4 rounded-2xl border-2 border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 cursor-pointer transition-all duration-200 hover:border-yellow-300 dark:hover:border-yellow-600 has-[:checked]:border-yellow-500 has-[:checked]:bg-yellow-50/50 dark:has-[:checked]:bg-yellow-900/20 has-[:checked]:shadow-md group">
                     <div class="flex items-center gap-3">
@@ -135,7 +135,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const statusDiv = document.getElementById('coupon-status');
         const isReactivation = container.dataset.isReactivation === 'true';
 
-        // 1. CÓPIA DE PIX (ROBUSTA) - Contorna bloqueios de HTTPS
         const copyPixBtn = document.getElementById('copy-pix-btn');
         const pixCopyPasteInput = document.getElementById('pix-copy-paste');
         if (copyPixBtn && pixCopyPasteInput) {
@@ -145,9 +144,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             newCopyBtn.addEventListener('click', () => {
                 pixCopyPasteInput.select();
-                pixCopyPasteInput.setSelectionRange(0, 99999); // Mobile compatibility
+                pixCopyPasteInput.setSelectionRange(0, 99999);
                 
-                // Tenta usar execCommand (Funciona sempre, mesmo em HTTP)
+                // Cópia Universal (Funciona em HTTP e HTTPS)
                 try {
                     const successful = document.execCommand('copy');
                     if (successful) {
@@ -156,13 +155,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         throw new Error("execCommand falhou");
                     }
                 } catch (err) {
-                    // Fallback para API Moderna (Apenas HTTPS)
                     if (navigator.clipboard && window.isSecureContext) {
                         navigator.clipboard.writeText(pixCopyPasteInput.value)
                             .then(() => showToast(i18n.pixCopied || 'Código PIX copiado com sucesso!', 'success'))
                             .catch(() => showToast('Erro ao copiar código.', 'error'));
-                    } else {
-                        showToast('Erro ao copiar. Selecione o texto e copie.', 'error');
                     }
                 }
             });
@@ -182,12 +178,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 pixBtn.disabled = false;
                 applyCouponBtn.disabled = false;
                 
-                // Reset Cupão ao mudar de plano
                 statusDiv.innerHTML = '';
                 couponInput.value = '';
                 validatedCouponCode = null;
                 
-                // Restaura preços originais
                 document.querySelectorAll('input[name="payment-plan"]').forEach(r => {
                     const label = r.closest('label');
                     const span = label.querySelector('span.font-black');
@@ -195,7 +189,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     span.textContent = basePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                 });
                 
-                // Restaura a cor verde original do botão
                 pixBtn.className = "w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white text-lg py-3.5 rounded-xl shadow-xl shadow-green-500/30 font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex justify-center items-center gap-2 group";
             });
         });
@@ -216,7 +209,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     statusDiv.innerHTML = `<span class="text-green-600 dark:text-green-400 flex items-center gap-1 font-bold"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg> ${result.message}</span>`;
                     validatedCouponCode = code;
                     
-                    // Atualiza o preço na label
                     const activeRadioLabel = selectedPlan.closest('label');
                     const priceSpan = activeRadioLabel.querySelector('span.font-black');
                     priceSpan.innerHTML = `<s class="text-gray-400 dark:text-gray-500 text-sm font-medium mr-1">${result.original_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</s> ${result.discounted_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
@@ -385,7 +377,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
             } catch (error) {
-                console.warn("Erro ao consultar status do pagamento via polling:", error);
+                console.warn("Polling PIX status erro:", error.message);
             }
             pollingIntervalId = setTimeout(poll, 5000);
         };
@@ -540,21 +532,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (errorContainer) errorContainer.classList.add('hidden');
             if (container) container.classList.add('hidden');
 
-            // 1. OBTENÇÃO DE PERFIL PÚBLICO (Vital para Avatares e Data de Expiração)
-            let profileData = null;
-            try {
-                let profileUrl = urls.getPublicProfileUrl || `/api/users/public/profile`;
-                profileUrl += profileUrl.includes('?') ? `&token=${token}` : `?token=${token}`;
-                profileData = await fetchAPI(profileUrl);
-            } catch (e) {
-                console.warn("Aviso: Não foi possível obter o perfil público. Prosseguindo...", e);
-            }
-
-            // 2. OBTENÇÃO DE OPÇÕES DE PAGAMENTO (Tornando username opcional se deslogado)
+            // 1. CARREGAMENTO DAS OPÇÕES DE PAGAMENTO (Este é o que fornece a Foto + Datas sem dar 404!)
             let payUrl = urls.paymentOptionsUrl || `/api/payments/options`;
             payUrl += (payUrl.includes('?') ? '&' : '?') + `token=${token}`;
             
-            // Só anexa o username se ele for válido (não for string "None" de templates deslogados)
             if (baseUsername && baseUsername.toLowerCase() !== 'none' && baseUsername.toLowerCase() !== 'null' && baseUsername.trim() !== '') {
                 payUrl += `&username=${encodeURIComponent(baseUsername)}`;
             }
@@ -562,67 +543,77 @@ document.addEventListener('DOMContentLoaded', async () => {
             const paymentOptions = await fetchAPI(payUrl);
             if (!paymentOptions.success) throw new Error(paymentOptions.message || 'Falha ao carregar opções.');
 
-            // 3. APRESENTAÇÃO DE DADOS DE PERFIL E AVATAR
+            // 2. LÓGICA DO AVATAR E FALLBACKS INTELIGENTES
             const isReactivation = container.dataset.isReactivation === 'true';
-            const displayUsername = (profileData && profileData.profile && profileData.profile.username) || baseUsername || '?';
+            
+            // O backend na rota de options deve fornecer os dados de "user" (Se existir)
+            const userData = paymentOptions.user || {};
+            const displayUsername = userData.username || baseUsername || '?';
             const thumbElement = document.getElementById('user-thumb');
             
             if (thumbElement) {
                 const initial = displayUsername !== '?' ? displayUsername.charAt(0).toUpperCase() : '?';
+                const cacheUrl = `/image/user/${encodeURIComponent(displayUsername)}`;
                 const fallbackUrl = `https://placehold.co/128x128/1F2937/E5E7EB?text=${initial}`;
 
-                // Cascata inteligente em caso de falha de imagem
+                // Se houver falha, lida sem criar ciclos infinitos de 404
                 thumbElement.onerror = function() {
-                    if (this.src !== fallbackUrl && !this.src.includes('placehold.co')) {
-                        if (!this.dataset.triedCache) {
-                            this.dataset.triedCache = 'true';
-                            this.src = `/image/user/${encodeURIComponent(displayUsername)}`;
-                        } else {
-                            this.src = fallbackUrl;
-                        }
+                    const currentPath = new URL(this.src, window.location.origin).pathname;
+                    const cachePath = new URL(cacheUrl, window.location.origin).pathname;
+                    
+                    if (currentPath === cachePath) {
+                        // Se falhou ao buscar do cache, exibe o placeholder (sem loop)
+                        if (this.src !== fallbackUrl) this.src = fallbackUrl;
+                    } else if (!this.src.includes('placehold.co')) {
+                        // Se falhou o URL externo original do Plex, tenta o cache primeiro
+                        this.src = cacheUrl;
                     }
                 };
 
-                // Procurar foto no Perfil, ou recorrer às Opções de Pagamento
-                let thumbUrl = (profileData && profileData.profile && profileData.profile.thumb) || 
-                               paymentOptions.avatar_url || paymentOptions.user_thumb || null;
+                // Vasculhar onde a imagem real possa estar aninhada na resposta
+                let thumbUrl = paymentOptions.avatar_url || paymentOptions.user_thumb || userData.avatar_url || userData.thumb || null;
 
                 if (thumbUrl && !thumbUrl.includes("placehold.co")) {
-                    if (thumbUrl.startsWith('http://') || thumbUrl.startsWith('https://')) {
-                        thumbElement.src = thumbUrl.replace('http://', 'https://'); // Força HTTPS
+                    if (thumbUrl.startsWith('http://')) {
+                        thumbElement.src = thumbUrl.replace('http://', 'https://');
                     } else if (thumbUrl.startsWith('/')) {
                         thumbElement.src = `${window.location.origin}${thumbUrl}`;
                     } else {
                         thumbElement.src = thumbUrl;
                     }
                 } else {
-                    // Cache local forçado como primeira tentativa
-                    thumbElement.src = `/image/user/${encodeURIComponent(displayUsername)}`;
+                    // Sem link fornecido: tenta ler direto da pasta de cache local!
+                    thumbElement.src = cacheUrl;
                 }
             }
 
-            // Atualiza Username visual
+            // Atualiza Nome do Utilizador Visual
             if (!isReactivation) {
                 const nameElem = document.getElementById('user-username');
                 if (nameElem) nameElem.textContent = (i18n.hello || 'Olá, {username}!').replace('{username}', displayUsername).replace('%(username)s', displayUsername);
             }
 
-            // Atualiza Data de Expiração se disponível (Recuperado do script antigo!)
+            // Atualiza Data de Expiração (lida diretamente das Opções de Pagamento)
             const expirationElem = document.getElementById('user-expiration');
-            if (profileData && profileData.profile && profileData.profile.expiration_date_iso && expirationElem) {
-                const expDate = new Date(profileData.profile.expiration_date_iso);
+            const expDateIso = paymentOptions.expiration_date_iso || userData.expiration_date_iso;
+            const expDateFmt = paymentOptions.expiration_date_formatted || userData.expiration_date_formatted;
+            
+            if (expDateIso && expDateFmt && expirationElem) {
+                const expDate = new Date(expDateIso);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
 
                 if (expDate < today) {
-                    expirationElem.textContent = `${i18n.expiredOn || 'Expirado em'} ${profileData.profile.expiration_date_formatted}`;
+                    expirationElem.textContent = `${i18n.expiredOn || 'Expirado em'} ${expDateFmt}`;
                     expirationElem.classList.add('text-red-500', 'dark:text-red-400');
                 } else {
-                    expirationElem.textContent = `${i18n.expiresOn || 'Expira em'} ${profileData.profile.expiration_date_formatted}`;
+                    expirationElem.textContent = `${i18n.expiresOn || 'Expira em'} ${expDateFmt}`;
                 }
+            } else if (expirationElem) {
+                 expirationElem.style.display = 'none'; // Esconde se não existirem datas
             }
 
-            // 4. CONCLUSÃO
+            // 3. CONCLUSÃO E RENDERIZAÇÃO
             renderPaymentInfo(paymentOptions.prices, paymentOptions.providers);
             if (paymentSection) paymentSection.classList.remove('hidden');
             if (container) container.classList.remove('hidden');
@@ -635,6 +626,5 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Arranque
     main();
 });
