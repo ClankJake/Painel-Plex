@@ -29,36 +29,36 @@ async function handleSaveSettings(e) {
     const newConfig = {};
     const screenPrices = {};
 
-    // Coleta dinâmica dos campos
     for (const [id, field] of Object.entries(fieldMap)) {
         const el = document.getElementById(id);
-        if (!el) continue;
+        if (el) {
+            if (field.type === 'price') {
+                const priceValue = parseFloat(el.value.replace(',', '.'));
+                if (!isNaN(priceValue) && priceValue > 0) {
+                    screenPrices[field.key] = priceValue.toFixed(2);
+                }
+            } else if (!field.readonly) {
+                const key = field.key || id;
+                if (key.includes('_BULK_MESSAGE_TEMPLATE')) continue;
 
-        if (field.type === 'price') {
-            const priceValue = parseFloat(el.value.replace(',', '.'));
-            if (!isNaN(priceValue) && priceValue > 0) {
-                screenPrices[field.key] = priceValue.toFixed(2);
-            }
-        } else if (!field.readonly) {
-            const key = field.key || id;
-            if (key.includes('_BULK_MESSAGE_TEMPLATE')) continue;
-
-            if (field.type === 'checkbox') {
-                newConfig[key] = el.checked;
-            } else if (field.type === 'number') {
-                newConfig[key] = parseInt(el.value, 10) || 0;
-            } else if (field.type === 'password') {
-                const originalLength = parseInt(el.dataset.originalLength || '0', 10);
-                const isPlaceholder = el.value === '*'.repeat(originalLength);
-                if (!isPlaceholder) {
+                if (field.type === 'checkbox') {
+                    newConfig[key] = el.checked;
+                } else if (field.type === 'number') {
+                    newConfig[key] = parseInt(el.value, 10) || 0;
+                } else if (field.type === 'password') {
+                    const originalLength = parseInt(el.dataset.originalLength || '0', 10);
+                    // O backend envia '*' correspondente ao tamanho da senha. 
+                    // Se o usuário não alterou, não enviamos de volta para evitar sobrescrever a verdadeira senha.
+                    const isPlaceholder = el.value === '*'.repeat(originalLength);
+                    if (!isPlaceholder) {
+                        newConfig[key] = el.value;
+                    }
+                } else {
                     newConfig[key] = el.value;
                 }
-            } else {
-                newConfig[key] = el.value;
             }
         }
     }
-
     newConfig.SCREEN_PRICES = screenPrices;
     if (dom.logLevelSelector) newConfig.LOG_LEVEL = dom.logLevelSelector.value;
 
