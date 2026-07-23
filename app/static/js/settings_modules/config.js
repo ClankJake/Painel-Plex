@@ -64,6 +64,8 @@ export const fieldMap = {
     'PRICE_SCREEN_2': { type: 'price', key: '2' },
     'PRICE_SCREEN_3': { type: 'price', key: '3' },
     'PRICE_SCREEN_4': { type: 'price', key: '4' },
+    'PRICE_SCREEN_5': { type: 'price', key: '5' },
+    'PRICE_SCREEN_6': { type: 'price', key: '6' },
     'OVERSEERR_ENABLED': { type: 'checkbox', default: false },
     'OVERSEERR_URL': { type: 'text', default: '' },
     'OVERSEERR_API_KEY': { type: 'password', default: '' },
