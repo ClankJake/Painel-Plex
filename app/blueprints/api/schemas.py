@@ -6,7 +6,7 @@ from datetime import datetime
 
 class CreateInviteSchema(BaseModel):
     libraries: List[str] = Field(..., min_items=1, description="Pelo menos uma biblioteca deve ser selecionada.")
-    screens: int = Field(0, ge=0, le=4)
+    screens: int = Field(0, ge=0, le=6)
     allow_downloads: bool = False
     expires_in_minutes: Optional[int] = Field(None, ge=0)
     trial_duration_minutes: int = Field(0, ge=0)
