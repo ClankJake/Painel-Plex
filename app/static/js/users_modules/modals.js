@@ -189,7 +189,7 @@ export function showCreateInviteModal() {
                 <div>
                     <label for="inviteScreenLimit" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.screenLimit}</label>
                     <select id="inviteScreenLimit" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white">
-                        <option value="0">${i18n.noLimit}</option><option value="1">1 ${i18n.screenSingular}</option><option value="2">2 ${i18n.screenPlural}</option><option value="3">3 ${i18n.screenPlural}</option><option value="4">4 ${i18n.screenPlural}</option>
+                        <option value="0">${i18n.noLimit}</option><option value="1">1 ${i18n.screenSingular}</option><option value="2">2 ${i18n.screenPlural}</option><option value="3">3 ${i18n.screenPlural}</option><option value="4">4 ${i18n.screenPlural}</option><option value="5">5 ${i18n.screenPlural}</option><option value="6">6 ${i18n.screenPlural}</option>
                     </select>
                 </div>
                 <div>
@@ -337,6 +337,8 @@ export function showBulkScreenLimitModal() {
             <button data-screens="2" class="btn w-full bg-blue-600 hover:bg-blue-500 text-white transition-colors">2 ${i18n.screenPlural}</button>
             <button data-screens="3" class="btn w-full bg-blue-600 hover:bg-blue-500 text-white transition-colors">3 ${i18n.screenPlural}</button>
             <button data-screens="4" class="btn w-full bg-blue-600 hover:bg-blue-500 text-white transition-colors">4 ${i18n.screenPlural}</button>
+            <button data-screens="5" class="btn w-full bg-blue-600 hover:bg-blue-500 text-white transition-colors">5 ${i18n.screenPlural}</button>
+            <button data-screens="6" class="btn w-full bg-blue-600 hover:bg-blue-500 text-white transition-colors">6 ${i18n.screenPlural}</button>
         </div>
         <button data-screens="-1" class="btn w-full bg-red-600 hover:bg-red-500 mt-3 text-white transition-colors">${i18n.removeAllLimits}</button>`;
         
@@ -367,6 +369,8 @@ export function showScreenLimitModal(user) {
             <button data-screens="2" class="btn w-full bg-blue-600 hover:bg-blue-500 text-white transition-colors">2 ${i18n.screenPlural}</button>
             <button data-screens="3" class="btn w-full bg-blue-600 hover:bg-blue-500 text-white transition-colors">3 ${i18n.screenPlural}</button>
             <button data-screens="4" class="btn w-full bg-blue-600 hover:bg-blue-500 text-white transition-colors">4 ${i18n.screenPlural}</button>
+            <button data-screens="5" class="btn w-full bg-blue-600 hover:bg-blue-500 text-white transition-colors">5 ${i18n.screenPlural}</button>
+            <button data-screens="6" class="btn w-full bg-blue-600 hover:bg-blue-500 text-white transition-colors">6 ${i18n.screenPlural}</button>
         </div>
         <button data-screens="0" class="btn w-full bg-gray-500 hover:bg-gray-400 mt-3 text-white transition-colors">${i18n.removeLimit}</button>`;
         
