@@ -64,7 +64,7 @@ def load_or_create_config():
             "DISCORD_ENABLED": False,
             "DISCORD_WEBHOOK_URL": "",
             "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
-            "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!\", "color": 65280}]}',
+            "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
             "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
             "DISCORD_BULK_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}',
             "DAYS_TO_NOTIFY_EXPIRATION": 2,
@@ -85,7 +85,9 @@ def load_or_create_config():
                 "1": "10.00",
                 "2": "18.00",
                 "3": "25.00",
-                "4": "30.00"
+                "4": "30.00",
+                "5": "35.00",
+                "6": "40.00"
             },
             "OVERSEERR_ENABLED": False,
             "OVERSEERR_URL": "",
@@ -165,7 +167,7 @@ def load_or_create_config():
                 config.setdefault("DISCORD_ENABLED", False)
                 config.setdefault("DISCORD_WEBHOOK_URL", "")
                 config.setdefault("DISCORD_EXPIRATION_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}')
-                config.setdefault("DISCORD_RENEWAL_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!\", "color": 65280}]}')
+                config.setdefault("DISCORD_RENEWAL_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}')
                 config.setdefault("DISCORD_TRIAL_END_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}')
                 config.setdefault("DISCORD_BULK_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}')
                 config.setdefault("LAST_NOTIFICATION_CHECK", "1970-01-01T00:00:00")
@@ -176,7 +178,16 @@ def load_or_create_config():
                 config.setdefault("EFI_SANDBOX", True)
                 config.setdefault("EFI_PIX_KEY", "")
                 config.setdefault("RENEWAL_PRICE", "10.00")
-                config.setdefault("SCREEN_PRICES", {"1": "10.00", "2": "18.00", "3": "25.00", "4": "30.00"})
+                
+                # Adicionando as opções 5 e 6 no fallback default também
+                default_screen_prices = {"1": "10.00", "2": "18.00", "3": "25.00", "4": "30.00", "5": "35.00", "6": "40.00"}
+                if "SCREEN_PRICES" not in config:
+                    config["SCREEN_PRICES"] = default_screen_prices
+                else:
+                    if "5" not in config["SCREEN_PRICES"]:
+                        config["SCREEN_PRICES"]["5"] = "35.00"
+                    if "6" not in config["SCREEN_PRICES"]:
+                        config["SCREEN_PRICES"]["6"] = "40.00"
                 config.setdefault("MERCADOPAGO_ENABLED", False)
                 config.setdefault("MERCADOPAGO_ACCESS_TOKEN", "")
                 config.setdefault("BPIX_ENABLED", False)
