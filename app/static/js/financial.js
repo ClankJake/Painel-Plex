@@ -240,8 +240,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     const safeDesc = sanitizeHTML(tx.description);
                     const safeCoupon = sanitizeHTML(tx.coupon_code);
                     
-                    let planDescription = tx.screens > 0 ? `${tx.screens} Tela(s)` : 'Plano Padrão';
-                    if (safeDesc && (safeDesc.toLowerCase().includes('cupão') || safeDesc.toLowerCase().includes('coupon'))) {
+                    let actualScreens = tx.screens || 0;
+                    
+                    // Se a transação for 0 (Renovação Manual), cruza os dados com a lista de usuários para achar o plano real
+                    if (actualScreens === 0 && summary.upcoming_expirations) {
+                        const matchedUser = summary.upcoming_expirations.find(u => u.username === tx.username);
+                        if (matchedUser && matchedUser.screen_limit) {
+                            actualScreens = matchedUser.screen_limit;
+                        }
+                    }
+
+                    let planDescription = actualScreens > 0 ? `${actualScreens} Tela(s)` : 'Plano Padrão';
+                    
+                    // Se foi uma renovação manual e tem descrição customizada do admin
+                    if ((!tx.screens || tx.screens === 0) && safeDesc && !safeDesc.toLowerCase().includes('cupão') && !safeDesc.toLowerCase().includes('coupon')) {
+                        planDescription = actualScreens > 0 ? `Manual: ${actualScreens} Tela(s)` : safeDesc;
+                    } else if (safeDesc && (safeDesc.toLowerCase().includes('cupão') || safeDesc.toLowerCase().includes('coupon'))) {
                         planDescription = safeDesc;
                     }
 
