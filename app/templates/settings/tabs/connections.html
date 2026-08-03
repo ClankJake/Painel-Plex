@@ -43,46 +43,6 @@
             </div>
         </div>
 
-        <!-- Cartão: Tautulli -->
-        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
-            <div class="flex items-center gap-3 mb-4">
-                <div class="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                    <svg class="w-6 h-6 text-blue-600 dark:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-                </div>
-                <div>
-                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">{{ _('Tautulli') }}</h3>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Necessário para o ranking de estatísticas e controlo de sessões ativas.') }}</p>
-                </div>
-            </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label for="TAUTULLI_URL" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('URL do Tautulli') }}</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
-                        </div>
-                        <input type="text" id="TAUTULLI_URL" class="block w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow" placeholder="http://127.0.0.1:8181">
-                    </div>
-                </div>
-                <div>
-                    <label for="TAUTULLI_API_KEY" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Chave da API (Tautulli)') }}</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
-                        </div>
-                        <input type="password" id="TAUTULLI_API_KEY" class="block w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow" placeholder="{{ _('Preencha para alterar') }}">
-                    </div>
-                </div>
-            </div>
-            <div class="mt-5 flex justify-end">
-                <button type="button" id="testTautulliButton" class="btn bg-blue-600 hover:bg-blue-500 text-white py-2 px-5 rounded-xl shadow-sm text-sm font-bold transition-all flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    {{ _('Testar Conexão') }}
-                </button>
-            </div>
-        </div>
-
         <!-- Cartão: Seerr -->
         <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
             <div class="flex items-center justify-between mb-4">
