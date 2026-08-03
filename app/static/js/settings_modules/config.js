@@ -8,6 +8,7 @@ const scriptTag = document.getElementById('settings-script');
 
 export const urls = {};
 export const i18n = {};
+
 export const fieldMap = {
     'APP_TITLE': { type: 'text', default: 'Painel Plex' },
     'APP_BASE_URL': { type: 'text', default: 'http://127.0.0.1:5000' },
@@ -43,9 +44,7 @@ export const fieldMap = {
     'DISCORD_EXPIRATION_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
     'DISCORD_RENEWAL_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
     'DISCORD_TRIAL_END_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
-    'plex_url_display': { type: 'text', readonly: true, key: 'PLEX_URL' },
-    'TAUTULLI_URL': { type: 'text', default: '' },
-    'TAUTULLI_API_KEY': { type: 'password', default: '' },
+    'plex_url_display': { type: 'text', readonly: true, key: 'PLEX_URL' },    
     'EFI_ENABLED': { type: 'checkbox', default: false },
     'MERCADOPAGO_ENABLED': { type: 'checkbox', default: false },
     'BPIX_ENABLED': { type: 'checkbox', default: false },
