@@ -13,7 +13,8 @@ from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 
-from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager, notifier_manager
+# Tautulli removido das extensões importadas
+from ...extensions import plex_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager, notifier_manager
 from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
 from ..auth import admin_required, login_required
@@ -126,7 +127,7 @@ def get_system_health():
     """Verifica e retorna o estado de todos os serviços integrados."""
     health_status = {
         "plex": plex_manager.check_status(),
-        "tautulli": tautulli_manager.check_status(),
+        # Tautulli removido da verificação de saúde
         "efi": efi_manager.check_status(),
         "mercado_pago": mercado_pago_manager.check_status(),
         "bpix": bpix_manager.check_status(),
@@ -192,13 +193,13 @@ def api_settings():
         config_to_update = load_or_create_config()
         new_data = request.json
         
+        # Removido 'TAUTULLI_URL', 'TAUTULLI_API_KEY' daqui
         fields_to_update = [
             'APP_TITLE', 'LOG_LEVEL', 'DAYS_TO_REMOVE_BLOCKED_USER',
             'EXPIRATION_NOTIFICATION_TIME', 'BLOCK_REMOVAL_TIME', 'WEBHOOK_URL', 'WEBHOOK_ENABLED',
             'WEBHOOK_AUTHORIZATION_HEADER', 'WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE', 'WEBHOOK_RENEWAL_MESSAGE_TEMPLATE',
             'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_ENABLED', 'TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE',
             'TELEGRAM_RENEWAL_MESSAGE_TEMPLATE', 'DAYS_TO_NOTIFY_EXPIRATION', 'APP_BASE_URL',
-            'TAUTULLI_URL', 'TAUTULLI_API_KEY',
             'EFI_CLIENT_ID', 'EFI_CLIENT_SECRET', 'EFI_CERTIFICATE', 'EFI_SANDBOX', 'EFI_PIX_KEY',
             'EFI_USE_MTLS', 'EFI_WEBHOOK_HMAC_SECRET',
             'MERCADOPAGO_ACCESS_TOKEN', 'RENEWAL_PRICE', 'EFI_ENABLED', 'MERCADOPAGO_ENABLED',
@@ -267,7 +268,7 @@ def api_settings():
         # Recarrega credenciais dos gestores independentes
         efi_manager.reload_credentials()
         mercado_pago_manager.reload_credentials()
-        tautulli_manager.reload_credentials()
+        # tautulli_manager.reload_credentials() - Removido
         
         if hasattr(overseerr_manager, 'reload_credentials'):
             overseerr_manager.reload_credentials()
@@ -315,9 +316,10 @@ def api_settings():
     # --- GET SETTINGS (Com Ocultação de Chaves Sensíveis) ---
     config_to_send = load_or_create_config()
 
+    # Removido 'TAUTULLI_API_KEY'
     sensitive_keys = [
         'SECRET_KEY', 'PLEX_TOKEN', 'INTERNAL_TRIGGER_KEY',
-        'TELEGRAM_BOT_TOKEN', 'TAUTULLI_API_KEY', 'EFI_CLIENT_SECRET',
+        'TELEGRAM_BOT_TOKEN', 'EFI_CLIENT_SECRET',
         'MERCADOPAGO_ACCESS_TOKEN', 'BPIX_AUTH_TOKEN', 'OVERSEERR_API_KEY'
     ]
 
@@ -393,7 +395,7 @@ def save_setup():
     config['IS_CONFIGURED'] = True
     save_app_config(config)
     
-    tautulli_manager.reload_credentials()
+    # Removido tautulli_manager.reload_credentials()
     efi_manager.reload_credentials() 
     
     if hasattr(overseerr_manager, 'reload_credentials'):
@@ -418,28 +420,7 @@ def save_setup():
     save_app_config(config)
     return jsonify({"success": False, "message": _("Configuração salva, mas falha ao conectar: %(message)s", message=message)})
 
-@system_api_bp.route('/test/tautulli-connection', methods=['POST'])
-def test_tautulli_connection():
-    if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
-        return jsonify({'success': False, 'message': _('Acesso não autorizado.')}), 403
-
-    config = load_or_create_config()
-    data = request.get_json()
-    url = data.get('url')
-    api_key = data.get('api_key')
-
-    if not url:
-        return jsonify({'success': False, 'message': _('URL é obrigatória.')}), 400
-
-    is_placeholder = all(char == '*' for char in api_key) if api_key else False
-    if is_placeholder:
-        api_key = config.get('TAUTULLI_API_KEY')
-        logger.info("Chave de API do Tautulli recebida como placeholder. A usar a chave guardada na configuração para o teste.")
-
-    if not api_key:
-        return jsonify({'success': False, 'message': _('Chave da API é obrigatória.')}), 400
-
-    return jsonify(tautulli_manager.test_connection(url, api_key))
+# A ROTA DE TESTE DO TAUTULLI FOI REMOVIDA DAQUI COMPLETAMENTE
 
 @system_api_bp.route('/test/overseerr-connection', methods=['POST'])
 def test_overseerr_connection():
