@@ -1,5 +1,7 @@
 # app/extensions.py
 
+# app/extensions.py
+
 from flask_login import LoginManager, AnonymousUserMixin
 from flask_babel import Babel
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -42,7 +44,6 @@ limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
 # Os 'managers' dos serviços são inicializados como None
 data_manager = None
 plex_manager = None
-tautulli_manager = None
 stream_manager = None 
 notifier_manager = None
 efi_manager = None
