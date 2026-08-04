@@ -6,15 +6,10 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 from flask_babel import gettext as _
 
-# Removido o tautulli_manager das importações, usamos apenas o plex_manager agora
 from ...extensions import plex_manager, data_manager
 
 logger = logging.getLogger(__name__)
 stats_api_bp = Blueprint('stats_api', __name__)
-
-def _obfuscate_username(username):
-    if len(username) <= 2: return username
-    return f"{username[0]}{'*' * (len(username) - 2)}{username[-1]}"
 
 @stats_api_bp.route('/')
 @login_required
@@ -22,7 +17,7 @@ def get_statistics_data():
     days = request.args.get('days', 7, type=int)
     
     plex_users = plex_manager.get_all_plex_users() or []
-    # FIX: Converte o ID explicitamente para STRING para combinar com o histórico
+    # Converte o ID explicitamente para STRING para combinar com o histórico
     plex_users_info = {str(u['id']): u['thumb'] for u in plex_users}
     
     # Busca os dados diretamente do Plex via plex_manager
@@ -35,31 +30,38 @@ def get_statistics_data():
     plex_user_ids = {str(u['id']) for u in plex_users}
     all_user_ids = list(api_user_ids.union(plex_user_ids))
 
+    # Pega todos os perfis do banco de dados 
     all_profiles = data_manager.get_user_profiles_by_id(all_user_ids)
     
     processed_stats = []
     for user_stat in stats_data.get("stats", []):
-        user_id = str(user_stat["user_id"])
-        profile = all_profiles.get(user_id, {})
+        user_id_str = str(user_stat["user_id"])
+        user_id_int = int(user_id_str) if user_id_str.isdigit() else None
         
-        # FIX: Se o Plex não fornecer o username (bug da API deles), pegamos da DB local
+        # Busca o perfil de forma robusta lidando com chaves Int ou String
+        profile = all_profiles.get(user_id_str) or all_profiles.get(user_id_int) or {}
+        
+        # Se o Plex não fornecer o username, pegamos da DB local
         if user_stat.get("username") in ["Unknown", "Desconhecido", "", None]:
-            user_stat["username"] = profile.get('username') or next((u['username'] for u in plex_users if str(u['id']) == user_id), "Desconhecido")
+            user_stat["username"] = profile.get('username') or next((u['username'] for u in plex_users if str(u['id']) == user_id_str), "Desconhecido")
 
-        # Verifica proteção de privacidade
-        is_private = profile.get('hide_from_leaderboard', False)
+        # Verifica proteção de privacidade com segurança (lida com string, boolean ou int)
+        is_private = profile.get('hide_from_leaderboard') in [True, 'true', 'True', 1, '1']
         user_stat["is_private"] = is_private
         user_stat["original_username"] = user_stat["username"]
 
-        if not current_user.is_admin() and is_private and str(current_user.id) != user_id:
-            user_stat["username"] = _obfuscate_username(user_stat["username"])
+        # SE FOR PRIVADO E QUEM ESTÁ A VER NÃO É O ADMIN NEM O PRÓPRIO UTILIZADOR
+        if not current_user.is_admin() and is_private and str(current_user.id) != user_id_str:
+            # Ofusca exatamente como pedido pelo utilizador
+            user_stat["username"] = "Usuário Anônimo"
+            # Esconde a foto de perfil
             user_stat["thumb"] = f"https://placehold.co/80x80/1F2937/E5E7EB?text=?"
 
-        # FIX: Injeta os apelidos/aliases que o JavaScript (antigo Tautulli) espera ler
+        # Injeta os apelidos/aliases que o JavaScript espera ler
         user_stat["total_plays"] = int(user_stat.get("total_plays", 0))
         user_stat["total_duration"] = int(user_stat.get("total_duration", 0))
-        user_stat["total_time"] = user_stat["total_duration"]  # JS antigo lê 'total_time'
-        user_stat["plays"] = user_stat["total_plays"]          # JS antigo lê 'plays'
+        user_stat["total_time"] = user_stat["total_duration"]
+        user_stat["plays"] = user_stat["total_plays"]
 
         processed_stats.append(user_stat)
     
@@ -73,7 +75,7 @@ def get_user_statistics(plex_user_id):
     Obtém as estatísticas detalhadas de um utilizador diretamente do Plex.
     """
     profile = data_manager.get_user_profile(plex_user_id)
-    is_private = profile.get('hide_from_leaderboard', False) if profile else False
+    is_private = profile.get('hide_from_leaderboard') in [True, 'true', 'True', 1, '1'] if profile else False
 
     if not is_private or current_user.is_admin() or str(current_user.id) == str(plex_user_id):
         days = request.args.get('days', 7, type=int)
