@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const state = {
         allUsersData: [],
         currentPage: 1,
-        observers: [], // Guarda os ResizeObservers para os poder destruir
+        observers: [],
         charts: {
             mainBar: null,
             activity: null,
@@ -69,40 +69,40 @@ document.addEventListener('DOMContentLoaded', () => {
             textColor: isDark ? '#E5E7EB' : '#1F2937',
             gridColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
             tooltipBg: isDark ? '#1F2937' : '#FFFFFF',
-            doughnutColors: ['#3B82F6', '#8B5CF6'] // Azul e Roxo
+            doughnutColors: ['#3B82F6', '#8B5CF6']
         };
     };
 
     const formatDuration = (totalSeconds) => {
-        if (!totalSeconds || isNaN(totalSeconds) || totalSeconds < 0) return '0s'; // FIX: Lida com dados inválidos
+        if (!totalSeconds || isNaN(totalSeconds) || totalSeconds < 0) return '0s';
         if (totalSeconds < 60) return `${Math.round(totalSeconds)}s`;
         const hours = Math.floor(totalSeconds / 3600);
         const minutes = Math.floor((totalSeconds % 3600) / 60);
         return hours === 0 ? `${minutes}m` : `${hours}h ${minutes}m`;
     };
 
-    const formatUnixToDateTime = (unixTimestamp) => {
-        if (!unixTimestamp) return i18n.notAvailable || 'N/A';
-        // Multiplica por 1000 se o servidor enviou em segundos (Plex/Python)
-        const date = new Date(unixTimestamp * 1000); 
+    const formatUnixToDateTime = (timestamp) => {
+        if (!timestamp) return i18n.notAvailable || 'N/A';
+        let date;
+        // Lida tanto com ISO strings (2025-01-01T...) como com UNIX timestamp (1704067200)
+        if (typeof timestamp === 'string' && isNaN(timestamp)) {
+             date = new Date(timestamp);
+        } else {
+             date = new Date(timestamp * 1000);
+        }
         if (isNaN(date.getTime())) return 'Data Inválida';
-        
-        // Formata para DD/MM/YYYY - HH:MM usando propriedades nativas do JS
         const pad = (n) => n.toString().padStart(2, '0');
         return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} - ${pad(date.getHours())}:${pad(date.getMinutes())}`;
     };
 
     const formatTimeAgo = (dateStringOrUnix) => {
         if (!dateStringOrUnix) return i18n.notAvailable || 'N/A';
-        
-        // Verifica se é um timestamp UNIX (número) ou uma string ISO 
         let dateObj;
         if (typeof dateStringOrUnix === 'number') {
             dateObj = new Date(dateStringOrUnix * 1000);
         } else {
             dateObj = new Date(dateStringOrUnix);
         }
-
         const seconds = Math.floor((new Date() - dateObj) / 1000);
         const intervals = [
             { label: i18n.yearsAgo, seconds: 31536000 },
@@ -146,13 +146,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const observer = new ResizeObserver(updateScrollButtons);
         observer.observe(container);
-        state.observers.push(observer); // Regista para eventual limpeza
+        state.observers.push(observer);
         
         updateScrollButtons();
     };
 
     // ==========================================
-    // RENDERIZADORES DE UI (ADMIN E USER)
+    // RENDERIZADORES DE UI
     // ==========================================
 
     const renderNewlyAdded = (media) => {
@@ -168,10 +168,16 @@ document.addEventListener('DOMContentLoaded', () => {
             let title = item.title;
             let subtitle = item.year || '';
 
-            if (item.media_type === 'episode' || item.type === 'episode') {
-                title = item.grandparent_title || item.show_title || item.title;
-                if (item.parent_media_index > 0 && item.media_index > 0) {
-                    subtitle = `S${String(item.parent_media_index).padStart(2, '0')} · E${String(item.media_index).padStart(2, '0')}`;
+            let s = item.parent_media_index || item.parentIndex || item.season;
+            let e = item.media_index || item.index || item.episode;
+            let isEpisode = item.media_type === 'episode' || item.type === 'episode' || s !== undefined || e !== undefined;
+
+            if (isEpisode) {
+                title = item.grandparent_title || item.grandparentTitle || item.show_title || item.title;
+                if (s !== undefined && e !== undefined && s !== null && e !== null) {
+                    subtitle = `S${String(s).padStart(2, '0')} · E${String(e).padStart(2, '0')} - ${item.title}`;
+                } else if (e !== undefined && e !== null) {
+                    subtitle = `E${String(e).padStart(2, '0')} - ${item.title}`;
                 } else {
                     subtitle = item.title;
                 }
@@ -189,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                     <p class="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-2 truncate" title="${title}">${title}</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate">${subtitle}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate" title="${subtitle}">${subtitle}</p>
                 </div>
             `;
         }).join('');
@@ -228,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
         dom.podiumContainer.innerHTML = podiumData.map(item => `
             <div class="flex flex-col items-center transition-transform duration-300 ease-in-out hover:scale-105 w-1/3 max-w-[220px] cursor-pointer ${item.order}" data-username="${item.user.original_username || item.user.username}" data-plex-user-id="${item.user.user_id}">
-                <img src="${item.user.thumb || 'https://placehold.co/80x80/1F2937/E5E7EB?text=?'}" onerror="this.onerror=null;this.src='https://placehold.co/80x80/1F2937/E5E7EB?text=U'" class="w-20 h-20 object-cover rounded-full border-4 border-white dark:border-gray-800 -mb-10 z-10" alt="Avatar">
+                <img src="${item.user.thumb || 'https://placehold.co/80x80/1F2937/E5E7EB?text=U'}" onerror="this.onerror=null;this.src='https://placehold.co/80x80/1F2937/E5E7EB?text=U'" class="w-20 h-20 object-cover rounded-full border-4 border-white dark:border-gray-800 -mb-10 z-10" alt="Avatar">
                 <div class="w-full rounded-t-lg flex flex-col justify-end items-center p-2 pb-4 text-white shadow-lg" style="height: ${item.height}; background: ${item.gradient};">
                     <div class="pt-10 text-center">
                         <p class="font-bold text-lg truncate">${item.medal} ${item.user.username}</p>
@@ -260,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 dark:text-gray-400">${rank}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     <div class="flex items-center">
-                        <img src="${user.thumb || 'https://placehold.co/40x40/1F2937/E5E7EB?text=?'}" onerror="this.onerror=null;this.src='https://placehold.co/40x40/1F2937/E5E7EB?text=U'" class="w-10 h-10 object-cover rounded-full mr-4" alt="Avatar">
+                        <img src="${user.thumb || 'https://placehold.co/40x40/1F2937/E5E7EB?text=U'}" onerror="this.onerror=null;this.src='https://placehold.co/40x40/1F2937/E5E7EB?text=U'" class="w-10 h-10 object-cover rounded-full mr-4" alt="Avatar">
                         <span class="font-semibold">${user.username}</span>
                     </div>
                 </td>
@@ -279,10 +285,6 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.paginationControls.querySelector('#prevPage').onclick = () => { if (state.currentPage > 1) { state.currentPage--; renderUsersTable(); }};
         dom.paginationControls.querySelector('#nextPage').onclick = () => { if (state.currentPage < totalPages) { state.currentPage++; renderUsersTable(); }};
     };
-
-    // ==========================================
-    // RENDERIZADORES DE GRÁFICOS
-    // ==========================================
 
     const renderMainChart = (stats) => {
         if (!dom.mainBarChartCanvas) return;
@@ -360,44 +362,60 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // ==========================================
-    // RENDERIZADOR DE ESTATÍSTICAS PESSOAIS (COMPLETO)
+    // RENDERIZADOR DE ESTATÍSTICAS PESSOAIS
     // ==========================================
 
     const renderUserAnalysis = async (userId, username, days, containerElement) => {
         try {
             const url = urls.userStats.replace('/0', `/${userId}`);
             const data = await fetchAPI(`${url}?days=${days}`);
-            // A API envia o dicionário de dados já no formato esperado 
-            // ("stats" e "recent_history" estão lá, mas tentamos lidar com qualquer caso)
             const details = data.details || data; 
             
             const isOwnerViewing = username === currentUser.username;
             const isAdminViewing = currentUser.role === 'admin';
             
-            // Renderização de Histórico Recente (Agora Lê "recent_history" ou "recent")
             const historyList = details.recent_history || details.recent || [];
             let recentHtml = `<p class="text-gray-500 dark:text-gray-400 text-center w-full">${i18n.noRecentActivity || 'Sem Atividade'}</p>`;
             
             if (historyList.length > 0) {
                 recentHtml = historyList.map(item => {
-                    const isMovie = item.type === 'movie' || item.media_type === 'movie';
-                    const showTitle = item.show_title || item.grandparent_title || item.series;
+                    const showTitle = item.show_title || item.grandparent_title || item.grandparentTitle || item.series;
+                    let s = item.parent_media_index || item.parentIndex || item.season;
+                    let e = item.media_index || item.index || item.episode;
                     
-                    // Tratamento seguro do Título para Séries vs Filmes
+                    const isEpisode = item.type === 'episode' || item.media_type === 'episode' || s !== undefined || e !== undefined;
+                    
                     let displayTitle = item.title;
                     let displaySubtitle = "";
                     let fullTooltipTitle = item.title;
 
-                    if (!isMovie && showTitle) {
-                        displayTitle = showTitle;
-                        displaySubtitle = item.title; // Episódio
-                        fullTooltipTitle = `${showTitle} - ${item.title}`;
+                    // Lógica robusta para inserir sempre o S01 · E01 nas séries
+                    if (isEpisode) {
+                        displayTitle = showTitle || item.title; 
+                        
+                        let seString = "";
+                        if (s !== undefined && e !== undefined && s !== null && e !== null) {
+                            seString = `S${String(s).padStart(2, '0')} · E${String(e).padStart(2, '0')} - `;
+                        } else if (e !== undefined && e !== null) {
+                            seString = `E${String(e).padStart(2, '0')} - `;
+                        }
+                        
+                        if (showTitle) {
+                            displaySubtitle = `${seString}${item.title}`;
+                        } else {
+                            // Caso estranho onde o Plex envia S01E01 mas esconde o nome da Série
+                            displayTitle = `${seString}${item.title}`;
+                        }
+                        
+                        fullTooltipTitle = showTitle ? `${showTitle} - ${seString}${item.title}` : `${seString}${item.title}`;
                     } else if (item.full_title) {
                         fullTooltipTitle = item.full_title;
+                        displaySubtitle = item.year || "";
+                    } else if (item.year) {
+                        displaySubtitle = item.year;
                     }
 
-                    // Extração formatada e segura da Data e Hora
-                    const formattedDate = formatUnixToDateTime(item.date || item.last_played);
+                    const formattedDate = formatUnixToDateTime(item.date || item.last_played || item.viewed_at);
 
                     return `
                     <div class="text-center flex-shrink-0 w-32 group" title="${fullTooltipTitle}\n${i18n.viewedOn || 'Visto em:'} ${formattedDate}">
@@ -405,12 +423,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             <img src="${item.poster_url || item.thumb}" alt="Poster" class="w-32 h-48 object-cover rounded-lg" onerror="this.onerror=null;this.src='https://placehold.co/200x300/1F2937/E5E7EB?text=${i18n.noArt || 'X'}'">
                         </div>
                         <p class="text-xs font-bold text-gray-800 dark:text-gray-200 mt-2 truncate">${displayTitle}</p>
-                        ${displaySubtitle ? `<p class="text-[10px] text-gray-500 dark:text-gray-400 truncate">${displaySubtitle}</p>` : ''}
+                        ${displaySubtitle ? `<p class="text-[10px] text-gray-500 dark:text-gray-400 truncate" title="${displaySubtitle}">${displaySubtitle}</p>` : ''}
                     </div>
                 `}).join('');
             }
             
-            // Renderização de Conquistas
             let achievementsHtmlForContainer = '';
             if (details.achievements && details.achievements.length > 0) {
                 const achievementsTitle = isOwnerViewing ? (i18n.myAchievements || 'Conquistas') : (i18n.userAchievements || 'Conquistas de {username}').replace('{username}', `<strong>${username}</strong>`);
@@ -429,14 +446,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             }
 
-            // O JavaScript não consegue encontrar "total_time" isolado, então nós 
-            // puxamos da árvore "watch_time_stats", ou da fallback que criámos.
             let totalDuration = details.total_time || 0;
             if (totalDuration === 0 && details.watch_time_stats && details.watch_time_stats[0]) {
                  totalDuration = details.watch_time_stats[0].total_time || 0;
             }
             
-            // Conta Filmes/Episódios de forma resiliente
             let movieCount = details.movie_count || 0;
             let episodeCount = details.episode_count || 0;
             if(movieCount === 0 && episodeCount === 0 && details.stats) {
@@ -446,7 +460,6 @@ document.addEventListener('DOMContentLoaded', () => {
                  });
             }
 
-            // Container Base
             let chartsAndRecentHtml = '';
             if (isOwnerViewing || isAdminViewing) {
                 chartsAndRecentHtml = `
@@ -498,14 +511,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if(isOwnerViewing || isAdminViewing) {
                 const canvasActivity = containerElement.querySelector('#activityBarChart');
                 
-                // Extração Segura da Atividade Semanal
-                let weeklyData = [0,0,0,0,0,0,0]; // Domingo a Sábado
+                let weeklyData = [0,0,0,0,0,0,0];
                 if (details.activity_by_day) {
                     details.activity_by_day.forEach(entry => {
                         const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
                         const idx = dayNames.indexOf(entry.day);
                         if (idx > -1) {
-                            // Assume-se 40 min / item se não existir duração
                             weeklyData[idx] = ((entry.count * 40 * 60) / 3600).toFixed(2);
                         }
                     });
@@ -559,12 +570,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const closeModal = () => {
         if (!dom.userDetailsModal) return;
-        
-        // Destruição segura de gráficos
         if (state.charts.activity) state.charts.activity.destroy();
         if (state.charts.contentType) state.charts.contentType.destroy();
         
-        // Limpeza CORRIGIDA de Observers (Memory Leak fix)
         state.observers.forEach(obs => obs.disconnect());
         state.observers = [];
         
@@ -577,7 +585,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
 
     const mainFetch = async (days) => {
-        // 🛡️ CORREÇÃO DE LAYOUT: Forçar display Flex e classes de centralização Tailwind para o spinner
         dom.loadingIndicator.style.display = 'flex';
         dom.loadingIndicator.classList.add('justify-center', 'items-center', 'flex-col', 'w-full', 'py-12');
         
@@ -627,7 +634,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="flex items-center justify-between p-3 rounded-lg ${highlightClass}" ${clickableAttrs}>
                                 <div class="flex items-center gap-3">
                                     <span class="font-bold w-8 text-gray-500 dark:text-gray-400 text-lg">${index + 1}</span>
-                                    <img src="${user.thumb || 'https://placehold.co/40x40/1F2937/E5E7EB?text=?'}" onerror="this.onerror=null;this.src='https://placehold.co/40x40/1F2937/E5E7EB?text=U'" class="w-10 h-10 object-cover rounded-full" alt="Avatar">
+                                    <img src="${user.thumb || 'https://placehold.co/40x40/1F2937/E5E7EB?text=U'}" onerror="this.onerror=null;this.src='https://placehold.co/40x40/1F2937/E5E7EB?text=U'" class="w-10 h-10 object-cover rounded-full" alt="Avatar">
                                     <span class="font-semibold">${user.username} ${isCurrentUser ? `(${i18n.you || 'Tu'})` : ''}</span>
                                 </div>
                                 <span class="font-mono text-sm">${formatDuration(user.total_duration)}</span>
@@ -642,7 +649,6 @@ document.addEventListener('DOMContentLoaded', () => {
             dom.errorContainer.classList.remove('hidden');
             dom.statsContainer.classList.add('hidden');
         } finally {
-            // Volta a esconder garantindo que não estraga outros layouts
             dom.loadingIndicator.style.display = 'none';
         }
     };
@@ -655,7 +661,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.body.addEventListener('click', (e) => { 
         const clickable = e.target.closest('[data-plex-user-id]'); 
-        if (clickable) {
+        // Impede que clique em nomes privados abra o Modal
+        if (clickable && clickable.dataset.username !== 'U*****O') {
             showUserDetailsModal(clickable.dataset.plexUserId, clickable.dataset.username, dom.daysFilter.value); 
         } 
     });
