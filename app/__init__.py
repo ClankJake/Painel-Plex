@@ -139,7 +139,7 @@ def create_app() -> Flask:
     # INICIALIZAÇÃO DE MANAGERS E SERVIÇOS
     # ==========================================
     from .services import (
-        DataManager, PlexManager, 
+        DataManager, TautulliManager, PlexManager, 
         NotifierManager, EfiManager, MercadoPagoManager,
         OverseerrManager, LinkShortener, BpixManager, StreamManager,
         PricingManager
@@ -147,6 +147,7 @@ def create_app() -> Flask:
 
     extensions.data_manager = DataManager()
     extensions.pricing_manager = PricingManager(data_manager=extensions.data_manager)
+    extensions.tautulli_manager = TautulliManager(data_manager=extensions.data_manager)
     extensions.link_shortener = LinkShortener()
     extensions.notifier_manager = NotifierManager(link_shortener_service=extensions.link_shortener, socketio_instance=extensions.socketio)
     extensions.efi_manager = EfiManager(data_manager=extensions.data_manager)
@@ -156,6 +157,7 @@ def create_app() -> Flask:
     
     extensions.plex_manager = PlexManager(
         data_manager=extensions.data_manager, 
+        tautulli_manager=extensions.tautulli_manager,
         notifier_manager=extensions.notifier_manager,
         overseerr_manager=extensions.overseerr_manager
     )

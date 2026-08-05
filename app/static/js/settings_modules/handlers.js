@@ -13,7 +13,10 @@ let pinCheckInterval = null;
 let authWindow = null;
 export let settingsData = { plex_url: null, plex_token: null };
 
+// --- HELPERS (Auxiliares Visuais) ---
 const getSpinner = (classes = "w-4 h-4 mr-2") => `<svg class="animate-spin inline ${classes}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+
+// --- HANDLERS PRINCIPAIS ---
 
 async function handleSaveSettings(e) {
     e.preventDefault();
@@ -44,6 +47,8 @@ async function handleSaveSettings(e) {
                     newConfig[key] = parseInt(el.value, 10) || 0;
                 } else if (field.type === 'password') {
                     const originalLength = parseInt(el.dataset.originalLength || '0', 10);
+                    // O backend envia '*' correspondente ao tamanho da senha. 
+                    // Se o usuário não alterou, não enviamos de volta para evitar sobrescrever a verdadeira senha.
                     const isPlaceholder = el.value === '*'.repeat(originalLength);
                     if (!isPlaceholder) {
                         newConfig[key] = el.value;
@@ -152,18 +157,21 @@ async function handlePlexAuth() {
         });
         const auth_url = `https://app.plex.tv/auth#?${authUrlParams.toString()}`;
         
+        // Abre o popup centralizado
         const width = 800;
         const height = 700;
         const left = (window.innerWidth / 2) - (width / 2);
         const top = (window.innerHeight / 2) - (height / 2);
         authWindow = window.open(auth_url, 'plexAuth', `width=${width},height=${height},top=${top},left=${left}`);
 
+        // Segurança: Limite de tempo de 5 minutos (100 verificações a cada 3s)
         let attempts = 0;
         const maxAttempts = 100;
 
         pinCheckInterval = setInterval(async () => {
             attempts++;
             
+            // Cancela se o utilizador fechar a janela manualmente ou se o tempo expirar
             if (!authWindow || authWindow.closed || attempts > maxAttempts) {
                 clearInterval(pinCheckInterval);
                 if (attempts > maxAttempts) {
@@ -190,6 +198,7 @@ async function handlePlexAuth() {
                     restoreButton();
                 }
             } catch (e) {
+                // Em caso de falha de rede temporária não matamos o interval, apenas logamos
                 console.warn(`Verificação do Plex Pin falhou na tentativa ${attempts}: ${e.message}`);
             }
         }, 3000);
@@ -200,6 +209,8 @@ async function handlePlexAuth() {
     }
 }
 
+// --- INICIALIZAÇÃO DE LISTENERS ---
+
 export function initializeEventListeners() {
     if (dom.form) dom.form.addEventListener('submit', handleSaveSettings);
     
@@ -207,7 +218,12 @@ export function initializeEventListeners() {
         dom.saveBulkTemplatesButton.addEventListener('click', handleSaveBulkTemplates);
     }
     
-    // Removido listener do Tautulli
+    if (dom.testTautulliButton) {
+        dom.testTautulliButton.addEventListener('click', () => handleTestConnection(dom.testTautulliButton, 'testTautulli', () => ({ 
+            url: document.getElementById('TAUTULLI_URL')?.value, 
+            api_key: document.getElementById('TAUTULLI_API_KEY')?.value 
+        })));
+    }
     
     if (dom.testOverseerrButton) {
         dom.testOverseerrButton.addEventListener('click', () => handleTestConnection(dom.testOverseerrButton, 'testOverseerr', () => ({ 
@@ -224,9 +240,11 @@ export function initializeEventListeners() {
     
     if (dom.generateHmacButton) {
         dom.generateHmacButton.addEventListener('click', () => {
+            // Gera um HASH hexadecimal seguro aleatório
             const randomString = Array.from(crypto.getRandomValues(new Uint8Array(20))).map(b => b.toString(16).padStart(2, '0')).join('');
             if(dom.hmacInput) {
                 dom.hmacInput.value = randomString;
+                // Animação de feedback para mostrar que gerou
                 dom.hmacInput.classList.add('ring-2', 'ring-green-500', 'bg-green-50', 'dark:bg-green-900/30');
                 setTimeout(() => dom.hmacInput.classList.remove('ring-2', 'ring-green-500', 'bg-green-50', 'dark:bg-green-900/30'), 500);
             }
@@ -240,6 +258,7 @@ export function initializeEventListeners() {
     document.querySelectorAll('.show-help-button').forEach(button => button.addEventListener('click', () => dom.helpModal?.classList.remove('hidden')));
     if (dom.closeHelpModalButton) dom.closeHelpModalButton.addEventListener('click', () => dom.helpModal?.classList.add('hidden'));
 
+    // Configuração da navegação por abas delegada à UI
     ui.setupTabNavigation(dom.mainTabs, dom.mainTabContent, '.tab-content');
     ui.setupTabNavigation(dom.paymentTabs, dom.paymentTabContent, '.sub-tab-content');
     ui.setupTabNavigation(dom.notificationTabs, dom.notificationTabContent, '.sub-tab-content');

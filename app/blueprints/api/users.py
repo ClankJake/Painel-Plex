@@ -143,9 +143,7 @@ def get_account_details():
             pass
 
     libraries_data = extensions.plex_manager.get_user_libraries(plex_user_id)
-    
-    # Delegado diretamente para o Plex Manager em vez do Tautulli!
-    watch_data = extensions.plex_manager.get_user_watch_details(plex_user_id=plex_user_id)
+    watch_data = extensions.tautulli_manager.get_user_watch_details(plex_user_id=plex_user_id, current_user=current_user)
 
     is_on_trial = False
     if trial_end_date_iso := profile.get('trial_end_date'):
@@ -163,7 +161,7 @@ def get_account_details():
         "join_date": join_date, 
         "screen_limit": _("%(num)d Tela(s)", num=profile.get('screen_limit', 0)) if profile.get('screen_limit', 0) > 0 else _("Ilimitado"),
         "libraries": libraries_data.get('libraries', []), 
-        "watch_stats": watch_data.get('stats', []),
+        "watch_stats": watch_data.get('details', {}),
         "expiration_info": expiration_info, 
         "is_blocked": is_blocked_info is not None, 
         "block_reason": is_blocked_info.get('block_reason') if is_blocked_info else None,
@@ -222,12 +220,7 @@ def get_account_requests():
 @users_api_bp.route('/account/devices')
 @login_required
 def get_account_devices():
-    try:
-        # Extrai os dispositivos usando o Histórico Real do Plex!
-        devices = extensions.plex_manager.get_user_devices(current_user.id)
-        return jsonify({"success": True, "devices": devices})
-    except Exception as e:
-        return jsonify({"success": False, "devices": [], "message": str(e)})
+    return jsonify(extensions.tautulli_manager.get_user_devices(int(current_user.id)))
 
 # ==========================================
 # ROTAS ADMIN (GERENCIAMENTO)

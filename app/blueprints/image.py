@@ -1,7 +1,5 @@
 # app/blueprints/image.py
 
-# app/blueprints/image.py
-
 import logging
 import requests
 import os
@@ -17,8 +15,8 @@ from typing import Tuple, Optional
 from flask import Blueprint, request, abort, send_from_directory, redirect
 from urllib.parse import urlparse, parse_qs
 
-# Importa os gestores para aceder às configurações e tokens de forma segura (Tautulli Removido)
-from ..extensions import plex_manager, limiter
+# Importa os gestores para aceder às configurações e tokens de forma segura
+from ..extensions import plex_manager, tautulli_manager, limiter
 
 logger = logging.getLogger(__name__)
 image_bp = Blueprint('image', __name__)
@@ -112,6 +110,17 @@ def build_final_url(source: str, image_path: str) -> Tuple[Optional[str], dict]:
     elif source == 'url':
         # FIX DE SEGURANÇA: Valida rigorosamente as URLs de avatares de terceiros
         final_url = validate_external_url(image_path)
+        
+    elif source == 'tautulli':
+        # Protege contra Tautulli não configurado/carregado no boot
+        if tautulli_manager and getattr(tautulli_manager, 'api_client', None) and tautulli_manager.api_client.is_configured:
+            parsed_path = urlparse(image_path)
+            query_params = parse_qs(parsed_path.query)
+            final_url = f"{tautulli_manager.api_client.base_url}/api/v2"
+            params['apikey'] = tautulli_manager.api_client.api_key
+            params['cmd'] = 'pms_image_proxy'
+            for key, values in query_params.items():
+                params[key] = values[0]
             
     return final_url, params
 

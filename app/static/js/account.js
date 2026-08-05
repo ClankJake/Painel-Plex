@@ -1,7 +1,11 @@
 import { fetchAPI, showToast, createModal } from './utils.js';
 
+// ==========================================
+// SEGURANÇA E UTILITÁRIOS
+// ==========================================
+
 /**
- * Sanitiza entradas do utilizador para prevenir XSS.
+ * Sanitiza entradas do utilizador para prevenir XSS (Cross-Site Scripting).
  */
 const sanitizeHTML = (str) => {
     if (!str) return '';
@@ -9,6 +13,10 @@ const sanitizeHTML = (str) => {
     temp.textContent = str;
     return temp.innerHTML;
 };
+
+// ==========================================
+// CONFIGURAÇÃO, ESTADO E CACHE DOM
+// ==========================================
 
 const state = {
     currentUser: null,
@@ -24,6 +32,7 @@ const state = {
 const dom = {};
 
 const initializeConfigAndDOM = () => {
+    // Cache de Elementos Principais
     Object.assign(dom, {
         loadingIndicator: document.getElementById('loadingIndicator'),
         container: document.getElementById('accountDetailsContainer'),
@@ -38,6 +47,7 @@ const initializeConfigAndDOM = () => {
         contentContainer: document.getElementById('account-tab-content')
     });
 
+    // Extração de URLs e Traduções injetados pelo backend no script tag
     const scriptTag = document.getElementById('account-script');
     if (scriptTag && scriptTag.dataset) {
         for (const [key, value] of Object.entries(scriptTag.dataset)) {
@@ -52,14 +62,18 @@ const initializeConfigAndDOM = () => {
     }
 };
 
+// ==========================================
+// FORMATAÇÃO E HELPERS DE UI
+// ==========================================
+
 const formatTimeAgo = (date) => {
     const seconds = Math.floor((new Date() - date) / 1000);
     const intervals = [
-        { label: state.i18n.yearsAgo || '{count} anos atrás', s: 31536000 },
-        { label: state.i18n.monthsAgo || '{count} meses atrás', s: 2592000 },
-        { label: state.i18n.daysAgo || '{count} dias atrás', s: 86400 },
-        { label: state.i18n.hoursAgo || '{count} horas atrás', s: 3600 },
-        { label: state.i18n.minutesAgo || '{count} min atrás', s: 60 }
+        { label: state.i18n.yearsAgo, s: 31536000 },
+        { label: state.i18n.monthsAgo, s: 2592000 },
+        { label: state.i18n.daysAgo, s: 86400 },
+        { label: state.i18n.hoursAgo, s: 3600 },
+        { label: state.i18n.minutesAgo, s: 60 }
     ];
     for (const int of intervals) {
         const count = seconds / int.s;
@@ -67,6 +81,10 @@ const formatTimeAgo = (date) => {
     }
     return state.i18n.justNow || 'agora mesmo';
 };
+
+// ==========================================
+// RENDERIZADORES DE COMPONENTES (UI)
+// ==========================================
 
 const renderStatusBanner = (data, expiration) => {
     if (!dom.statusBanner) return;
@@ -76,23 +94,23 @@ const renderStatusBanner = (data, expiration) => {
     if (data.is_blocked) {
         switch (data.block_reason) {
             case 'trial_expired':
-                bannerHtml = `<div class="bg-orange-100 dark:bg-orange-900/30 border-l-4 border-orange-500 text-orange-700 dark:text-orange-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.testEnded || 'Teste Finalizado'}</h3><p>${i18n.testEndedMessage || 'Seu teste acabou.'}</p></div>`;
+                bannerHtml = `<div class="bg-orange-100 dark:bg-orange-900/30 border-l-4 border-orange-500 text-orange-700 dark:text-orange-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.testEnded}</h3><p>${i18n.testEndedMessage}</p></div>`;
                 break;
             case 'expired':
-                bannerHtml = `<div class="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiredSignature || 'Assinatura Expirada'}</h3><p>${i18n.expiredSignatureMessage || 'Renove para voltar a assistir.'}</p></div>`;
+                bannerHtml = `<div class="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiredSignature}</h3><p>${i18n.expiredSignatureMessage}</p></div>`;
                 break;
             default: // Bloqueio manual
-                bannerHtml = `<div class="bg-red-800/80 border-l-4 border-red-400 text-white p-6 rounded-lg shadow-lg"><h3 class="font-bold text-xl mb-2">${i18n.accessBlocked || 'Acesso Bloqueado'}</h3><p>${i18n.accessBlockedMessage || 'A sua conta foi bloqueada temporariamente.'}</p><p class="mt-2">${i18n.accessBlockedContact || 'Contacte-nos.'}</p></div>`;
+                bannerHtml = `<div class="bg-red-800/80 border-l-4 border-red-400 text-white p-6 rounded-lg shadow-lg"><h3 class="font-bold text-xl mb-2">${i18n.accessBlocked}</h3><p>${i18n.accessBlockedMessage}</p><p class="mt-2">${i18n.accessBlockedContact}</p></div>`;
                 if (dom.accountContent) dom.accountContent.style.display = 'none';
                 break;
         }
     } else if (expiration.status === 'expired') {
-        bannerHtml = `<div class="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiredSignature || 'Assinatura Expirada'}</h3><p>${i18n.expiredSignatureMessage || 'Renove seu acesso.'}</p></div>`;
+        bannerHtml = `<div class="bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiredSignature}</h3><p>${i18n.expiredSignatureMessage}</p></div>`;
     } else if (expiration.status === 'expiring') {
         const expiringMessage = expiration.days_left === 0 
-            ? (i18n.expiresTodayMessage || 'Vence hoje: {date}').replace('{date}', `<strong>${expiration.date}</strong>`)
-            : (i18n.expiringAccessMessage || 'Vence em {days} dias').replace('{days}', `<strong>${expiration.days_left}</strong>`).replace('{date}', `<strong>${expiration.date}</strong>`);
-        bannerHtml = `<div class="bg-yellow-100 dark:bg-yellow-500/20 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiringAccess || 'Aviso de Expiração'}</h3><p>${expiringMessage}</p></div>`;
+            ? i18n.expiresTodayMessage.replace('{date}', `<strong>${expiration.date}</strong>`)
+            : i18n.expiringAccessMessage.replace('{days}', `<strong>${expiration.days_left}</strong>`).replace('{date}', `<strong>${expiration.date}</strong>`);
+        bannerHtml = `<div class="bg-yellow-100 dark:bg-yellow-500/20 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-300 p-4 rounded-lg shadow-md"><h3 class="font-bold">${i18n.expiringAccess}</h3><p>${expiringMessage}</p></div>`;
     }
 
     if (bannerHtml) {
@@ -112,7 +130,7 @@ const renderProfileBaseInfo = (data, expiration) => {
     
     const expContainer = document.getElementById('user-expiration-container');
     if (expiration.date && expContainer) {
-        expContainer.innerHTML = `${state.i18n.expiresOn || 'Vence a'} <span class="font-semibold">${expiration.date}</span>`;
+        expContainer.innerHTML = `${state.i18n.expiresOn} <span class="font-semibold">${expiration.date}</span>`;
         expContainer.classList.remove('hidden');
     }
 
@@ -120,7 +138,7 @@ const renderProfileBaseInfo = (data, expiration) => {
     if (libraryList) {
         libraryList.innerHTML = (data.libraries && data.libraries.length > 0)
             ? data.libraries.map(lib => `<span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800">${lib}</span>`).join(' ')
-            : `<p class="text-gray-500 dark:text-gray-400 text-sm">${state.i18n.noSharedLibrary || 'Sem bibliotecas'}</p>`;
+            : `<p class="text-gray-500 dark:text-gray-400 text-sm">${state.i18n.noSharedLibrary}</p>`;
     }
 };
 
@@ -129,7 +147,7 @@ const renderDeviceList = (devices) => {
     if (!container) return;
 
     if (!devices || devices.length === 0) {
-        container.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-4 text-lg bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 mt-2">${state.i18n.noDevicesFound || 'Não existem aparelhos no seu histórico recente.'}</p>`;
+        container.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-4">${state.i18n.noDevicesFound}</p>`;
         return;
     }
 
@@ -141,17 +159,17 @@ const renderDeviceList = (devices) => {
         const platformClass = platformMap.includes(platform) ? `platform-${platform}` : 'platform-default';
 
         return `
-            <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-600/50 hover:bg-white dark:hover:bg-gray-700 transition-colors">
+            <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-600/50">
                 <div class="flex items-center gap-4">
                     <div class="platform-icon ${platformClass} flex-shrink-0"></div>
                     <div>
-                        <p class="font-bold text-gray-800 dark:text-gray-100 text-sm md:text-base">${sanitizeHTML(device.player)}</p>
-                        <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">${sanitizeHTML(device.platform)}</p>
+                        <p class="font-semibold text-gray-800 dark:text-gray-200 text-sm">${device.player}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">${device.platform}</p>
                     </div>
                 </div>
-                <div class="text-right flex-shrink-0 bg-gray-200/50 dark:bg-gray-800/50 py-1 px-3 rounded-md border border-gray-200 dark:border-gray-700">
-                    <p class="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">${state.i18n.lastSeen || 'Visto'}</p>
-                    <p class="text-xs font-bold text-gray-700 dark:text-gray-200">${formatTimeAgo(lastSeen)}</p>
+                <div class="text-right flex-shrink-0">
+                    <p class="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">${state.i18n.lastSeen}</p>
+                    <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">${formatTimeAgo(lastSeen)}</p>
                 </div>
             </div>
         `;
@@ -163,7 +181,7 @@ const renderPaymentHistory = (payments) => {
     if (!container) return;
 
     if (!payments || payments.length === 0) {
-        container.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-4">${state.i18n.noPaymentsFound || 'Sem Histórico'}</p>`;
+        container.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-4">${state.i18n.noPaymentsFound}</p>`;
         return;
     }
 
@@ -172,10 +190,10 @@ const renderPaymentHistory = (payments) => {
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-800/80">
                     <tr>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${state.i18n.date || 'Data'}</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${state.i18n.description || 'Detalhes'}</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${state.i18n.value || 'Valor'}</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${state.i18n.status || 'Estado'}</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${state.i18n.date}</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${state.i18n.description}</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${state.i18n.value}</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">${state.i18n.status}</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -202,6 +220,10 @@ const renderPaymentHistory = (payments) => {
     `;
 };
 
+// ==========================================
+// LÓGICA DE PAGAMENTOS E PIX
+// ==========================================
+
 const setupPaymentSection = (prices, providers, canDowngrade) => {
     const paymentCard = document.getElementById('payment-card');
     if (!dom.paymentSection || !paymentCard) return;
@@ -213,14 +235,15 @@ const setupPaymentSection = (prices, providers, canDowngrade) => {
     }
 
     if (!prices || Object.keys(prices).length === 0) {
-        dom.paymentSection.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${state.i18n.noProvider || 'Sem Provedores'}</p>`;
+        dom.paymentSection.innerHTML = `<p class="text-gray-500 dark:text-gray-400">${state.i18n.noProvider}</p>`;
         return;
     }
 
+    // Gerar Planos
     let optionsHtml = '<div class="space-y-3">';
     Object.keys(prices).sort((a,b) => parseInt(a) - parseInt(b)).forEach(screens => {
         const priceStr = parseFloat(prices[screens]).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const planText = screens === "0" ? "Plano Padrão" : `${screens} ${parseInt(screens) > 1 ? state.i18n.screenPlural || 'Telas' : state.i18n.screenSingular || 'Tela'}`;
+        const planText = screens === "0" ? "Plano Padrão" : `${screens} ${parseInt(screens) > 1 ? state.i18n.screenPlural : state.i18n.screenSingular}`;
 
         optionsHtml += `
             <label class="flex items-center justify-between p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 has-[:checked]:border-yellow-500 has-[:checked]:bg-yellow-50/30 dark:has-[:checked]:bg-yellow-900/10 has-[:checked]:ring-1 has-[:checked]:ring-yellow-500 cursor-pointer transition-all hover:border-yellow-400">
@@ -238,6 +261,7 @@ const setupPaymentSection = (prices, providers, canDowngrade) => {
         optionsHtml += `<div class="mt-4 p-3 text-sm text-blue-800 bg-blue-50 rounded-lg dark:bg-blue-900/20 dark:text-blue-300 border border-blue-100 dark:border-blue-800/50 flex gap-2 items-start"><span class="text-lg leading-none">ℹ️</span> <span>A troca para um plano com menos telas só fica disponível perto da data de vencimento.</span></div>`;
     }
 
+    // Injetar HTML Final
     dom.paymentSection.innerHTML = `
         ${optionsHtml}
         <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
@@ -248,7 +272,7 @@ const setupPaymentSection = (prices, providers, canDowngrade) => {
             </div>
             <div id="coupon-status" class="text-xs font-medium mt-2 min-h-[20px]"></div>
         </div>
-        <button id="initiatePixButton" class="w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white text-lg py-3 shadow-lg shadow-green-500/30 disabled:opacity-50 disabled:shadow-none transition-all" disabled>${state.i18n.generatePix || 'Gerar PIX'}</button>
+        <button id="initiatePixButton" class="w-full mt-6 btn bg-green-600 hover:bg-green-500 text-white text-lg py-3 shadow-lg shadow-green-500/30 disabled:opacity-50 disabled:shadow-none transition-all" disabled>${state.i18n.generatePix}</button>
     `;
 
     bindPaymentEvents(providers);
@@ -260,19 +284,22 @@ const bindPaymentEvents = (providers) => {
     const couponInput = document.getElementById('couponCodeInput');
     const statusDiv = document.getElementById('coupon-status');
 
+    // Mudança de plano selecionado
     document.querySelectorAll('input[name="payment-plan"]').forEach(radio => {
         radio.addEventListener('change', () => {
             const price = parseFloat(radio.dataset.price).toFixed(2).replace('.', ',');
-            pixBtn.textContent = (state.i18n.generatePixForPrice || 'Pagar R$ {price}').replace('{price}', price);
+            pixBtn.textContent = state.i18n.generatePixForPrice.replace('{price}', price);
             pixBtn.disabled = false;
             applyCouponBtn.disabled = false;
             
+            // Reset Cupão
             statusDiv.innerHTML = '';
             couponInput.value = '';
             state.validatedCouponCode = null;
         });
     });
 
+    // Validar Cupão
     applyCouponBtn?.addEventListener('click', async () => {
         const code = sanitizeHTML(couponInput.value.trim().toUpperCase());
         const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
@@ -288,12 +315,12 @@ const bindPaymentEvents = (providers) => {
                 state.validatedCouponCode = code;
                 
                 if (result.discounted_price <= 0) {
-                    pixBtn.textContent = state.i18n.activateFreeSubscription || 'Ativar Acesso Grátis';
+                    pixBtn.textContent = state.i18n.activateFreeSubscription;
                     pixBtn.classList.replace('bg-green-600', 'bg-yellow-500');
                     pixBtn.classList.replace('hover:bg-green-500', 'hover:bg-yellow-400');
                     pixBtn.classList.replace('shadow-green-500/30', 'shadow-yellow-500/30');
                 } else {
-                    pixBtn.textContent = (state.i18n.generatePixForPrice || 'Pagar R$ {price}').replace('{price}', result.discounted_price.toFixed(2).replace('.', ','));
+                    pixBtn.textContent = state.i18n.generatePixForPrice.replace('{price}', result.discounted_price.toFixed(2).replace('.', ','));
                 }
             } else {
                 throw new Error(result.message);
@@ -301,13 +328,14 @@ const bindPaymentEvents = (providers) => {
         } catch (error) {
             statusDiv.innerHTML = `<span class="text-red-500 flex items-center gap-1">❌ ${error.message}</span>`;
             state.validatedCouponCode = null;
-            pixBtn.textContent = (state.i18n.generatePixForPrice || 'Pagar R$ {price}').replace('{price}', parseFloat(selectedPlan.dataset.price).toFixed(2).replace('.', ','));
+            pixBtn.textContent = state.i18n.generatePixForPrice.replace('{price}', parseFloat(selectedPlan.dataset.price).toFixed(2).replace('.', ','));
         } finally {
             applyCouponBtn.disabled = false;
             applyCouponBtn.textContent = 'Aplicar';
         }
     });
 
+    // Iniciar Pagamento
     pixBtn?.addEventListener('click', () => {
         const plan = document.querySelector('input[name="payment-plan"]:checked');
         if (plan) handlePixGenerationRequest({ screens: plan.value, coupon_code: state.validatedCouponCode }, providers);
@@ -316,10 +344,10 @@ const bindPaymentEvents = (providers) => {
 
 const handlePixGenerationRequest = async (payload, providers) => {
     const activeProviders = Object.keys(providers).filter(p => providers[p]).map(p => p.toUpperCase());
-    const isFree = document.getElementById('initiatePixButton').textContent === (state.i18n.activateFreeSubscription || 'Ativar Acesso Grátis');
+    const isFree = document.getElementById('initiatePixButton').textContent === state.i18n.activateFreeSubscription;
 
     if (isFree) {
-        await executePixGeneration(payload); 
+        await executePixGeneration(payload); // Ignora provedores se for gratuito
         return;
     }
 
@@ -327,13 +355,14 @@ const handlePixGenerationRequest = async (payload, providers) => {
         payload.provider = activeProviders[0];
         await executePixGeneration(payload);
     } else if (activeProviders.length > 1) {
+        // Modal de escolha se houver +1 gateway configurado
         const buttonsHtml = activeProviders.map(p => {
             const colors = p === 'MERCADOPAGO' ? 'bg-blue-600 hover:bg-blue-500' : p === 'BPIX' ? 'bg-purple-600 hover:bg-purple-500' : 'bg-green-600 hover:bg-green-500';
-            const name = p === 'MERCADOPAGO' ? (state.i18n.payWithMp || 'Mercado Pago') : p === 'BPIX' ? 'Pagar com BPIX' : (state.i18n.payWithEfi || 'Efí');
+            const name = p === 'MERCADOPAGO' ? state.i18n.payWithMp : p === 'BPIX' ? 'Pagar com BPIX' : state.i18n.payWithEfi;
             return `<button data-provider="${p}" class="btn ${colors} text-white w-full mb-2 shadow-md">${name}</button>`;
         }).join('');
 
-        const modal = createModal('providerChoiceModal', state.i18n.chooseProvider || 'Escolha a Forma', `<div class="pt-2">${buttonsHtml}</div>`, `<button id="cancel-provider" class="btn bg-gray-200 dark:bg-gray-700 w-full mt-2">${state.i18n.cancel || 'Cancelar'}</button>`);
+        const modal = createModal('providerChoiceModal', state.i18n.chooseProvider, `<div class="pt-2">${buttonsHtml}</div>`, `<button id="cancel-provider" class="btn bg-gray-200 dark:bg-gray-700 w-full mt-2">${state.i18n.cancel}</button>`);
         
         if (modal) {
             modal.querySelectorAll('button[data-provider]').forEach(btn => {
@@ -346,7 +375,7 @@ const handlePixGenerationRequest = async (payload, providers) => {
             modal.querySelector('#cancel-provider').onclick = () => modal.classList.add('hidden');
         }
     } else {
-        showToast(state.i18n.noProvider || 'Sem provedor', "error");
+        showToast(state.i18n.noProvider, "error");
     }
 };
 
@@ -389,13 +418,13 @@ const startPaymentPolling = (txid) => {
             const result = await fetchAPI(`/api/payments/status/${txid}`);
             if (result.success && result.status === 'CONCLUIDA') {
                 clearInterval(state.pollingIntervalId);
-                showToast(state.i18n.paymentConfirmed || 'Pagamento recebido', "success");
+                showToast(state.i18n.paymentConfirmed, "success");
                 
                 if (pollingStatus) {
                     pollingStatus.innerHTML = `
                         <div class="flex flex-col items-center justify-center p-4 bg-green-50 dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
                             <svg class="w-12 h-12 text-green-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <span class="text-green-700 dark:text-green-400 font-bold text-lg">${state.i18n.pollingConfirmed || 'Tudo Certo!'}</span>
+                            <span class="text-green-700 dark:text-green-400 font-bold text-lg">${state.i18n.pollingConfirmed}</span>
                         </div>`;
                 }
                 setTimeout(() => window.location.reload(), 3000);
@@ -403,8 +432,12 @@ const startPaymentPolling = (txid) => {
         } catch (error) {
             console.warn(`Polling silencioso falhou:`, error.message);
         }
-    }, 4000); 
+    }, 4000); // 4 segundos é ideal para APIs de pagamento
 };
+
+// ==========================================
+// FORMULÁRIO DE CONTACTOS
+// ==========================================
 
 const initContactForm = (details) => {
     if (!document.getElementById('contact-details-form')) return;
@@ -434,7 +467,7 @@ const initContactForm = (details) => {
             phoneInput.value = fullPhone.substring(match.code.length);
         } else {
             phoneInput.value = fullPhone.replace(/\D/g, '');
-            select.value = '+55';
+            select.value = '+55'; // Default fallback
         }
     }
 
@@ -442,7 +475,7 @@ const initContactForm = (details) => {
         const btn = e.target;
         const origText = btn.textContent;
         btn.disabled = true;
-        btn.textContent = state.i18n.saving || 'Gravando...';
+        btn.textContent = state.i18n.saving;
 
         try {
             const phone = document.getElementById('profilePhone').value.replace(/\D/g, '');
@@ -463,19 +496,26 @@ const initContactForm = (details) => {
     });
 };
 
+// ==========================================
+// HISTÓRICO E TABS DE NAVEGAÇÃO
+// ==========================================
+
 const initTabs = () => {
     if (!dom.tabContainer || !dom.contentContainer) return;
 
+    // Mostrar aba Requests apenas se permitido e não for admin
     if (state.currentUser && !state.currentUser.is_admin && state.currentUser.profile_details?.overseerr_access) {
         dom.tabContainer.querySelector('[data-tab="requests"]')?.classList.remove('hidden');
     }
 
-    // Nota: A Aba Histórico/Overview JÁ É PERMITIDA PARA O ADMIN AGORA
+    // Admins não veem Overview e Pagamento na sua própria conta
     if (!state.currentUser || state.currentUser.is_admin) {
-        ['payment'].forEach(t => {
+        ['overview', 'payment'].forEach(t => {
             const el = dom.tabContainer.querySelector(`[data-tab="${t}"]`);
             if(el) el.style.display = 'none';
         });
+        // Se a default estava oculta, muda para history
+        dom.tabContainer.querySelector('[data-tab="history"]')?.click();
     }
 
     dom.tabContainer.addEventListener('click', (e) => {
@@ -500,118 +540,65 @@ const fetchWatchHistory = async (page = 1, search = '') => {
     hc.innerHTML = `<div class="flex justify-center p-8"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500"></div></div>`;
     
     try {
-        const length = 15;
-        const data = await fetchAPI(`${state.urls.getWatchHistoryUrl}?page=${page}&length=${length}&search=${encodeURIComponent(search)}`);
-        if (!data.success) throw new Error(data.message || 'Erro ao carregar histórico.');
+        const data = await fetchAPI(`${state.urls.getWatchHistoryUrl}?page=${page}&search=${encodeURIComponent(search)}`);
+        if (!data.success) throw new Error(data.message);
 
-        const historyItems = data.data || [];
-        const totalRecords = data.total_records || 0;
-        const totalPages = Math.ceil(totalRecords / length) || 1;
-
-        if (historyItems.length === 0) {
-            hc.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 py-8 text-lg bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">${state.i18n.noHistoryFound || 'Não foi encontrado histórico.'}</p>`;
+        if (data.history.length === 0) {
+            hc.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400 py-8">${state.i18n.noHistoryFound}</p>`;
             pc.innerHTML = '';
             return;
         }
-
-        let tableRows = '';
-        
-        historyItems.forEach(item => {
-            let dateStr = item.viewed_at;
-            if (dateStr) {
-                const d = new Date(dateStr);
-                const day = d.getDate().toString().padStart(2, '0');
-                const month = (d.getMonth() + 1).toString().padStart(2, '0');
-                const year = d.getFullYear();
-                const hours = d.getHours().toString().padStart(2, '0');
-                const mins = d.getMinutes().toString().padStart(2, '0');
-                dateStr = `${day}/${month}/${year} - ${hours}:${mins}`;
-            } else {
-                dateStr = 'Desconhecido';
-            }
-
-            // Barra de Percentagem Visível
-            const percent = item.percent_complete !== undefined ? item.percent_complete : 100;
-            const progressColor = percent >= 90 ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.6)]';
-            const progressStr = `
-                <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 mt-1 overflow-hidden" title="${percent}% concluído">
-                    <div class="${progressColor} h-2.5 rounded-full" style="width: ${percent}%"></div>
-                </div>
-                <div class="text-center mt-1"><span class="text-[11px] font-bold text-gray-600 dark:text-gray-300">${percent}% Concluído</span></div>
-            `;
-
-            // Construção do novo layout Filme / Série com aspeto visual limpo e moderno
-            let mainTitle = item.title;
-            let subTitle = '';
-            
-            if (item.type === 'episode') {
-                mainTitle = item.grandparent_title || item.title;
-                const s = item.season ? String(item.season).padStart(2, '0') : '01';
-                const e = item.episode ? String(item.episode).padStart(2, '0') : '01';
-                subTitle = `S${s} · E${e} - ${item.title}`;
-            } else if (item.type === 'movie') {
-                mainTitle = item.title;
-                subTitle = item.year ? String(item.year) : 'Filme';
-            } else {
-                mainTitle = item.title;
-                subTitle = item.grandparent_title || 'Conteúdo';
-            }
-
-            const thumbSrc = item.thumb ? item.thumb : 'https://placehold.co/80x120/1F2937/E5E7EB?text=Sem+Capa';
-
-            tableRows += `
-            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
-                <td class="px-4 py-3 whitespace-nowrap">
-                    <div class="flex items-center gap-4">
-                        <img src="${thumbSrc}" class="w-12 h-16 object-cover rounded-md shadow-sm" alt="Capa" onerror="this.onerror=null;this.src='https://placehold.co/80x120/1F2937/E5E7EB?text=X'">
-                        <div>
-                            <div class="text-sm font-bold text-gray-900 dark:text-white">${sanitizeHTML(mainTitle)}</div>
-                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">${sanitizeHTML(subTitle)}</div>
-                        </div>
-                    </div>
-                </td>
-                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${dateStr}</td>
-                <td class="px-4 py-3 whitespace-nowrap text-sm font-semibold text-gray-700 dark:text-gray-200">${sanitizeHTML(item.player)}</td>
-                <td class="px-4 py-3 whitespace-nowrap text-sm font-mono w-36">${progressStr}</td>
-            </tr>
-            `;
-        });
 
         hc.innerHTML = `
             <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead class="bg-gray-50 dark:bg-gray-800/80">
                         <tr>
-                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Filme / Série</th>
-                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">${state.i18n.date || 'Data'}</th>
-                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">${state.i18n.player || 'Aparelho'}</th>
-                            <th class="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Progresso</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">${state.i18n.title}</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">${state.i18n.date}</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">${state.i18n.player}</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">${state.i18n.progress}</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                        ${tableRows}
+                        ${data.history.map(item => `
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <img src="${item.poster_url}" class="w-10 h-14 object-cover rounded shadow-sm mr-4" alt="Poster" onerror="this.src='https://placehold.co/80x120/1F2937/E5E7EB?text=NO+ART'">
+                                        <div>
+                                            <div class="text-sm font-bold text-gray-900 dark:text-white">${sanitizeHTML(item.title)}</div>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400">${sanitizeHTML(item.subtitle)}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${item.date}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${sanitizeHTML(item.player)}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm font-mono font-medium ${item.percent_complete === 100 ? 'text-green-500' : 'text-yellow-600'}">${item.percent_complete}%</td>
+                            </tr>
+                        `).join('')}
                     </tbody>
                 </table>
             </div>
         `;
 
-        const pageText = (state.i18n.pageOf || 'Pág {currentPage} / {totalPages}').replace('{currentPage}', page).replace('{totalPages}', totalPages);
         pc.innerHTML = `
-            <button id="hist-prev" class="btn bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-xs px-4 py-2 shadow disabled:opacity-50 transition-colors font-bold" ${page === 1 ? 'disabled' : ''}>${state.i18n.previous || 'Anterior'}</button>
-            <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">${pageText}</span>
-            <button id="hist-next" class="btn bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-xs px-4 py-2 shadow disabled:opacity-50 transition-colors font-bold" ${page === totalPages ? 'disabled' : ''}>${state.i18n.next || 'Próximo'}</button>
+            <button id="hist-prev" class="btn bg-gray-200 dark:bg-gray-700 text-xs px-3 py-1 disabled:opacity-50" ${data.pagination.current_page === 1 ? 'disabled' : ''}>Anterior</button>
+            <span class="text-sm text-gray-600 dark:text-gray-400">Pág ${data.pagination.current_page} de ${data.pagination.total_pages}</span>
+            <button id="hist-next" class="btn bg-gray-200 dark:bg-gray-700 text-xs px-3 py-1 disabled:opacity-50" ${data.pagination.current_page === data.pagination.total_pages ? 'disabled' : ''}>Próxima</button>
         `;
 
         const searchInput = document.getElementById('historySearchInput');
-        document.getElementById('hist-prev').onclick = () => fetchWatchHistory(page - 1, searchInput.value);
-        document.getElementById('hist-next').onclick = () => fetchWatchHistory(page + 1, searchInput.value);
+        document.getElementById('hist-prev').onclick = () => fetchWatchHistory(data.pagination.current_page - 1, searchInput.value);
+        document.getElementById('hist-next').onclick = () => fetchWatchHistory(data.pagination.current_page + 1, searchInput.value);
 
     } catch (error) {
-        hc.innerHTML = `<p class="text-center text-red-500 py-8 font-bold">❌ ${error.message}</p>`;
+        hc.innerHTML = `<p class="text-center text-red-500 py-8">❌ ${error.message}</p>`;
     }
 };
 
 const initGlobalEventListeners = () => {
+    // Busca do histórico (Debounce)
     const searchInput = document.getElementById('historySearchInput');
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
@@ -622,13 +609,15 @@ const initGlobalEventListeners = () => {
         });
     }
 
+    // Cópia de chave PIX
     document.getElementById('copy-pix-code')?.addEventListener('click', () => {
         const input = document.getElementById('pix-copy-paste');
         input.select();
         document.execCommand('copy');
-        showToast(state.i18n.codeCopied || 'Copiado', 'success');
+        showToast(state.i18n.codeCopied, 'success');
     });
 
+    // Toggle de Privacidade (Leaderboard)
     dom.privacyToggle?.addEventListener('change', async (e) => {
         const isHidden = e.target.checked;
         try {
@@ -636,15 +625,20 @@ const initGlobalEventListeners = () => {
             showToast('Privacidade atualizada com sucesso!', 'success');
         } catch (error) {
             showToast(error.message, 'error');
-            e.target.checked = !isHidden; 
+            e.target.checked = !isHidden; // Reverte visualmente
         }
     });
 };
+
+// ==========================================
+// INICIALIZAÇÃO PRINCIPAL (ORQUESTRADOR)
+// ==========================================
 
 document.addEventListener('DOMContentLoaded', async () => {
     initializeConfigAndDOM();
 
     try {
+        // Obtenção Paralela dos Dados Fundamentais
         const [accountData, paymentOptions] = await Promise.all([
             fetchAPI(state.urls.getAccountDetailsUrl),
             fetchAPI(state.urls.getPaymentOptionsUrl)
@@ -656,6 +650,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             profile_details: accountData.profile_details
         };
 
+        // Renderizações Sequenciais
         renderStatusBanner(accountData, accountData.expiration_info);
         renderProfileBaseInfo(accountData, accountData.expiration_info);
         
@@ -665,11 +660,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         initContactForm(accountData.profile_details);
 
+        // Fetch secundários e pesados não bloqueiam a UI primária
         fetchAPI(state.urls.getPaymentHistoryUrl).then(res => {
             if (res.success) renderPaymentHistory(res.payments);
         });
 
-        // Este fetch vai agora buscar o histórico real do Plex
         fetchAPI(state.urls.getAccountDevicesUrl).then(res => {
             if (res.success) renderDeviceList(res.devices);
         });
@@ -677,6 +672,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         initTabs();
         initGlobalEventListeners();
 
+        // Reveal Interface
         if (dom.loadingIndicator) dom.loadingIndicator.style.display = 'none';
         if (dom.container) dom.container.classList.remove('hidden');
 

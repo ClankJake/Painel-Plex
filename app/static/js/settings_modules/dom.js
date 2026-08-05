@@ -7,7 +7,7 @@ export const form = document.getElementById('settingsForm');
 export const saveButton = document.getElementById('saveButton');
 export const saveBulkTemplatesButton = document.getElementById('saveBulkTemplatesButton');
 export const logLevelSelector = document.getElementById('log_level_selector');
-// Botão testTautulli removido
+export const testTautulliButton = document.getElementById('testTautulliButton');
 export const testOverseerrButton = document.getElementById('testOverseerrButton');
 export const reauthPlexButton = document.getElementById('reauth-plex-button');
 export const serverSelectionContainer = document.getElementById('server-selection-container');
