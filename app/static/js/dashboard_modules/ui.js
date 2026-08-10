@@ -168,7 +168,9 @@ function _getStreamCardInnerHtml(s) {
     const sd = s.stream_details;
     
     let streamText = sd.is_transcoding ? `Transcode` : 'Direct Play';
-    if (sd.is_transcoding && typeof sd.transcode_progress === 'number') streamText += ` (${sd.transcode_progress}%)`;
+    if (sd.is_transcoding && typeof sd.transcode_progress === 'number') {
+        streamText += ` (${parseFloat(sd.transcode_progress).toFixed(1)}%)`;
+    }
     
     const placeholderImg = "https://placehold.co/150x225/1F2937/E5E7EB?text=Sem+Capa";
     const avatarPlaceholder = "https://placehold.co/24x24/1F2937/E5E7EB?text=U";
@@ -188,21 +190,21 @@ function _getStreamCardInnerHtml(s) {
             
             <div class="space-y-1 text-xs text-gray-500 dark:text-gray-400">
                 <p title="${s.player}"><strong>Dispositivo:</strong> <span class="truncate">${s.player}</span></p>
-                <p title="${streamText} (${sd.container})"><strong>Stream:</strong> <span class="truncate">${streamText} (${sd.container})</span></p>
-                <p title="${sd.video_decision} (${sd.video_codec} ${sd.video_resolution})"><strong>Video:</strong> <span class="truncate">${sd.video_decision} (${sd.video_codec} ${sd.video_resolution})</span></p>
-                <p title="${sd.audio_decision} (${sd.audio_codec})"><strong>Audio:</strong> <span class="truncate">${sd.audio_decision} (${sd.audio_codec})</span></p>
+                <p id="stream-tooltip-${s.session_key}" title="${streamText} (${sd.container})"><strong>Stream:</strong> <span id="stream-text-${s.session_key}" class="truncate">${streamText} (${sd.container})</span></p>
+                <p id="video-tooltip-${s.session_key}" title="${sd.video_decision} (${sd.video_codec} ${sd.video_resolution})"><strong>Video:</strong> <span id="video-text-${s.session_key}" class="truncate">${sd.video_decision} (${sd.video_codec} ${sd.video_resolution})</span></p>
+                <p id="audio-tooltip-${s.session_key}" title="${sd.audio_decision} (${sd.audio_codec})"><strong>Audio:</strong> <span id="audio-text-${s.session_key}" class="truncate">${sd.audio_decision} (${sd.audio_codec})</span></p>
             </div>
             
             <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 pt-1">
-                <img src="${s.user_thumb || avatarPlaceholder}" onerror="this.src='${avatarPlaceholder}'" class="w-6 h-6 rounded-full">
+                <img src="${s.user_thumb || avatarPlaceholder}" onerror="this.src='${avatarPlaceholder}'" class="w-6 h-6 rounded-full shadow-sm">
                 <span class="font-semibold truncate">${s.user}</span>
                 <div class="ml-auto flex items-center gap-1">
                     <span id="time-${s.session_key}" class="text-xs font-mono whitespace-nowrap">${formatTime(s.view_offset)}/${formatTime(s.duration)}</span>
                     <span id="state-icon-${s.session_key}" class="${stConfig.color}">${stConfig.icon}</span>
                 </div>
             </div>
-            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                <div id="progress-${s.session_key}" class="bg-yellow-400 h-1.5 rounded-full" style="width: ${s.progress}%"></div>
+            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                <div id="progress-${s.session_key}" class="bg-yellow-400 h-1.5 rounded-full transition-[width] duration-1000 ease-linear" style="width: ${s.progress || 0}%"></div>
             </div>
         </div>
     `;
@@ -259,13 +261,53 @@ export function renderActiveStreamsDashboard(sessions) {
                 dom.activeStreamsContainer.appendChild(card);
                 card.innerHTML = _getStreamCardInnerHtml(s);
             } else {
-                // Se o cartão já existe, atualizamos apenas os metadados (como bitrate) sem refazer o HTML inteiro
-                // Atualizamos o ícone de estado visual
+                // Se o cartão já existe, atualizamos apenas os metadados (estado, transcoder, áudio, vídeo) sem refazer o HTML inteiro
+                
+                // 1. Atualizamos o ícone de estado visual
                 const stConfig = _getStreamStateConfig(s.state);
                 const iconSpan = document.getElementById(`state-icon-${s.session_key}`);
                 if (iconSpan) {
                     iconSpan.className = stConfig.color;
                     iconSpan.innerHTML = stConfig.icon;
+                }
+
+                // 2. Atualizamos a percentagem do Transcoder
+                const streamTextSpan = document.getElementById(`stream-text-${s.session_key}`);
+                const streamTooltip = document.getElementById(`stream-tooltip-${s.session_key}`);
+                const sd = s.stream_details;
+                
+                if (streamTextSpan && sd) {
+                    let streamText = sd.is_transcoding ? 'Transcode' : 'Direct Play';
+                    if (sd.is_transcoding && typeof sd.transcode_progress === 'number') {
+                        streamText += ` (${parseFloat(sd.transcode_progress).toFixed(1)}%)`;
+                    }
+                    const fullText = `${streamText} (${sd.container})`;
+                    
+                    if (streamTextSpan.textContent !== fullText) {
+                        streamTextSpan.textContent = fullText;
+                        if (streamTooltip) streamTooltip.title = fullText;
+                    }
+                }
+
+                // 3. Atualizamos detalhes de Vídeo e Áudio (caso o utilizador altere a qualidade a meio)
+                const videoTextSpan = document.getElementById(`video-text-${s.session_key}`);
+                const videoTooltip = document.getElementById(`video-tooltip-${s.session_key}`);
+                if (videoTextSpan && sd) {
+                    const videoText = `${sd.video_decision} (${sd.video_codec} ${sd.video_resolution})`;
+                    if (videoTextSpan.textContent !== videoText) {
+                        videoTextSpan.textContent = videoText;
+                        if (videoTooltip) videoTooltip.title = videoText;
+                    }
+                }
+
+                const audioTextSpan = document.getElementById(`audio-text-${s.session_key}`);
+                const audioTooltip = document.getElementById(`audio-tooltip-${s.session_key}`);
+                if (audioTextSpan && sd) {
+                    const audioText = `${sd.audio_decision} (${sd.audio_codec})`;
+                    if (audioTextSpan.textContent !== audioText) {
+                        audioTextSpan.textContent = audioText;
+                        if (audioTooltip) audioTooltip.title = audioText;
+                    }
                 }
             }
         });
@@ -306,7 +348,11 @@ export function renderActiveStreamsDashboard(sessions) {
                 
                 // Atualiza a tela para mostrar o tempo exato em que pausou
                 const timeEl = document.getElementById(`time-${s.session_key}`);
+                const progressEl = document.getElementById(`progress-${s.session_key}`);
                 if (timeEl) timeEl.textContent = `${formatTime(timer.view_offset)}/${formatTime(timer.duration)}`;
+                if (progressEl && timer.duration > 0) {
+                    progressEl.style.width = `${Math.min(100, (timer.view_offset / timer.duration) * 100)}%`;
+                }
                 
             } else if (s.state === 'playing' && !timer.interval) {
                 // Voltou a dar Play
