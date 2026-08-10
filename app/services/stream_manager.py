@@ -186,7 +186,9 @@ class StreamManager:
                 if user_id in blocked_users_info:
                     self._enforce_block_rules(user_id, username, user_session_list, profile, blocked_users_info[user_id], config)
                 else:
-                    self._enforce_screen_limits(user_id, username, user_session_list, profile, config)
+                    # Lógica Limpa de Contagem Unificada para Chromecast 
+                    unique_sessions = self._filter_duplicate_cast_sessions(user_session_list)
+                    self._enforce_screen_limits(user_id, username, unique_sessions, profile, config)
 
         except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout):
             pass
@@ -202,8 +204,14 @@ class StreamManager:
             
         try:
             sessions = self.conn.plex.sessions()
-            now_playing_sessions = []
             
+            # Limpa sessões fantasma visualmente para não aparecerem duplicadas na Dashboard
+            clean_sessions_list = []
+            user_session_groups = self._group_sessions_by_user(sessions)
+            for uid, s_list in user_session_groups.items():
+                clean_sessions_list.extend(self._filter_duplicate_cast_sessions(s_list))
+
+            now_playing_sessions = []
             all_users = self.user_manager.get_all_plex_users() or []
             id_to_username_map = {u['id']: u['username'] for u in all_users}
             user_thumb_map = {u['id']: u['thumb'] for u in all_users}
@@ -214,7 +222,7 @@ class StreamManager:
                     id_to_username_map[admin_id] = getattr(self.conn.account, 'username', 'Admin')
                     user_thumb_map[admin_id] = getattr(self.conn.account, 'thumb', None)
 
-            for session in sessions:
+            for session in clean_sessions_list:
                 view_offset = getattr(session, "viewOffset", 0)
                 duration = getattr(session, "duration", 0)
                 
@@ -224,7 +232,6 @@ class StreamManager:
 
                 media_type = getattr(session, "type", "unknown").lower()
                 
-                # 🛡️ CORREÇÃO: Deteção de Estado Imune a Maiúsculas e Casos Ocultos
                 raw_state = getattr(session, "state", "stopped")
                 players = getattr(session, "players", [])
                 
@@ -235,10 +242,8 @@ class StreamManager:
                 elif hasattr(session, "session") and session.session and hasattr(session.session, "state"):
                     raw_state = session.session.state
 
-                # O lower() previne que estados como "Paused" passem despercebidos
                 safe_state = str(raw_state).lower()
                 
-                # NOVO: Correspondência parcial imbatível (Lida com 'pause', 'paused', 'playing', etc.)
                 if 'pause' in safe_state:
                     state = 'paused'
                 elif 'play' in safe_state:
@@ -248,7 +253,6 @@ class StreamManager:
                 else:
                     state = 'stopped'
 
-                # Identidade e Foto do Utilizador
                 user_id = self._get_session_user_id(session)
                 username = id_to_username_map.get(user_id, getattr(session.user, 'title', 'Desconhecido') if hasattr(session, 'user') else 'Desconhecido')
                 
@@ -276,14 +280,12 @@ class StreamManager:
                     except Exception:
                         user_thumb = raw_user_thumb
 
-                # Plataforma, Dispositivo e CSS
                 client_name = getattr(players[0], "product", "") if players else (getattr(session.player, 'product', '') if hasattr(session, 'player') else '')
                 device_name = getattr(players[0], "title", "") if players else (getattr(session.player, 'title', '') if hasattr(session, 'player') else '')
                 
                 platform_css_class = self._get_platform_info(session) 
                 player_string = f"{client_name} - {device_name}" if client_name and device_name else client_name or device_name or "Desconhecido"
 
-                # LÓGICA DE CAPAS / ARTWORK
                 thumb_key = None
                 images_attr = getattr(session, "image", None)
                 if images_attr:
@@ -294,7 +296,6 @@ class StreamManager:
                             if thumb_key: break
                             
                 if not thumb_key:
-                    # CORREÇÃO: "thumb" (Póster do Filme) movido para antes de "art" (Plano de Fundo)
                     for attr in ("grandparentThumb", "parentThumb", "thumb", "thumbUrl", "art"):
                         val = getattr(session, attr, None)
                         if val:
@@ -317,7 +318,6 @@ class StreamManager:
                     except RuntimeError:
                         safe_thumb_url = f"/image/?source={b64_payload}"
 
-                # Duplo check de Transcoding Otimizado
                 is_transcoding = False
                 transcode_speed = None
                 video_decision = "Direct Play"
@@ -330,7 +330,6 @@ class StreamManager:
                 media_list = getattr(session, "media", [])
                 video_codec = audio_codec = container = video_resolution = "N/A"
                 
-                # Puxa informações básicas da Media em execução
                 if media_list:
                     media_obj = media_list[0]
                     video_codec = str(getattr(media_obj, "videoCodec", "N/A")).upper()
@@ -339,7 +338,6 @@ class StreamManager:
                     v_res = getattr(media_obj, "videoResolution", "N/A")
                     video_resolution = f"{v_res}p" if str(v_res).isdigit() else str(v_res).upper()
 
-                # Decisões de conversão e Speed extraídas na hora
                 if active_ts:
                     v_dec = getattr(active_ts, "videoDecision", None)
                     a_dec = getattr(active_ts, "audioDecision", None)
@@ -425,7 +423,7 @@ class StreamManager:
     def _enforce_block_rules(self, user_id, username, sessions, profile, block_info, config):
         from app.extensions import cache
         block_reason = block_info.get('block_reason', 'manual')
-        spam_timeout = config.get("STREAM_CHECK_INTERVAL_SECONDS", 15)
+        spam_timeout = max(config.get("STREAM_CHECK_INTERVAL_SECONDS", 15), 60) 
         
         valid_sessions = []
         for s in sessions:
@@ -435,8 +433,11 @@ class StreamManager:
 
         if not valid_sessions: return
 
-        logger.info(f"🚫 A terminar {len(valid_sessions)} stream(s) para o utilizador bloqueado: '{username}' (Motivo: {block_reason}).")
-        
+        log_cache_key = f"log_block_{username}_{block_reason}"
+        if not cache.get(log_cache_key):
+            logger.info(f"🚫 A terminar {len(valid_sessions)} stream(s) para o utilizador bloqueado: '{username}' (Motivo: {block_reason}).")
+            cache.set(log_cache_key, True, timeout=300)
+
         msg_template_key = {
             'expired': 'TERMINATION_MSG_BLOCKED_EXPIRED',
             'trial_expired': 'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED'
@@ -453,24 +454,30 @@ class StreamManager:
 
         for session in valid_sessions:
             session_key = getattr(session, 'sessionKey', None)
+            media_title = self._get_media_title(session)
+            
             if session_key:
                 cache.set(f"kill_spam_{session_key}", True, timeout=spam_timeout)
             else:
-                buffer_lock_key = f"buffer_spam_{username}_{self._get_media_title(session)}"
-                cache.set(buffer_lock_key, True, timeout=5)
+                buffer_lock_key = f"buffer_spam_{username}_{media_title}"
+                cache.set(buffer_lock_key, True, timeout=15)
 
-            self.data_manager.log_stream_termination(
-                plex_user_id=user_id, username=username,
-                media_title=self._get_media_title(session),
-                platform=self._get_platform_info(session), 
-                reason=f'blocked_{block_reason}'
-            )
+            db_log_key = f"db_log_block_{user_id}_{media_title}"
+            if not cache.get(db_log_key):
+                self.data_manager.log_stream_termination(
+                    plex_user_id=user_id, username=username,
+                    media_title=media_title,
+                    platform=self._get_platform_info(session), 
+                    reason=f'blocked_{block_reason}'
+                )
+                cache.set(db_log_key, True, timeout=120)
+
             self._terminate_session(session, reason_text)
 
     def _enforce_screen_limits(self, user_id, username, sessions, profile, config):
         from app.extensions import cache
         screen_limit = profile.get('screen_limit', 0)
-        spam_timeout = config.get("STREAM_CHECK_INTERVAL_SECONDS", 15)
+        spam_timeout = max(config.get("STREAM_CHECK_INTERVAL_SECONDS", 15), 60)
         
         active_sessions = []
         for s in sessions:
@@ -480,7 +487,11 @@ class StreamManager:
         
         if screen_limit > 0 and len(active_sessions) > screen_limit:
             excess_count = len(active_sessions) - screen_limit
-            logger.info(f"⚠️ O utilizador '{username}' excedeu o limite de {screen_limit} tela(s). A terminar {excess_count} sessão(ões).")
+            
+            log_cache_key = f"log_limit_{username}"
+            if not cache.get(log_cache_key):
+                logger.info(f"⚠️ O utilizador '{username}' excedeu o limite de {screen_limit} tela(s). A terminar {excess_count} sessão(ões).")
+                cache.set(log_cache_key, True, timeout=300) 
             
             sorted_sessions = sorted(active_sessions, key=lambda s: getattr(s, 'viewOffset', 0) or 0, reverse=True)
             
@@ -491,15 +502,21 @@ class StreamManager:
             for i in range(excess_count):
                 session_to_terminate = sorted_sessions[i]
                 session_key = getattr(session_to_terminate, 'sessionKey', None)
+                media_title = self._get_media_title(session_to_terminate)
+                
                 if session_key:
                     cache.set(f"kill_spam_{session_key}", True, timeout=spam_timeout)
                 
-                self.data_manager.log_stream_termination(
-                    plex_user_id=user_id, username=username,
-                    media_title=self._get_media_title(session_to_terminate),
-                    platform=self._get_platform_info(session_to_terminate),
-                    reason='limit_exceeded'
-                )
+                db_log_key = f"db_log_limit_{user_id}_{media_title}"
+                if not cache.get(db_log_key):
+                    self.data_manager.log_stream_termination(
+                        plex_user_id=user_id, username=username,
+                        media_title=media_title,
+                        platform=self._get_platform_info(session_to_terminate),
+                        reason='limit_exceeded'
+                    )
+                    cache.set(db_log_key, True, timeout=120)
+
                 self._terminate_session(session_to_terminate, reason_text)
 
     def _terminate_session(self, session, reason):
@@ -525,7 +542,7 @@ class StreamManager:
                 buffer_lock_key = f"buffer_wait_{user_title}_{self._get_media_title(session)}_{platform_info}"
                 
                 if not cache.get(buffer_lock_key):
-                    cache.set(buffer_lock_key, True, timeout=5)
+                    cache.set(buffer_lock_key, True, timeout=10)
                     self._schedule_delayed_check()
         
         except NotFound: pass
@@ -534,10 +551,43 @@ class StreamManager:
     # =========================================================================
     # NORMALIZAÇÕES E UTILITÁRIOS 
     # ==========================================
+    
+    def _filter_duplicate_cast_sessions(self, sessions):
+        """
+        Remove as sessões "fantasma" que ocorrem quando um cliente de telemóvel/browser
+        está atuando como comando de um Chromecast a reproduzir o mesmo conteúdo.
+        """
+        unique_sessions = []
+        active_casts_media = set()
+
+        # Primeiro, identifica todas as sessões que SÃO os Chromecasts reais
+        for s in sessions:
+            platform_info = self._get_platform_info(s)
+            if platform_info == 'chromecast':
+                media_title = self._get_media_title(s)
+                active_casts_media.add(media_title)
+                unique_sessions.append(s)
+
+        # Depois, adiciona as restantes sessões, a menos que sejam a origem do Cast
+        for s in sessions:
+            platform_info = self._get_platform_info(s)
+            
+            # Se já for um chromecast, pulamos porque já o adicionamos no loop acima
+            if platform_info == 'chromecast':
+                continue
+                
+            media_title = self._get_media_title(s)
+            
+            # Se o utilizador está reproduzindo o MESMO título num celular/browser 
+            # E há um Chromecast tocando o mesmo título, assumimos que é uma "Sessão Remota" dupla e ignoramos.
+            if media_title in active_casts_media:
+                continue
+                
+            unique_sessions.append(s)
+            
+        return unique_sessions
 
     def _get_platform_info(self, session):
-        """Extrai o nome da plataforma e devolve a classe normalizada para o CSS Frontend."""
-        
         # 1. Recupera as informações base (Platform e Product)
         platform = ""
         product = ""
@@ -556,15 +606,13 @@ class StreamManager:
         # Junta todas as strings para procurar de forma mais abrangente
         full_string = f"{platform} {product} {title}".lower()
 
-        # 2. Lógica de Deteção Prioritária (Navegadores Primeiro)
         if 'chrome' in full_string: return 'chrome'
         if 'safari' in full_string: return 'safari'
         if 'firefox' in full_string: return 'firefox'
         if 'edge' in full_string or 'microsoft edge' in full_string: return 'msedge'
         if 'opera' in full_string: return 'opera'
-        if 'brave' in full_string: return 'chrome' # Brave costuma usar o ícone do Chrome como fallback
+        if 'brave' in full_string: return 'chrome'
         
-        # 3. Dispositivos Específicos
         if 'android' in full_string: return 'android'
         if 'roku' in full_string: return 'roku'
         if 'tvos' in full_string or 'apple tv' in full_string: return 'atv'
@@ -580,12 +628,10 @@ class StreamManager:
         if 'tivo' in full_string: return 'tivo'
         if 'alexa' in full_string: return 'alexa'
         
-        # 4. Sistemas Operacionais (Fallback final)
         if 'mac' in full_string: return 'macos'
         if 'windows' in full_string: return 'windows'
         if 'linux' in full_string: return 'linux'
         
-        # 5. Caso tudo falhe, usa o Plex genérico
         if 'plex' in full_string: return 'plex'
         
         return 'default'
