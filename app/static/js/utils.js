@@ -4,6 +4,55 @@
  */
 
 /**
+ * Sanitiza entradas de texto para prevenir ataques XSS (Cross-Site Scripting).
+ * Centralizado aqui para evitar repetição (DRY).
+ * @param {string} str Texto a ser sanitizado.
+ * @returns {string} Texto sanitizado.
+ */
+export const sanitizeHTML = (str) => {
+    if (!str) return '';
+    const temp = document.createElement('div');
+    temp.textContent = str;
+    return temp.innerHTML;
+};
+
+/**
+ * Copia um texto para a área de transferência usando a API moderna com fallback.
+ * Substitui o antigo copyToClipboardFallback.
+ * @param {string} text O texto a ser copiado.
+ * @returns {Promise<boolean>} True se a cópia foi bem sucedida, false caso contrário.
+ */
+export const copyToClipboard = async (text) => {
+    // Tenta usar a API moderna do navegador primeiro (requer HTTPS)
+    if (navigator.clipboard && window.isSecureContext) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (err) {
+            console.warn('Falha na API clipboard moderna, tentando fallback...', err);
+        }
+    }
+    
+    // Fallback para navegadores antigos ou conexões locais sem HTTPS
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.setAttribute('readonly', '');
+    el.style.position = 'absolute';
+    el.style.left = '-9999px';
+    document.body.appendChild(el);
+    el.select();
+    try {
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        return true;
+    } catch (err) {
+        document.body.removeChild(el);
+        console.error('Fallback de cópia falhou', err);
+        return false;
+    }
+};
+
+/**
  * Realiza uma chamada para um endpoint da API.
  * @param {string} endpoint O URL do endpoint da API.
  * @param {string} [method='GET'] O método HTTP a ser utilizado.
@@ -46,6 +95,9 @@ export async function fetchAPI(endpoint, method = 'GET', body = null) {
 
 /**
  * Exibe uma notificação toast no ecrã.
+ * CORREÇÃO MOBILE: A classe pointer-events-none foi adicionada diretamente para
+ * garantir que o toast invisível não bloqueie toques na tela (bug de z-index transparente).
+ * 
  * @param {string} message A mensagem a ser exibida.
  * @param {'success'|'error'|'info'} [type='success'] O tipo de toast (afeta a cor).
  */
@@ -54,10 +106,12 @@ export function showToast(message, type = 'success') {
     if (!toastEl) return;
     
     toastEl.textContent = message;
-    toastEl.className = `toast show ${type}`; // Usa as classes definidas no base.html
+    
+    // pointer-events-none adicionado dinamicamente caso não exista no CSS base do HTML
+    toastEl.className = `toast show ${type} pointer-events-none`; 
     
     setTimeout(() => {
-        toastEl.className = 'toast';
+        toastEl.className = 'toast pointer-events-none';
     }, 4000);
 }
 
