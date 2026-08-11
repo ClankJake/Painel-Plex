@@ -164,7 +164,15 @@ function _getStreamStateConfig(streamState) {
 
 function _getStreamCardInnerHtml(s) {
     const stConfig = _getStreamStateConfig(s.state);
-    const platformClass = (s.platform || 'default').toLowerCase().replace(/\s+/g, '');
+    
+    // Força o ícone do chromecast se a palavra existir na plataforma ou no nome do player
+    let platformClass = (s.platform || 'default').toLowerCase().replace(/\s+/g, '');
+    const rawPlatform = (s.platform || '').toLowerCase();
+    const rawPlayer = (s.player || '').toLowerCase();
+    if (rawPlatform.includes('chromecast') || rawPlayer.includes('chromecast')) {
+        platformClass = 'chromecast';
+    }
+    
     const sd = s.stream_details;
     
     let streamText = sd.is_transcoding ? `Transcode` : 'Direct Play';
