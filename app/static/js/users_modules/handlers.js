@@ -5,7 +5,7 @@ import * as ui from './ui.js';
 import * as modals from './modals.js';
 import * as state from './state.js';
 import { i18n, urls } from './config.js';
-import { showToast } from '../utils.js';
+import { showToast, sanitizeHTML, copyToClipboard } from '../utils.js';
 
 /**
  * Módulo de Handlers (Manipuladores de Eventos)
@@ -16,32 +16,6 @@ import { showToast } from '../utils.js';
 // ==========================================
 // HELPERS E UTILITÁRIOS
 // ==========================================
-
-/**
- * Sanitiza entradas de texto para prevenir ataques de XSS (Cross-Site Scripting).
- */
-const sanitizeHTML = (str) => {
-    if (!str) return '';
-    const temp = document.createElement('div');
-    temp.textContent = str;
-    return temp.innerHTML;
-};
-
-/**
- * Helper universal para copiar texto, contornando bloqueios de segurança
- * do navigator.clipboard em ambientes sem HTTPS estrito ou iFrames.
- */
-const copyToClipboardFallback = (text) => {
-    const el = document.createElement('textarea');
-    el.value = text;
-    el.setAttribute('readonly', '');
-    el.style.position = 'absolute';
-    el.style.left = '-9999px';
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand('copy');
-    document.body.removeChild(el);
-};
 
 /**
  * Pega o URL base configurado (APP_BASE_URL) para criar links públicos precisos,
@@ -155,12 +129,12 @@ export function handleUserAction(action, user) {
         'payment-history':   () => modals.showPaymentHistoryModal(user),
         'renew-month':       () => handleQuickRenewal(user),
         'extend-trial':      () => modals.showExtendTrialModal(user),
-        'copy-payment-link': () => {
+        'copy-payment-link': async () => {
             if (user.payment_token) {
                 // Corrigido para respeitar o domínio público configurado
                 const paymentUrl = `${getBaseUrl()}/pay/${user.payment_token}`;
                 try {
-                    copyToClipboardFallback(paymentUrl);
+                    await copyToClipboard(paymentUrl);
                     showToast(i18n.paymentLinkCopied || 'Link de pagamento copiado!', 'success');
                 } catch (err) {
                     showToast(i18n.copyFailed || 'Falha ao copiar o link.', 'error');
