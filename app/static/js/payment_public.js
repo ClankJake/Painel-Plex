@@ -299,7 +299,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (result && result.success && result.free_renewal) {
                 const isReactivation = container.dataset.isReactivation === 'true';
-                showSuccessState(isReactivation);
+                showSuccessState(isReactivation, result.user_status, result.invite_link);
                 return;
             }
 
@@ -326,7 +326,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- LÓGICA DE SUCESSO E REATIVAÇÃO ---
-    function showSuccessState(isReactivation, userStatus) {
+    function showSuccessState(isReactivation, userStatus, inviteLink) {
         if (paymentSection) paymentSection.style.display = 'none';
         if (pixDisplay) pixDisplay.style.display = 'none';
         if (userInfoHeader) userInfoHeader.style.display = 'none';
@@ -336,10 +336,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const loginButton = document.getElementById('login-button');
         const reactivationArea = document.getElementById('reactivation-action-area');
         const defaultBtnContainer = document.getElementById('default-login-btn-container');
+        const inviteLinkArea = document.getElementById('reactivation-invite-link-area');
+        const inviteLinkBtn = document.getElementById('reactivation-invite-link-btn');
 
         if (successTitle && successMessage && loginButton && successDisplay) {
             if (isReactivation) {
-                // Se o status ainda for 'inactive', convite está pendente.
+                // Se o status ainda for 'inactive', convite está pendente (ativação automática não confirmou).
                 if (userStatus === 'inactive') {
                     successTitle.textContent = i18n.reactivationCheckEmailTitle;
                     successMessage.textContent = i18n.reactivationCheckEmailMessage;
@@ -350,6 +352,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                         
                         const btn = document.getElementById('reactivate-plex-login-btn');
                         if(btn) btn.onclick = startPlexAuthFlow;
+
+                        // Se temos o link direto do convite, mostra o botão alternativo
+                        const isRealInviteLink = inviteLink && !inviteLink.includes('app.plex.tv/desktop');
+                        if (inviteLinkArea && inviteLinkBtn) {
+                            if (isRealInviteLink) {
+                                inviteLinkBtn.href = inviteLink;
+                                inviteLinkArea.classList.remove('hidden');
+                            } else {
+                                inviteLinkArea.classList.add('hidden');
+                            }
+                        }
                     }
                 } else {
                     // Reativação já efetivada pelo backend
@@ -486,7 +499,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             </div>`;
                     }
                     
-                    setTimeout(() => showSuccessState(isReactivation, statusResult.user_status), 2000);
+                    setTimeout(() => showSuccessState(isReactivation, statusResult.user_status, statusResult.invite_link), 2000);
                 }
             } catch (error) {
                 console.warn(`${i18n.pollingError}:`, error.message);
