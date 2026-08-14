@@ -105,6 +105,7 @@ def finalize_reactivation_route():
             profile.email = plex_user_obj.email
 
         profile.status = 'active'
+        profile.pending_invite_link = None
         extensions.db.session.commit()
         extensions.plex_manager.users.invalidate_user_cache()
         
