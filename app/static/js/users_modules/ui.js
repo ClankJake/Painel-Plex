@@ -317,6 +317,7 @@ function renderUserCard(user) {
 
     const inactiveButtons = `
         <button data-action="reactivate" title="${i18n.reactivate}" class="btn text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 shadow-sm">${i18n.reactivate}</button>
+        <button data-action="copy-payment-link" title="${i18n.copyPaymentLink}" class="p-2 rounded-full text-gray-500 hover:bg-teal-100 dark:hover:bg-teal-500/20 dark:text-teal-400 transition-colors"><svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg></button>
         <button data-action="delete-permanently" title="${i18n.deletePermanently}" class="btn text-xs bg-red-800 hover:bg-red-700 text-white px-2 py-1 shadow-sm">${i18n.deletePermanently}</button>
     `;
 
