@@ -1,5 +1,3 @@
-# app/blueprints/api/payments.py
-
 import logging
 import csv
 from io import StringIO
@@ -25,68 +23,6 @@ payments_api_bp = Blueprint('payments_api', __name__)
 # ==========================================
 # PROCESSAMENTO DE PAGAMENTOS EM BACKGROUND
 # ==========================================
-
-def _handle_reactivation_invite(profile, plex_user_id):
-    """
-    Tenta enviar um convite do Plex para um utilizador que está a ser reativado.
-    Retorna True se o utilizador já constar na lista de amigos do Plex após o convite.
-    """
-    target_identifier = profile.get('email')
-    
-    if not target_identifier:
-        logger.info(f"E-mail não encontrado no perfil local para a reativação de '{profile.get('username')}'. A procurar no Plex...")
-        try:
-            plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
-            if plex_user and plex_user.get('email'):
-                target_identifier = plex_user.get('email')
-                profile['email'] = target_identifier
-                extensions.data_manager.set_user_profile(plex_user_id, profile)
-        except Exception as e:
-            logger.warning(f"Erro ao tentar recuperar e-mail do Plex: {e}")
-
-    if not target_identifier:
-        logger.warning(f"E-mail não encontrado para '{profile.get('username')}'. A usar o Nome de Utilizador como fallback.")
-        target_identifier = profile.get('username')
-
-    user_found_in_plex = False
-    if target_identifier:
-        try:
-            # 🛡️ CORREÇÃO: Prevenção do Erro 'NoneType' caso as bibliotecas sejam NULL na DB
-            libraries_raw = profile.get('libraries')
-            if libraries_raw is None:
-                libraries = []
-            elif isinstance(libraries_raw, str):
-                try:
-                    libraries = json.loads(libraries_raw)
-                except json.JSONDecodeError:
-                    libraries = []
-            else:
-                libraries = libraries_raw if isinstance(libraries_raw, list) else []
-
-            invite_result = extensions.plex_manager.invites.send_plex_invite(target_identifier, libraries, plex_user_id=plex_user_id)
-            
-            if not invite_result.get('success'):
-                logger.error(f"Falha ao reconvidar '{target_identifier}': {invite_result.get('message')}")
-            else:
-                logger.info(f"Convite de reativação enviado com sucesso para: {target_identifier}")
-        except Exception as invite_error:
-            logger.error(f"Erro crítico ao convidar '{target_identifier}': {invite_error}", exc_info=True)
-
-        time.sleep(2)
-        extensions.plex_manager.users.invalidate_user_cache()
-        
-        updated_plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
-        if updated_plex_user:
-            profile['status'] = 'active'
-            extensions.data_manager.set_user_profile(plex_user_id, profile)
-            user_found_in_plex = True
-            logger.info(f"Utilizador '{profile.get('username')}' confirmado como ativo no Plex. Status local atualizado para 'active'.")
-        else:
-            logger.info(f"Utilizador '{profile.get('username')}' ainda não está na lista de amigos (convite pendente). Status local mantido como 'inactive'.")
-    else:
-        logger.error(f"FALHA CRÍTICA: Nenhum identificador válido (email/username) para reativar o utilizador {plex_user_id}.")
-
-    return user_found_in_plex
 
 def _run_payment_processing_in_thread(app, txid):
     """Executado numa thread separada para validar pagamentos atómicos e renovar contas."""
@@ -115,9 +51,14 @@ def _run_payment_processing_in_thread(app, txid):
                 plex_user_id = payment['user_plex_id']
                 profile = extensions.data_manager.get_user_profile(plex_user_id)
                 is_reactivation = profile.get('status') == 'inactive'
-                user_found_in_plex = False
 
                 if is_reactivation:
+                    # Garante que existe um email ou username preenchido para o envio do convite no SubscriptionManager
+                    if not profile.get('email'):
+                        plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
+                        profile['email'] = plex_user.get('email') if (plex_user and plex_user.get('email')) else profile.get('username')
+                        extensions.data_manager.set_user_profile(plex_user_id, profile)
+                        
                     logger.info(f"A processar a reativação paga para o utilizador '{profile['username']}' (ID: {plex_user_id}).")
                     extensions.data_manager.create_notification(
                         message=_("O utilizador %(username)s reativou a conta. Pagamento de %(value)s confirmado.", username=profile['username'], value=f"R$ {payment['value']:.2f}"),
@@ -129,8 +70,6 @@ def _run_payment_processing_in_thread(app, txid):
                     )
                     if extensions.socketio:
                         extensions.socketio.emit('new_notification', namespace='/')
-                        
-                    user_found_in_plex = _handle_reactivation_invite(profile, plex_user_id)
 
                 user_info_for_renewal = extensions.plex_manager.get_user_by_id(plex_user_id)
                 if not user_info_for_renewal and is_reactivation:
@@ -141,16 +80,21 @@ def _run_payment_processing_in_thread(app, txid):
                     expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
                     renewal_base_mode = 'today' if is_reactivation else 'expiry_date'
                     
+                    # O SubscriptionManager agora trata do envio do convite e notificação com link de token
                     new_expiration_date = extensions.plex_manager.renew_subscription(
                         plex_user_id, 1, screens=payment.get('screens'), base_mode=renewal_base_mode,
                         expiration_time_str=expiration_time, is_reactivation=is_reactivation
                     )
                     
-                    if is_reactivation and not user_found_in_plex:
-                        post_renewal_profile = extensions.data_manager.get_user_profile(plex_user_id)
-                        if post_renewal_profile.get('status') == 'active':
-                            post_renewal_profile['status'] = 'inactive'
-                            extensions.data_manager.set_user_profile(plex_user_id, post_renewal_profile)
+                    # Trata o Status Inativo caso o utilizador ainda não tenha aceite o convite no e-mail/notificação
+                    if is_reactivation:
+                        user_found_in_plex = extensions.plex_manager.get_user_by_id(plex_user_id) is not None
+                        if not user_found_in_plex:
+                            post_renewal_profile = extensions.data_manager.get_user_profile(plex_user_id)
+                            if post_renewal_profile.get('status') == 'active':
+                                post_renewal_profile['status'] = 'inactive'
+                                extensions.data_manager.set_user_profile(plex_user_id, post_renewal_profile)
+                                logger.info(f"Utilizador '{profile.get('username')}' ainda não está na lista de amigos (convite pendente). Status local mantido como 'inactive'.")
 
                     try:
                         refreshed_profile = extensions.data_manager.get_user_profile(plex_user_id)
@@ -198,8 +142,7 @@ def _run_payment_processing_in_thread(app, txid):
                 extensions.db.session.commit()
             break
         finally:
-            # 🚀 OTIMIZAÇÃO CRÍTICA: Segurança em Threads
-            # Limpa a sessão criada pela thread atual para evitar 'database is locked' e exaustão do pool
+            # seguranca em Threads
             with app.app_context():
                 extensions.db.session.remove()
 
@@ -235,7 +178,6 @@ def get_payment_options():
     is_public_request = bool(token)
     user_profile = None
 
-    # 🛡️ PRIORIDADE AO TOKEN: Mesmo que o admin esteja logado, se houver token na URL usa a conta do token.
     if token:
         profile_from_token = UserProfile.query.filter_by(payment_token=token).first()
         if profile_from_token:
@@ -264,14 +206,12 @@ def get_payment_options():
 def validate_coupon_route():
     data = request.json or {}
     
-    # 🛡️ CORREÇÃO: Tenta pegar o token do JSON, da Query String ou da URL do navegador (Referer)
     token = data.get('token') or request.args.get('token')
     if not token and request.referrer and '/pay/' in request.referrer:
         token = request.referrer.split('/pay/')[-1].split('?')[0].split('/')[0]
         
     plex_user_id = None
     
-    # 🛡️ PROTEÇÃO APLICADA: Uso exclusivo do Token ou Sessão Real
     if token:
         profile = UserProfile.query.filter_by(payment_token=token).first()
         if profile:
@@ -298,12 +238,10 @@ def create_charge_route():
     screens_str = data.get('screens')
     coupon_code = data.get('coupon_code')
     
-    # 🛡️ CORREÇÃO: Tenta pegar o token do JSON, Query String ou URL do navegador (Referer)
     token = data.get('token') or request.args.get('token')
     if not token and request.referrer and '/pay/' in request.referrer:
         token = request.referrer.split('/pay/')[-1].split('?')[0].split('/')[0]
 
-    # 🚀 OTIMIZAÇÃO: Conversão segura inicial de telas para evitar crash nos provedores
     try:
         screens = int(screens_str) if screens_str is not None else 0
     except (ValueError, TypeError):
@@ -311,7 +249,6 @@ def create_charge_route():
 
     plex_user_id, username = None, None
 
-    # 🛡️ CORREÇÃO CRÍTICA: PRIORIDADE ABSOLUTA AO TOKEN DA URL
     if token:
         profile_model = UserProfile.query.filter_by(payment_token=token).first()
         if profile_model:
@@ -349,10 +286,15 @@ def create_charge_route():
     if final_price <= 0:
         try:
             is_reactivation = (profile.get('status') == 'inactive')
-            user_found_in_plex = False
 
             # 1. Criação das notificações para o Sino e Histórico
             if is_reactivation:
+                # Previne o envio sem e-mail ou identificador no SubscriptionManager
+                if not profile.get('email'):
+                    plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
+                    profile['email'] = plex_user.get('email') if (plex_user and plex_user.get('email')) else profile.get('username')
+                    extensions.data_manager.set_user_profile(plex_user_id, profile)
+                    
                 extensions.data_manager.create_notification(
                     message=_("O utilizador %(username)s reativou a conta com um cupão de 100%%.", username=username),
                     category='success', link=url_for('main.users_page')
@@ -361,7 +303,6 @@ def create_charge_route():
                     message=_("A sua conta foi reativada gratuitamente com sucesso!"),
                     category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
                 )
-                user_found_in_plex = _handle_reactivation_invite(profile, plex_user_id)
             else:
                 extensions.data_manager.create_notification(
                     message=_("Renovação de %(username)s (Cupão 100%%) confirmada.", username=username),
@@ -372,7 +313,7 @@ def create_charge_route():
                     category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
                 )
 
-            # 2. Renovação exata baseada nas telas escolhidas
+            # 2. Renovação exata baseada nas telas escolhidas (Trata também o Convite)
             renewal_base_mode = 'today' if is_reactivation else 'expiry_date'
             config = load_or_create_config()
             expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
@@ -382,12 +323,15 @@ def create_charge_route():
                 expiration_time_str=expiration_time, is_reactivation=is_reactivation
             )
             
-            # 3. Tratamento de Reativação Pendente (Convite)
-            if is_reactivation and not user_found_in_plex:
-                post_renewal_profile = extensions.data_manager.get_user_profile(plex_user_id)
-                if post_renewal_profile.get('status') == 'active':
-                    post_renewal_profile['status'] = 'inactive'
-                    extensions.data_manager.set_user_profile(plex_user_id, post_renewal_profile)
+            # 3. Tratamento de Reativação Pendente (Retorna o status a 'inactive' se ainda não aceitou)
+            if is_reactivation:
+                user_found_in_plex = extensions.plex_manager.get_user_by_id(plex_user_id) is not None
+                if not user_found_in_plex:
+                    post_renewal_profile = extensions.data_manager.get_user_profile(plex_user_id)
+                    if post_renewal_profile.get('status') == 'active':
+                        post_renewal_profile['status'] = 'inactive'
+                        extensions.data_manager.set_user_profile(plex_user_id, post_renewal_profile)
+                        logger.info(f"Utilizador '{username}' ainda não está na lista de amigos (convite pendente). Status local mantido como 'inactive'.")
 
             if coupon_code: extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id)
             
@@ -411,6 +355,7 @@ def create_charge_route():
                 "success": True, 
                 "free_renewal": True, 
                 "user_status": refreshed_profile.get('status', 'active'),
+                "invite_link": refreshed_profile.get('pending_invite_link'),
                 "message": _("Assinatura ativada gratuitamente!")
             })
             
@@ -421,8 +366,6 @@ def create_charge_route():
 
     config = load_or_create_config()
     
-    # 🚀 OTIMIZAÇÃO: Dispatcher de Provedores. 
-    # Remove a corrente pesada de if/elif e torna a adição de novos provedores instantânea.
     provider_map = {
         'EFI': ('EFI_ENABLED', extensions.efi_manager.create_pix_charge if hasattr(extensions, 'efi_manager') else None),
         'MERCADOPAGO': ('MERCADOPAGO_ENABLED', extensions.mercado_pago_manager.create_pix_payment if hasattr(extensions, 'mercado_pago_manager') else None),
@@ -447,7 +390,12 @@ def get_payment_status_route(txid):
     if not payment: return jsonify({"success": False, "status": "NOT_FOUND"}), 404
     if payment.get('status') == 'CONCLUIDA':
         profile = extensions.data_manager.get_user_profile(payment['user_plex_id'])
-        return jsonify({"success": True, "status": "CONCLUIDA", "user_status": profile.get('status', 'unknown') if profile else 'unknown'})
+        return jsonify({
+            "success": True,
+            "status": "CONCLUIDA",
+            "user_status": profile.get('status', 'unknown') if profile else 'unknown',
+            "invite_link": profile.get('pending_invite_link') if profile else None
+        })
     if payment.get('status') == 'PROCESSANDO':
         return jsonify({"success": True, "status": "PROCESSANDO"})
 
@@ -489,7 +437,6 @@ def efi_webhook():
 
     config = load_or_create_config()
     
-    # Validação de Segurança (HMAC)
     if not config.get("EFI_USE_MTLS", True):
         hmac_secret = config.get("EFI_WEBHOOK_HMAC_SECRET")
         received_hmac = request.args.get('hmac')
@@ -509,23 +456,19 @@ def efi_webhook():
         return jsonify(status="error", message="Invalid JSON format"), 400
 
     try:
-        # Evento de configuração e teste do Webhook
         if notification_data.get('evento') == 'teste_webhook': 
             logger.info("Webhook Efí: Evento de validação concluído.")
             return jsonify(status="received"), 200
 
-        # Processamento de pagamentos reais
         pix_array = notification_data.get('pix', [])
         for pix_notification in pix_array:
             txid = pix_notification.get('txid')
             
             if txid:
-                # Se já processado pelo frontend, ignora
                 payment = extensions.data_manager.get_pix_payment(txid)
                 if payment and payment.get('status') == 'CONCLUIDA':
                     continue
 
-                # Confirmação dupla de segurança
                 efi_status_result = extensions.efi_manager.detail_pix_charge(txid)
                 if efi_status_result.get("success") and efi_status_result.get("data", {}).get("status") == 'CONCLUIDA':
                     logger.info(f"Pagamento {txid} confirmado via Webhook Efí. A iniciar renovação.")
@@ -644,15 +587,11 @@ def export_financial_csv():
         end_date = f"{end_str}T23:59:59+00:00"
         payments = extensions.data_manager.get_payments_for_export(start_date, end_date)
 
-        # 🚀 OTIMIZAÇÃO CRÍTICA: Uso de Generator para streams pesados.
-        # Em vez de manter o ficheiro inteiro na RAM (o que causaria crashes com milhares de transações), 
-        # enviamos o ficheiro aos bocados diretamente para o cliente usando 'yield'.
         def generate():
             si = StringIO()
-            si.write('\ufeff') # Suporte UTF-8 Excel
+            si.write('\ufeff')
             cw = csv.writer(si, delimiter=';')
 
-            # Cabeçalho
             cw.writerow(['Data', 'Utilizador', 'Descricao', 'Valor (R$)', 'Provedor', 'Cupao', 'TXID'])
             yield si.getvalue()
             si.seek(0)
@@ -660,7 +599,6 @@ def export_financial_csv():
 
             total_value = 0
             
-            # Linhas (Processamento individual evitando saturação da memória)
             for p in payments:
                 total_value += p['value']
                 cw.writerow([
@@ -672,7 +610,6 @@ def export_financial_csv():
                 si.seek(0)
                 si.truncate(0)
 
-            # Rodapé (Totais)
             cw.writerow([])
             cw.writerow(['', '', _('RESUMO DO PERÍODO')])
             cw.writerow(['', '', _('Total Arrecadado'), f"{total_value:.2f}".replace('.', ',')])
