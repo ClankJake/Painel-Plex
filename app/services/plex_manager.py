@@ -189,7 +189,7 @@ class PlexManager:
     def update_all_users_libraries(self, library_titles): return self.users.update_all_users_libraries(library_titles)
     def toggle_overseerr_access(self, plex_user_id, access: bool): return self.users.toggle_overseerr_access(plex_user_id, access)
     
-    # --- CONVITES ---
+    # --- CONVITES E TOKENS ---
     def create_invitation(self, **kwargs): return self.invites.create_invitation(**kwargs)
     def get_invitation_by_code(self, code): return self.invites.get_invitation_by_code(code)
     def claim_invitation(self, code, plex_user_account): return self.invites.claim_invitation(code, plex_user_account)
