@@ -112,6 +112,8 @@ class UserProfile(db.Model):
     libraries = db.Column(db.Text, nullable=True)
     payment_token = db.Column(db.String, unique=True, nullable=True)
     status = db.Column(db.String(20), default='active', nullable=False, index=True)
+    pending_invite_link = db.Column(db.String, nullable=True)
+    last_reactivation_time = db.Column(db.Float, nullable=True)
     coupon_usages = db.relationship('CouponUsage', backref='user', lazy=True, cascade="all, delete-orphan")
     notifications = db.relationship('Notification', backref='user', lazy=True, cascade="all, delete-orphan")
     unlocked_achievements = db.relationship('UnlockedAchievement', backref='user', lazy=True, cascade="all, delete-orphan")
