@@ -52,6 +52,7 @@ def load_or_create_config():
             "WEBHOOK_ENABLED": False,
             "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
             "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
+            "WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi reativada. Novo vencimento: {new_date}. Acesse o servidor: {invite_link}"}',
             "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}',
             "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}',
             "TELEGRAM_BOT_TOKEN": "",
@@ -59,12 +60,14 @@ def load_or_create_config():
             "TELEGRAM_ENABLED": False,
             "TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nEste é um lembrete de que sua fatura está com o vencimento próximo.\nVencimento: *{date}*\nValor: *{price}*\nPlano: *{plan_name}*\nAcesso: `{email}`\n\nNa data do vencimento o sistema poderá bloquear o acesso. Para evitar a interrupção, realize o pagamento clicando no botão abaixo:",
             "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\n\nOlá {name}!\nA sua subscrição foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
+            "TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE": "✅ *Conta Reativada*\n\nOlá {name}!\nA sua subscrição foi renovada e a sua conta reativada com sucesso.\nNovo vencimento: *{new_date}*\n\nPara acessar o servidor, aceite o convite no link abaixo:\n{invite_link}",
             "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n\n{name}, o seu período de teste terminou.\nPara manter o seu acesso, realize a renovação no botão abaixo:",
             "TELEGRAM_BULK_MESSAGE_TEMPLATE": "📢 *Aviso do Servidor*\n\nOlá {name},\n\n{message}",
             "DISCORD_ENABLED": False,
             "DISCORD_WEBHOOK_URL": "",
             "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
             "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
+            "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi reativada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para aceitar o convite do Plex]({invite_link})", "color": 65280}]}',
             "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
             "DISCORD_BULK_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}',
             "DAYS_TO_NOTIFY_EXPIRATION": 2,
@@ -135,88 +138,123 @@ def load_or_create_config():
                 logger.warning("SECRET_KEY não encontrada no config.json. A gerar uma nova chave segura.")
                 config['SECRET_KEY'] = secrets.token_hex(16)
                 save_app_config(config)
-                config.setdefault("INTERNAL_TRIGGER_KEY", secrets.token_hex(32))
-                config.setdefault("APP_BASE_URL", "")
-                config.setdefault("LOG_LEVEL", "INFO")
-                config.setdefault("LOG_FILE", os.path.join(CONFIG_DIR, "app.log"))
-                config.setdefault("LOG_MAX_BYTES", 1024 * 1024)
-                config.setdefault("LOG_BACKUP_COUNT", 5)
-                config.setdefault("STREAM_CHECK_INTERVAL_SECONDS", 15)
-                config.setdefault("TERMINATION_MSG_BLOCKED_MANUAL", "O seu acesso ao servidor foi bloqueado pelo administrador.")
-                config.setdefault("TERMINATION_MSG_BLOCKED_EXPIRED", "A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.")
-                config.setdefault("TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED", "O seu período de teste para {username} terminou. Renove para continuar.")
-                config.setdefault("TERMINATION_MSG_SCREEN_LIMIT", "{username}, você excedeu o seu limite de {limit} tela(s) simultânea(s).")
-                config.setdefault("EXPIRATION_NOTIFICATION_TIME", "09:00")
-                config.setdefault("BLOCK_REMOVAL_TIME", "02:00")
-                config.setdefault("UNIVERSAL_EXPIRATION_ENABLED", False)
-                config.setdefault("UNIVERSAL_EXPIRATION_TIME", "23:59")
-                config.setdefault("WEBHOOK_URL", "")
-                config.setdefault("WEBHOOK_AUTHORIZATION_HEADER", "")
-                config.setdefault("WEBHOOK_ENABLED", False)
-                config.setdefault("WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE", '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}')
-                config.setdefault("WEBHOOK_RENEWAL_MESSAGE_TEMPLATE", '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}')
-                config.setdefault("WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE", '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}')
-                config.setdefault("WEBHOOK_BULK_MESSAGE_TEMPLATE", '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}')
-                config.setdefault("TELEGRAM_BOT_TOKEN", "")
-                config.setdefault("TELEGRAM_CHAT_ID", "")
-                config.setdefault("TELEGRAM_ENABLED", False)
-                config.setdefault("TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE", "Olá {name}, {greeting}!\n\nEste é um lembrete de que sua fatura está com o vencimento próximo.\nVencimento: *{date}*\nValor: *{price}*\nPlano: *{plan_name}*\nAcesso: `{email}`\n\nNa data do vencimento o sistema poderá bloquear o acesso. Para evitar a interrupção, realize o pagamento clicando no botão abaixo:")
-                config.setdefault("TELEGRAM_RENEWAL_MESSAGE_TEMPLATE", "✅ *Renovação Confirmada*\n\nOlá {name}!\nA sua subscrição foi renovada com sucesso.\nNovo vencimento: *{new_date}*.")
-                config.setdefault("TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE", "⌛ *Fim do Período de Teste*\n\n{name}, o seu período de teste terminou.\nPara manter o seu acesso, realize a renovação no botão abaixo:")
-                config.setdefault("TELEGRAM_BULK_MESSAGE_TEMPLATE", "📢 *Aviso do Servidor*\n\nOlá {name},\n\n{message}")
-                config.setdefault("DISCORD_ENABLED", False)
-                config.setdefault("DISCORD_WEBHOOK_URL", "")
-                config.setdefault("DISCORD_EXPIRATION_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}')
-                config.setdefault("DISCORD_RENEWAL_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}')
-                config.setdefault("DISCORD_TRIAL_END_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}')
-                config.setdefault("DISCORD_BULK_MESSAGE_TEMPLATE", '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}')
-                config.setdefault("LAST_NOTIFICATION_CHECK", "1970-01-01T00:00:00")
-                config.setdefault("EFI_ENABLED", False)
-                config.setdefault("EFI_CLIENT_ID", "")
-                config.setdefault("EFI_CLIENT_SECRET", "")
-                config.setdefault("/app/certs/efisandbox.pem")
-                config.setdefault("EFI_SANDBOX", True)
-                config.setdefault("EFI_PIX_KEY", "")
-                config.setdefault("RENEWAL_PRICE", "10.00")
-                
-                # Adicionando as opções 5 e 6 no fallback default também
-                default_screen_prices = {"1": "10.00", "2": "18.00", "3": "25.00", "4": "30.00", "5": "35.00", "6": "40.00"}
-                if "SCREEN_PRICES" not in config:
-                    config["SCREEN_PRICES"] = default_screen_prices
-                else:
-                    if "5" not in config["SCREEN_PRICES"]:
-                        config["SCREEN_PRICES"]["5"] = "35.00"
-                    if "6" not in config["SCREEN_PRICES"]:
-                        config["SCREEN_PRICES"]["6"] = "40.00"
-                config.setdefault("MERCADOPAGO_ENABLED", False)
-                config.setdefault("MERCADOPAGO_ACCESS_TOKEN", "")
-                config.setdefault("BPIX_ENABLED", False)
-                config.setdefault("BPIX_AUTH_TOKEN", "")
-                config.setdefault("OVERSEERR_ENABLED", False)
-                config.setdefault("OVERSEERR_URL", "")
-                config.setdefault("OVERSEERR_API_KEY", "")
-                config.setdefault("CLEANUP_PENDING_PAYMENTS_ENABLED", True)
-                config.setdefault("CLEANUP_PENDING_PAYMENTS_DAYS", 3)
-                config.setdefault("CLEANUP_TIME", "03:00")
-                config.setdefault("ENABLE_LINK_SHORTENER", True)
-                config.setdefault("PAYMENT_LINK_GRACE_PERIOD_DAYS", 7)
-                config.setdefault("ACHIEVEMENT_MOVIE_MARATHON_BRONZE", 5)
-                config.setdefault("ACHIEVEMENT_MOVIE_MARATHON_SILVER", 10)
-                config.setdefault("ACHIEVEMENT_MOVIE_MARATHON_GOLD", 20)
-                config.setdefault("ACHIEVEMENT_SERIES_BINGER_BRONZE", 20)
-                config.setdefault("ACHIEVEMENT_SERIES_BINGER_SILVER", 50)
-                config.setdefault("ACHIEVEMENT_SERIES_BINGER_GOLD", 100)
-                config.setdefault("ACHIEVEMENT_TIME_TRAVELER_BRONZE", 3)
-                config.setdefault("ACHIEVEMENT_TIME_TRAVELER_SILVER", 5)
-                config.setdefault("ACHIEVEMENT_TIME_TRAVELER_GOLD", 7)
-                config.setdefault("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3)
-                config.setdefault("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5)
-                config.setdefault("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7)
-                config.setdefault("IMAGE_CACHE_CLEANUP_ENABLED", True)
-                config.setdefault("IMAGE_CACHE_MAX_AGE_DAYS", 30)
-                config.setdefault("IMAGE_CACHE_CLEANUP_TIME", "04:00")
-                config.setdefault("SHORT_LINK_CLEANUP_ENABLED", True)
-                config.setdefault("SHORT_LINK_MAX_AGE_DAYS", 30)
+
+            # 🛡️ MIGRAÇÃO DE CONFIGURAÇÃO: Preenche com valores padrão qualquer chave que
+            # ainda não exista no config.json. Isto roda SEMPRE que um ficheiro já existente
+            # é carregado (independentemente do estado da SECRET_KEY), para que atualizações
+            # do sistema que introduzam novos campos não deixem instalações antigas com
+            # configurações em falta.
+            config_was_modified = False
+
+            def _set_default(key, value):
+                nonlocal config_was_modified
+                if key not in config:
+                    config[key] = value
+                    config_was_modified = True
+
+            _set_default("INTERNAL_TRIGGER_KEY", secrets.token_hex(32))
+            _set_default("APP_BASE_URL", "")
+            _set_default("LOG_LEVEL", "INFO")
+            _set_default("LOG_FILE", os.path.join(CONFIG_DIR, "app.log"))
+            _set_default("LOG_MAX_BYTES", 1024 * 1024)
+            _set_default("LOG_BACKUP_COUNT", 5)
+            _set_default("STREAM_CHECK_INTERVAL_SECONDS", 15)
+            _set_default("TERMINATION_MSG_BLOCKED_MANUAL", "O seu acesso ao servidor foi bloqueado pelo administrador.")
+            _set_default("TERMINATION_MSG_BLOCKED_EXPIRED", "A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.")
+            _set_default("TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED", "O seu período de teste para {username} terminou. Renove para continuar.")
+            _set_default("TERMINATION_MSG_SCREEN_LIMIT", "{username}, você excedeu o seu limite de {limit} tela(s) simultânea(s).")
+            _set_default("EXPIRATION_NOTIFICATION_TIME", "09:00")
+            _set_default("BLOCK_REMOVAL_TIME", "02:00")
+            _set_default("UNIVERSAL_EXPIRATION_ENABLED", False)
+            _set_default("UNIVERSAL_EXPIRATION_TIME", "23:59")
+            _set_default("WEBHOOK_URL", "")
+            _set_default("WEBHOOK_AUTHORIZATION_HEADER", "")
+            _set_default("WEBHOOK_ENABLED", False)
+            _set_default("TELEGRAM_BOT_TOKEN", "")
+            _set_default("TELEGRAM_CHAT_ID", "")
+            _set_default("TELEGRAM_ENABLED", False)
+            _set_default("DISCORD_ENABLED", False)
+            _set_default("DISCORD_WEBHOOK_URL", "")
+            _set_default("LAST_NOTIFICATION_CHECK", "1970-01-01T00:00:00")
+            _set_default("EFI_ENABLED", False)
+            _set_default("EFI_CLIENT_ID", "")
+            _set_default("EFI_CLIENT_SECRET", "")
+            _set_default("EFI_CERTIFICATE", "/app/certs/efisandbox.pem")
+            _set_default("EFI_SANDBOX", True)
+            _set_default("EFI_PIX_KEY", "")
+            _set_default("RENEWAL_PRICE", "10.00")
+            _set_default("MERCADOPAGO_ENABLED", False)
+            _set_default("MERCADOPAGO_ACCESS_TOKEN", "")
+            _set_default("BPIX_ENABLED", False)
+            _set_default("BPIX_AUTH_TOKEN", "")
+            _set_default("OVERSEERR_ENABLED", False)
+            _set_default("OVERSEERR_URL", "")
+            _set_default("OVERSEERR_API_KEY", "")
+            _set_default("CLEANUP_PENDING_PAYMENTS_ENABLED", True)
+            _set_default("CLEANUP_PENDING_PAYMENTS_DAYS", 3)
+            _set_default("CLEANUP_TIME", "03:00")
+            _set_default("ENABLE_LINK_SHORTENER", True)
+            _set_default("PAYMENT_LINK_GRACE_PERIOD_DAYS", 7)
+            _set_default("ACHIEVEMENT_MOVIE_MARATHON_BRONZE", 5)
+            _set_default("ACHIEVEMENT_MOVIE_MARATHON_SILVER", 10)
+            _set_default("ACHIEVEMENT_MOVIE_MARATHON_GOLD", 20)
+            _set_default("ACHIEVEMENT_SERIES_BINGER_BRONZE", 20)
+            _set_default("ACHIEVEMENT_SERIES_BINGER_SILVER", 50)
+            _set_default("ACHIEVEMENT_SERIES_BINGER_GOLD", 100)
+            _set_default("ACHIEVEMENT_TIME_TRAVELER_BRONZE", 3)
+            _set_default("ACHIEVEMENT_TIME_TRAVELER_SILVER", 5)
+            _set_default("ACHIEVEMENT_TIME_TRAVELER_GOLD", 7)
+            _set_default("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3)
+            _set_default("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5)
+            _set_default("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7)
+            _set_default("IMAGE_CACHE_CLEANUP_ENABLED", True)
+            _set_default("IMAGE_CACHE_MAX_AGE_DAYS", 30)
+            _set_default("IMAGE_CACHE_CLEANUP_TIME", "04:00")
+            _set_default("SHORT_LINK_CLEANUP_ENABLED", True)
+            _set_default("SHORT_LINK_MAX_AGE_DAYS", 30)
+
+            # Adicionando as opções 5 e 6 no fallback default também
+            default_screen_prices = {"1": "10.00", "2": "18.00", "3": "25.00", "4": "30.00", "5": "35.00", "6": "40.00"}
+            if "SCREEN_PRICES" not in config:
+                config["SCREEN_PRICES"] = default_screen_prices
+                config_was_modified = True
+            else:
+                if "5" not in config["SCREEN_PRICES"]:
+                    config["SCREEN_PRICES"]["5"] = "35.00"
+                    config_was_modified = True
+                if "6" not in config["SCREEN_PRICES"]:
+                    config["SCREEN_PRICES"]["6"] = "40.00"
+                    config_was_modified = True
+
+            message_template_defaults = {
+                "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
+                "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
+                "WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi reativada. Novo vencimento: {new_date}. Acesse o servidor: {invite_link}"}',
+                "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}',
+                "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}',
+                "TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nEste é um lembrete de que sua fatura está com o vencimento próximo.\nVencimento: *{date}*\nValor: *{price}*\nPlano: *{plan_name}*\nAcesso: `{email}`\n\nNa data do vencimento o sistema poderá bloquear o acesso. Para evitar a interrupção, realize o pagamento clicando no botão abaixo:",
+                "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\n\nOlá {name}!\nA sua subscrição foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
+                "TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE": "✅ *Conta Reativada*\n\nOlá {name}!\nA sua subscrição foi renovada e a sua conta reativada com sucesso.\nNovo vencimento: *{new_date}*\n\nPara acessar o servidor, aceite o convite no link abaixo:\n{invite_link}",
+                "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n\n{name}, o seu período de teste terminou.\nPara manter o seu acesso, realize a renovação no botão abaixo:",
+                "TELEGRAM_BULK_MESSAGE_TEMPLATE": "📢 *Aviso do Servidor*\n\nOlá {name},\n\n{message}",
+                "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
+                "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
+                "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi reativada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para aceitar o convite do Plex]({invite_link})", "color": 65280}]}',
+                "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
+                "DISCORD_BULK_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}',
+            }
+            for key, default_value in message_template_defaults.items():
+                current_value = config.get(key)
+                if not current_value or not str(current_value).strip():
+                    if key in config and config[key] != default_value:
+                        logger.warning(f"Config '{key}' estava em branco. Restaurando o template padrão.")
+                    config[key] = default_value
+                    config_was_modified = True
+
+            # Persiste no disco qualquer valor que tenha sido preenchido/corrigido nesta migração,
+            # para que a correção não precise ser refeita a cada arranque.
+            if config_was_modified:
+                save_app_config(config)
 
             log_file_path = config.get("LOG_FILE")
             if log_file_path and not os.path.isabs(log_file_path):
