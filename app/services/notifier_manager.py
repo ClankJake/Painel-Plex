@@ -22,12 +22,15 @@ logger = logging.getLogger(__name__)
 DEFAULT_TEMPLATES = {
     "TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nEste é um lembrete de que sua fatura está com o vencimento próximo.\nVencimento: *{date}*\nValor: *{price}*\nPlano: *{plan_name}*\nAcesso: `{email}`\n\nNa data do vencimento o sistema poderá bloquear o acesso. Para evitar a interrupção, realize o pagamento clicando no botão abaixo:",
     "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\n\nOlá {name}!\nA sua subscrição foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
+    "TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE": "✅ *Conta Reativada*\n\nOlá {name}!\nA sua subscrição foi renovada e a sua conta reativada com sucesso.\nNovo vencimento: *{new_date}*\n\nPara acessar o servidor, clique no link abaixo e aceite o convite:\n{invite_link}",
     "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n\n{name}, o seu período de teste terminou.\nPara manter o seu acesso, realize a renovação no botão abaixo:",
     "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
-    "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!\", "color": 65280}]}',
+    "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
+    "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi reativada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para aceitar o convite do Plex]({invite_link})", "color": 65280}]}',
     "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
     "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
     "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
+    "WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi reativada. Novo vencimento: {new_date}. Link de acesso: {invite_link}"}',
     "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}',
     "TELEGRAM_BULK_MESSAGE_TEMPLATE": "📢 *Aviso do Servidor*\n\nOlá {name},\n\n{message}",
     "DISCORD_BULK_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}',
@@ -182,7 +185,7 @@ class NotifierManager:
         return formatted_price, plan_name
 
     def _get_payment_link(self, config, event_type, user_profile):
-        if event_type == 'renewal' or not user_profile.get('payment_token'):
+        if event_type in ['renewal', 'reactivation'] or not user_profile.get('payment_token'):
             return None
             
         try:
@@ -247,7 +250,8 @@ class NotifierManager:
             'plan_name': plan_name,
             'planname': plan_name,
             'date_time': now.strftime('%d/%m/%Y %H:%M'),
-            'days_left': context.get('days', 0)
+            'days_left': context.get('days', 0),
+            'invite_link': context.get('invite_link', '')
         }
 
         if can_notify_telegram:
@@ -292,6 +296,12 @@ class NotifierManager:
         self._prepare_and_send('expiration', user, user_profile, {'days': days_left, 'date': formatted_date})
 
     def send_renewal_notification(self, user, new_expiration_date, user_profile):
+        # 🛡️ ANTI-DUPLICAÇÃO: Evita enviar a mensagem de Renovação logo após uma Reativação (Janela de 60 Segundos)
+        last_reactivation = user_profile.get('last_reactivation_time', 0)
+        if time.time() - last_reactivation < 60:
+            logger.info(f"Notificação de Renovação ignorada para '{user.get('username')}' porque a notificação de Reativação já foi enviada.")
+            return
+
         if isinstance(new_expiration_date, datetime):
             if new_expiration_date.tzinfo:
                 new_expiration_date = new_expiration_date.astimezone(get_localzone())
@@ -305,6 +315,21 @@ class NotifierManager:
             except (ValueError, TypeError):
                 formatted_date = str(new_expiration_date)[:10]
         self._prepare_and_send('renewal', user, user_profile, {'new_date': formatted_date, 'date': formatted_date})
+
+    def send_reactivation_notification(self, user, new_expiration_date, user_profile, invite_link):
+        if isinstance(new_expiration_date, datetime):
+            if new_expiration_date.tzinfo:
+                new_expiration_date = new_expiration_date.astimezone(get_localzone())
+            formatted_date = new_expiration_date.strftime('%d/%m/%Y')
+        else:
+            try:
+                exp_dt = datetime.fromisoformat(str(new_expiration_date))
+                if exp_dt.tzinfo:
+                    exp_dt = exp_dt.astimezone(get_localzone())
+                formatted_date = exp_dt.strftime('%d/%m/%Y')
+            except (ValueError, TypeError):
+                formatted_date = str(new_expiration_date)[:10]
+        self._prepare_and_send('reactivation', user, user_profile, {'new_date': formatted_date, 'date': formatted_date, 'invite_link': invite_link})
 
     def send_trial_end_notification(self, user, user_profile):
         self._prepare_and_send('trial_end', user, user_profile, {})
