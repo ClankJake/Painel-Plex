@@ -161,6 +161,11 @@
                     <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Link secreto e único para o utilizador gerar o PIX e renovar a conta automaticamente.') }}</span>
                 </div>
                 
+                <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800/50 flex flex-col lg:col-span-1">
+                    <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{invite_link}</code>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Link de convite do Plex. (Disponível apenas em templates de Reativação).') }}</span>
+                </div>
+
                 <div class="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800/50 flex flex-col">
                     <code class="text-red-600 dark:text-red-400 font-bold mb-1 font-mono text-sm">{limit}</code>
                     <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Limite de telas (Usado nos cortes por excesso).') }}</span>
