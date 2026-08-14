@@ -1,5 +1,3 @@
-# app/services/plex/subscription_manager.py
-
 import logging
 import secrets
 import calendar
@@ -37,6 +35,11 @@ class PlexSubscriptionManager:
         if not profile:
             raise ValueError("Perfil de utilizador não encontrado.")
 
+        # Deteção automática de reativação caso a flag não venha explícita do sistema de pagamentos
+        was_blocked = self.data_manager.get_blocked_user(plex_user_id) is not None
+        if profile.get('status') == 'inactive' or was_blocked:
+            is_reactivation = True
+
         # 1. Atualizar o estado básico do perfil (Status e Limite de Telas)
         self._update_basic_profile_state(profile, plex_user_id, screens, is_reactivation)
 
@@ -53,8 +56,57 @@ class PlexSubscriptionManager:
         # 4. Desbloquear Utilizador (Se estava bloqueado por falta de pagamento)
         self._unblock_user_if_needed(plex_user_id)
 
+        # 🛡️ ANTI-DUPLICAÇÃO: Marca o timestamp exato da reativação no perfil do utilizador
+        if is_reactivation:
+            profile['last_reactivation_time'] = time.time()
+
         # 5. Salvar na Base de Dados
         self.data_manager.set_user_profile(plex_user_id, profile)
+
+        # 6. Restauro de Acesso Seguro e Notificação de Reativação
+        if is_reactivation and self.plex_manager and self.plex_manager.notifier_manager:
+            try:
+                user_info = self.plex_manager.get_user_by_id(plex_user_id) or {'id': plex_user_id, 'username': profile.get('username')}
+                email = profile.get('email') or user_info.get('email')
+                
+                # Utiliza o método robusto do InviteManager para restaurar o acesso e readicionar o utilizador
+                invite_result = {}
+                if email:
+                    import json
+                    libraries = profile.get('libraries', '[]')
+                    if isinstance(libraries, str):
+                        try:
+                            libraries = json.loads(libraries)
+                        except:
+                            libraries = []
+                            
+                    invite_result = self.plex_manager.invites.send_plex_invite(
+                        identifier=email,
+                        library_titles=libraries,
+                        plex_user_id=plex_user_id,
+                        allow_sync=profile.get('allow_downloads', False)
+                    )
+                
+                # Resgata o token escondido e constrói o Link Direto de Aceite
+                invite_token = invite_result.get('invite_token')
+                
+                if invite_token and invite_token != "ACCEPTED":
+                    invite_link = f"https://clients.plex.tv/servers/shared_servers/accept?invite_token={invite_token}"
+                else:
+                    invite_link = "https://app.plex.tv/desktop"
+
+                # 🔗 Persiste o link no perfil para que a página de pagamento consiga
+                # exibir um botão de confirmação manual caso a ativação automática falhe.
+                # Só guardamos um link "real" quando temos um token válido (convite pendente);
+                # caso contrário, limpamos para não mostrar o botão à toa.
+                latest_profile = self.data_manager.get_user_profile(plex_user_id) or profile
+                latest_profile['pending_invite_link'] = invite_link if (invite_token and invite_token != "ACCEPTED") else None
+                self.data_manager.set_user_profile(plex_user_id, latest_profile)
+                
+                # Dispara a notificação de reativação com o link embutido
+                self.plex_manager.notifier_manager.send_reactivation_notification(user_info, new_expiration_date, profile, invite_link)
+            except Exception as e:
+                logger.error(f"Falha ao restaurar acesso ou enviar notificação de reativação para o usuário {plex_user_id}: {e}")
 
         return new_expiration_date
 
