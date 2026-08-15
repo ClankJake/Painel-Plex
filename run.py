@@ -73,9 +73,9 @@ if __name__ == '__main__':
 
         logging.info(f"A iniciar o servidor em http://{host}:{port}")
         
-        # Usa o servidor de desenvolvimento padrão no Windows para evitar o conflito com eventlet
+        # Usa o servidor de desenvolvimento padrão no Windows para evitar o conflito com gevent
         if platform.system() == "Windows":
-            logging.warning("A executar em modo de desenvolvimento no Windows. O monkey-patch do eventlet foi ignorado.")
+            logging.warning("A executar em modo de desenvolvimento no Windows. O monkey-patch do gevent foi ignorado.")
             extensions.socketio.run(app, host=host, port=port)
         else:
             # Para outros sistemas (Linux, etc.), continua a usar a configuração de produção com Gunicorn

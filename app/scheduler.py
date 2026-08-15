@@ -88,7 +88,12 @@ def expiration_notification_job():
         for plex_user_id in users_to_check:
             user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
             if user_info:
-                extensions.plex_manager.send_expiration_notification_if_needed(user_info)
+                # 🛡️ ISOLAMENTO DE FALHA: uma notificação que falhe (ex: webhook fora do ar)
+                # não pode impedir que os demais usuários do lote sejam notificados.
+                _execute_with_retry(
+                    action=lambda u=user_info: extensions.plex_manager.send_expiration_notification_if_needed(u),
+                    description=f"notificar vencimento para '{user_info.get('username', plex_user_id)}'"
+                )
 
 def end_trial_job(plex_user_id):
     """Tarefa dinâmica para finalizar períodos de teste."""

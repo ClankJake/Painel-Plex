@@ -155,7 +155,16 @@ class NotifierManager:
             response = requests.post(webhook_url, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            error_response = e.response.text if hasattr(e, 'response') and e.response else "Sem resposta do servidor"
+            # 🐛 CORREÇÃO: `bool(response)` do requests retorna False para qualquer status de erro
+            # (4xx/5xx), então checar "e.response" diretamente escondia o corpo real do erro
+            # justamente quando ele é mais necessário. Usamos "is not None" para pegar sempre
+            # a resposta de verdade, quando ela existir.
+            if hasattr(e, 'response') and e.response is not None:
+                status_code = e.response.status_code
+                body = e.response.text.strip() if e.response.text else "(corpo de resposta vazio)"
+                error_response = f"HTTP {status_code} - {body}"
+            else:
+                error_response = "Sem resposta do servidor (falha de conexão/timeout)"
             logger.error(f"[ID: {request_id}] Falha no Webhook: {e} | Resposta: {error_response}")
             raise Exception(f"Falha de Webhook: {error_response}")
 
@@ -265,22 +274,35 @@ class NotifierManager:
                 markup.add(types.InlineKeyboardButton(text="💳 Pagar Agora / Renovar", url=payment_link))
                 
             if message:
-                self._send_telegram_notification(
-                    message, telegram_chat_id, request_id, 
-                    reply_markup=markup, plex_user_id=user_profile.get('plex_user_id'), photo_url=photo_url
-                )
+                try:
+                    self._send_telegram_notification(
+                        message, telegram_chat_id, request_id, 
+                        reply_markup=markup, plex_user_id=user_profile.get('plex_user_id'), photo_url=photo_url
+                    )
+                except Exception as e:
+                    # Isola a falha: não deixa o erro do Telegram impedir o envio pelo
+                    # Webhook/Discord logo abaixo (ou interromper outros usuários no lote).
+                    logger.error(f"[ID: {request_id}] Notificação via Telegram falhou para '{user.get('username')}': {e}")
 
         if can_notify_webhook:
             template_str = config.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE")
             payload = self._format_template(template_str, placeholders, is_json=True)
-            if payload: 
-                self._send_webhook_notification(payload, request_id, config)
+            if payload:
+                try:
+                    self._send_webhook_notification(payload, request_id, config)
+                except Exception as e:
+                    # Isola a falha: não deixa o erro do Webhook impedir o envio pelo Discord
+                    # logo abaixo (ou interromper a notificação de outros usuários no lote).
+                    logger.error(f"[ID: {request_id}] Notificação via Webhook falhou para '{user.get('username')}': {e}")
 
         if can_notify_discord:
             template_str = config.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE")
             payload = self._format_template(template_str, placeholders, is_json=True)
-            if payload: 
-                self._send_discord_notification(payload, request_id, config)
+            if payload:
+                try:
+                    self._send_discord_notification(payload, request_id, config)
+                except Exception as e:
+                    logger.error(f"[ID: {request_id}] Notificação via Discord falhou para '{user.get('username')}': {e}")
 
     def send_expiration_notification(self, user, days_left, user_profile):
         expiration_date_str = user_profile.get('expiration_date')
@@ -429,10 +451,15 @@ class NotifierManager:
                             logger.error(f"Erro no envio em massa para {username}: {user_err}")
                             emit_ws('bulk_console_log', {'msg': f"[{index}/{total_users}] ❌ Erro ({username}): {str(user_err)}"})
                         
+                        # ⏱️ OTIMIZAÇÃO: Reduzido de 0.5s para 0.2s. A proteção real contra
+                        # rate-limit do Telegram já é feita via tratamento do erro 429
+                        # (com retry_after) em _send_telegram_notification — esta pausa aqui
+                        # é apenas uma cautela extra, e 0.5s por usuário tornava envios em
+                        # massa desnecessariamente lentos em bases grandes.
                         if extensions.socketio:
-                            extensions.socketio.sleep(0.5)
+                            extensions.socketio.sleep(0.2)
                         else:
-                            time.sleep(0.5)
+                            time.sleep(0.2)
                         
                     extensions.data_manager.update_task(task_id, {
                         'status': 'completed', 
