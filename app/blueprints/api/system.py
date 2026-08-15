@@ -218,7 +218,7 @@ def api_settings():
             'DISCORD_ENABLED', 'DISCORD_WEBHOOK_URL', 'DISCORD_EXPIRATION_MESSAGE_TEMPLATE',
             'DISCORD_RENEWAL_MESSAGE_TEMPLATE', 'DISCORD_REACTIVATION_MESSAGE_TEMPLATE', 'DISCORD_TRIAL_END_MESSAGE_TEMPLATE',
             'STREAM_CHECK_INTERVAL_SECONDS', 'TERMINATION_MSG_BLOCKED_MANUAL', 'TERMINATION_MSG_BLOCKED_EXPIRED',
-            'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED', 'TERMINATION_MSG_SCREEN_LIMIT'
+            'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED', 'TERMINATION_MSG_SCREEN_LIMIT', 'SCREEN_LIMIT_TERMINATION_STRATEGY'
         ]
         
         numeric_fields = [
@@ -249,6 +249,9 @@ def api_settings():
                         config_to_update[field] = int(value) if value else 0
                     except (ValueError, TypeError): 
                         config_to_update[field] = old_config.get(field, 0)
+                elif field == 'SCREEN_LIMIT_TERMINATION_STRATEGY':
+                    # Defesa extra: só aceita os dois valores válidos, mesmo que a UI já restrinja isso.
+                    config_to_update[field] = value if value in ('oldest', 'newest') else old_config.get(field, 'oldest')
                 elif isinstance(value, bool): 
                     config_to_update[field] = value
                 else: 

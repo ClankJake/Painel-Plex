@@ -493,7 +493,14 @@ class StreamManager:
                 logger.info(f"⚠️ O utilizador '{username}' excedeu o limite de {screen_limit} tela(s). A terminar {excess_count} sessão(ões).")
                 cache.set(log_cache_key, True, timeout=300) 
             
-            sorted_sessions = sorted(active_sessions, key=lambda s: getattr(s, 'viewOffset', 0) or 0, reverse=True)
+            sort_reverse = config.get("SCREEN_LIMIT_TERMINATION_STRATEGY", "oldest") != "newest"
+            # 🎛️ ESTRATÉGIA CONFIGURÁVEL: por padrão ("oldest"), ordenamos por viewOffset
+            # decrescente — a sessão com o maior progresso de reprodução tende a ser a que
+            # está a correr há mais tempo, e é ela que é encerrada primeiro (comportamento
+            # original do sistema). Se o admin escolher "newest", invertemos a ordenação para
+            # encerrar primeiro a(s) sessão(ões) mais recente(s) (menor viewOffset), preservando
+            # quem já estava a assistir há mais tempo.
+            sorted_sessions = sorted(active_sessions, key=lambda s: getattr(s, 'viewOffset', 0) or 0, reverse=sort_reverse)
             
             msg_template = config.get('TERMINATION_MSG_SCREEN_LIMIT') or "Você excedeu o seu limite de {limit} telas simultâneas."
             placeholders = self._build_placeholders(user_id, username, profile, sorted_sessions[0], context={'limit': screen_limit})

@@ -88,6 +88,7 @@ export const fieldMap = {
     'DISCORD_BULK_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
     'WEBHOOK_BULK_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
     'STREAM_CHECK_INTERVAL_SECONDS': { type: 'number', default: 15 },
+    'SCREEN_LIMIT_TERMINATION_STRATEGY': { type: 'text', default: 'oldest' },
     'TERMINATION_MSG_BLOCKED_MANUAL': { type: 'textarea', default: '' },
     'TERMINATION_MSG_BLOCKED_EXPIRED': { type: 'textarea', default: '' },
     'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED': { type: 'textarea', default: '' },

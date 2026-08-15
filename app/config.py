@@ -1,4 +1,3 @@
-# app/config.py
 import os
 import json
 import secrets
@@ -42,6 +41,7 @@ def load_or_create_config():
             "TAUTULLI_URL": "",
             "TAUTULLI_API_KEY": "",
             "STREAM_CHECK_INTERVAL_SECONDS": 15,
+            "SCREEN_LIMIT_TERMINATION_STRATEGY": "oldest",
             "DAYS_TO_REMOVE_BLOCKED_USER": 0,
             "EXPIRATION_NOTIFICATION_TIME": "09:00",
             "BLOCK_REMOVAL_TIME": "02:00",
@@ -159,6 +159,7 @@ def load_or_create_config():
             _set_default("LOG_MAX_BYTES", 1024 * 1024)
             _set_default("LOG_BACKUP_COUNT", 5)
             _set_default("STREAM_CHECK_INTERVAL_SECONDS", 15)
+            _set_default("SCREEN_LIMIT_TERMINATION_STRATEGY", "oldest")
             _set_default("TERMINATION_MSG_BLOCKED_MANUAL", "O seu acesso ao servidor foi bloqueado pelo administrador.")
             _set_default("TERMINATION_MSG_BLOCKED_EXPIRED", "A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.")
             _set_default("TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED", "O seu período de teste para {username} terminou. Renove para continuar.")
@@ -226,6 +227,11 @@ def load_or_create_config():
                     config["SCREEN_PRICES"]["6"] = "40.00"
                     config_was_modified = True
 
+            # 🔧 AUTO-CURA DOS TEMPLATES DE MENSAGEM: setdefault() só age em chaves AUSENTES.
+            # Se uma atualização anterior deixou um template gravado como string vazia (""),
+            # setdefault não o corrige. Aqui reescrevemos qualquer template de mensagem que
+            # esteja em branco, já que um template vazio nunca é um estado intencional válido
+            # (diferente de campos como WEBHOOK_URL, que podem ficar vazios legitimamente).
             message_template_defaults = {
                 "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
                 "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',

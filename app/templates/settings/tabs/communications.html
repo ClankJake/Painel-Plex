@@ -108,6 +108,21 @@
                         <p class="text-xs text-cyan-600/70 dark:text-cyan-500/70 mt-2">{{_('Tempo de segurança (fallback) entre verificações profundas da rede. O servidor já responde instantaneamente a eventos Play/Pause. Padrão sugerido: 15.')}}</p>
                     </div>
 
+                    <!-- Estratégia de Encerramento por Limite de Telas -->
+                    <div class="max-w-md bg-amber-50/50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-800/30">
+                        <div class="flex items-center justify-between mb-1">
+                            <label for="SCREEN_LIMIT_TERMINATION_STRATEGY" class="block text-sm font-semibold text-amber-800 dark:text-amber-400 flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                {{ _('Ao exceder o limite de telas, encerrar:') }}
+                            </label>
+                        </div>
+                        <select id="SCREEN_LIMIT_TERMINATION_STRATEGY" class="block w-full px-3 py-2 text-sm rounded-lg border border-amber-200 bg-white text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-gray-800 dark:border-amber-700/50 dark:text-white mt-2">
+                            <option value="oldest">{{ _('O(s) primeiro(s) stream(s) aberto(s) (padrão)') }}</option>
+                            <option value="newest">{{ _('O(s) último(s) stream(s) aberto(s)') }}</option>
+                        </select>
+                        <p class="text-xs text-amber-600/70 dark:text-amber-500/70 mt-2">{{ _('Define qual sessão é encerrada quando um utilizador ultrapassa o número de telas simultâneas permitido. "Primeiro" mantém quem já estava a assistir; "Último" prioriza manter a transmissão mais recente.') }}</p>
+                    </div>
+
                     <hr class="border-gray-200 dark:border-gray-700/60">
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
