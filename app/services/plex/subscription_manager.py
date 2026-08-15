@@ -91,7 +91,20 @@ class PlexSubscriptionManager:
                 invite_token = invite_result.get('invite_token')
                 
                 if invite_token and invite_token != "ACCEPTED":
-                    invite_link = f"https://clients.plex.tv/servers/shared_servers/accept?invite_token={invite_token}"
+                    long_invite_link = f"https://clients.plex.tv/servers/shared_servers/accept?invite_token={invite_token}"
+
+                    # 🔗 ENCURTADOR DE LINKS: reaproveita o mesmo serviço já usado para os
+                    # links de pagamento (LinkShortener), respeitando a configuração global
+                    # ENABLE_LINK_SHORTENER. Um link curto no próprio domínio do painel fica
+                    # mais limpo e confiável em mensagens de WhatsApp/Webhook/Telegram do que
+                    # a URL longa e "técnica" da API do Plex. Se o encurtador falhar por
+                    # qualquer motivo, cai de volta para o link longo (nunca quebra o convite).
+                    config = load_or_create_config()
+                    link_shortener = getattr(self.plex_manager.notifier_manager, 'link_shortener', None)
+                    if config.get("ENABLE_LINK_SHORTENER") and link_shortener:
+                        invite_link = link_shortener.create_short_link(long_invite_link)
+                    else:
+                        invite_link = long_invite_link
                 else:
                     invite_link = "https://app.plex.tv/desktop"
 
