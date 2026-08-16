@@ -35,9 +35,22 @@ class PlexSubscriptionManager:
         if not profile:
             raise ValueError("Perfil de utilizador não encontrado.")
 
-        # Deteção automática de reativação caso a flag não venha explícita do sistema de pagamentos
-        was_blocked = self.data_manager.get_blocked_user(plex_user_id) is not None
-        if profile.get('status') == 'inactive' or was_blocked:
+        # Deteção automática de reativação caso a flag não venha explícita do sistema de pagamentos.
+        #
+        # 🐛 CORREÇÃO: antes, qualquer utilizador presente na tabela de "bloqueados" (get_blocked_user)
+        # disparava o fluxo de reativação — mas "bloqueado" só significa que a assinatura venceu e as
+        # sessões são cortadas; o utilizador continua a ser amigo no Plex normalmente. Só depois de
+        # 'DAYS_TO_REMOVE_BLOCKED_USER' dias bloqueado é que o 'removal_job' o remove de facto do Plex
+        # (e nesse momento o perfil passa a status='inactive', ver users.py). Ou seja, na esmagadora
+        # maioria dos pagamentos de assinatura vencida, o utilizador nunca chegou a ser removido — é
+        # simplesmente uma renovação normal, e não deve receber a mensagem/fluxo de reativação (com
+        # convite). Consultamos o Plex diretamente (via cache) para saber com certeza se ele ainda é
+        # amigo do servidor, em vez de confiar apenas na tabela interna de bloqueados.
+        is_still_plex_friend = True
+        if self.plex_manager:
+            is_still_plex_friend = self.plex_manager.get_user_by_id(plex_user_id) is not None
+
+        if profile.get('status') == 'inactive' or not is_still_plex_friend:
             is_reactivation = True
 
         # 1. Atualizar o estado básico do perfil (Status e Limite de Telas)
