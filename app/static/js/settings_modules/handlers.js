@@ -6,7 +6,7 @@
 import * as dom from './dom.js';
 import * as api from './api.js';
 import * as ui from './ui.js';
-import { i18n, fieldMap } from './config.js';
+import { i18n, fieldMap, urls } from './config.js';
 import { showToast } from '../utils.js';
 
 let pinCheckInterval = null;
@@ -16,7 +16,142 @@ export let settingsData = { plex_url: null, plex_token: null };
 // --- HELPERS (Auxiliares Visuais) ---
 const getSpinner = (classes = "w-4 h-4 mr-2") => `<svg class="animate-spin inline ${classes}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
 
-// --- HANDLERS PRINCIPAIS ---
+// --- HANDLERS DE BACKUP E RESTAURO ---
+
+function formatBytes(bytes) {
+    if (!bytes) return '0 KB';
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    return `${(kb / 1024).toFixed(2)} MB`;
+}
+
+function formatBackupDate(isoString) {
+    try {
+        return new Date(isoString).toLocaleString();
+    } catch {
+        return isoString;
+    }
+}
+
+async function loadBackupList() {
+    const container = document.getElementById('backupList');
+    if (!container) return;
+
+    try {
+        const result = await api.backupList();
+        const backups = result.backups || [];
+
+        if (backups.length === 0) {
+            container.innerHTML = `<p class="text-xs text-gray-400 dark:text-gray-500">${i18n.noBackupsYet || 'Nenhum backup automático ainda. Ative o backup automático acima, ou use "Baixar Backup Agora" para gerar um agora mesmo.'}</p>`;
+            return;
+        }
+
+        container.innerHTML = backups.map(b => `
+            <div class="flex items-center justify-between gap-3 bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700/50 rounded-lg px-3 py-2">
+                <div class="min-w-0">
+                    <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">${b.filename}</p>
+                    <p class="text-xs text-gray-400 dark:text-gray-500">${formatBackupDate(b.created_at)} · ${formatBytes(b.size_bytes)}</p>
+                </div>
+                <div class="flex items-center gap-1 flex-shrink-0">
+                    <a href="${urls.backupDownloadStored.replace('__FILENAME__', encodeURIComponent(b.filename))}" title="${i18n.download || 'Baixar'}" class="p-2 rounded-full text-gray-500 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 dark:text-emerald-400 transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    </a>
+                    <button type="button" data-filename="${b.filename}" class="backup-delete-btn p-2 rounded-full text-gray-500 hover:bg-red-100 dark:hover:bg-red-500/20 dark:text-red-400 transition-colors" title="${i18n.delete || 'Apagar'}">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+        container.querySelectorAll('.backup-delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => handleDeleteBackup(btn.dataset.filename));
+        });
+    } catch (error) {
+        container.innerHTML = `<p class="text-xs text-red-500">${i18n.errorLoadingBackups || 'Falha ao carregar a lista de backups.'}: ${error.message}</p>`;
+    }
+}
+
+async function handleDeleteBackup(filename) {
+    if (!confirm(`${i18n.confirmDeleteBackup || 'Apagar este backup permanentemente?'}\n\n${filename}`)) return;
+    try {
+        await api.backupDelete(filename);
+        showToast(i18n.backupDeleted || 'Backup removido.', 'success');
+        loadBackupList();
+    } catch (error) {
+        showToast(`${i18n.errorGeneric || 'Erro'}: ${error.message}`, 'error');
+    }
+}
+
+function handleBackupDownloadNow(button) {
+    if (!urls.backupDownloadNow) return;
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = `${getSpinner()} ${i18n.generatingBackup || 'A gerar backup...'}`;
+
+    // Navega diretamente para a rota GET: o navegador trata o download nativamente
+    // (o servidor responde com Content-Disposition: attachment). Não usamos fetchAPI
+    // aqui porque a resposta é um ficheiro binário (ZIP), não JSON.
+    window.location.href = urls.backupDownloadNow;
+
+    // Não há callback de conclusão de download via navegação direta, então
+    // apenas devolvemos o botão ao normal após um curto período.
+    setTimeout(() => {
+        button.disabled = false;
+        button.innerHTML = originalText;
+        loadBackupList();
+    }, 2500);
+}
+
+async function handleBackupRestore(file) {
+    if (!file) return;
+
+    // ⚠️ Ação destrutiva e irreversível: dupla confirmação antes de prosseguir.
+    const firstConfirm = confirm(
+        (i18n.confirmRestoreStep1 || 'ATENÇÃO: Isto vai SUBSTITUIR o config.json e as bases de dados atuais pelos dados do ficheiro de backup selecionado.\n\nTodos os dados criados depois desse backup (novos utilizadores, pagamentos, etc.) serão PERDIDOS.\n\nA aplicação será reiniciada automaticamente em seguida.\n\nDeseja continuar?')
+    );
+    if (!firstConfirm) return;
+
+    const confirmationWord = (i18n.restoreConfirmationWord || 'RESTAURAR').toUpperCase();
+    const typed = prompt(
+        (i18n.confirmRestoreStep2 || `Para confirmar esta ação irreversível, digite "${confirmationWord}" (sem aspas):`)
+    );
+    if ((typed || '').trim().toUpperCase() !== confirmationWord) {
+        showToast(i18n.restoreCancelled || 'Restauro cancelado.', 'info');
+        return;
+    }
+
+    const restoreButton = document.getElementById('backupRestoreButton');
+    const originalText = restoreButton ? restoreButton.innerHTML : '';
+    if (restoreButton) {
+        restoreButton.disabled = true;
+        restoreButton.innerHTML = `${getSpinner()} ${i18n.restoring || 'A restaurar...'}`;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // Upload multipart: não pode passar por fetchAPI (que só envia JSON).
+        const response = await fetch(urls.backupRestore, { method: 'POST', body: formData });
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || `HTTP ${response.status}`);
+        }
+
+        showToast(data.message || (i18n.restoreSuccess || 'Backup restaurado! A aplicação vai reiniciar...'), 'success');
+
+        // A aplicação reinicia sozinha no servidor (SIGTERM controlado). Damos um
+        // tempo generoso e recarregamos a página para o admin ver o app já de volta.
+        setTimeout(() => window.location.reload(), 8000);
+    } catch (error) {
+        showToast(`${i18n.restoreFailed || 'Falha ao restaurar'}: ${error.message}`, 'error');
+        if (restoreButton) {
+            restoreButton.disabled = false;
+            restoreButton.innerHTML = originalText;
+        }
+    }
+}
 
 async function handleSaveSettings(e) {
     e.preventDefault();
@@ -253,6 +388,27 @@ export function initializeEventListeners() {
 
     if (dom.mainTabsSelect) {
         dom.mainTabsSelect.addEventListener('change', ui.handleTabsSelectChange);
+    }
+
+    // --- Backup e Restauro ---
+    const backupDownloadNowButton = document.getElementById('backupDownloadNowButton');
+    if (backupDownloadNowButton) {
+        backupDownloadNowButton.addEventListener('click', () => handleBackupDownloadNow(backupDownloadNowButton));
+    }
+
+    const backupRestoreButton = document.getElementById('backupRestoreButton');
+    const backupRestoreFileInput = document.getElementById('backupRestoreFileInput');
+    if (backupRestoreButton && backupRestoreFileInput) {
+        backupRestoreButton.addEventListener('click', () => backupRestoreFileInput.click());
+        backupRestoreFileInput.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            handleBackupRestore(file);
+            e.target.value = ''; // permite selecionar o mesmo ficheiro de novo, se necessário
+        });
+    }
+
+    if (document.getElementById('backupList')) {
+        loadBackupList();
     }
 
     document.querySelectorAll('.show-help-button').forEach(button => button.addEventListener('click', () => dom.helpModal?.classList.remove('hidden')));

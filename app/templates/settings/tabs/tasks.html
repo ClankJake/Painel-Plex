@@ -132,5 +132,52 @@
             </div>
         </div>
 
+        <!-- Cartão 5: Backup e Restauro -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <div class="flex items-center justify-between mb-4 pb-4 border-b border-gray-200 dark:border-gray-700/50">
+                <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                    {{ _('Backup e Restauro') }}
+                </h3>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input id="BACKUP_ENABLED" type="checkbox" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-500"></div>
+                </label>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-4 -mt-2">{{ _('O backup contém o config.json e as bases de dados (utilizadores, pagamentos, cupões, etc.). Guarde os ficheiros gerados num local seguro, fora do servidor.') }}</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pl-1">
+                <div>
+                    <label for="BACKUP_TIME" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Hora do Backup Automático Diário') }}</label>
+                    <input type="time" id="BACKUP_TIME" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white">
+                </div>
+                <div>
+                    <label for="BACKUP_MAX_COUNT" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Manter os últimos (backups)') }}</label>
+                    <input type="number" id="BACKUP_MAX_COUNT" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" min="1">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Backups mais antigos que este número são apagados automaticamente do servidor.')}}</p>
+                </div>
+            </div>
+
+            <div class="mt-6 pt-5 border-t border-gray-200 dark:border-gray-700/50 flex flex-col sm:flex-row gap-3">
+                <button type="button" id="backupDownloadNowButton" class="btn bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    {{ _('Baixar Backup Agora') }}
+                </button>
+                <button type="button" id="backupRestoreButton" class="btn bg-red-600/90 hover:bg-red-600 text-white shadow-lg shadow-red-500/20 flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    {{ _('Restaurar de um Backup') }}
+                </button>
+                <input type="file" id="backupRestoreFileInput" accept=".zip" class="hidden">
+            </div>
+
+            <!-- Lista de backups automáticos guardados no servidor -->
+            <div class="mt-6">
+                <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{{ _('Backups guardados no servidor') }}</h4>
+                <div id="backupList" class="space-y-2">
+                    <p class="text-xs text-gray-400 dark:text-gray-500">{{ _('A carregar...') }}</p>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>

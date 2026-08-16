@@ -142,7 +142,7 @@ def create_app() -> Flask:
         DataManager, TautulliManager, PlexManager, 
         NotifierManager, EfiManager, MercadoPagoManager,
         OverseerrManager, LinkShortener, BpixManager, StreamManager,
-        PricingManager
+        PricingManager, BackupManager
     )
 
     extensions.data_manager = DataManager()
@@ -154,6 +154,7 @@ def create_app() -> Flask:
     extensions.mercado_pago_manager = MercadoPagoManager(data_manager=extensions.data_manager)
     extensions.bpix_manager = BpixManager(data_manager=extensions.data_manager)
     extensions.overseerr_manager = OverseerrManager()
+    extensions.backup_manager = BackupManager(config_dir=config_dir_path)
     
     extensions.plex_manager = PlexManager(
         data_manager=extensions.data_manager, 

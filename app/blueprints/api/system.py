@@ -13,7 +13,7 @@ from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 
-from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager, notifier_manager
+from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager, notifier_manager, backup_manager
 from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
 from ..auth import admin_required, login_required
@@ -218,7 +218,8 @@ def api_settings():
             'DISCORD_ENABLED', 'DISCORD_WEBHOOK_URL', 'DISCORD_EXPIRATION_MESSAGE_TEMPLATE',
             'DISCORD_RENEWAL_MESSAGE_TEMPLATE', 'DISCORD_REACTIVATION_MESSAGE_TEMPLATE', 'DISCORD_TRIAL_END_MESSAGE_TEMPLATE',
             'STREAM_CHECK_INTERVAL_SECONDS', 'TERMINATION_MSG_BLOCKED_MANUAL', 'TERMINATION_MSG_BLOCKED_EXPIRED',
-            'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED', 'TERMINATION_MSG_SCREEN_LIMIT', 'SCREEN_LIMIT_TERMINATION_STRATEGY'
+            'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED', 'TERMINATION_MSG_SCREEN_LIMIT', 'SCREEN_LIMIT_TERMINATION_STRATEGY',
+            'BACKUP_ENABLED', 'BACKUP_TIME', 'BACKUP_MAX_COUNT'
         ]
         
         numeric_fields = [
@@ -229,7 +230,7 @@ def api_settings():
             'ACHIEVEMENT_SERIES_BINGER_BRONZE', 'ACHIEVEMENT_SERIES_BINGER_SILVER', 'ACHIEVEMENT_SERIES_BINGER_GOLD',
             'ACHIEVEMENT_TIME_TRAVELER_BRONZE', 'ACHIEVEMENT_TIME_TRAVELER_SILVER', 'ACHIEVEMENT_TIME_TRAVELER_GOLD',
             'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD',
-            'STREAM_CHECK_INTERVAL_SECONDS'
+            'STREAM_CHECK_INTERVAL_SECONDS', 'BACKUP_MAX_COUNT'
         ]
 
         if 'SCREEN_PRICES' in new_data:
@@ -311,6 +312,31 @@ def api_settings():
         reschedule_job('cleanup_job', 'CLEANUP_TIME', old_config, config_to_update)
         reschedule_job('cleanup_image_cache_job', 'IMAGE_CACHE_CLEANUP_TIME', old_config, config_to_update)
         reschedule_job('stream_check_job', 'STREAM_CHECK_INTERVAL_SECONDS', old_config, config_to_update, trigger_type='interval')
+
+        # Backup automático: além de reagendar quando o horário muda, também trata
+        # a ativação/desativação em tempo real (adiciona ou remove o job na hora,
+        # sem precisar reiniciar o serviço).
+        if config_to_update.get('BACKUP_ENABLED'):
+            backup_time = config_to_update.get('BACKUP_TIME', '05:00')
+            try:
+                hour, minute = map(int, backup_time.split(':')[:2])
+                tz_str = _get_safe_timezone()
+                from apscheduler.triggers.cron import CronTrigger as _CronTrigger
+                from ...scheduler import backup_job as _backup_job_func
+                scheduler.add_job(
+                    id='backup_job', func=_backup_job_func,
+                    trigger=_CronTrigger(hour=hour, minute=minute, timezone=tz_str),
+                    replace_existing=True, misfire_grace_time=3600
+                )
+                logger.info(f"Tarefa 'backup_job' agendada/atualizada para as {hour:02d}:{minute:02d} ({tz_str}).")
+            except Exception as e:
+                logger.error(f"Falha ao agendar a tarefa 'backup_job': {e}", exc_info=True)
+        elif old_config.get('BACKUP_ENABLED'):
+            try:
+                scheduler.remove_job('backup_job')
+                logger.info("Tarefa 'backup_job' removida (backup automático desativado).")
+            except Exception:
+                pass
 
         success, message = plex_manager.reload_connections()
         return jsonify({"success": success, "message": message})
@@ -517,3 +543,113 @@ def bulk_notify():
     except Exception as e:
         logger.error(f"Erro na rota bulk-notify: {e}", exc_info=True)
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+# ==========================================
+# BACKUP E RESTAURO
+# ==========================================
+
+@system_api_bp.route('/backup/download', methods=['GET'])
+@login_required
+@admin_required
+def backup_download_now():
+    """Gera um backup na hora e devolve-o diretamente como download (não fica guardado em disco)."""
+    from flask import send_file
+    import io
+    try:
+        backup_bytes = backup_manager.create_backup_bytes()
+        timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+        filename = f"painel-plex-backup-{timestamp}.zip"
+        return send_file(
+            io.BytesIO(backup_bytes),
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        logger.error(f"Erro ao gerar backup sob demanda: {e}", exc_info=True)
+        return jsonify({"success": False, "message": _("Falha ao gerar o backup: %(error)s", error=str(e))}), 500
+
+
+@system_api_bp.route('/backup/list', methods=['GET'])
+@login_required
+@admin_required
+def backup_list():
+    """Lista os backups automáticos guardados em disco."""
+    try:
+        return jsonify({"success": True, "backups": backup_manager.list_backups()})
+    except Exception as e:
+        logger.error(f"Erro ao listar backups: {e}", exc_info=True)
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@system_api_bp.route('/backup/download/<path:filename>', methods=['GET'])
+@login_required
+@admin_required
+def backup_download_stored(filename):
+    """Descarrega um backup automático já guardado em disco."""
+    from flask import send_file
+    filepath = backup_manager.get_backup_path(filename)
+    if not filepath:
+        return jsonify({"success": False, "message": _("Backup não encontrado.")}), 404
+    return send_file(filepath, mimetype='application/zip', as_attachment=True, download_name=os.path.basename(filepath))
+
+
+@system_api_bp.route('/backup/<path:filename>', methods=['DELETE'])
+@login_required
+@admin_required
+def backup_delete(filename):
+    """Apaga um backup automático guardado em disco."""
+    try:
+        if backup_manager.delete_backup(filename):
+            return jsonify({"success": True, "message": _("Backup removido com sucesso.")})
+        return jsonify({"success": False, "message": _("Backup não encontrado.")}), 404
+    except Exception as e:
+        logger.error(f"Erro ao apagar backup '{filename}': {e}", exc_info=True)
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@system_api_bp.route('/backup/restore', methods=['POST'])
+@login_required
+@admin_required
+def backup_restore():
+    """
+    Restaura o config.json e as bases de dados a partir de um ZIP de backup
+    enviado pelo administrador. ⚠️ Ação destrutiva e irreversível: substitui
+    os dados atuais pelos do backup. Após concluir, a aplicação é reiniciada
+    automaticamente (é necessário que o contentor/processo tenha uma política
+    de reinício automático, ex: 'restart: unless-stopped' no Docker) para que
+    as novas ligações à base de dados sejam recriadas de forma limpa.
+    """
+    import threading
+    import signal
+
+    if 'file' not in request.files:
+        return jsonify({"success": False, "message": _("Nenhum ficheiro enviado.")}), 400
+
+    uploaded_file = request.files['file']
+    if not uploaded_file or not uploaded_file.filename:
+        return jsonify({"success": False, "message": _("Nenhum ficheiro selecionado.")}), 400
+
+    try:
+        backup_manager.restore_from_zip(uploaded_file.stream)
+    except ValueError as e:
+        # Erro de validação (ZIP inválido, config.json corrompido, etc.) — seguro, nada foi alterado.
+        return jsonify({"success": False, "message": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Erro crítico ao restaurar backup: {e}", exc_info=True)
+        return jsonify({"success": False, "message": _("Erro inesperado ao restaurar o backup: %(error)s", error=str(e))}), 500
+
+    logger.warning(f"⚠️ RESTAURO DE BACKUP CONCLUÍDO por '{current_user.username}'. A aplicação vai reiniciar em instantes...")
+
+    def _delayed_restart():
+        import time as _time
+        _time.sleep(2)  # dá tempo da resposta HTTP chegar ao navegador antes do processo terminar
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=_delayed_restart, daemon=True).start()
+
+    return jsonify({
+        "success": True,
+        "message": _("Backup restaurado com sucesso! A aplicação será reiniciada automaticamente em alguns segundos — aguarde e recarregue a página.")
+    })

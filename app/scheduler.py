@@ -223,6 +223,18 @@ def cleanup_image_cache_job():
         except Exception as e:
             logger.error(f"Erro ao limpar o cache de imagens: {e}", exc_info=True)
 
+@single_instance_job('backup_job')
+def backup_job():
+    if not _app: return
+    with _app.app_context():
+        from . import extensions
+        config = load_or_create_config()
+        if not config.get("BACKUP_ENABLED", False): return
+        max_backups = config.get("BACKUP_MAX_COUNT", 7)
+        filename = extensions.backup_manager.create_scheduled_backup(max_backups=max_backups)
+        if not filename:
+            logger.error("Tarefa 'backup_job' falhou ao gerar o backup automático.")
+
 
 # ==========================================
 # INICIALIZAÇÃO DO SCHEDULER (MASTER)
@@ -292,6 +304,17 @@ def setup_scheduler(app):
             trigger=CronTrigger(hour=int(cache_cleanup_time_parts[0]), minute=int(cache_cleanup_time_parts[1]), timezone=tz_str),
             replace_existing=True, misfire_grace_time=3600
         )
+
+    if config.get("BACKUP_ENABLED", False):
+        backup_time_parts = config.get("BACKUP_TIME", "05:00").split(':')
+        extensions.scheduler.add_job(
+            id='backup_job', func=backup_job,
+            trigger=CronTrigger(hour=int(backup_time_parts[0]), minute=int(backup_time_parts[1]), timezone=tz_str),
+            replace_existing=True, misfire_grace_time=3600
+        )
+    else:
+        try: extensions.scheduler.remove_job('backup_job')
+        except Exception: pass
 
     extensions.scheduler.add_job(
         id='task_processor_job', func=task_processor_job,

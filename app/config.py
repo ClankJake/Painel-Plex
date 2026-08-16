@@ -120,7 +120,10 @@ def load_or_create_config():
             "IMAGE_CACHE_MAX_AGE_DAYS": 30,
             "IMAGE_CACHE_CLEANUP_TIME": "04:00",
             "SHORT_LINK_CLEANUP_ENABLED": True,
-            "SHORT_LINK_MAX_AGE_DAYS": 30
+            "SHORT_LINK_MAX_AGE_DAYS": 30,
+            "BACKUP_ENABLED": False,
+            "BACKUP_TIME": "05:00",
+            "BACKUP_MAX_COUNT": 7
         }
         save_app_config(default_config)
         return default_config
@@ -213,6 +216,9 @@ def load_or_create_config():
             _set_default("IMAGE_CACHE_CLEANUP_TIME", "04:00")
             _set_default("SHORT_LINK_CLEANUP_ENABLED", True)
             _set_default("SHORT_LINK_MAX_AGE_DAYS", 30)
+            _set_default("BACKUP_ENABLED", False)
+            _set_default("BACKUP_TIME", "05:00")
+            _set_default("BACKUP_MAX_COUNT", 7)
 
             # Adicionando as opções 5 e 6 no fallback default também
             default_screen_prices = {"1": "10.00", "2": "18.00", "3": "25.00", "4": "30.00", "5": "35.00", "6": "40.00"}
