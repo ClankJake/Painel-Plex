@@ -83,6 +83,26 @@ class StatsHandler:
                     "gold": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7), "description": _("Ouro: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7))} 
                 }, 
                 "check": lambda s: s.get("favorite_director_count", 0) 
+            },
+            "night_owl": {
+                "title": _("Coruja"), 
+                "icon": "🦉", 
+                "levels": { 
+                    "bronze": {"goal": config.get("ACHIEVEMENT_NIGHT_OWL_BRONZE", 3), "description": _("Bronze: Assista a %(goal)d sessões entre as 2h e as 5h da manhã.", goal=config.get("ACHIEVEMENT_NIGHT_OWL_BRONZE", 3))}, 
+                    "silver": {"goal": config.get("ACHIEVEMENT_NIGHT_OWL_SILVER", 10), "description": _("Prata: Assista a %(goal)d sessões entre as 2h e as 5h da manhã.", goal=config.get("ACHIEVEMENT_NIGHT_OWL_SILVER", 10))}, 
+                    "gold": {"goal": config.get("ACHIEVEMENT_NIGHT_OWL_GOLD", 25), "description": _("Ouro: Assista a %(goal)d sessões entre as 2h e as 5h da manhã.", goal=config.get("ACHIEVEMENT_NIGHT_OWL_GOLD", 25))} 
+                }, 
+                "check": lambda s: s.get("night_owl_session_count", 0) 
+            },
+            "pioneer": {
+                "title": _("Pioneiro"), 
+                "icon": "🚀", 
+                "levels": { 
+                    "bronze": {"goal": config.get("ACHIEVEMENT_PIONEER_BRONZE", 1), "description": _("Bronze: Seja um dos primeiros a assistir a %(goal)d lançamento(s) recente(s) do servidor (nas primeiras %(hours)dh após adicionado).", goal=config.get("ACHIEVEMENT_PIONEER_BRONZE", 1), hours=config.get("ACHIEVEMENT_PIONEER_WINDOW_HOURS", 48))}, 
+                    "silver": {"goal": config.get("ACHIEVEMENT_PIONEER_SILVER", 5), "description": _("Prata: Seja um dos primeiros a assistir a %(goal)d lançamentos recentes do servidor.", goal=config.get("ACHIEVEMENT_PIONEER_SILVER", 5))}, 
+                    "gold": {"goal": config.get("ACHIEVEMENT_PIONEER_GOLD", 15), "description": _("Ouro: Seja um dos primeiros a assistir a %(goal)d lançamentos recentes do servidor.", goal=config.get("ACHIEVEMENT_PIONEER_GOLD", 15))} 
+                }, 
+                "check": lambda s: s.get("pioneer_count", 0) 
             }
         }
 
@@ -192,9 +212,10 @@ class StatsHandler:
             
             stats = self._initialize_stats_dict()
             series_genre_cache = {}
+            recently_added_lookup = self._get_recently_added_lookup()
 
             for item in history:
-                self._process_history_item(item, stats, series_genre_cache)
+                self._process_history_item(item, stats, series_genre_cache, recently_added_lookup)
 
             self._finalize_stats(stats)
             
@@ -206,6 +227,38 @@ class StatsHandler:
         except Exception as e:
             logger.error(f"Erro inesperado ao processar detalhes do utilizador: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
+
+    def _get_recently_added_lookup(self) -> Dict[str, int]:
+        """
+        Constrói um dicionário {rating_key: added_at_timestamp} com os itens
+        recentemente adicionados ao servidor, usado para calcular a conquista
+        "Pioneiro". Busca uma janela ampla (90 dias) para cobrir o histórico
+        de visualização mais longo possível sem precisar de uma chamada extra
+        por item assistido (só 1 chamada no total, reaproveitando get_recently_added).
+
+        Falha de forma segura: se a API do Tautulli não devolver o formato
+        esperado, devolve um dicionário vazio (a conquista "Pioneiro" simplesmente
+        não é concedida nesta execução, sem quebrar o resto das estatísticas).
+        """
+        try:
+            config = load_or_create_config()
+            window_hours = config.get("ACHIEVEMENT_PIONEER_WINDOW_HOURS", 48)
+            # Busca uma janela generosa (90 dias) de itens adicionados, para cobrir
+            # o período de histórico consultado pelo utilizador.
+            response = self.api.get_recently_added(count=500)
+            items = response.get('recently_added', []) if isinstance(response, dict) else []
+
+            lookup = {}
+            for item in items:
+                rating_key = item.get('rating_key')
+                added_at = _safe_int_float(item.get('added_at'), default=0)
+                if rating_key and added_at > 0:
+                    lookup[str(rating_key)] = added_at
+            lookup['_window_hours'] = window_hours
+            return lookup
+        except Exception as e:
+            logger.debug(f"Não foi possível construir a lista de 'recém-adicionados' para a conquista Pioneiro: {e}")
+            return {}
 
     # --- HELPERS DA LÓGICA DE DETALHES ---
 
@@ -219,6 +272,8 @@ class StatsHandler:
             "episode_count": 0,
             "total_episode_duration": 0,
             "late_night_plays": 0,
+            "night_owl_session_count": 0,
+            "pioneer_count": 0,
             "genre_counts": Counter(),
             "recent": [],
             "weekly_activity_python": [0] * 7,
@@ -232,7 +287,7 @@ class StatsHandler:
             "unique_decades": set()
         }
 
-    def _process_history_item(self, item: Dict[str, Any], stats: Dict[str, Any], series_genre_cache: Dict[str, Any]) -> None:
+    def _process_history_item(self, item: Dict[str, Any], stats: Dict[str, Any], series_genre_cache: Dict[str, Any], recently_added_lookup: Optional[Dict[str, int]] = None) -> None:
         """Trata cada entrada do histórico alimentando as métricas parciais."""
         dt = datetime.fromtimestamp(item.get('date', 0), tz=timezone.utc)
         duration = item.get('duration', 0)
@@ -249,6 +304,22 @@ class StatsHandler:
             
         if 0 <= dt.hour < 4: 
             stats["late_night_plays"] += 1
+
+        # 🦉 Conquista "Coruja": sessões assistidas entre as 2h e as 5h da manhã.
+        if 2 <= dt.hour < 5:
+            stats["night_owl_session_count"] += 1
+
+        # 🚀 Conquista "Pioneiro": assistiu a algo pouco tempo depois de ser
+        # adicionado ao servidor (não confundir com data de lançamento/estreia).
+        if recently_added_lookup:
+            rating_key = str(item.get('rating_key') or '')
+            added_at_ts = recently_added_lookup.get(rating_key)
+            if added_at_ts:
+                window_hours = recently_added_lookup.get('_window_hours', 48)
+                watched_ts = item.get('date', 0)
+                elapsed_hours = (watched_ts - added_at_ts) / 3600
+                if 0 <= elapsed_hours <= window_hours:
+                    stats["pioneer_count"] += 1
             
         item_genres = item.get("genres")
         if not item_genres and media_type == 'episode':

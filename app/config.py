@@ -112,6 +112,13 @@ def load_or_create_config():
             "ACHIEVEMENT_DIRECTOR_FAN_BRONZE": 3,
             "ACHIEVEMENT_DIRECTOR_FAN_SILVER": 5,
             "ACHIEVEMENT_DIRECTOR_FAN_GOLD": 7,
+            "ACHIEVEMENT_NIGHT_OWL_BRONZE": 3,
+            "ACHIEVEMENT_NIGHT_OWL_SILVER": 10,
+            "ACHIEVEMENT_NIGHT_OWL_GOLD": 25,
+            "ACHIEVEMENT_PIONEER_BRONZE": 1,
+            "ACHIEVEMENT_PIONEER_SILVER": 5,
+            "ACHIEVEMENT_PIONEER_GOLD": 15,
+            "ACHIEVEMENT_PIONEER_WINDOW_HOURS": 48,
             "TERMINATION_MSG_BLOCKED_MANUAL": "O seu acesso ao servidor foi bloqueado pelo administrador.",
             "TERMINATION_MSG_BLOCKED_EXPIRED": "A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.",
             "TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED": "O seu período de teste para {username} terminou. Renove para continuar.",
@@ -211,6 +218,13 @@ def load_or_create_config():
             _set_default("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3)
             _set_default("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5)
             _set_default("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7)
+            _set_default("ACHIEVEMENT_NIGHT_OWL_BRONZE", 3)
+            _set_default("ACHIEVEMENT_NIGHT_OWL_SILVER", 10)
+            _set_default("ACHIEVEMENT_NIGHT_OWL_GOLD", 25)
+            _set_default("ACHIEVEMENT_PIONEER_BRONZE", 1)
+            _set_default("ACHIEVEMENT_PIONEER_SILVER", 5)
+            _set_default("ACHIEVEMENT_PIONEER_GOLD", 15)
+            _set_default("ACHIEVEMENT_PIONEER_WINDOW_HOURS", 48)
             _set_default("IMAGE_CACHE_CLEANUP_ENABLED", True)
             _set_default("IMAGE_CACHE_MAX_AGE_DAYS", 30)
             _set_default("IMAGE_CACHE_CLEANUP_TIME", "04:00")
