@@ -25,12 +25,174 @@ def _safe_int_float(value: Any, default: int = 0) -> int:
         return default
 
 
+# ==========================================================================
+# SISTEMA DE NÍVEIS / XP
+# ==========================================================================
+# Tabela de níveis: (xp_mínimo, nome, ícone). Deve estar em ordem crescente de XP.
+# O nível de um utilizador é o último nível cujo xp_mínimo ele já atingiu.
+LEVEL_TABLE = [
+    (0,     "level_casual_viewer",     "🍿"),
+    (500,   "level_dedicated_fan",     "📺"),
+    (1500,  "level_cinephile",         "🎬"),
+    (3500,  "level_amateur_critic",    "📝"),
+    (7000,  "level_film_critic",       "🎭"),
+    (13000, "level_legendary_binger",  "🏆"),
+    (22000, "level_couch_master",      "🛋️"),
+    (35000, "level_streaming_legend",  "👑"),
+]
+
+# Nomes traduzíveis dos níveis (chave usada acima -> texto). Mantido separado
+# da tabela de XP para que o _() do Babel consiga extrair as strings normalmente.
+LEVEL_NAMES = {
+    "level_casual_viewer":    _("Espectador Casual"),
+    "level_dedicated_fan":    _("Fã Dedicado"),
+    "level_cinephile":        _("Cinéfilo"),
+    "level_amateur_critic":   _("Crítico Amador"),
+    "level_film_critic":      _("Crítico de Cinema"),
+    "level_legendary_binger": _("Maratonista Lendário"),
+    "level_couch_master":     _("Mestre do Sofá"),
+    "level_streaming_legend": _("Lenda do Streaming"),
+}
+
+
+def get_level_info(xp: int) -> Dict[str, Any]:
+    """
+    Calcula, a partir do XP total acumulado, o nível atual, o progresso dentro
+    dele e o quanto falta para o próximo nível. Não depende de rede/BD — é
+    puro cálculo, fácil de testar isoladamente.
+    """
+    xp = max(0, xp or 0)
+    current_index = 0
+    for i, (threshold, _key, _icon) in enumerate(LEVEL_TABLE):
+        if xp >= threshold:
+            current_index = i
+        else:
+            break
+
+    current_threshold, current_key, current_icon = LEVEL_TABLE[current_index]
+    is_max_level = current_index == len(LEVEL_TABLE) - 1
+
+    if is_max_level:
+        next_threshold = None
+        progress_percent = 100
+        xp_for_next_level = 0
+    else:
+        next_threshold = LEVEL_TABLE[current_index + 1][0]
+        xp_into_level = xp - current_threshold
+        xp_needed_for_level = next_threshold - current_threshold
+        progress_percent = round(min(100, (xp_into_level / xp_needed_for_level) * 100), 1) if xp_needed_for_level > 0 else 100
+        xp_for_next_level = max(0, next_threshold - xp)
+
+    return {
+        "xp": xp,
+        "level_number": current_index + 1,
+        "level_key": current_key,
+        "level_name": str(LEVEL_NAMES.get(current_key, current_key)),
+        "level_icon": current_icon,
+        "xp_current_level_threshold": current_threshold,
+        "xp_next_level_threshold": next_threshold,
+        "xp_for_next_level": xp_for_next_level,
+        "progress_percent": progress_percent,
+        "is_max_level": is_max_level,
+    }
+
+
 class StatsHandler:
     """Gere toda a lógica de análise de dados e gamificação baseada na API do Tautulli."""
     
     def __init__(self, api_client, data_manager=None):
         self.api = api_client
         self.data_manager = data_manager
+
+    def sync_user_xp(self, plex_user_id: str, username: str) -> Optional[int]:
+        """
+        Sincroniza o XP de um utilizador com o histórico do Tautulli desde a
+        última sincronização (ou desde sempre, na primeira vez — o histórico
+        já assistido antes de este sistema existir também conta para o nível).
+
+        Só soma XP por histórico NOVO (após 'xp_last_sync_at'), nunca reprocessa
+        o mesmo período duas vezes — evita duplicar XP a cada visita à página
+        de estatísticas.
+
+        Devolve o novo total de XP, ou None se não foi possível sincronizar
+        (ex: Tautulli indisponível) — falha de forma segura, sem quebrar o
+        resto da página de estatísticas.
+        """
+        if not self.data_manager:
+            return None
+
+        try:
+            config = load_or_create_config()
+            xp_per_minute = config.get("XP_PER_MINUTE_WATCHED", 1)
+            xp_bonus_completed = config.get("XP_BONUS_PER_COMPLETED_ITEM", 20)
+            completion_threshold = config.get("XP_COMPLETION_THRESHOLD_PERCENT", 90)
+
+            profile = self.data_manager.get_user_profile(plex_user_id) or {}
+            last_sync_ts = profile.get('xp_last_sync_at')
+            current_xp = profile.get('xp', 0) or 0
+
+            if last_sync_ts:
+                after_date = datetime.fromtimestamp(last_sync_ts, tz=timezone.utc).strftime('%Y-%m-%d')
+            else:
+                # Primeira sincronização: conta todo o histórico disponível no Tautulli,
+                # para que o nível já reflita o uso passado do utilizador.
+                after_date = None
+
+            params = {"user_id": plex_user_id}
+            if after_date:
+                params["after"] = after_date
+            history_response = self.api.get_history(**params)
+            history = history_response.get('data', []) if isinstance(history_response, dict) else []
+
+            if not history:
+                # Nada de novo para processar, mas ainda assim marca a sincronização
+                # como feita agora para não ficar sempre a tentar reprocessar o vazio.
+                self.data_manager.set_user_profile(plex_user_id, {'xp_last_sync_at': datetime.now(timezone.utc).timestamp()})
+                return current_xp
+
+            newest_ts = last_sync_ts or 0
+            xp_gained = 0
+            for item in history:
+                item_ts = item.get('date', 0)
+                # Proteção extra contra reprocessar o mesmo item duas vezes, caso a
+                # granularidade do filtro 'after' do Tautulli (por dia, não por segundo)
+                # devolva itens do próprio dia da última sincronização.
+                if last_sync_ts and item_ts <= last_sync_ts:
+                    continue
+
+                duration_minutes = (item.get('duration', 0) or 0) / 60
+                xp_gained += duration_minutes * xp_per_minute
+
+                percent_complete = _safe_int_float(item.get('percent_complete'), default=0)
+                if percent_complete >= completion_threshold:
+                    xp_gained += xp_bonus_completed
+
+                newest_ts = max(newest_ts, item_ts)
+
+            new_total_xp = int(current_xp + xp_gained)
+
+            self.data_manager.set_user_profile(plex_user_id, {
+                'xp': new_total_xp,
+                'xp_last_sync_at': newest_ts or datetime.now(timezone.utc).timestamp(),
+            })
+
+            # Notifica o próprio utilizador se subiu de nível nesta sincronização.
+            if xp_gained > 0:
+                old_level = get_level_info(current_xp)
+                new_level = get_level_info(new_total_xp)
+                if new_level['level_number'] > old_level['level_number']:
+                    self.data_manager.create_notification(
+                        message=_("Você subiu de nível: %(icon)s %(name)s!", icon=new_level['level_icon'], name=new_level['level_name']),
+                        category='success', link="/statistics", user_plex_id=plex_user_id
+                    )
+
+            return new_total_xp
+        except RequestException as e:
+            logger.debug(f"Falha ao sincronizar XP para o utilizador {plex_user_id} (Tautulli indisponível): {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Erro inesperado ao sincronizar XP para o utilizador {plex_user_id}: {e}", exc_info=True)
+            return None
 
     def _get_achievement_definitions(self, days: int) -> Dict[str, Any]:
         """Retorna as definições dinâmicas de conquistas baseadas nas configurações atuais."""
@@ -179,6 +341,14 @@ class StatsHandler:
                         user_stats[user_id] = {"plays": 0, "total_duration": 0, "username": item.get("user")}
                     user_stats[user_id]["plays"] += 1
                     user_stats[user_id]["total_duration"] += item.get("duration", 0)
+
+            # 🎮 Nível/XP: busca em lote (1 única query) os perfis de todos os utilizadores
+            # que aparecem no leaderboard, para anexar o ícone/nome do nível ao lado do nome.
+            xp_by_user = {}
+            if self.data_manager and user_stats:
+                profiles_by_id = self.data_manager.get_user_profiles_by_id(list(user_stats.keys()))
+                for uid, profile in profiles_by_id.items():
+                    xp_by_user[uid] = get_level_info(profile.get('xp', 0))
             
             formatted_stats = [
                 {
@@ -187,7 +357,8 @@ class StatsHandler:
                     'plays': details['plays'], 
                     'total_duration': details['total_duration'],
                     'avg_duration': details['total_duration'] / details['plays'] if details['plays'] > 0 else 0,
-                    'thumb': plex_users_info.get(uid) if plex_users_info else None
+                    'thumb': plex_users_info.get(uid) if plex_users_info else None,
+                    'level_info': xp_by_user.get(uid)
                 }
                 for uid, details in user_stats.items()
             ]
@@ -206,9 +377,23 @@ class StatsHandler:
             after_date_str = (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%d')
             history_response = self.api.get_history(after=after_date_str, user_id=plex_user_id)
             history = history_response.get('data', [])
-            
+
+            # 🎮 XP/Níveis: sincroniza (grava novo XP) só quando o próprio utilizador ou
+            # um admin está a ver a página — evita gastar chamadas ao Tautulli sempre que
+            # alguém navega pelo perfil público de outra pessoa no leaderboard.
+            is_owner_or_admin = current_user and (str(current_user.id) == str(plex_user_id) or getattr(current_user, 'is_admin', lambda: False)())
+            if is_owner_or_admin and self.data_manager:
+                self.sync_user_xp(plex_user_id, username)
+
+            # O nível é sempre devolvido com base no XP já persistido (leitura barata),
+            # independentemente de quem está a ver ou se houve sincronização agora.
+            level_info = None
+            if self.data_manager:
+                profile = self.data_manager.get_user_profile(plex_user_id) or {}
+                level_info = get_level_info(profile.get('xp', 0))
+
             if not history:
-                return {"success": True, "details": {}}
+                return {"success": True, "details": {"level_info": level_info} if level_info else {}}
             
             stats = self._initialize_stats_dict()
             series_genre_cache = {}
@@ -220,6 +405,7 @@ class StatsHandler:
             self._finalize_stats(stats)
             
             stats["achievements"] = self._calculate_achievements(stats, days, plex_user_id, username, current_user)
+            stats["level_info"] = level_info
             
             return {"success": True, "details": stats}
         except RequestException as e:

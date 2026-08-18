@@ -235,6 +235,29 @@ def backup_job():
         if not filename:
             logger.error("Tarefa 'backup_job' falhou ao gerar o backup automático.")
 
+@single_instance_job('sync_xp_job')
+def sync_xp_job():
+    """
+    Sincroniza o XP/Nível de todos os utilizadores conhecidos, mesmo os que não
+    visitaram a própria página de estatísticas recentemente — assim o leaderboard
+    de XP e os níveis ficam sempre atualizados, não só para quem entra no painel.
+    """
+    if not _app: return
+    with _app.app_context():
+        from . import extensions
+        profiles = extensions.data_manager.get_all_user_profiles()
+        for profile in profiles:
+            plex_user_id = profile.get('plex_user_id')
+            username = profile.get('username')
+            if not plex_user_id or not username:
+                continue
+            # 🛡️ ISOLAMENTO DE FALHA: um utilizador com histórico problemático no
+            # Tautulli não pode impedir a sincronização dos demais.
+            _execute_with_retry(
+                action=lambda pid=plex_user_id, u=username: extensions.tautulli_manager.stats.sync_user_xp(pid, u),
+                description=f"sincronizar XP para '{username}'"
+            )
+
 
 # ==========================================
 # INICIALIZAÇÃO DO SCHEDULER (MASTER)
@@ -294,6 +317,16 @@ def setup_scheduler(app):
     extensions.scheduler.add_job(
         id='cleanup_job', func=cleanup_job,
         trigger=CronTrigger(hour=int(cleanup_time_parts[0]), minute=int(cleanup_time_parts[1]), timezone=tz_str),
+        replace_existing=True, misfire_grace_time=3600
+    )
+
+    # Sincronização de XP/Nível: roda todos os dias de madrugada, atualizando o
+    # progresso de todos os utilizadores (mesmo os que não visitam a página de
+    # estatísticas com frequência). É sempre ativa (sem toggle próprio) porque
+    # faz parte do núcleo do sistema de gamificação, junto às conquistas.
+    extensions.scheduler.add_job(
+        id='sync_xp_job', func=sync_xp_job,
+        trigger=CronTrigger(hour=4, minute=30, timezone=tz_str),
         replace_existing=True, misfire_grace_time=3600
     )
 

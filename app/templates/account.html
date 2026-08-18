@@ -109,7 +109,10 @@
                 <img id="user-thumb" src="" alt="Avatar" class="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-gray-100 dark:border-gray-600 shadow-sm object-cover flex-shrink-0">
                 
                 <div class="flex-1 text-left">
-                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white" id="user-username"></h3>
+                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
+                        <span id="user-username"></span>
+                        <span id="user-level-badge" class="hidden text-lg align-middle cursor-default" title=""></span>
+                    </h3>
                     <p class="text-sm text-gray-500 dark:text-gray-400 mb-2 sm:mb-4" id="user-email"></p>
                     
                     <div id="user-dates" class="text-sm text-gray-600 dark:text-gray-300 space-y-1">
@@ -156,7 +159,28 @@
             <!-- SEPARADOR: VISÃO GERAL -->
             <!-- ========================================== -->
             <div id="tab-overview" class="tab-content {% if not current_user.is_admin() %}active{% endif %} space-y-6">
-                
+
+                <!-- Card de Nível / XP -->
+                <div id="user-level-card" class="hidden bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl p-5 border border-indigo-100 dark:border-indigo-800/30">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <span id="user-level-icon" class="text-4xl"></span>
+                            <div>
+                                <p class="text-xs font-semibold text-indigo-500 dark:text-indigo-400 uppercase tracking-wide" id="user-level-number-label"></p>
+                                <p class="text-lg font-bold text-gray-900 dark:text-white leading-tight" id="user-level-name"></p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400" id="user-xp-total"></p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">XP</p>
+                        </div>
+                    </div>
+                    <div class="w-full bg-white/60 dark:bg-black/20 rounded-full h-3 overflow-hidden">
+                        <div id="user-xp-progress-bar" class="bg-gradient-to-r from-indigo-500 to-purple-500 h-3 rounded-full transition-all duration-700" style="width: 0%"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 text-right" id="user-xp-next-level"></p>
+                </div>
+
                 <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
                     <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
                         <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
@@ -401,6 +425,10 @@
         data-i18n-no-requests-found="{{ _('Nenhum pedido condiz com este filtro.') }}"
         data-i18n-requested-on="{{ _('Pedido a') }}"
         data-i18n-overseerr-disabled="{{ _('Módulo de pedidos desativado no servidor.') }}"
+        data-i18n-level="{{ _('Nível') }}"
+        data-i18n-xp-to-next-level="{{ _('{xp} XP para o próximo nível') }}"
+        data-i18n-max-level-reached="{{ _('Nível máximo atingido! 🎉') }}"
+        data-payment-status-url="{{ url_for('payments_api.get_payment_status_route', txid='__TXID__') }}"
         >
 </script>
 {% endblock %}

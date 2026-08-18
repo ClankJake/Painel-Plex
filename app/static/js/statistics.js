@@ -382,6 +382,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             }
 
+            // Renderização do Nível / Barra de XP
+            let levelHtmlForContainer = '';
+            if (details.level_info) {
+                const lvl = details.level_info;
+                const levelTitle = isOwnerViewing ? (i18n.myLevel || 'O Meu Nível') : (i18n.userLevel || 'Nível de {username}').replace('{username}', `<strong>${username}</strong>`);
+                const nextLevelText = lvl.is_max_level
+                    ? (i18n.maxLevelReached || 'Nível máximo atingido! 🎉')
+                    : (i18n.xpToNextLevel || '{xp} XP para o próximo nível').replace('{xp}', lvl.xp_for_next_level.toLocaleString());
+
+                levelHtmlForContainer = `
+                    <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
+                        <h4 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">${levelTitle}</h4>
+                        <div class="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-2xl p-5 border border-indigo-100 dark:border-indigo-800/30">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-4xl">${lvl.level_icon}</span>
+                                    <div>
+                                        <p class="text-xs font-semibold text-indigo-500 dark:text-indigo-400 uppercase tracking-wide">${i18n.level || 'Nível'} ${lvl.level_number}</p>
+                                        <p class="text-lg font-bold text-gray-900 dark:text-white leading-tight">${lvl.level_name}</p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400">${lvl.xp.toLocaleString()}</p>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400">XP</p>
+                                </div>
+                            </div>
+                            <div class="w-full bg-white/60 dark:bg-black/20 rounded-full h-3 overflow-hidden">
+                                <div class="bg-gradient-to-r from-indigo-500 to-purple-500 h-3 rounded-full transition-all duration-700" style="width: ${lvl.progress_percent}%"></div>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 text-right">${nextLevelText}</p>
+                        </div>
+                    </div>
+                `;
+            }
+
             const totalDuration = (details.total_movie_duration || 0) + (details.total_episode_duration || 0);
 
             // Container Base
@@ -426,6 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${createStatCard('🎭', i18n.favoriteGenre, details.favorite_genre || i18n.notAvailable, 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200')}
                     </div>
                     ${chartsAndRecentHtml}
+                    ${levelHtmlForContainer}
                     ${achievementsHtmlForContainer}
                 </div>
             `;
@@ -548,13 +584,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             const clickableAttrs = isPrivate ? '' : `data-username="${user.original_username}" data-plex-user-id="${user.user_id}"`;
                             const cursorClass = isPrivate ? 'cursor-default' : 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50';
                             const highlightClass = isCurrentUser ? 'bg-yellow-100 dark:bg-yellow-500/20 ring-2 ring-yellow-500' : cursorClass;
+                            const levelBadge = (user.level_info && !isPrivate)
+                                ? `<span class="text-sm" title="${user.level_info.level_name} (${i18n.level || 'Nível'} ${user.level_info.level_number})">${user.level_info.level_icon}</span>`
+                                : '';
                             
                             return `
                             <div class="flex items-center justify-between p-3 rounded-lg ${highlightClass}" ${clickableAttrs}>
                                 <div class="flex items-center gap-3">
                                     <span class="font-bold w-8 text-gray-500 dark:text-gray-400 text-lg">${index + 1}</span>
                                     <img src="${user.thumb || 'https://placehold.co/40x40/1F2937/E5E7EB?text=?'}" onerror="this.onerror=null;this.src='https://placehold.co/40x40/1F2937/E5E7EB?text=U'" class="w-10 h-10 object-cover rounded-full" alt="Avatar">
-                                    <span class="font-semibold">${user.username} ${isCurrentUser ? `(${i18n.you})` : ''}</span>
+                                    <span class="font-semibold flex items-center gap-1.5">${levelBadge} ${user.username} ${isCurrentUser ? `(${i18n.you})` : ''}</span>
                                 </div>
                                 <span class="font-mono text-sm">${formatDuration(user.total_duration)}</span>
                             </div>`;

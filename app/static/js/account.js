@@ -1,4 +1,4 @@
-import { fetchAPI, showToast, createModal } from './utils.js';
+import { fetchAPI, showToast, createModal, copyToClipboard } from './utils.js';
 
 // ==========================================
 // SEGURANÇA E UTILITÁRIOS
@@ -139,6 +139,31 @@ const renderProfileBaseInfo = (data, expiration) => {
         libraryList.innerHTML = (data.libraries && data.libraries.length > 0)
             ? data.libraries.map(lib => `<span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800">${lib}</span>`).join(' ')
             : `<p class="text-gray-500 dark:text-gray-400 text-sm">${state.i18n.noSharedLibrary}</p>`;
+    }
+
+    // 🎮 Sistema de XP/Nível: reaproveita 'level_info' já calculado pelo backend
+    // dentro de watch_stats (o mesmo objeto usado na página de Estatísticas).
+    const levelInfo = data.watch_stats && data.watch_stats.level_info;
+    const levelBadge = document.getElementById('user-level-badge');
+    const levelCard = document.getElementById('user-level-card');
+
+    if (levelInfo) {
+        if (levelBadge) {
+            levelBadge.textContent = levelInfo.level_icon;
+            levelBadge.title = `${state.i18n.level || 'Nível'} ${levelInfo.level_number}: ${levelInfo.level_name}`;
+            levelBadge.classList.remove('hidden');
+        }
+        if (levelCard) {
+            document.getElementById('user-level-icon').textContent = levelInfo.level_icon;
+            document.getElementById('user-level-number-label').textContent = `${state.i18n.level || 'Nível'} ${levelInfo.level_number}`;
+            document.getElementById('user-level-name').textContent = levelInfo.level_name;
+            document.getElementById('user-xp-total').textContent = levelInfo.xp.toLocaleString();
+            document.getElementById('user-xp-progress-bar').style.width = `${levelInfo.progress_percent}%`;
+            document.getElementById('user-xp-next-level').textContent = levelInfo.is_max_level
+                ? (state.i18n.maxLevelReached || 'Nível máximo atingido! 🎉')
+                : (state.i18n.xpToNextLevel || '{xp} XP para o próximo nível').replace('{xp}', levelInfo.xp_for_next_level.toLocaleString());
+            levelCard.classList.remove('hidden');
+        }
     }
 };
 
@@ -415,7 +440,10 @@ const startPaymentPolling = (txid) => {
 
     state.pollingIntervalId = setInterval(async () => {
         try {
-            const result = await fetchAPI(`/api/payments/status/${txid}`);
+            const statusUrl = state.urls.paymentStatusUrl
+                ? state.urls.paymentStatusUrl.replace('__TXID__', txid)
+                : `/api/payments/status/${txid}`; // fallback de segurança, caso a URL não tenha sido injetada
+            const result = await fetchAPI(statusUrl);
             if (result.success && result.status === 'CONCLUIDA') {
                 clearInterval(state.pollingIntervalId);
                 showToast(state.i18n.paymentConfirmed, "success");
@@ -503,6 +531,26 @@ const initContactForm = (details) => {
 const initTabs = () => {
     if (!dom.tabContainer || !dom.contentContainer) return;
 
+    const activateTab = (tabName) => {
+        const btn = dom.tabContainer.querySelector(`[data-tab="${tabName}"]`);
+        if (!btn) return;
+        dom.tabContainer.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        dom.contentContainer.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.getElementById(`tab-${tabName}`)?.classList.add('active');
+        if (tabName === 'history') fetchWatchHistory();
+    };
+
+    // 🐛 CORREÇÃO: o listener de clique precisa de estar registado ANTES de
+    // qualquer troca de aba automática ser disparada (ver mais abaixo), senão
+    // a troca de aba para admins nunca tem efeito nenhum (o clique acontecia
+    // antes do listener existir).
+    dom.tabContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.tab-button');
+        if (!btn || !btn.dataset.tab) return;
+        activateTab(btn.dataset.tab);
+    });
+
     // Mostrar aba Requests apenas se permitido e não for admin
     if (state.currentUser && !state.currentUser.is_admin && state.currentUser.profile_details?.overseerr_access) {
         dom.tabContainer.querySelector('[data-tab="requests"]')?.classList.remove('hidden');
@@ -514,22 +562,9 @@ const initTabs = () => {
             const el = dom.tabContainer.querySelector(`[data-tab="${t}"]`);
             if(el) el.style.display = 'none';
         });
-        // Se a default estava oculta, muda para history
-        dom.tabContainer.querySelector('[data-tab="history"]')?.click();
+        // Se a aba default (Overview) ficou oculta, muda para Histórico
+        activateTab('history');
     }
-
-    dom.tabContainer.addEventListener('click', (e) => {
-        const btn = e.target.closest('.tab-button');
-        if (!btn || !btn.dataset.tab) return;
-
-        dom.tabContainer.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-
-        dom.contentContainer.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
-        
-        if (btn.dataset.tab === 'history') fetchWatchHistory();
-    });
 };
 
 const fetchWatchHistory = async (page = 1, search = '') => {
@@ -583,9 +618,9 @@ const fetchWatchHistory = async (page = 1, search = '') => {
         `;
 
         pc.innerHTML = `
-            <button id="hist-prev" class="btn bg-gray-200 dark:bg-gray-700 text-xs px-3 py-1 disabled:opacity-50" ${data.pagination.current_page === 1 ? 'disabled' : ''}>Anterior</button>
-            <span class="text-sm text-gray-600 dark:text-gray-400">Pág ${data.pagination.current_page} de ${data.pagination.total_pages}</span>
-            <button id="hist-next" class="btn bg-gray-200 dark:bg-gray-700 text-xs px-3 py-1 disabled:opacity-50" ${data.pagination.current_page === data.pagination.total_pages ? 'disabled' : ''}>Próxima</button>
+            <button id="hist-prev" class="btn bg-gray-200 dark:bg-gray-700 text-xs px-3 py-1 disabled:opacity-50" ${data.pagination.current_page === 1 ? 'disabled' : ''}>${state.i18n.previous || 'Anterior'}</button>
+            <span class="text-sm text-gray-600 dark:text-gray-400">${(state.i18n.pageOf || 'Página {currentPage} / {totalPages}').replace('{currentPage}', data.pagination.current_page).replace('{totalPages}', data.pagination.total_pages)}</span>
+            <button id="hist-next" class="btn bg-gray-200 dark:bg-gray-700 text-xs px-3 py-1 disabled:opacity-50" ${data.pagination.current_page === data.pagination.total_pages ? 'disabled' : ''}>${state.i18n.next || 'Próxima'}</button>
         `;
 
         const searchInput = document.getElementById('historySearchInput');
@@ -610,11 +645,14 @@ const initGlobalEventListeners = () => {
     }
 
     // Cópia de chave PIX
-    document.getElementById('copy-pix-code')?.addEventListener('click', () => {
+    document.getElementById('copy-pix-code')?.addEventListener('click', async () => {
         const input = document.getElementById('pix-copy-paste');
-        input.select();
-        document.execCommand('copy');
-        showToast(state.i18n.codeCopied, 'success');
+        const success = await copyToClipboard(input.value);
+        if (success) {
+            showToast(state.i18n.codeCopied, 'success');
+        } else {
+            showToast(state.i18n.error || 'Erro', 'error');
+        }
     });
 
     // Toggle de Privacidade (Leaderboard)

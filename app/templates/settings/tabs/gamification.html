@@ -14,7 +14,34 @@
 
         <!-- Corpo do Formulário (Grid de Missões) -->
         <div class="p-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
-            
+
+            <!-- Sistema de XP / Nível -->
+            <div class="xl:col-span-2 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/10 dark:to-purple-900/10 rounded-xl p-5 border border-indigo-200 dark:border-indigo-800/40">
+                <div class="flex items-start gap-3 mb-4">
+                    <div class="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
+                        <span class="text-lg leading-5">⭐</span>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-gray-900 dark:text-white">{{ _('Sistema de XP / Nível') }}</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Cada utilizador ganha XP pelo tempo assistido e sobe de nível (de "Espectador Casual" até "Lenda do Streaming"). Sincronizado automaticamente todos os dias, além de em tempo real quando o próprio utilizador visita a sua página de estatísticas.') }}</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label for="XP_PER_MINUTE_WATCHED" class="block text-xs font-semibold text-indigo-700 dark:text-indigo-400 mb-1 pl-1">{{ _('XP por minuto assistido') }}</label>
+                        <input type="number" id="XP_PER_MINUTE_WATCHED" step="0.1" class="block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="0">
+                    </div>
+                    <div>
+                        <label for="XP_BONUS_PER_COMPLETED_ITEM" class="block text-xs font-semibold text-indigo-700 dark:text-indigo-400 mb-1 pl-1">{{ _('Bónus por item concluído') }}</label>
+                        <input type="number" id="XP_BONUS_PER_COMPLETED_ITEM" class="block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="0">
+                    </div>
+                    <div>
+                        <label for="XP_COMPLETION_THRESHOLD_PERCENT" class="block text-xs font-semibold text-indigo-700 dark:text-indigo-400 mb-1 pl-1">{{ _('% assistido para contar como concluído') }}</label>
+                        <input type="number" id="XP_COMPLETION_THRESHOLD_PERCENT" class="block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1" max="100">
+                    </div>
+                </div>
+            </div>
+
             <!-- Maratonista de Cinema -->
             <div class="bg-gray-50/50 dark:bg-gray-800/20 rounded-xl p-5 border border-gray-200 dark:border-gray-700/50 transition-all hover:border-blue-400/50 dark:hover:border-blue-500/50 group">
                 <div class="flex items-start gap-3 mb-4">

@@ -119,6 +119,9 @@ def load_or_create_config():
             "ACHIEVEMENT_PIONEER_SILVER": 5,
             "ACHIEVEMENT_PIONEER_GOLD": 15,
             "ACHIEVEMENT_PIONEER_WINDOW_HOURS": 48,
+            "XP_PER_MINUTE_WATCHED": 1,
+            "XP_BONUS_PER_COMPLETED_ITEM": 20,
+            "XP_COMPLETION_THRESHOLD_PERCENT": 90,
             "TERMINATION_MSG_BLOCKED_MANUAL": "O seu acesso ao servidor foi bloqueado pelo administrador.",
             "TERMINATION_MSG_BLOCKED_EXPIRED": "A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.",
             "TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED": "O seu período de teste para {username} terminou. Renove para continuar.",
@@ -225,6 +228,9 @@ def load_or_create_config():
             _set_default("ACHIEVEMENT_PIONEER_SILVER", 5)
             _set_default("ACHIEVEMENT_PIONEER_GOLD", 15)
             _set_default("ACHIEVEMENT_PIONEER_WINDOW_HOURS", 48)
+            _set_default("XP_PER_MINUTE_WATCHED", 1)
+            _set_default("XP_BONUS_PER_COMPLETED_ITEM", 20)
+            _set_default("XP_COMPLETION_THRESHOLD_PERCENT", 90)
             _set_default("IMAGE_CACHE_CLEANUP_ENABLED", True)
             _set_default("IMAGE_CACHE_MAX_AGE_DAYS", 30)
             _set_default("IMAGE_CACHE_CLEANUP_TIME", "04:00")
