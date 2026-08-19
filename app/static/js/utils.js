@@ -149,3 +149,111 @@ export function createModal(id, title, body, footer) {
     });
     return modal;
 }
+
+/**
+ * =====================================================================
+ * BOTÕES COM ESTADO DE CARREGAMENTO (SEM REINTERPRETAR HTML)
+ * =====================================================================
+ *
+ * 🔒 PORQUÊ ESTES HELPERS EXISTEM
+ *
+ * O padrão comum de "guardar e restaurar" o conteúdo de um botão era:
+ *
+ *     const original = botao.innerHTML;   // lê HTML do DOM
+ *     botao.innerHTML = 'A carregar...';
+ *     // ...
+ *     botao.innerHTML = original;         // volta a interpretar como HTML
+ *
+ * Ler texto do DOM e voltar a escrevê-lo como HTML anula qualquer escape que
+ * tenha sido feito antes (o texto é re-analisado como marcação). Se algum
+ * conteúdo dentro do botão tiver origem, direta ou indireta, em dados
+ * controlados por um utilizador, isto torna-se um vetor de Cross-Site
+ * Scripting (XSS) — é exatamente este o padrão que as análises de segurança
+ * assinalam.
+ *
+ * A solução aqui NÃO usa strings de HTML: guarda os NÓS reais do DOM (clonados)
+ * e volta a colocá-los tal como estavam. Como nunca há uma etapa de "texto ->
+ * HTML", não existe reinterpretação possível, independentemente do conteúdo.
+ */
+
+const _buttonStateCache = new WeakMap();
+
+/**
+ * Coloca um botão em estado de carregamento, preservando com segurança o seu
+ * conteúdo original para restauro posterior.
+ *
+ * @param {HTMLElement} button - O botão a alterar.
+ * @param {string} loadingText - Texto a mostrar (inserido como TEXTO, nunca HTML).
+ * @param {boolean} withSpinner - Se deve mostrar um indicador de progresso.
+ */
+export function setButtonLoading(button, loadingText, withSpinner = true) {
+    if (!button) return;
+
+    // Guarda os nós originais (clonados) — não o HTML em forma de texto.
+    if (!_buttonStateCache.has(button)) {
+        _buttonStateCache.set(button, Array.from(button.childNodes).map(node => node.cloneNode(true)));
+    }
+
+    button.disabled = true;
+    button.replaceChildren();
+
+    if (withSpinner) {
+        // O spinner é construído com createElementNS/createElement: nunca há
+        // análise de uma string como HTML.
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'animate-spin h-4 w-4 mr-2 inline');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('class', 'opacity-25');
+        circle.setAttribute('cx', '12');
+        circle.setAttribute('cy', '12');
+        circle.setAttribute('r', '10');
+        circle.setAttribute('stroke', 'currentColor');
+        circle.setAttribute('stroke-width', '4');
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('class', 'opacity-75');
+        path.setAttribute('fill', 'currentColor');
+        path.setAttribute('d', 'M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z');
+
+        svg.appendChild(circle);
+        svg.appendChild(path);
+        button.appendChild(svg);
+    }
+
+    if (loadingText) {
+        // textContent -> o texto nunca é interpretado como marcação.
+        button.appendChild(document.createTextNode(loadingText));
+    }
+}
+
+/**
+ * Restaura um botão ao estado anterior a setButtonLoading, recolocando os nós
+ * originais do DOM (sem qualquer reinterpretação de HTML).
+ *
+ * @param {HTMLElement} button - O botão a restaurar.
+ */
+export function restoreButton(button) {
+    if (!button) return;
+
+    button.disabled = false;
+
+    const originalNodes = _buttonStateCache.get(button);
+    if (originalNodes) {
+        button.replaceChildren(...originalNodes.map(node => node.cloneNode(true)));
+        _buttonStateCache.delete(button);
+    }
+}
+
+/**
+ * Escapa texto para inclusão segura dentro de uma string de HTML.
+ * Usar sempre que um valor de origem externa (API, utilizador, nome de ficheiro,
+ * mensagem de erro) tiver de ser interpolado num template literal com HTML.
+ */
+export function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+}

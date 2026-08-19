@@ -8,7 +8,7 @@ import * as api from './api.js';
 import * as ui from './ui.js';
 import { i18n, fieldMap, urls } from './config.js';
 import { initGamificationSubtabs, addLevelRow, collectLevelsFromEditor, collectResetMonths, loadSeasonStatus, handleManualSeasonReset } from './gamification.js';
-import { showToast, fetchAPI } from '../utils.js';
+import { showToast, fetchAPI, setButtonLoading, restoreButton as restoreButtonState, escapeHTML } from '../utils.js';
 
 let pinCheckInterval = null;
 let authWindow = null;
@@ -50,14 +50,14 @@ async function loadBackupList() {
         container.innerHTML = backups.map(b => `
             <div class="flex items-center justify-between gap-3 bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700/50 rounded-lg px-3 py-2">
                 <div class="min-w-0">
-                    <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">${b.filename}</p>
+                    <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">${escapeHTML(b.filename)}</p>
                     <p class="text-xs text-gray-400 dark:text-gray-500">${formatBackupDate(b.created_at)} · ${formatBytes(b.size_bytes)}</p>
                 </div>
                 <div class="flex items-center gap-1 flex-shrink-0">
                     <a href="${urls.backupDownloadStored.replace('__FILENAME__', encodeURIComponent(b.filename))}" title="${i18n.download || 'Baixar'}" class="p-2 rounded-full text-gray-500 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 dark:text-emerald-400 transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                     </a>
-                    <button type="button" data-filename="${b.filename}" class="backup-delete-btn p-2 rounded-full text-gray-500 hover:bg-red-100 dark:hover:bg-red-500/20 dark:text-red-400 transition-colors" title="${i18n.delete || 'Apagar'}">
+                    <button type="button" data-filename="${escapeHTML(b.filename)}" class="backup-delete-btn p-2 rounded-full text-gray-500 hover:bg-red-100 dark:hover:bg-red-500/20 dark:text-red-400 transition-colors" title="${i18n.delete || 'Apagar'}">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                     </button>
                 </div>
@@ -68,7 +68,8 @@ async function loadBackupList() {
             btn.addEventListener('click', () => handleDeleteBackup(btn.dataset.filename));
         });
     } catch (error) {
-        container.innerHTML = `<p class="text-xs text-red-500">${i18n.errorLoadingBackups || 'Falha ao carregar a lista de backups.'}: ${error.message}</p>`;
+        // A mensagem de erro pode vir do servidor: escapamos antes de a inserir como HTML.
+        container.innerHTML = `<p class="text-xs text-red-500">${i18n.errorLoadingBackups || 'Falha ao carregar a lista de backups.'}: ${escapeHTML(error.message)}</p>`;
     }
 }
 
@@ -85,9 +86,7 @@ async function handleDeleteBackup(filename) {
 
 function handleBackupDownloadNow(button) {
     if (!urls.backupDownloadNow) return;
-    const originalText = button.innerHTML;
-    button.disabled = true;
-    button.innerHTML = `${getSpinner()} ${i18n.generatingBackup || 'A gerar backup...'}`;
+    setButtonLoading(button, i18n.generatingBackup || 'A gerar backup...');
 
     // Navega diretamente para a rota GET: o navegador trata o download nativamente
     // (o servidor responde com Content-Disposition: attachment). Não usamos fetchAPI
@@ -97,8 +96,7 @@ function handleBackupDownloadNow(button) {
     // Não há callback de conclusão de download via navegação direta, então
     // apenas devolvemos o botão ao normal após um curto período.
     setTimeout(() => {
-        button.disabled = false;
-        button.innerHTML = originalText;
+        restoreButtonState(button);
         loadBackupList();
     }, 2500);
 }
@@ -121,12 +119,8 @@ async function handleBackupRestore(file) {
         return;
     }
 
-    const restoreButton = document.getElementById('backupRestoreButton');
-    const originalText = restoreButton ? restoreButton.innerHTML : '';
-    if (restoreButton) {
-        restoreButton.disabled = true;
-        restoreButton.innerHTML = `${getSpinner()} ${i18n.restoring || 'A restaurar...'}`;
-    }
+    const restoreBtn = document.getElementById('backupRestoreButton');
+    setButtonLoading(restoreBtn, i18n.restoring || 'A restaurar...');
 
     try {
         const formData = new FormData();
@@ -147,10 +141,7 @@ async function handleBackupRestore(file) {
         setTimeout(() => window.location.reload(), 8000);
     } catch (error) {
         showToast(`${i18n.restoreFailed || 'Falha ao restaurar'}: ${error.message}`, 'error');
-        if (restoreButton) {
-            restoreButton.disabled = false;
-            restoreButton.innerHTML = originalText;
-        }
+        restoreButtonState(restoreBtn);
     }
 }
 
@@ -248,9 +239,7 @@ async function handleSaveBulkTemplates() {
 async function handleTestConnection(button, endpoint, payloadBuilder) {
     if (!button) return;
 
-    const originalHTML = button.innerHTML;
-    button.disabled = true;
-    button.innerHTML = `${getSpinner("w-4 h-4 mr-1")} ${i18n.testing || 'Testando...'}`;
+    setButtonLoading(button, i18n.testing || 'Testando...');
 
     try {
         const apiFunction = api[endpoint];
@@ -262,20 +251,14 @@ async function handleTestConnection(button, endpoint, payloadBuilder) {
     } catch (error) {
         showToast(error.message || i18n.unknownError, 'error');
     } finally {
-        button.disabled = false;
-        button.innerHTML = originalHTML;
+        restoreButtonState(button);
     }
 }
 
 async function handlePlexAuth() {
-    const originalButtonHTML = dom.reauthPlexButton.innerHTML;
-    const restoreButton = () => {
-        dom.reauthPlexButton.disabled = false;
-        dom.reauthPlexButton.innerHTML = originalButtonHTML;
-    };
+    const restoreButton = () => restoreButtonState(dom.reauthPlexButton);
 
-    dom.reauthPlexButton.disabled = true;
-    dom.reauthPlexButton.innerHTML = `${getSpinner("w-5 h-5 mr-3 text-yellow-500")} ${i18n.verifying || 'A aguardar autenticação...'}`;
+    setButtonLoading(dom.reauthPlexButton, i18n.verifying || 'A aguardar autenticação...');
 
     if (pinCheckInterval) clearInterval(pinCheckInterval);
 

@@ -5,6 +5,7 @@
 // e a grade de seleção dos meses de reset periódico.
 
 import { i18n } from './config.js';
+import { setButtonLoading, restoreButton } from '../utils.js';
 
 const MONTH_NAMES_PT = [
     'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
@@ -234,8 +235,7 @@ export async function handleManualSeasonReset(urls, fetchAPI, showToast) {
     }
 
     const btn = document.getElementById('xp-season-reset-btn');
-    const original = btn ? btn.innerHTML : '';
-    if (btn) { btn.disabled = true; btn.textContent = i18n.resetting || 'A zerar...'; }
+    setButtonLoading(btn, i18n.resetting || 'A zerar...');
 
     try {
         const result = await fetchAPI(urls.xpSeasonReset, 'POST');
@@ -244,6 +244,6 @@ export async function handleManualSeasonReset(urls, fetchAPI, showToast) {
     } catch (error) {
         showToast(`${i18n.errorGeneric || 'Erro'}: ${error.message}`, 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = original; }
+        restoreButton(btn);
     }
 }
