@@ -651,7 +651,8 @@ def xp_season_reset():
 # BACKUP E RESTAURO
 # ==========================================
 
-@system_api_bp.route('/backup/download', methods=['GET'])@login_required
+@system_api_bp.route('/backup/download', methods=['GET'])
+@login_required
 @admin_required
 def backup_download_now():
     """Gera um backup na hora e devolve-o diretamente como download (não fica guardado em disco)."""
