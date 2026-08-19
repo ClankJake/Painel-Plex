@@ -72,6 +72,11 @@ class PlexInviteManager:
         custom_code = kwargs.get('custom_code')
         max_uses = kwargs.get('max_uses', 1)
         telegram_id = kwargs.get('telegram_id')
+        # Normaliza logo à entrada: um bot pode enviar o ID como número inteiro e um
+        # formulário como texto com espaços — sem isto, '123' e ' 123 ' seriam
+        # tratados como IDs diferentes e escapariam à validação de duplicados.
+        if telegram_id is not None:
+            telegram_id = str(telegram_id).strip() or None
 
         if custom_code:
             if self.data_manager.get_invitation(custom_code):
@@ -224,14 +229,25 @@ class PlexInviteManager:
 
     def _handle_telegram_linking(self, invitation, username):
         telegram_id = invitation.get('telegram_id')
-        if not telegram_id:
+        if telegram_id is None or str(telegram_id).strip() == "":
             return None
-            
+
+        # Normaliza para comparar de forma fiável com o que está guardado.
+        telegram_id = str(telegram_id).strip()
+
+        # 🛡️ Revalidação no momento do RESGATE: entre a geração do convite e o seu
+        # uso pode ter passado bastante tempo, e nesse intervalo o mesmo Telegram ID
+        # pode ter sido vinculado a outra conta. Neste caso, o registo prossegue
+        # normalmente — apenas o vínculo do Telegram é ignorado, para nunca deixar
+        # dois utilizadores a apontar para o mesmo chat.
         existing_user = self.data_manager.get_user_profile_by_telegram(telegram_id)
         if existing_user and existing_user['username'] != username:
-            logger.warning(f"Conflito: Convite tinha Telegram ID {telegram_id}, mas já está em uso por {existing_user['username']}. O vínculo será ignorado.")
+            logger.warning(
+                f"Conflito de Telegram ID: o convite tinha o ID {telegram_id}, mas este já está "
+                f"vinculado a '{existing_user['username']}'. O registo continua, mas sem o vínculo do Telegram."
+            )
             return None
-            
+
         return telegram_id
 
     def _setup_local_profile_and_integrations(self, plex_account, invitation, telegram_id):
@@ -326,134 +342,28 @@ class PlexInviteManager:
         except Exception as e:
             logger.error(f"Erro não fatal ao sincronizar dados do utilizador: {e}")
 
-    # =========================================================================
-    # CORE: INTERAÇÃO DIRETA COM A API V2 DO PLEX
-    # =========================================================================
-    def _fetch_pending_invites(self, context="received", token=None, client_id=None):
-        """
-        Busca a lista crua de convites pendentes na API V2.
-        :param context: 'received' para quem recebe o convite (guest), ou 'owned' para quem enviou (owner).
-        """
-        base = "https://clients.plex.tv"
-        url = f"{base}/api/v2/shared_servers/invites/{context}/pending"
-
-        params = {
-            "X-Plex-Product": "PlexPanel", 
-            "X-Plex-Version": "1.0",
-            "X-Plex-Client-Identifier": client_id or f"{secrets.token_hex(8)}-plex-panel",
-            "X-Plex-Platform": "Web", 
-            "X-Plex-Platform-Version": "1.0",
-            "X-Plex-Features": "external-media,indirect-media,hub-style-list",
-            "X-Plex-Language": "pt",
-            "X-Plex-Token": token,
-        }
-        headers = {"Accept": "application/json"}
-        
+    def _get_invite_token(self, user_account_or_identifier):
+        """Tenta extrair o token de convite (inviteToken) diretamente da API do Plex."""
         try:
-            resp = requests.get(url, params=params, headers=headers, timeout=15)
-            resp.raise_for_status()
-            return resp.json()
-        except requests.exceptions.RequestException as e:
-            logger.debug(f"Erro ao buscar convites pendentes ({context}): {e}")
-            return []
+            identifier = (getattr(user_account_or_identifier, 'email', None) or 
+                          getattr(user_account_or_identifier, 'username', None) or 
+                          str(user_account_or_identifier)).lower()
             
-    def _get_invite_token(self, user_account_or_identifier, max_retries=3, delay=2.0):
-        """Tenta extrair o token de convite (inviteToken) da lista de convites pendentes que o admin enviou."""
-        identifier = (getattr(user_account_or_identifier, 'email', None) or 
-                      getattr(user_account_or_identifier, 'username', None) or 
-                      str(user_account_or_identifier)).lower()
-        
-        try:
-            owner_token = self.conn.account.authToken
-            client_id = getattr(self.conn.account, '_clientId', None)
-        except AttributeError as e:
-            logger.error(f"Erro ao aceder às credenciais do servidor Plex: {e}")
-            return None
-            
-        def _matches_target(inv):
-            # O alvo pode estar no 'email' ou no 'username' dentro do 'invited'
-            target_data = inv.get("invited", {})
-            possible_targets = [(target_data.get("email") or "").lower(), (target_data.get("username") or "").lower()]
-            return identifier in possible_targets
-            
-        for attempt in range(max_retries):
-            try:
-                invites = self._fetch_pending_invites(context="owned", token=owner_token, client_id=client_id)
-                
-                # Se não houver convites, continua a tentar
-                if not invites:
-                    time.sleep(delay)
-                    continue
+            for ss in self.conn.account.sharedServers():
+                if ss.machineIdentifier == self.conn.plex.machineIdentifier:
+                    ss_email = (ss.invitedEmail or "").lower()
+                    ss_user = (ss.username or "").lower()
                     
-                invite = next((i for i in invites if _matches_target(i)), None)
-                if invite:
-                    # Em alguns endpoints o token vem direto, noutros vem encadeado num sharedServers array
-                    if invite.get("inviteToken"):
-                        return invite.get("inviteToken")
-                    elif invite.get("sharedServers") and len(invite["sharedServers"]) > 0:
-                         return invite["sharedServers"][0].get("inviteToken")
-                
-                logger.debug(f"Convite pendente para '{identifier}' não encontrado na tentativa {attempt + 1}. A aguardar...")
-                time.sleep(delay)
-            except Exception as e:
-                logger.warning(f"Erro ao processar _get_invite_token para '{identifier}' (Tentativa {attempt + 1}): {e}")
-                time.sleep(delay)
-                
+                    if identifier == ss_email or identifier == ss_user:
+                        if getattr(ss, 'accepted', False):
+                            return "ACCEPTED"
+                        return getattr(ss, 'inviteToken', None)
+        except Exception as e:
+            logger.debug(f"Erro ao buscar inviteToken para {user_account_or_identifier}: {e}")
         return None
 
-    def _accept_invite_v2(self, user_account: MyPlexAccount, max_retries=3, delay=2.0):
-        """Aceita o convite pendente procurando na lista de recebidos da conta do utilizador."""
-        owner_identifier = self.conn.account.username
-        owner_email = getattr(self.conn.account, 'email', None)
-        owner_title = getattr(self.conn.account, 'title', None)
-
-        def _matches_owner(inv):
-            owner_data = inv.get("owner", {})
-            possible_owner_values = [
-                owner_data.get("username"), 
-                owner_data.get("email"), 
-                owner_data.get("title"), 
-                owner_data.get("friendlyName")
-            ]
-            server_identifiers = [owner_identifier, owner_email, owner_title]
-            return any(val and val in possible_owner_values for val in server_identifiers)
-
-        client_id = getattr(user_account, 'uuid', f"{secrets.token_hex(8)}-plex-panel")
-        token = user_account.authToken
-
-        for attempt in range(max_retries):
-            try:
-                invites = self._fetch_pending_invites(context="received", token=token, client_id=client_id)
-                invite = next((i for i in invites if _matches_owner(i)), None)
-                
-                if invite and invite.get("sharedServers"):
-                    invite_id = invite["sharedServers"][0]["id"]
-                    
-                    url_accept = f"https://clients.plex.tv/api/v2/shared_servers/{invite_id}/accept"
-                    params = {
-                        "X-Plex-Product": "PlexPanel", 
-                        "X-Plex-Client-Identifier": client_id,
-                        "X-Plex-Token": token,
-                    }
-                    
-                    session = getattr(user_account, '_session', requests.Session())
-                    resp_accept = session.post(url_accept, params=params, headers={"Accept": "application/json"}, timeout=15)
-                    resp_accept.raise_for_status()
-                    
-                    logger.info(f"Convite ID {invite_id} aceite com sucesso via API V2!")
-                    return {"success": True}
-                
-                logger.debug(f"Convite não encontrado na tentativa {attempt + 1}/{max_retries}. A aguardar {delay}s...")
-                time.sleep(delay)
-                
-            except Exception as e:
-                logger.error(f"Erro na tentativa {attempt + 1} ao aceitar convite na API V2: {e}")
-                time.sleep(delay)
-
-        return {"success": False, "message": _("O convite não apareceu no sistema a tempo. Por favor, tente aceitá-lo manualmente no seu email.")}
-
     # =========================================================================
-    # REATIVAÇÃO E ENVIO DE CONVITES
+    # REATIVAÇÃO E ENVIO DE CONVITES REFORÇADOS
     # =========================================================================
     def send_plex_invite(self, identifier, library_titles, plex_user_id=None, allow_sync=False):
         """
@@ -516,6 +426,68 @@ class PlexInviteManager:
             clean_error = extract_plex_error_message(e)
             logger.error(f"Erro inesperado ao convidar '{identifier}': {clean_error}")
             return {"success": False, "message": clean_error}
+
+    # =========================================================================
+    # ACEITAÇÃO BLINDADA V2
+    # =========================================================================
+    def _accept_invite_v2(self, user_account: MyPlexAccount, max_retries=3, delay=2.0):
+        owner_identifier = self.conn.account.username
+        owner_email = getattr(self.conn.account, 'email', None)
+        owner_title = getattr(self.conn.account, 'title', None)
+
+        base = "https://clients.plex.tv"
+        
+        params = {
+            "X-Plex-Product": "PlexPanel", 
+            "X-Plex-Version": "1.0",
+            "X-Plex-Client-Identifier": getattr(user_account, 'uuid', f"{secrets.token_hex(8)}-plex-panel"),
+            "X-Plex-Platform": "Web", 
+            "X-Plex-Platform-Version": "1.0",
+            "X-Plex-Features": "external-media,indirect-media,hub-style-list",
+            "X-Plex-Language": "pt",
+            "X-Plex-Token": user_account.authToken,
+        }
+        headers = {"Accept": "application/json"}
+
+        def _matches(inv):
+            owner_data = inv.get("owner", {})
+            possible_owner_values = [
+                owner_data.get("username"), 
+                owner_data.get("email"), 
+                owner_data.get("title"), 
+                owner_data.get("friendlyName")
+            ]
+            server_identifiers = [owner_identifier, owner_email, owner_title]
+            return any(val and val in possible_owner_values for val in server_identifiers)
+
+        for attempt in range(max_retries):
+            try:
+                session = getattr(user_account, '_session', requests.Session())
+                
+                url_list = f"{base}/api/v2/shared_servers/invites/received/pending"
+                resp = session.get(url_list, params=params, headers=headers, timeout=15)
+                resp.raise_for_status()
+                invites = resp.json()
+                
+                invite = next((i for i in invites if _matches(i)), None)
+                if invite and invite.get("sharedServers"):
+                    invite_id = invite["sharedServers"][0]["id"]
+                    url_accept = f"{base}/api/v2/shared_servers/{invite_id}/accept"
+                    
+                    resp_accept = session.post(url_accept, params=params, headers=headers, timeout=15)
+                    resp_accept.raise_for_status()
+                    
+                    logger.info(f"Convite ID {invite_id} aceite com sucesso via API V2!")
+                    return {"success": True}
+                
+                logger.debug(f"Convite não encontrado na tentativa {attempt + 1}/{max_retries}. A aguardar {delay}s...")
+                time.sleep(delay)
+                
+            except Exception as e:
+                logger.error(f"Erro na tentativa {attempt + 1} ao aceitar convite na API V2: {e}")
+                time.sleep(delay)
+
+        return {"success": False, "message": _("O convite não apareceu no sistema a tempo. Por favor, tente aceitá-lo manualmente no seu email.")}
 
     def accept_invite_via_token(self, plex_token):
         """

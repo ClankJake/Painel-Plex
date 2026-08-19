@@ -1,7 +1,7 @@
 # app/blueprints/api/schemas.py
 
 from pydantic import BaseModel, Field, validator
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Union
 from datetime import datetime
 
 class CreateInviteSchema(BaseModel):
@@ -14,6 +14,39 @@ class CreateInviteSchema(BaseModel):
     custom_code: Optional[str] = None
     max_uses: int = Field(1, ge=1)
     telegram_id: Optional[str] = None # Novo campo opcional
+
+
+class CreateInviteBotSchema(BaseModel):
+    """
+    Esquema do endpoint de integração para bots (POST /api/invites/bot/create).
+
+    Diferenças em relação ao esquema usado pelo painel:
+      • 'telegram_id' é OBRIGATÓRIO — é o propósito deste endpoint.
+      • 'libraries' é opcional: um bot raramente conhece os nomes das bibliotecas,
+        por isso, se não for indicado, o servidor usa todas as disponíveis.
+    """
+    # 'Union[str, int]' é deliberado: a API de bots do Telegram trata o chat_id como
+    # um INTEIRO, por isso um bot envia naturalmente {"telegram_id": 123456789}.
+    # Se aceitássemos apenas 'str', o Pydantic rejeitaria esses pedidos com 400 e a
+    # integração falharia logo à partida. O validador abaixo converte tudo para texto.
+    telegram_id: Union[str, int] = Field(..., description="ID do chat/utilizador no Telegram.")
+    libraries: Optional[List[str]] = None
+    screens: int = Field(0, ge=0, le=6)
+    allow_downloads: bool = False
+    expires_in_minutes: Optional[int] = Field(None, ge=0)
+    trial_duration_minutes: int = Field(0, ge=0)
+    overseerr_access: bool = False
+    custom_code: Optional[str] = None
+    max_uses: int = Field(1, ge=1)
+
+    @validator('telegram_id')
+    def telegram_id_not_blank(cls, v):
+        # Normaliza aqui também: o bot pode enviar o ID como número, que o Pydantic
+        # converte para string, possivelmente com espaços.
+        v = str(v).strip()
+        if not v:
+            raise ValueError("O telegram_id não pode estar vazio.")
+        return v
 
 class RenewSubscriptionSchema(BaseModel):
     months: int = Field(..., gt=0)

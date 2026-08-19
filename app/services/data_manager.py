@@ -14,7 +14,7 @@ from ..models import (
     Invitation, BlockedUser, UserProfile, PixPayment, Notification, 
     UnlockedAchievement, ShortLink, Coupon, CouponUsage, Task, StreamTerminationLog
 )
-from sqlalchemy import func
+from sqlalchemy import func, String
 from sqlalchemy.exc import IntegrityError
 from flask_babel import gettext as _, ngettext
 from collections import defaultdict
@@ -341,7 +341,22 @@ class DataManager:
         return self._row_to_dict(profile) if profile else None
     
     def get_user_profile_by_telegram(self, telegram_id):
-        profile = UserProfile.query.filter_by(telegram_user=telegram_id).first()
+        """
+        Localiza o utilizador vinculado a um Telegram ID.
+
+        🐛 NOTA: a coluna em 'user_profiles' chama-se 'telegram_user' (é em
+        'invitations' que o campo se chama 'telegram_id'). Vários pontos do código
+        liam 'profile.get("telegram_id")', que devolvia SEMPRE None por essa coluna
+        não existir neste modelo — dando a falsa impressão de funcionar graças aos
+        fallbacks 'or'. A comparação é feita como texto e sem espaços, porque o ID
+        pode chegar como número (de um bot) ou como string (de um formulário).
+        """
+        if telegram_id is None or str(telegram_id).strip() == "":
+            return None
+        normalized = str(telegram_id).strip()
+        profile = UserProfile.query.filter(
+            func.trim(func.cast(UserProfile.telegram_user, String)) == normalized
+        ).first()
         return self._row_to_dict(profile) if profile else None
 
     def get_user_profiles_by_username(self, usernames):
