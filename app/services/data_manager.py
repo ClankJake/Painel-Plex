@@ -355,6 +355,20 @@ class DataManager:
         profiles = UserProfile.query.all()
         return [self._row_to_dict(p) for p in profiles]
 
+    @db_transaction
+    def reset_all_users_xp(self):
+        """
+        Repõe a zero o XP da temporada atual de TODOS os utilizadores, preservando
+        o 'lifetime_xp' (XP acumulado de sempre) e o 'xp_last_sync_at' — este último
+        é essencial: se fosse limpo, a próxima sincronização reprocessaria todo o
+        histórico do Tautulli desde o início e o XP voltaria imediatamente ao valor
+        anterior, anulando o reset.
+
+        Devolve o número de utilizadores afetados.
+        """
+        affected = UserProfile.query.update({UserProfile.xp: 0}, synchronize_session=False)
+        return affected
+
     def get_user_profiles_by_id(self, plex_user_ids):
         if not plex_user_ids: return {}
         try:

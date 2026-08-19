@@ -28,56 +28,91 @@ def _safe_int_float(value: Any, default: int = 0) -> int:
 # ==========================================================================
 # SISTEMA DE NÍVEIS / XP
 # ==========================================================================
-# Tabela de níveis: (xp_mínimo, nome, ícone). Deve estar em ordem crescente de XP.
-# O nível de um utilizador é o último nível cujo xp_mínimo ele já atingiu.
-LEVEL_TABLE = [
-    (0,     "level_casual_viewer",     "🍿"),
-    (500,   "level_dedicated_fan",     "📺"),
-    (1500,  "level_cinephile",         "🎬"),
-    (3500,  "level_amateur_critic",    "📝"),
-    (7000,  "level_film_critic",       "🎭"),
-    (13000, "level_legendary_binger",  "🏆"),
-    (22000, "level_couch_master",      "🛋️"),
-    (35000, "level_streaming_legend",  "👑"),
-]
-
-# Nomes traduzíveis dos níveis (chave usada acima -> texto). Mantido separado
-# da tabela de XP para que o _() do Babel consiga extrair as strings normalmente.
-LEVEL_NAMES = {
-    "level_casual_viewer":    _("Espectador Casual"),
-    "level_dedicated_fan":    _("Fã Dedicado"),
-    "level_cinephile":        _("Cinéfilo"),
-    "level_amateur_critic":   _("Crítico Amador"),
-    "level_film_critic":      _("Crítico de Cinema"),
-    "level_legendary_binger": _("Maratonista Lendário"),
-    "level_couch_master":     _("Mestre do Sofá"),
-    "level_streaming_legend": _("Lenda do Streaming"),
-}
+# Tabela de níveis PADRÃO (usada apenas se o administrador ainda não tiver
+# personalizado nada em Configurações -> Gamificação -> XP/Níveis). A partir
+# daqui, a tabela de verdade vive em config['XP_LEVEL_TABLE'] — uma lista de
+# dicionários {"threshold": int, "name": str, "icon": str} totalmente editável
+# pelo administrador (adicionar, remover, renomear níveis, mudar o XP necessário).
+def get_default_level_table() -> List[Dict[str, Any]]:
+    return [
+        {"threshold": 0,     "name": str(_("Espectador Casual")),     "icon": "🍿"},
+        {"threshold": 500,   "name": str(_("Fã Dedicado")),           "icon": "📺"},
+        {"threshold": 1500,  "name": str(_("Cinéfilo")),              "icon": "🎬"},
+        {"threshold": 3500,  "name": str(_("Crítico Amador")),        "icon": "📝"},
+        {"threshold": 7000,  "name": str(_("Crítico de Cinema")),     "icon": "🎭"},
+        {"threshold": 13000, "name": str(_("Maratonista Lendário")),  "icon": "🏆"},
+        {"threshold": 22000, "name": str(_("Mestre do Sofá")),        "icon": "🛋️"},
+        {"threshold": 35000, "name": str(_("Lenda do Streaming")),    "icon": "👑"},
+    ]
 
 
-def get_level_info(xp: int) -> Dict[str, Any]:
+def normalize_level_table(raw_table: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """
+    Sanitiza uma tabela de níveis vinda do config.json (potencialmente editada
+    à mão ou por um formulário com bugs): remove entradas inválidas, ordena por
+    threshold crescente, remove thresholds duplicados e garante que o primeiro
+    nível começa em 0 XP (senão um utilizador novo, com 0 XP, ficaria "sem nível").
+    Nunca lança exceção — na pior das hipóteses, devolve a tabela padrão.
+    """
+    if not raw_table or not isinstance(raw_table, list):
+        return get_default_level_table()
+
+    cleaned = []
+    seen_thresholds = set()
+    for entry in raw_table:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            threshold = int(entry.get("threshold", 0))
+        except (ValueError, TypeError):
+            continue
+        name = str(entry.get("name") or "").strip()
+        icon = str(entry.get("icon") or "⭐").strip() or "⭐"
+        if not name or threshold < 0 or threshold in seen_thresholds:
+            continue
+        seen_thresholds.add(threshold)
+        cleaned.append({"threshold": threshold, "name": name, "icon": icon})
+
+    if not cleaned:
+        return get_default_level_table()
+
+    cleaned.sort(key=lambda lvl: lvl["threshold"])
+
+    if cleaned[0]["threshold"] != 0:
+        cleaned.insert(0, {"threshold": 0, "name": str(_("Nível 1")), "icon": "🍿"})
+
+    return cleaned
+
+
+def get_level_info(xp: int, level_table: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """
     Calcula, a partir do XP total acumulado, o nível atual, o progresso dentro
     dele e o quanto falta para o próximo nível. Não depende de rede/BD — é
     puro cálculo, fácil de testar isoladamente.
+
+    'level_table' já deve vir normalizado (ver normalize_level_table); se não
+    for fornecida, usa a tabela padrão.
     """
     xp = max(0, xp or 0)
+    table = level_table if level_table else get_default_level_table()
+
     current_index = 0
-    for i, (threshold, _key, _icon) in enumerate(LEVEL_TABLE):
-        if xp >= threshold:
+    for i, level in enumerate(table):
+        if xp >= level["threshold"]:
             current_index = i
         else:
             break
 
-    current_threshold, current_key, current_icon = LEVEL_TABLE[current_index]
-    is_max_level = current_index == len(LEVEL_TABLE) - 1
+    current = table[current_index]
+    is_max_level = current_index == len(table) - 1
 
     if is_max_level:
         next_threshold = None
         progress_percent = 100
         xp_for_next_level = 0
     else:
-        next_threshold = LEVEL_TABLE[current_index + 1][0]
+        next_threshold = table[current_index + 1]["threshold"]
+        current_threshold = current["threshold"]
         xp_into_level = xp - current_threshold
         xp_needed_for_level = next_threshold - current_threshold
         progress_percent = round(min(100, (xp_into_level / xp_needed_for_level) * 100), 1) if xp_needed_for_level > 0 else 100
@@ -86,14 +121,14 @@ def get_level_info(xp: int) -> Dict[str, Any]:
     return {
         "xp": xp,
         "level_number": current_index + 1,
-        "level_key": current_key,
-        "level_name": str(LEVEL_NAMES.get(current_key, current_key)),
-        "level_icon": current_icon,
-        "xp_current_level_threshold": current_threshold,
+        "level_name": current["name"],
+        "level_icon": current["icon"],
+        "xp_current_level_threshold": current["threshold"],
         "xp_next_level_threshold": next_threshold,
         "xp_for_next_level": xp_for_next_level,
         "progress_percent": progress_percent,
         "is_max_level": is_max_level,
+        "total_levels": len(table),
     }
 
 
@@ -170,16 +205,20 @@ class StatsHandler:
                 newest_ts = max(newest_ts, item_ts)
 
             new_total_xp = int(current_xp + xp_gained)
+            current_lifetime = profile.get('lifetime_xp') or 0
+            new_lifetime_xp = int(current_lifetime + xp_gained)
 
             self.data_manager.set_user_profile(plex_user_id, {
                 'xp': new_total_xp,
+                'lifetime_xp': new_lifetime_xp,
                 'xp_last_sync_at': newest_ts or datetime.now(timezone.utc).timestamp(),
             })
 
             # Notifica o próprio utilizador se subiu de nível nesta sincronização.
             if xp_gained > 0:
-                old_level = get_level_info(current_xp)
-                new_level = get_level_info(new_total_xp)
+                level_table = normalize_level_table(config.get("XP_LEVEL_TABLE"))
+                old_level = get_level_info(current_xp, level_table)
+                new_level = get_level_info(new_total_xp, level_table)
                 if new_level['level_number'] > old_level['level_number']:
                     self.data_manager.create_notification(
                         message=_("Você subiu de nível: %(icon)s %(name)s!", icon=new_level['level_icon'], name=new_level['level_name']),
@@ -193,6 +232,95 @@ class StatsHandler:
         except Exception as e:
             logger.error(f"Erro inesperado ao sincronizar XP para o utilizador {plex_user_id}: {e}", exc_info=True)
             return None
+
+    def get_season_info(self) -> Optional[Dict[str, Any]]:
+        """
+        Devolve informação sobre o ciclo de reset de XP ("temporada"), ou None se
+        estiver desativado. Não altera nada — é só leitura, seguro de chamar em
+        qualquer sítio.
+
+        O administrador escolhe MESES ESPECÍFICOS (ex: Janeiro e Julho, para um
+        ciclo de 6 em 6 meses). O reset acontece no dia 1 desses meses. Este
+        modelo é mais previsível do que um intervalo corrido, porque as temporadas
+        caem sempre em datas redondas e não "derivam" com o tempo.
+        """
+        config = load_or_create_config()
+        if not config.get("XP_RESET_ENABLED", False):
+            return None
+
+        months = config.get("XP_RESET_MONTHS") or []
+        months = sorted({int(m) for m in months if str(m).isdigit() and 1 <= int(m) <= 12})
+        if not months:
+            return None
+
+        now = datetime.now(timezone.utc)
+
+        # Procura o próximo mês de reset (este ano ou no início do próximo).
+        next_month = next((m for m in months if m > now.month), None)
+        if next_month:
+            next_reset = datetime(now.year, next_month, 1, tzinfo=timezone.utc)
+        else:
+            next_reset = datetime(now.year + 1, months[0], 1, tzinfo=timezone.utc)
+
+        return {
+            "enabled": True,
+            "months": months,
+            "next_reset_at": next_reset.isoformat(),
+            "next_reset_display": next_reset.strftime('%d/%m/%Y'),
+            "days_remaining": max(0, (next_reset - now).days),
+            "last_reset_at": config.get("XP_LAST_RESET_AT") or None,
+        }
+
+    def reset_season_if_due(self, force: bool = False) -> Dict[str, Any]:
+        """
+        Verifica se hoje é um dia de reset (dia 1 de um dos meses escolhidos pelo
+        administrador) e, em caso afirmativo, repõe o XP de todos a zero.
+
+        O 'lifetime_xp' (XP acumulado de sempre) NUNCA é reposto — só o 'xp' da
+        temporada corrente. Assim o histórico total de cada utilizador é preservado
+        para estatísticas, mesmo com o ranking a recomeçar do zero.
+
+        'force=True' força o reset imediato (botão manual do administrador).
+        """
+        from ...config import save_app_config
+
+        config = load_or_create_config()
+        now = datetime.now(timezone.utc)
+
+        if not force:
+            if not config.get("XP_RESET_ENABLED", False):
+                return {"success": True, "reset": False, "message": _("Reset periódico desativado.")}
+
+            months = [int(m) for m in (config.get("XP_RESET_MONTHS") or []) if str(m).isdigit()]
+            if now.month not in months:
+                return {"success": True, "reset": False, "message": _("Este mês não é um mês de reset.")}
+
+            # 🛡️ Só no dia 1, e no máximo uma vez por mês: guardamos a marca
+            # "AAAA-MM" do último reset para não zerar o XP repetidamente se o
+            # job correr várias vezes no mesmo dia/mês.
+            if now.day != 1:
+                return {"success": True, "reset": False, "message": _("O reset só ocorre no dia 1 do mês.")}
+
+            if (config.get("XP_LAST_RESET_PERIOD") or "") == now.strftime('%Y-%m'):
+                return {"success": True, "reset": False, "message": _("O reset deste mês já foi efetuado.")}
+
+        try:
+            affected = self.data_manager.reset_all_users_xp()
+
+            config["XP_LAST_RESET_AT"] = now.isoformat()
+            config["XP_LAST_RESET_PERIOD"] = now.strftime('%Y-%m')
+            save_app_config(config)
+
+            logger.info(f"[XP] Nova temporada iniciada. XP de {affected} utilizador(es) reposto a zero.")
+            return {
+                "success": True,
+                "reset": True,
+                "affected_users": affected,
+                "message": _("Nova temporada iniciada: o XP de %(count)d utilizador(es) foi reposto a zero.", count=affected)
+            }
+        except Exception as e:
+            logger.error(f"[XP] Falha ao repor o XP da temporada: {e}", exc_info=True)
+            return {"success": False, "message": str(e)}
 
     def _get_achievement_definitions(self, days: int) -> Dict[str, Any]:
         """Retorna as definições dinâmicas de conquistas baseadas nas configurações atuais."""
@@ -268,7 +396,7 @@ class StatsHandler:
             }
         }
 
-    def _calculate_achievements(self, stats: Dict[str, Any], days: int, plex_user_id: str, username: str, current_user: Any) -> List[Dict[str, Any]]:
+    def _calculate_achievements(self, stats: Dict[str, Any], days: int, plex_user_id: str, username: str) -> List[Dict[str, Any]]:
         if not self.data_manager: 
             return []
             
@@ -298,13 +426,18 @@ class StatsHandler:
         
         if newly_unlocked:
             self.data_manager.add_unlocked_achievements(plex_user_id, username, newly_unlocked)
-            # Notifica apenas se for o próprio a visualizar as suas estatísticas
-            if current_user and str(current_user.id) == str(plex_user_id):
-                for ach in newly_unlocked:
-                    self.data_manager.create_notification(
-                        message=_("Nova conquista desbloqueada: %(title)s (%(level)s)!", title=ach['title'], level=ach['level']), 
-                        category='success', link="/statistics", user_plex_id=plex_user_id
-                    )
+            # 🐛 CORREÇÃO: notifica sempre o verdadeiro dono da conquista (plex_user_id),
+            # independentemente de quem tenha despoletado este cálculo (ex: um admin a
+            # navegar pelo leaderboard). Antes, a notificação só era enviada se quem
+            # estivesse a ver a página fosse o próprio dono — e como a deteção "newly
+            # unlocked" só acontece UMA vez (a conquista já fica marcada como
+            # desbloqueada na base de dados), se um admin (ou qualquer outra pessoa)
+            # visse a página antes do próprio dono, a notificação era perdida para sempre.
+            for ach in newly_unlocked:
+                self.data_manager.create_notification(
+                    message=_("Nova conquista desbloqueada: %(title)s (%(level)s)!", title=ach['title'], level=ach['level']), 
+                    category='success', link="/statistics", user_plex_id=plex_user_id
+                )
 
         final_achievements = []
         all_unlocked_ever = self.data_manager.get_unlocked_achievements(plex_user_id)
@@ -346,9 +479,10 @@ class StatsHandler:
             # que aparecem no leaderboard, para anexar o ícone/nome do nível ao lado do nome.
             xp_by_user = {}
             if self.data_manager and user_stats:
+                level_table = normalize_level_table(load_or_create_config().get("XP_LEVEL_TABLE"))
                 profiles_by_id = self.data_manager.get_user_profiles_by_id(list(user_stats.keys()))
                 for uid, profile in profiles_by_id.items():
-                    xp_by_user[uid] = get_level_info(profile.get('xp', 0))
+                    xp_by_user[uid] = get_level_info(profile.get('xp', 0), level_table)
             
             formatted_stats = [
                 {
@@ -370,7 +504,136 @@ class StatsHandler:
             logger.error(f"Erro em get_watch_stats: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
 
-    def get_user_watch_details(self, plex_user_id: str, username: str, days: int = 7, current_user: Any = None) -> Dict[str, Any]:
+    # ==========================================================================
+    # PLEX WRAPPED (RETROSPECTIVA ANUAL)
+    # ==========================================================================
+
+    def get_wrapped_data(self, plex_user_id: str, username: str, year: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Gera a retrospectiva anual "estilo Spotify Wrapped" de um utilizador,
+        com base em todo o histórico do Tautulli daquele ano civil.
+
+        Reaproveita a mesma infraestrutura de agregação usada nas Estatísticas
+        (_process_history_item), evitando duplicar a lógica de contagem de
+        géneros/filmes/séries/realizadores — só adiciona o que é exclusivo do
+        Wrapped: quebra mensal, "dia mais épico" e a "personalidade do ano".
+        """
+        try:
+            current_year = datetime.now(timezone.utc).year
+            year = int(year) if year else current_year
+            if year < 2000 or year > current_year:
+                return {"success": False, "message": _("Ano inválido.")}
+
+            start_ts = int(datetime(year, 1, 1, tzinfo=timezone.utc).timestamp())
+            end_ts = int(datetime(year + 1, 1, 1, tzinfo=timezone.utc).timestamp())
+
+            # Busca a partir do início do ano pedido; filtramos o limite superior
+            # em Python (por timestamp exato) em vez de confiar num parâmetro
+            # 'before' da API do Tautulli que não está documentado/testado aqui.
+            after_date_str = f"{year}-01-01"
+            history_response = self.api.get_history(after=after_date_str, user_id=plex_user_id)
+            all_history = history_response.get('data', []) if isinstance(history_response, dict) else []
+            history = [item for item in all_history if start_ts <= item.get('date', 0) < end_ts]
+
+            if not history:
+                return {"success": True, "year": year, "has_data": False, "wrapped": None}
+
+            config = load_or_create_config()
+            stats = self._initialize_stats_dict()
+            series_genre_cache = {}
+            monthly_duration = [0] * 12
+            daily_duration = Counter()
+
+            for item in history:
+                self._process_history_item(item, stats, series_genre_cache, recently_added_lookup=None)
+                dt = datetime.fromtimestamp(item.get('date', 0), tz=timezone.utc)
+                monthly_duration[dt.month - 1] += item.get('duration', 0) or 0
+                daily_duration[dt.date()] += item.get('duration', 0) or 0
+
+            self._finalize_stats(stats)
+
+            busiest_day = None
+            if daily_duration:
+                busiest_date, busiest_seconds = max(daily_duration.items(), key=lambda x: x[1])
+                busiest_day = {
+                    "date": busiest_date.strftime('%d/%m/%Y'),
+                    "hours": round(busiest_seconds / 3600, 1)
+                }
+
+            top_movie = stats["top_movies"].most_common(1)
+            top_show = stats["top_shows"].most_common(1)
+            top_genre = stats["genre_counts"].most_common(1)
+            top_director = stats["director_counts"].most_common(1)
+
+            wrapped_data = {
+                "username": username,
+                "total_hours": round(stats["total_duration"] / 3600, 1),
+                "total_plays": stats["plays"],
+                "movie_count": stats["movie_count"],
+                "episode_count": stats["episode_count"],
+                "unique_days_active": len(stats["unique_days"]),
+                "unique_genres_count": len(stats["unique_genres"]),
+                "unique_platforms_count": len(stats["unique_platforms"]),
+                "top_genre": top_genre[0][0] if top_genre else None,
+                "top_movie": top_movie[0][0] if top_movie else None,
+                "top_show": top_show[0][0] if top_show else None,
+                "top_director": top_director[0][0] if top_director else None,
+                "busiest_day": busiest_day,
+                "night_owl_sessions": stats["night_owl_session_count"],
+                "monthly_hours": [round(m / 3600, 1) for m in monthly_duration],
+                "personality": self._determine_wrapped_personality(stats),
+            }
+
+            # 🎮 Integração com o sistema de XP/Níveis: mostra no Wrapped o nível
+            # alcançado e uma estimativa do XP gerado por este ano especificamente
+            # (calculado com as mesmas regras da sincronização normal, para bater
+            # com o que o utilizador vê na página de estatísticas).
+            if self.data_manager:
+                profile = self.data_manager.get_user_profile(plex_user_id) or {}
+                level_table = normalize_level_table(config.get("XP_LEVEL_TABLE"))
+                wrapped_data["level_info"] = get_level_info(profile.get('xp', 0), level_table)
+                wrapped_data["lifetime_xp"] = profile.get('lifetime_xp') or 0
+
+                xp_per_minute = config.get("XP_PER_MINUTE_WATCHED", 1)
+                xp_bonus = config.get("XP_BONUS_PER_COMPLETED_ITEM", 20)
+                threshold = config.get("XP_COMPLETION_THRESHOLD_PERCENT", 90)
+                year_xp = (stats["total_duration"] / 60) * xp_per_minute
+                year_xp += sum(
+                    xp_bonus for item in history
+                    if _safe_int_float(item.get('percent_complete'), default=0) >= threshold
+                )
+                wrapped_data["year_xp"] = int(year_xp)
+
+            return {"success": True, "year": year, "has_data": True, "wrapped": wrapped_data}
+        except RequestException as e:
+            return {"success": False, "message": str(e)}
+        except Exception as e:
+            logger.error(f"Erro inesperado ao gerar o Plex Wrapped para o utilizador {plex_user_id}: {e}", exc_info=True)
+            return {"success": False, "message": str(e)}
+
+    def _determine_wrapped_personality(self, stats: Dict[str, Any]) -> Dict[str, str]:
+        """
+        Atribui uma "personalidade do ano" divertida, baseada em heurísticas
+        simples sobre os hábitos já calculados (sem precisar de nenhum dado extra).
+        """
+        total_plays = max(1, stats.get("plays", 0))
+        total_duration = max(1, stats.get("total_duration", 0))
+        movie_ratio = stats.get("movie_count", 0) / total_plays
+        night_owl_ratio = stats.get("night_owl_session_count", 0) / total_plays
+        weekend_duration = stats["weekly_activity_python"][5] + stats["weekly_activity_python"][6]  # sáb + dom
+        weekend_ratio = weekend_duration / total_duration
+
+        if night_owl_ratio >= 0.25:
+            return {"title": str(_("Coruja Notívaga")), "icon": "🦉", "description": str(_("Você não perdoa nem de madrugada — sempre pronto para mais um episódio."))}
+        if weekend_ratio >= 0.55:
+            return {"title": str(_("Guerreiro de Fim de Semana")), "icon": "🛋️", "description": str(_("De segunda a sexta você aguenta, mas o sábado e domingo são só para maratonas."))}
+        if movie_ratio >= 0.7:
+            return {"title": str(_("Cinéfilo de Carteirinha")), "icon": "🎬", "description": str(_("Filmes são a sua religião — poucas séries conseguem competir."))}
+        if movie_ratio <= 0.3 and stats.get("episode_count", 0) > 0:
+            return {"title": str(_("Maratonista de Séries")), "icon": "📺", "description": str(_("\"Só mais um episódio\" nunca foi só mais um episódio."))}
+        return {"title": str(_("Espectador Equilibrado")), "icon": "🎭", "description": str(_("Filmes, séries, um pouco de tudo — sem exageros, do jeito certo."))}
+
+    def get_user_watch_details(self, plex_user_id: str, username: str, days: int = 7) -> Dict[str, Any]:
         """Devolve as métricas profundas de um utilizador específico."""
         try:
             days = int(days)
@@ -378,19 +641,21 @@ class StatsHandler:
             history_response = self.api.get_history(after=after_date_str, user_id=plex_user_id)
             history = history_response.get('data', [])
 
-            # 🎮 XP/Níveis: sincroniza (grava novo XP) só quando o próprio utilizador ou
-            # um admin está a ver a página — evita gastar chamadas ao Tautulli sempre que
-            # alguém navega pelo perfil público de outra pessoa no leaderboard.
-            is_owner_or_admin = current_user and (str(current_user.id) == str(plex_user_id) or getattr(current_user, 'is_admin', lambda: False)())
-            if is_owner_or_admin and self.data_manager:
+            # 🎮 XP/Níveis: sincroniza sempre que as estatísticas são (re)calculadas.
+            # Como esta função já está protegida por 5 minutos de cache a montante
+            # (TautulliManager.get_user_watch_details), isto nunca chama a API do
+            # Tautulli mais de uma vez a cada 5 minutos por utilizador, independentemente
+            # de quantas pessoas diferentes vejam a página nesse intervalo.
+            if self.data_manager:
                 self.sync_user_xp(plex_user_id, username)
 
-            # O nível é sempre devolvido com base no XP já persistido (leitura barata),
-            # independentemente de quem está a ver ou se houve sincronização agora.
             level_info = None
             if self.data_manager:
                 profile = self.data_manager.get_user_profile(plex_user_id) or {}
-                level_info = get_level_info(profile.get('xp', 0))
+                level_table = normalize_level_table(load_or_create_config().get("XP_LEVEL_TABLE"))
+                level_info = get_level_info(profile.get('xp', 0), level_table)
+                level_info['lifetime_xp'] = profile.get('lifetime_xp') or 0
+                level_info['season'] = self.get_season_info()
 
             if not history:
                 return {"success": True, "details": {"level_info": level_info} if level_info else {}}
@@ -404,7 +669,7 @@ class StatsHandler:
 
             self._finalize_stats(stats)
             
-            stats["achievements"] = self._calculate_achievements(stats, days, plex_user_id, username, current_user)
+            stats["achievements"] = self._calculate_achievements(stats, days, plex_user_id, username)
             stats["level_info"] = level_info
             
             return {"success": True, "details": stats}

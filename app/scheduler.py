@@ -241,6 +241,10 @@ def sync_xp_job():
     Sincroniza o XP/Nível de todos os utilizadores conhecidos, mesmo os que não
     visitaram a própria página de estatísticas recentemente — assim o leaderboard
     de XP e os níveis ficam sempre atualizados, não só para quem entra no painel.
+
+    No fim, verifica se a "temporada" de XP chegou ao fim (ex: ciclo de 6 meses
+    configurado pelo administrador) e, em caso afirmativo, repõe o XP de todos a
+    zero e inicia uma temporada nova.
     """
     if not _app: return
     with _app.app_context():
@@ -257,6 +261,13 @@ def sync_xp_job():
                 action=lambda pid=plex_user_id, u=username: extensions.tautulli_manager.stats.sync_user_xp(pid, u),
                 description=f"sincronizar XP para '{username}'"
             )
+
+        try:
+            result = extensions.tautulli_manager.reset_season_if_due()
+            if result.get("reset"):
+                logger.info(f"[XP] {result.get('message')}")
+        except Exception as e:
+            logger.error(f"[XP] Falha ao verificar o fim da temporada de XP: {e}", exc_info=True)
 
 
 # ==========================================

@@ -7,6 +7,7 @@ import * as dom from './dom.js';
 import * as api from './api.js';
 import * as ui from './ui.js';
 import { i18n, fieldMap, urls } from './config.js';
+import { initGamificationSubtabs, addLevelRow, collectLevelsFromEditor, collectResetMonths, loadSeasonStatus, handleManualSeasonReset } from './gamification.js';
 import { showToast } from '../utils.js';
 
 let pinCheckInterval = null;
@@ -180,6 +181,10 @@ async function handleSaveSettings(e) {
                     newConfig[key] = el.checked;
                 } else if (field.type === 'number') {
                     newConfig[key] = parseInt(el.value, 10) || 0;
+                } else if (field.type === 'decimal') {
+                    // 🐛 CORREÇÃO: campos decimais (ex: XP por minuto = 0.1) não podem
+                    // passar por parseInt, que trunca qualquer casa decimal para 0.
+                    newConfig[key] = parseFloat(el.value) || 0;
                 } else if (field.type === 'password') {
                     const originalLength = parseInt(el.dataset.originalLength || '0', 10);
                     // O backend envia '*' correspondente ao tamanho da senha. 
@@ -195,6 +200,8 @@ async function handleSaveSettings(e) {
         }
     }
     newConfig.SCREEN_PRICES = screenPrices;
+    newConfig.XP_LEVEL_TABLE = collectLevelsFromEditor();
+    newConfig.XP_RESET_MONTHS = collectResetMonths();
     if (dom.logLevelSelector) newConfig.LOG_LEVEL = dom.logLevelSelector.value;
 
     if (settingsData.plex_url && settingsData.plex_token) {
@@ -409,6 +416,16 @@ export function initializeEventListeners() {
 
     if (document.getElementById('backupList')) {
         loadBackupList();
+    }
+
+    // --- Gamificação: sub-abas, editor de níveis e temporadas de XP ---
+    initGamificationSubtabs();
+    document.getElementById('xp-level-add-btn')?.addEventListener('click', addLevelRow);
+
+    const seasonResetBtn = document.getElementById('xp-season-reset-btn');
+    if (seasonResetBtn) {
+        seasonResetBtn.addEventListener('click', () => handleManualSeasonReset(urls, fetchAPI, showToast));
+        loadSeasonStatus(urls, fetchAPI);
     }
 
     document.querySelectorAll('.show-help-button').forEach(button => button.addEventListener('click', () => dom.helpModal?.classList.remove('hidden')));

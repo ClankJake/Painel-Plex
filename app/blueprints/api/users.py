@@ -144,7 +144,7 @@ def get_account_details():
             pass
 
     libraries_data = extensions.plex_manager.get_user_libraries(plex_user_id)
-    watch_data = extensions.tautulli_manager.get_user_watch_details(plex_user_id=plex_user_id, current_user=current_user)
+    watch_data = extensions.tautulli_manager.get_user_watch_details(plex_user_id=plex_user_id)
 
     is_on_trial = False
     if trial_end_date_iso := profile.get('trial_end_date'):

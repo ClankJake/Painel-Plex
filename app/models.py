@@ -116,6 +116,7 @@ class UserProfile(db.Model):
     last_reactivation_time = db.Column(db.Float, nullable=True)
     xp = db.Column(db.Integer, default=0, nullable=False)
     xp_last_sync_at = db.Column(db.Float, nullable=True)
+    lifetime_xp = db.Column(db.Integer, default=0, nullable=False)
     coupon_usages = db.relationship('CouponUsage', backref='user', lazy=True, cascade="all, delete-orphan")
     notifications = db.relationship('Notification', backref='user', lazy=True, cascade="all, delete-orphan")
     unlocked_achievements = db.relationship('UnlockedAchievement', backref='user', lazy=True, cascade="all, delete-orphan")

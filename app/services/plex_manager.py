@@ -18,6 +18,7 @@ from .plex.subscription_manager import PlexSubscriptionManager
 
 # Importação da instância global do scheduler
 from ..extensions import scheduler as global_scheduler
+from ..extensions import cache
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,16 @@ class PlexManager:
     def reload_connections(self, from_job=False):
         """Recarrega as conexões e atualiza as referências dos objetos principais."""
         success, message = self.conn.reload(from_job=from_job)
+
+        # Invalida sempre a cache do estado: acabámos de tentar reconectar, por isso
+        # um "OFFLINE" (ou "ONLINE") anterior deixou de ser válido — sem isto, o painel
+        # podia continuar a mostrar o estado antigo até 30s depois de a ligação
+        # ter sido reposta (ou perdida).
+        try:
+            cache.delete_memoized(self._check_status_cached)
+        except Exception:
+            pass
+
         if success:
             self.plex = self.conn.plex
             self.account = self.conn.account
@@ -71,7 +82,6 @@ class PlexManager:
             
             if self.app:
                 with self.app.app_context():
-                    from app.extensions import cache
                     cache.set('last_plex_user_sync', time.time(), timeout=86400)
                     from app.config import load_or_create_config
                     self.app.config.update(load_or_create_config())
@@ -79,7 +89,19 @@ class PlexManager:
         return success, message
 
     def check_status(self):
-        """Verifica o estado da conexão com o Plex."""
+        """
+        Verifica o estado da conexão com o Plex.
+
+        ⚡ Com cache curto (30s): 'library.sections()' é uma chamada de rede real ao
+        servidor Plex, e esta função é invocada sempre que o painel de administração
+        é carregado. Sem cache, cada F5 do administrador — ou vários admins em
+        simultâneo — martelava o Plex desnecessariamente. 30 segundos é curto o
+        suficiente para o estado continuar a ser útil em diagnóstico.
+        """
+        return self._check_status_cached()
+
+    @cache.memoize(timeout=30)
+    def _check_status_cached(self):
         if self.conn and self.conn.plex and self.conn.account:
             try:
                 self.conn.plex.library.sections()

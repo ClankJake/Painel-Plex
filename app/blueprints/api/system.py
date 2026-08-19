@@ -216,6 +216,7 @@ def api_settings():
             'ACHIEVEMENT_NIGHT_OWL_BRONZE', 'ACHIEVEMENT_NIGHT_OWL_SILVER', 'ACHIEVEMENT_NIGHT_OWL_GOLD',
             'ACHIEVEMENT_PIONEER_BRONZE', 'ACHIEVEMENT_PIONEER_SILVER', 'ACHIEVEMENT_PIONEER_GOLD', 'ACHIEVEMENT_PIONEER_WINDOW_HOURS',
             'XP_PER_MINUTE_WATCHED', 'XP_BONUS_PER_COMPLETED_ITEM', 'XP_COMPLETION_THRESHOLD_PERCENT',
+            'XP_LEVEL_TABLE', 'XP_RESET_ENABLED', 'XP_RESET_MONTHS',
             'TELEGRAM_BULK_MESSAGE_TEMPLATE', 'DISCORD_BULK_MESSAGE_TEMPLATE', 'WEBHOOK_BULK_MESSAGE_TEMPLATE',
             'UNIVERSAL_EXPIRATION_ENABLED', 'UNIVERSAL_EXPIRATION_TIME',
             'DISCORD_ENABLED', 'DISCORD_WEBHOOK_URL', 'DISCORD_EXPIRATION_MESSAGE_TEMPLATE',
@@ -235,8 +236,13 @@ def api_settings():
             'ACHIEVEMENT_DIRECTOR_FAN_BRONZE', 'ACHIEVEMENT_DIRECTOR_FAN_SILVER', 'ACHIEVEMENT_DIRECTOR_FAN_GOLD',
             'ACHIEVEMENT_NIGHT_OWL_BRONZE', 'ACHIEVEMENT_NIGHT_OWL_SILVER', 'ACHIEVEMENT_NIGHT_OWL_GOLD',
             'ACHIEVEMENT_PIONEER_BRONZE', 'ACHIEVEMENT_PIONEER_SILVER', 'ACHIEVEMENT_PIONEER_GOLD', 'ACHIEVEMENT_PIONEER_WINDOW_HOURS',
-            'STREAM_CHECK_INTERVAL_SECONDS', 'BACKUP_MAX_COUNT', 'XP_PER_MINUTE_WATCHED', 'XP_BONUS_PER_COMPLETED_ITEM', 'XP_COMPLETION_THRESHOLD_PERCENT'
+            'STREAM_CHECK_INTERVAL_SECONDS', 'BACKUP_MAX_COUNT', 'XP_BONUS_PER_COMPLETED_ITEM', 'XP_COMPLETION_THRESHOLD_PERCENT'
         ]
+
+        # 🐛 CORREÇÃO: XP_PER_MINUTE_WATCHED precisa de aceitar valores decimais
+        # (ex: 0.1), mas estava dentro de 'numeric_fields', que força int(value)
+        # e truncava qualquer casa decimal para 0. Tratado à parte, com float().
+        float_fields = ['XP_PER_MINUTE_WATCHED']
 
         if 'SCREEN_PRICES' in new_data:
             config_to_update['SCREEN_PRICES'] = new_data['SCREEN_PRICES']
@@ -255,6 +261,22 @@ def api_settings():
                         config_to_update[field] = int(value) if value else 0
                     except (ValueError, TypeError): 
                         config_to_update[field] = old_config.get(field, 0)
+                elif field in float_fields:
+                    try:
+                        config_to_update[field] = float(value) if value not in (None, '') else 0.0
+                    except (ValueError, TypeError):
+                        config_to_update[field] = old_config.get(field, 0.0)
+                elif field == 'XP_LEVEL_TABLE':
+                    # Tabela de níveis personalizada: sanitiza no servidor (ordena por XP,
+                    # remove entradas inválidas/duplicadas, garante que começa em 0 XP)
+                    # para que uma edição malformada na interface nunca corrompa o cálculo
+                    # de níveis de todos os utilizadores.
+                    from ...services.tautulli.stats_handler import normalize_level_table, get_default_level_table
+                    if not value:
+                        config_to_update[field] = []  # lista vazia = volta a usar a tabela padrão
+                    else:
+                        normalized = normalize_level_table(value)
+                        config_to_update[field] = [] if normalized == get_default_level_table() else normalized
                 elif field == 'SCREEN_LIMIT_TERMINATION_STRATEGY':
                     # Defesa extra: só aceita os dois valores válidos, mesmo que a UI já restrinja isso.
                     config_to_update[field] = value if value in ('oldest', 'newest') else old_config.get(field, 'oldest')
@@ -273,17 +295,41 @@ def api_settings():
         app = current_app._get_current_object()
         app.config.update(config_to_update)
 
-        # Recarrega credenciais dos gestores independentes
-        efi_manager.reload_credentials()
-        mercado_pago_manager.reload_credentials()
-        tautulli_manager.reload_credentials()
-        
-        if hasattr(overseerr_manager, 'reload_credentials'):
-            overseerr_manager.reload_credentials()
-        elif hasattr(overseerr_manager, 'reload_config'):
-            overseerr_manager.reload_config()
+        # ⚡ RECARGA SELETIVA: antes, QUALQUER gravação de configurações (mesmo
+        # alterar apenas o texto de uma mensagem do Telegram) reconectava ao Plex,
+        # reinicializava todos os clientes de pagamento, chamava a API da Efí para
+        # reconfigurar o webhook e deitava fora todas as caches — até 3 chamadas de
+        # rede externas e a perda de todo o trabalho de cache já feito.
+        # Agora só recarregamos os serviços cujas credenciais realmente mudaram.
+        def _changed(*keys):
+            return any(old_config.get(k) != config_to_update.get(k) for k in keys)
 
-        if config_to_update.get("EFI_ENABLED"):
+        plex_changed = _changed('PLEX_URL', 'PLEX_TOKEN')
+        efi_changed = _changed(
+            'EFI_CLIENT_ID', 'EFI_CLIENT_SECRET', 'EFI_CERTIFICATE', 'EFI_SANDBOX',
+            'EFI_PIX_KEY', 'EFI_ENABLED', 'EFI_USE_MTLS', 'EFI_WEBHOOK_HMAC_SECRET',
+            'APP_BASE_URL'
+        )
+        tautulli_changed = _changed('TAUTULLI_URL', 'TAUTULLI_API_KEY')
+        mp_changed = _changed('MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_ENABLED')
+        overseerr_changed = _changed('OVERSEERR_URL', 'OVERSEERR_API_KEY', 'OVERSEERR_ENABLED')
+
+        if efi_changed:
+            efi_manager.reload_credentials()
+        if mp_changed:
+            mercado_pago_manager.reload_credentials()
+        if tautulli_changed:
+            tautulli_manager.reload_credentials()
+
+        if overseerr_changed:
+            if hasattr(overseerr_manager, 'reload_credentials'):
+                overseerr_manager.reload_credentials()
+            elif hasattr(overseerr_manager, 'reload_config'):
+                overseerr_manager.reload_config()
+
+        # A configuração do webhook na Efí é uma chamada de rede à API deles:
+        # só faz sentido quando algo relevante para o webhook mudou.
+        if efi_changed and config_to_update.get("EFI_ENABLED"):
             efi_manager.configure_webhook()
 
         # Atualização dinâmica do Nível de Logs
@@ -343,7 +389,13 @@ def api_settings():
             except Exception:
                 pass
 
-        success, message = plex_manager.reload_connections()
+        # Só reconecta ao Plex (2 chamadas de rede + perda das caches de utilizadores
+        # e bibliotecas) quando o URL ou o Token mudaram de facto.
+        if plex_changed:
+            success, message = plex_manager.reload_connections()
+        else:
+            success, message = True, _("Configurações guardadas com sucesso.")
+
         return jsonify({"success": success, "message": message})
 
     # --- GET SETTINGS (Com Ocultação de Chaves Sensíveis) ---
@@ -367,6 +419,13 @@ def api_settings():
 
     config_to_send.pop('SECRET_KEY', None)
     config_to_send.pop('INTERNAL_TRIGGER_KEY', None)
+
+    # 🪜 Editor de níveis: se o administrador ainda não personalizou nada, a chave
+    # 'XP_LEVEL_TABLE' está vazia (o que significa "usar a tabela padrão do código").
+    # Enviamos aqui a tabela EFETIVA para que o editor na interface já apareça
+    # preenchido com os níveis padrão, prontos a editar, em vez de vazio.
+    from ...services.tautulli.stats_handler import normalize_level_table
+    config_to_send['XP_LEVEL_TABLE'] = normalize_level_table(config_to_send.get('XP_LEVEL_TABLE'))
 
     return jsonify(config_to_send)
 
@@ -554,8 +613,45 @@ def bulk_notify():
 # BACKUP E RESTAURO
 # ==========================================
 
-@system_api_bp.route('/backup/download', methods=['GET'])
+# ==========================================
+# TEMPORADAS DE XP
+# ==========================================
+
+@system_api_bp.route('/xp/season', methods=['GET'])
 @login_required
+@admin_required
+def xp_season_info():
+    """Devolve o estado da temporada de XP atual (data de fim, dias restantes)."""
+    try:
+        return jsonify({"success": True, "season": tautulli_manager.get_season_info()})
+    except Exception as e:
+        logger.error(f"Erro ao obter informação da temporada de XP: {e}", exc_info=True)
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@system_api_bp.route('/xp/season/reset', methods=['POST'])
+@login_required
+@admin_required
+def xp_season_reset():
+    """
+    Força o reinício imediato da temporada de XP: repõe o XP de todos os
+    utilizadores a zero e recomeça a contagem do período. O XP acumulado de
+    sempre ('lifetime_xp') é preservado.
+    """
+    try:
+        result = tautulli_manager.reset_season_if_due(force=True)
+        status = 200 if result.get("success") else 400
+        return jsonify(result), status
+    except Exception as e:
+        logger.error(f"Erro ao repor a temporada de XP: {e}", exc_info=True)
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+# ==========================================
+# BACKUP E RESTAURO
+# ==========================================
+
+@system_api_bp.route('/backup/download', methods=['GET'])@login_required
 @admin_required
 def backup_download_now():
     """Gera um backup na hora e devolve-o diretamente como download (não fica guardado em disco)."""

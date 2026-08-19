@@ -9,6 +9,7 @@ import * as api from './api.js';
 import { i18n, fieldMap } from './config.js';
 import { settingsData } from './handlers.js';
 import { showToast } from '../utils.js';
+import { renderLevelEditor, renderResetMonthsGrid } from './gamification.js';
 
 let logIntervalId = null;
 let lastLogContent = ""; // Evita re-renderizações desnecessárias e pulos no scroll
@@ -22,6 +23,8 @@ export async function loadSettings() {
         populateForm(config);
         populateTabsSelect();
         syncTabsSelect();
+        renderLevelEditor(config.XP_LEVEL_TABLE);
+        renderResetMonthsGrid(config.XP_RESET_MONTHS);
     } catch (error) {
         showToast(`Falha ao carregar configurações: ${error.message}`, 'error');
     }

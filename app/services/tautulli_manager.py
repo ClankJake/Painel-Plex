@@ -69,8 +69,23 @@ class TautulliManager:
         return self.stats.get_watch_stats(days, plex_users_info)
 
     @cache.memoize(timeout=300)
-    def get_user_watch_details(self, plex_user_id: Union[int, str], days: int = 7, current_user=None) -> Dict[str, Any]:
-        """Obtém os detalhes aprofundados de um utilizador específico (Gráficos, Géneros, Conquistas)."""
+    def get_user_watch_details(self, plex_user_id: Union[int, str], days: int = 7) -> Dict[str, Any]:
+        """
+        Obtém os detalhes aprofundados de um utilizador específico (Gráficos, Géneros, Conquistas, XP/Nível).
+
+        🐛 CORREÇÃO: esta função NÃO recebe mais 'current_user'. Incluir um objeto
+        do Flask-Login na chave do @cache.memoize é uma cilada clássica — cada
+        pedido carrega uma instância nova do utilizador a partir da base de dados,
+        com um endereço de memória diferente, tornando a chave de cache instável e
+        imprevisível (o resultado dependia de forma não-determinística de quem
+        tinha visto a página primeiro). Agora a chave de cache é só
+        (plex_user_id, days), estável e correta — os efeitos que dependiam de
+        "quem está a ver" (sincronizar XP, notificar conquistas) deixaram de
+        depender do utilizador atual: a sincronização de XP corre sempre (é
+        barata e já está protegida pela cache de 5 minutos) e as notificações de
+        conquistas são sempre enviadas ao verdadeiro dono, independentemente de
+        quem tiver despoletado o cálculo.
+        """
         if not self.api_client.is_configured:
             return {"success": True, "details": {}}
             
@@ -82,7 +97,7 @@ class TautulliManager:
             return {"success": True, "details": {}}
 
         username = profile.get('username')
-        return self.stats.get_user_watch_details(str(plex_user_id), username, days=days, current_user=current_user)
+        return self.stats.get_user_watch_details(str(plex_user_id), username, days=days)
 
     def get_user_watch_history(self, user_id: Union[int, str], page: int = 1, length: int = 25, search: str = "") -> Dict[str, Any]:
         """Busca o histórico paginado de um utilizador (Sem Cache para permitir pesquisa real-time)."""
@@ -108,3 +123,39 @@ class TautulliManager:
             
         logger.debug(f"Tautulli: A buscar dispositivos do utilizador (cache miss) para o ID '{plex_user_id}'.")
         return self.stats.get_user_devices(str(plex_user_id))
+
+    # ==========================================
+    # PLEX WRAPPED (RETROSPECTIVA ANUAL)
+    # ==========================================
+
+    @cache.memoize(timeout=1800)
+    def get_wrapped_data(self, plex_user_id: Union[int, str], year: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Retrospectiva anual de um utilizador. Cache mais longa (30 min) do que as
+        estatísticas normais porque agrega um ANO inteiro de histórico — é a
+        chamada mais pesada do sistema e os dados praticamente não mudam.
+        """
+        if not self.api_client.is_configured:
+            return {"success": True, "has_data": False, "wrapped": None}
+
+        profile = self.data_manager.get_user_profile(int(plex_user_id))
+        if not profile or not profile.get('username'):
+            return {"success": True, "has_data": False, "wrapped": None}
+
+        return self.stats.get_wrapped_data(str(plex_user_id), profile.get('username'), year=year)
+
+    # ==========================================
+    # TEMPORADAS DE XP
+    # ==========================================
+    def get_season_info(self) -> Optional[Dict[str, Any]]:
+        """Informação sobre a temporada de XP atual (sem cache — é leitura barata do config)."""
+        return self.stats.get_season_info()
+
+    def reset_season_if_due(self, force: bool = False) -> Dict[str, Any]:
+        """Repõe o XP de todos se a temporada terminou (ou se forçado pelo administrador)."""
+        result = self.stats.reset_season_if_due(force=force)
+        if result.get("reset"):
+            # O XP mudou para toda a gente: invalida a cache de estatísticas para
+            # que as barras de nível reflitam o reset imediatamente.
+            self.invalidate_stats_cache()
+        return result

@@ -46,6 +46,12 @@ def statistics_page():
     """Página de estatísticas de consumo do utilizador e globais."""
     return render_template('statistics.html')
 
+@main_bp.route('/wrapped')
+@login_required
+def wrapped_page():
+    """Página de retrospectiva anual estilo 'Plex Wrapped'."""
+    return render_template('wrapped.html', now_year=datetime.now(timezone.utc).year)
+
 @main_bp.route('/financial')
 @login_required
 @admin_required

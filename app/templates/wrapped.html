@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('O Seu Plex Wrapped') }} - {{ app_title }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* 🎬 Experiência "Modo História": ocupa a tela toda por cima do layout normal,
+       para dar a sensação imersiva de um "Wrapped" de verdade. */
+    #wrapped-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        overflow: hidden;
+    }
+
+    .wrapped-slide {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 2rem;
+        opacity: 0;
+        transform: scale(1.05);
+        pointer-events: none;
+        transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .wrapped-slide.active {
+        opacity: 1;
+        transform: scale(1);
+        pointer-events: auto;
+    }
+
+    /* Barra de progresso "estilo Stories" no topo */
+    .wrapped-progress-track {
+        flex: 1;
+        height: 3px;
+        background: rgba(255,255,255,0.25);
+        border-radius: 999px;
+        overflow: hidden;
+    }
+    .wrapped-progress-fill {
+        height: 100%;
+        width: 0%;
+        background: white;
+        border-radius: 999px;
+        transition: width 0.2s linear;
+    }
+    .wrapped-progress-fill.filled { width: 100% !important; transition: width 0.4s ease; }
+
+    @keyframes wrapped-pop-in {
+        0% { opacity: 0; transform: translateY(16px) scale(0.9); }
+        100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .wrapped-animate-1 { animation: wrapped-pop-in 0.5s ease both; animation-delay: 0.1s; }
+    .wrapped-animate-2 { animation: wrapped-pop-in 0.5s ease both; animation-delay: 0.25s; }
+    .wrapped-animate-3 { animation: wrapped-pop-in 0.5s ease both; animation-delay: 0.4s; }
+
+    .wrapped-big-number {
+        font-size: clamp(3rem, 12vw, 6rem);
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -0.02em;
+    }
+
+    .wrapped-bar {
+        width: 10px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.85);
+        transition: height 0.6s ease;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Estado antes de entrar no modo imersivo: seletor de ano + botão "começar" -->
+<div id="wrapped-intro" class="max-w-lg mx-auto text-center py-16">
+    <div class="text-6xl mb-4">🎬✨</div>
+    <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">{{ _('O Seu Plex Wrapped') }}</h2>
+    <p class="text-gray-500 dark:text-gray-400 mb-8">{{ _('A sua retrospectiva pessoal de visualizações — filmes, séries, madrugadas e tudo mais.') }}</p>
+
+    <div class="bg-white dark:bg-gray-800/50 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 space-y-4">
+        <div>
+            <label for="wrapped-year-select" class="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">{{ _('Escolha o ano') }}</label>
+            <select id="wrapped-year-select" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                <!-- Opções injetadas via JS -->
+            </select>
+        </div>
+        <button id="wrapped-start-btn" class="w-full btn bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-500 hover:to-pink-400 text-white text-lg py-3 shadow-lg shadow-purple-500/30">
+            {{ _('▶ Começar') }}
+        </button>
+    </div>
+
+    <div id="wrapped-no-data" class="hidden mt-6 text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+        {{ _('Ainda não há dados suficientes de visualização para este ano.') }}
+    </div>
+
+    <div id="wrapped-loading" class="hidden mt-6 flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500"></div>
+        {{ _('A preparar a sua retrospectiva...') }}
+    </div>
+</div>
+
+<!-- Modo imersivo (escondido até o utilizador clicar em "Começar") -->
+<div id="wrapped-overlay" class="hidden">
+    <!-- Barras de progresso estilo Stories -->
+    <div id="wrapped-progress-container" class="absolute top-0 left-0 right-0 z-10 flex gap-1.5 p-4 pt-5"></div>
+
+    <!-- Botão fechar -->
+    <button id="wrapped-close-btn" class="absolute top-4 right-4 z-10 text-white/80 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors" aria-label="{{ _('Fechar') }}">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+    </button>
+
+    <!-- Zonas de clique invisíveis para navegar (esquerda = voltar, direita = avançar) -->
+    <div id="wrapped-nav-prev" class="absolute inset-y-0 left-0 w-1/3 z-[5] cursor-pointer"></div>
+    <div id="wrapped-nav-next" class="absolute inset-y-0 right-0 w-1/3 z-[5] cursor-pointer"></div>
+
+    <!-- Os slides são injetados aqui via JS -->
+    <div id="wrapped-slides-container" class="w-full h-full relative"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script id="wrapped-script"
+        type="module"
+        src="{{ url_for('static', filename='js/wrapped.js') }}"
+        data-wrapped-url="{{ url_for('stats_api.get_wrapped_data_route', plex_user_id=current_user.id) }}"
+        data-current-year="{{ now_year }}"
+        data-i18n-hours-watched="{{ _('horas assistidas') }}"
+        data-i18n-movies="{{ _('filmes') }}"
+        data-i18n-episodes="{{ _('episódios') }}"
+        data-i18n-days-active="{{ _('dias ativos') }}"
+        data-i18n-share="{{ _('Compartilhar') }}"
+        data-i18n-share-copied="{{ _('Resumo copiado! Cole onde quiser compartilhar.') }}"
+        data-i18n-watch-again="{{ _('Ver Novamente') }}"
+        data-i18n-back-to-stats="{{ _('Voltar às Estatísticas') }}"
+        data-i18n-loading-failed="{{ _('Falha ao carregar a sua retrospectiva.') }}"
+        data-i18n-your-year="{{ _('O seu {year} no Plex') }}"
+        data-i18n-hours-title="{{ _('Você maratonou') }}"
+        data-i18n-movies-episodes-title="{{ _('O que você assistiu') }}"
+        data-i18n-genre-title="{{ _('Seu gênero favorito foi') }}"
+        data-i18n-movie-title="{{ _('Filme mais assistido') }}"
+        data-i18n-show-title="{{ _('Série mais maratonada') }}"
+        data-i18n-director-title="{{ _('Realizador mais visto') }}"
+        data-i18n-busiest-day-title="{{ _('O seu dia mais épico') }}"
+        data-i18n-busiest-day-subtitle="{{ _('foi em') }}"
+        data-i18n-personality-title="{{ _('A sua personalidade do ano') }}"
+        data-i18n-monthly-title="{{ _('O seu ano, mês a mês') }}"
+        data-i18n-summary-title="{{ _('O meu resumo no Plex') }}"
+        data-i18n-plays="{{ _('reproduções') }}"
+        data-i18n-genres-explored="{{ _('gêneros explorados no total') }}"
+        data-i18n-your-favourites="{{ _('Os seus destaques') }}"
+        data-i18n-months-short="{{ _('J,F,M,A,M,J,J,A,S,O,N,D') }}"
+        data-i18n-xp-title="{{ _('A sua evolução') }}"
+        data-i18n-level="{{ _('Nível') }}"
+        data-i18n-xp-earned-in-year="{{ _('XP ganho em {year}') }}"
+        data-i18n-lifetime-xp="{{ _('XP acumulado de sempre') }}"
+        data-i18n-save-image="{{ _('Guardar Imagem') }}"
+        data-i18n-image-saved="{{ _('Imagem guardada!') }}"
+        data-i18n-night-owl-sessions="{{ _('sessões de madrugada') }}"
+        data-share-text-template="{{ _('🎬 O meu Plex Wrapped {year}: {hours}h assistidas, {movies} filmes, {episodes} episódios! Meu perfil: {personality} {icon}') }}"
+        >
+</script>
+{% endblock %}
