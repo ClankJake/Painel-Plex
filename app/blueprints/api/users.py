@@ -800,3 +800,53 @@ def _enforce_user_status_by_date(plex_user_id, username, profile_to_update):
         block_reason = extensions.data_manager.get_blocked_user(plex_user_id).get('block_reason')
         if block_reason in ['expired', 'trial_expired']:
             extensions.plex_manager.unblock_user(plex_user_id)
+
+
+# ==========================================
+# SISTEMA DE REFERÊNCIA ("INDIQUE E GANHE")
+# ==========================================
+
+@users_api_bp.route('/referral/me', methods=['GET'])
+@login_required
+def get_my_referral_info():
+    """
+    Devolve o código, o link e as estatísticas de indicação do utilizador
+    autenticado. O código é gerado na primeira vez que esta rota é chamada.
+    """
+    config = load_or_create_config()
+    if not config.get("REFERRAL_ENABLED", False):
+        return jsonify({"success": True, "enabled": False})
+
+    try:
+        plex_user_id = int(current_user.id)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": _("Utilizador inválido.")}), 400
+
+    code = extensions.referral_manager.get_or_create_code(plex_user_id)
+    stats = extensions.referral_manager.get_referral_stats(plex_user_id)
+
+    # O link aponta para a página pública de convite, com o código anexado.
+    base_url = (config.get("APP_BASE_URL") or request.host_url).rstrip('/')
+    stats['link'] = f"{base_url}/r/{code}" if code else None
+
+    return jsonify({"success": True, **stats})
+
+
+@users_api_bp.route('/referral/claim', methods=['POST'])
+@login_required
+def claim_referral_code():
+    """
+    Regista que o utilizador autenticado foi indicado por alguém. Só tem efeito
+    uma vez por utilizador; a recompensa só é paga quando ele efetuar a primeira
+    compra (ver ReferralManager.reward_referrer_on_payment).
+    """
+    data = request.json or {}
+    code = str(data.get('code', '')).strip()
+
+    try:
+        plex_user_id = int(current_user.id)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": _("Utilizador inválido.")}), 400
+
+    result = extensions.referral_manager.register_referral(plex_user_id, code)
+    return jsonify(result), (200 if result.get('success') else 400)

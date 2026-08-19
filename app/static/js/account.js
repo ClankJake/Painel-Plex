@@ -119,6 +119,67 @@ const renderStatusBanner = (data, expiration) => {
     }
 };
 
+
+// --- INDIQUE E GANHE ---
+
+async function loadReferralCard() {
+    const card = document.getElementById('referral-card');
+    if (!card || !state.urls.referralInfoUrl) return;
+
+    try {
+        const data = await fetchAPI(state.urls.referralInfoUrl);
+        // O card só aparece se o administrador tiver o sistema ativo e houver link.
+        if (!data.success || data.enabled === false || !data.link) return;
+
+        document.getElementById('referral-link').value = data.link;
+
+        const rewardEl = document.getElementById('referral-reward-text');
+        if (data.reward_type === 'credit') {
+            rewardEl.textContent = (state.i18n.referralRewardCredit || 'Ganhe R$ {credit} de crédito por cada amigo que assinar pelo seu link.')
+                .replace('{credit}', Number(data.reward_credit || 0).toFixed(2));
+            document.getElementById('referral-credit-box')?.classList.remove('hidden');
+            document.getElementById('referral-credit').textContent = `R$ ${Number(data.current_credit || 0).toFixed(2)}`;
+            // Com 4 caixas a grid de 3 colunas fica desequilibrada: escondemos a de
+            // pendentes, cuja informação já está implícita (indicados - confirmados).
+            document.getElementById('referral-pending-box')?.classList.add('hidden');
+        } else {
+            rewardEl.textContent = (state.i18n.referralRewardDays || 'Ganhe {days} dia(s) grátis por cada amigo que assinar pelo seu link.')
+                .replace('{days}', data.reward_days || 0);
+            document.getElementById('referral-pending').textContent = data.pending || 0;
+        }
+
+        document.getElementById('referral-total').textContent = data.total_referred || 0;
+        document.getElementById('referral-confirmed').textContent = data.total_confirmed || 0;
+
+        const list = document.getElementById('referral-list');
+        if (list && Array.isArray(data.referred_users) && data.referred_users.length) {
+            list.innerHTML = data.referred_users.map(u => `
+                <div class="flex items-center justify-between text-xs bg-white/50 dark:bg-black/10 rounded-lg px-3 py-2">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">${escapeHTML(u.username || '')}</span>
+                    <span class="${u.confirmed ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'} font-semibold">
+                        ${u.confirmed ? '✓ ' + (state.i18n.referralConfirmedLabel || 'Confirmado') : '⏳ ' + (state.i18n.referralPendingLabel || 'Aguarda 1º pagamento')}
+                    </span>
+                </div>
+            `).join('');
+        }
+
+        document.getElementById('copy-referral-link')?.addEventListener('click', async () => {
+            const ok = await copyToClipboard(data.link);
+            showToast(ok ? (state.i18n.referralLinkCopied || 'Link copiado!') : (state.i18n.error || 'Erro'), ok ? 'success' : 'error');
+        });
+
+        card.classList.remove('hidden');
+    } catch (error) {
+        // Silencioso: o programa de indicações é um extra e nunca deve estragar a
+        // página de conta se a chamada falhar.
+        console.warn('Não foi possível carregar o programa de indicações:', error);
+    }
+}
+
+function escapeHTML(str) {
+    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 const renderProfileBaseInfo = (data, expiration) => {
     document.getElementById('user-thumb').src = data.thumb || 'https://placehold.co/96x96/1F2937/E5E7EB?text=?';
     document.getElementById('user-username').textContent = data.username;
@@ -691,6 +752,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Renderizações Sequenciais
         renderStatusBanner(accountData, accountData.expiration_info);
         renderProfileBaseInfo(accountData, accountData.expiration_info);
+        loadReferralCard();
         
         if(paymentOptions.success) {
             setupPaymentSection(paymentOptions.prices, paymentOptions.providers, paymentOptions.can_downgrade);

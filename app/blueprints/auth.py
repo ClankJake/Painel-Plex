@@ -100,6 +100,24 @@ def _login_user_session(account, role, redirect_endpoint, from_settings=False, p
     session.permanent = True
     session['user_details'] = user_details
 
+    # 🎁 INDIQUE E GANHE: se o utilizador chegou por um link de indicação (/r/CODIGO),
+    # o código ficou guardado na sessão. É aqui, com a identidade já confirmada pelo
+    # Plex, que a indicação fica registada. A recompensa NÃO é paga neste momento —
+    # só quando ele fizer o primeiro pagamento, o que impede a criação de contas
+    # falsas apenas para gerar recompensas.
+    pending_ref = session.pop('pending_referral_code', None)
+    if pending_ref and role != 'admin':
+        try:
+            from ..extensions import referral_manager
+            result = referral_manager.register_referral(int(account.id), pending_ref)
+            if result.get('success'):
+                logger.info(f"Indicação registada: '{account.username}' foi indicado por '{result.get('referrer_username')}'.")
+            else:
+                logger.info(f"Indicação não aplicada para '{account.username}': {result.get('message')}")
+        except Exception as e:
+            # Nunca deixamos uma falha no programa de indicações impedir um login.
+            logger.error(f"Erro ao registar a indicação no login de '{account.username}': {e}", exc_info=True)
+
     if from_settings:
         session['plex_token'] = plex_token
         session.pop('from_settings', None)

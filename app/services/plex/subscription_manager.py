@@ -26,6 +26,50 @@ class PlexSubscriptionManager:
         self.scheduler = scheduler 
         self.plex_manager = None # Injetado pelo PlexManager após a inicialização
 
+    def add_days_to_subscription(self, plex_user_id, days):
+        """
+        Soma dias diretamente ao vencimento de um utilizador, sem passar pelo fluxo
+        de renovação paga. Usado por recompensas (ex: sistema de indicações).
+
+        A base do cálculo é a data de vencimento atual quando ela ainda está no
+        futuro; se já expirou (ou não existe), conta a partir de HOJE — assim quem
+        está com a subscrição vencida recebe de facto os dias completos, em vez de
+        os ver somados a uma data já passada.
+        """
+        if not days or int(days) <= 0:
+            return None
+
+        profile = self.data_manager.get_user_profile(plex_user_id)
+        if not profile:
+            raise ValueError("Perfil de utilizador não encontrado.")
+
+        local_tz = get_localzone()
+        now = datetime.now(local_tz)
+
+        base_date = None
+        if profile.get('expiration_date'):
+            try:
+                parsed = datetime.fromisoformat(profile['expiration_date'])
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=local_tz)
+                base_date = parsed.astimezone(local_tz)
+            except (ValueError, TypeError):
+                base_date = None
+
+        if not base_date or base_date < now:
+            base_date = now
+
+        new_expiration_date = base_date + timedelta(days=int(days))
+
+        profile['expiration_date'] = new_expiration_date.isoformat()
+        self.data_manager.set_user_profile(plex_user_id, profile)
+
+        self._replace_expiration_job(profile, plex_user_id, new_expiration_date)
+        self._unblock_user_if_needed(plex_user_id)
+
+        logger.info(f"[Referral] {days} dia(s) somados a '{profile.get('username')}'. Novo vencimento: {new_expiration_date.strftime('%d/%m/%Y')}.")
+        return new_expiration_date
+
     def renew_subscription(self, plex_user_id, months_to_add, screens=None, base_mode='today', base_date_str=None, expiration_time_str=None, is_reactivation=False):
         """
         Renova a subscrição de um utilizador, calcula a nova data de vencimento

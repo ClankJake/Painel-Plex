@@ -18,38 +18,83 @@ class PricingManager:
 
     # --- CÁLCULO E VALIDAÇÃO DE PREÇOS ---
 
-    def calculate_price(self, screens, coupon_code=None, plex_user_id=None):
+    def calculate_price(self, screens, coupon_code=None, plex_user_id=None, apply_referral_credit=False):
         """
-        Calcula o preço final de um plano, aplicando um cupão se for válido.
+        Calcula o preço final de um plano, aplicando um cupão se for válido e,
+        opcionalmente, o crédito de indicações do utilizador.
+
+        ⚠️ NOTA IMPORTANTE: este método é PURO — apenas calcula, nunca debita nada.
+        O crédito só é efetivamente consumido quando o pagamento é confirmado
+        (ver o processamento do webhook). Se debitássemos aqui, um utilizador que
+        gerasse um PIX e nunca o pagasse perderia o crédito sem receber nada.
+
+        'apply_referral_credit' é opt-in para não alterar o comportamento de quem
+        já chama este método (ex: a pré-visualização de preço com cupão).
         """
         original_price = self._get_base_price(screens)
         if original_price is None:
             return {"success": False, "message": _("Preço para o plano selecionado não encontrado.")}
 
-        if not coupon_code:
-            return {
-                "success": True, 
-                "original_price": original_price, 
-                "discounted_price": original_price, 
-                "coupon_applied": False
-            }
-
-        # 1. Validação do Cupão
-        is_valid, validation_result = self._validate_coupon(coupon_code, plex_user_id)
-        if not is_valid:
-            return {"success": False, "message": validation_result}
-
-        # 2. Aplicação do Desconto
-        coupon = validation_result
-        discounted_price = self._apply_discount(original_price, coupon)
-
-        return {
+        result = {
             "success": True,
             "original_price": original_price,
-            "discounted_price": discounted_price,
-            "coupon_applied": True,
-            "message": _("Cupão aplicado com sucesso!")
+            "discounted_price": original_price,
+            "coupon_applied": False,
+            "referral_credit_available": 0.0,
+            "referral_credit_applied": 0.0,
         }
+
+        # 1. Cupão (se houver)
+        if coupon_code:
+            is_valid, validation_result = self._validate_coupon(coupon_code, plex_user_id)
+            if not is_valid:
+                return {"success": False, "message": validation_result}
+
+            coupon = validation_result
+            result["discounted_price"] = self._apply_discount(original_price, coupon)
+            result["coupon_applied"] = True
+            result["message"] = _("Cupão aplicado com sucesso!")
+
+        # 2. Crédito de indicações (aplicado DEPOIS do cupão, sobre o valor já com desconto)
+        if apply_referral_credit and plex_user_id:
+            credit_info = self._calculate_referral_credit(result["discounted_price"], plex_user_id)
+            result["referral_credit_available"] = credit_info["available"]
+            result["referral_credit_applied"] = credit_info["applied"]
+            result["discounted_price"] = credit_info["final_price"]
+
+        return result
+
+    def _calculate_referral_credit(self, current_price, plex_user_id):
+        """
+        Determina quanto do crédito de indicações pode ser abatido do preço atual.
+        Nunca debita — só calcula. O crédito aplicado está sempre limitado tanto
+        pelo saldo disponível como pelo próprio preço (nunca gera valor negativo
+        nem "troco").
+        """
+        empty = {"available": 0.0, "applied": 0.0, "final_price": current_price}
+
+        config = load_or_create_config()
+        if not config.get("REFERRAL_ENABLED", False):
+            return empty
+        if config.get("REFERRAL_REWARD_TYPE", "days") != "credit":
+            return empty
+
+        try:
+            profile = self.data_manager.get_user_profile(plex_user_id)
+        except Exception:
+            return empty
+
+        if not profile:
+            return empty
+
+        available = round(float(profile.get('referral_credit') or 0), 2)
+        if available <= 0:
+            return empty
+
+        applied = round(min(available, current_price), 2)
+        final_price = round(max(0.0, current_price - applied), 2)
+
+        return {"available": available, "applied": applied, "final_price": final_price}
 
     # --- DISPONIBILIZAÇÃO DE PLANOS ---
 

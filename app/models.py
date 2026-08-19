@@ -117,6 +117,17 @@ class UserProfile(db.Model):
     xp = db.Column(db.Integer, default=0, nullable=False)
     xp_last_sync_at = db.Column(db.Float, nullable=True)
     lifetime_xp = db.Column(db.Integer, default=0, nullable=False)
+    # --- Sistema de Referência ("Indique e Ganhe") ---
+    # 'referral_code' é o código público que o utilizador partilha.
+    # 'referred_by' guarda o plex_user_id de quem o indicou (a coluna já existia na
+    # base de dados desde a migração 'c92625823728', mas nunca chegou a ser mapeada
+    # aqui nem usada por qualquer código — agora passa a ser utilizada de facto).
+    # 'referral_rewarded' evita pagar a recompensa mais do que uma vez pelo mesmo
+    # indicado, mesmo que ele renove várias vezes.
+    referral_code = db.Column(db.String(16), unique=True, nullable=True, index=True)
+    referred_by = db.Column(db.Integer, nullable=True, index=True)
+    referral_rewarded = db.Column(db.Boolean, default=False, nullable=False)
+    referral_credit = db.Column(db.Float, default=0.0, nullable=False)
     coupon_usages = db.relationship('CouponUsage', backref='user', lazy=True, cascade="all, delete-orphan")
     notifications = db.relationship('Notification', backref='user', lazy=True, cascade="all, delete-orphan")
     unlocked_achievements = db.relationship('UnlockedAchievement', backref='user', lazy=True, cascade="all, delete-orphan")
@@ -134,6 +145,10 @@ class PixPayment(db.Model):
     external_reference = db.Column(db.String, unique=True, nullable=True)
     description = db.Column(db.String(100), nullable=True)
     coupon_code = db.Column(db.String, db.ForeignKey('coupons.code'), nullable=True)
+    # Crédito de indicações RESERVADO nesta cobrança. Fica apenas registado aqui até
+    # o pagamento ser confirmado — só nessa altura é debitado do saldo do utilizador.
+    # Assim, um PIX gerado e abandonado nunca consome o crédito de ninguém.
+    referral_credit_used = db.Column(db.Float, default=0.0, nullable=False)
 
 class Notification(db.Model):
     __tablename__ = 'notifications'

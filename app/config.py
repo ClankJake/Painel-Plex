@@ -123,6 +123,10 @@ def load_or_create_config():
             "XP_PER_MINUTE_WATCHED": 1.0,
             "XP_BONUS_PER_COMPLETED_ITEM": 20,
             "XP_COMPLETION_THRESHOLD_PERCENT": 90,
+            "REFERRAL_ENABLED": False,
+            "REFERRAL_REWARD_TYPE": "days",
+            "REFERRAL_REWARD_DAYS": 7,
+            "REFERRAL_REWARD_CREDIT": 5.0,
             "XP_LEVEL_TABLE": [],
             "XP_RESET_ENABLED": False,
             "XP_RESET_MONTHS": [],
@@ -239,6 +243,10 @@ def load_or_create_config():
             _set_default("XP_BONUS_PER_COMPLETED_ITEM", 20)
             _set_default("XP_COMPLETION_THRESHOLD_PERCENT", 90)
             # Tabela de níveis personalizável. Lista vazia = usa a tabela padrão do código.
+            _set_default("REFERRAL_ENABLED", False)
+            _set_default("REFERRAL_REWARD_TYPE", "days")
+            _set_default("REFERRAL_REWARD_DAYS", 7)
+            _set_default("REFERRAL_REWARD_CREDIT", 5.0)
             _set_default("XP_LEVEL_TABLE", [])
             _set_default("XP_RESET_ENABLED", False)
             _set_default("XP_RESET_MONTHS", [])

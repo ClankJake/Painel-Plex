@@ -355,6 +355,26 @@ class DataManager:
         profiles = UserProfile.query.all()
         return [self._row_to_dict(p) for p in profiles]
 
+    def get_user_profile_by_referral_code(self, code):
+        """Localiza o dono de um código de indicação (case-insensitive)."""
+        if not code:
+            return None
+        try:
+            profile = UserProfile.query.filter(
+                func.upper(UserProfile.referral_code) == str(code).strip().upper()
+            ).first()
+            return self._row_to_dict(profile) if profile else None
+        except Exception:
+            return None
+
+    def get_users_referred_by(self, plex_user_id):
+        """Lista os utilizadores indicados por alguém."""
+        try:
+            profiles = UserProfile.query.filter(UserProfile.referred_by == int(plex_user_id)).all()
+            return [self._row_to_dict(p) for p in profiles]
+        except Exception:
+            return []
+
     @db_transaction
     def reset_all_users_xp(self):
         """
@@ -429,6 +449,19 @@ class DataManager:
         payment.coupon_code = coupon_code
         db.session.add(payment)
         return self._row_to_dict(payment)
+
+    @db_transaction
+    def set_payment_referral_credit(self, txid, amount):
+        """
+        Regista quanto crédito de indicações esta cobrança pretende consumir.
+        É apenas uma RESERVA — o débito no saldo do utilizador só ocorre quando o
+        pagamento for confirmado.
+        """
+        payment = PixPayment.query.get(txid)
+        if not payment:
+            return False
+        payment.referral_credit_used = float(amount or 0)
+        return True
 
     def get_pix_payment(self, txid):
         return self._row_to_dict(PixPayment.query.get(txid))

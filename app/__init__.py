@@ -53,6 +53,15 @@ def shutdown_scheduler(signum=None, frame=None):
         logger.info("A encerrar o Scheduler (APScheduler) de forma segura...")
         extensions.scheduler.shutdown(wait=False)
 
+    # 📡 Encerra também o listener SSE do Plex. Sem isto, a thread do websocket e
+    # eventuais timers de debounce ficavam a correr durante o encerramento,
+    # podendo atrasar o shutdown ou gerar erros em contexto já destruído.
+    try:
+        if extensions.stream_manager:
+            extensions.stream_manager.stop_listener()
+    except Exception as e:
+        logger.debug(f"Aviso ao encerrar o listener SSE: {e}")
+
 def create_app() -> Flask:
     """
     Cria e configura a instância principal da aplicação Flask (Application Factory).
@@ -142,7 +151,7 @@ def create_app() -> Flask:
         DataManager, TautulliManager, PlexManager, 
         NotifierManager, EfiManager, MercadoPagoManager,
         OverseerrManager, LinkShortener, BpixManager, StreamManager,
-        PricingManager, BackupManager
+        PricingManager, BackupManager, ReferralManager
     )
 
     extensions.data_manager = DataManager()
@@ -155,6 +164,10 @@ def create_app() -> Flask:
     extensions.bpix_manager = BpixManager(data_manager=extensions.data_manager)
     extensions.overseerr_manager = OverseerrManager()
     extensions.backup_manager = BackupManager(config_dir=config_dir_path)
+    extensions.referral_manager = ReferralManager(
+        data_manager=extensions.data_manager,
+        notifier_manager=extensions.notifier_manager
+    )
     
     extensions.plex_manager = PlexManager(
         data_manager=extensions.data_manager, 
@@ -170,6 +183,10 @@ def create_app() -> Flask:
         user_manager=extensions.plex_manager.users
     )
     extensions.plex_manager.stream_manager = extensions.stream_manager
+
+    # 🔗 Injeção tardia: o ReferralManager precisa do SubscriptionManager para
+    # somar dias grátis, mas este só existe depois do PlexManager ser construído.
+    extensions.referral_manager.subscription_manager = extensions.plex_manager.subscriptions
 
     # ==========================================
     # CONFIGURAÇÃO DO SCHEDULER
@@ -229,6 +246,7 @@ def create_app() -> Flask:
 
         exempt_from_setup = {
             'main.setup', 'system_api.save_setup', 'system_api.setup_restore_backup',
+            'main.referral_landing',
             'system_api.test_tautulli_connection', 'system_api.test_overseerr_connection',
             'system_api.get_plex_servers',
             'auth.get_plex_auth_context', 'auth.check_plex_pin', 

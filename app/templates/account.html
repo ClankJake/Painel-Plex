@@ -161,6 +161,44 @@
             <div id="tab-overview" class="tab-content {% if not current_user.is_admin() %}active{% endif %} space-y-6">
 
                 <!-- Card de Nível / XP -->
+                <!-- Indique e Ganhe -->
+                <div id="referral-card" class="hidden bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl p-5 border border-emerald-100 dark:border-emerald-800/30">
+                    <div class="flex items-start gap-3 mb-4">
+                        <span class="text-3xl">🎁</span>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ _('Indique e Ganhe') }}</h3>
+                            <p id="referral-reward-text" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"></p>
+                        </div>
+                    </div>
+
+                    <label class="block text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-1.5">{{ _('O seu link de indicação') }}</label>
+                    <div class="flex gap-2">
+                        <input id="referral-link" type="text" readonly class="flex-1 min-w-0 p-2.5 text-sm rounded-lg border bg-white border-emerald-200 text-gray-700 dark:bg-gray-900/50 dark:border-emerald-800/50 dark:text-gray-300">
+                        <button id="copy-referral-link" type="button" class="btn bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 text-sm font-semibold flex-shrink-0">{{ _('Copiar') }}</button>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-3 mt-4 text-center">
+                        <div class="bg-white/60 dark:bg-black/20 rounded-lg p-3">
+                            <p id="referral-total" class="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">0</p>
+                            <p class="text-[11px] text-gray-500 dark:text-gray-400">{{ _('Indicados') }}</p>
+                        </div>
+                        <div class="bg-white/60 dark:bg-black/20 rounded-lg p-3">
+                            <p id="referral-confirmed" class="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">0</p>
+                            <p class="text-[11px] text-gray-500 dark:text-gray-400">{{ _('Confirmados') }}</p>
+                        </div>
+                        <div id="referral-credit-box" class="hidden bg-white/60 dark:bg-black/20 rounded-lg p-3">
+                            <p id="referral-credit" class="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">R$ 0</p>
+                            <p class="text-[11px] text-gray-500 dark:text-gray-400">{{ _('Crédito') }}</p>
+                        </div>
+                        <div id="referral-pending-box" class="bg-white/60 dark:bg-black/20 rounded-lg p-3">
+                            <p id="referral-pending" class="text-2xl font-extrabold text-amber-500">0</p>
+                            <p class="text-[11px] text-gray-500 dark:text-gray-400">{{ _('Pendentes') }}</p>
+                        </div>
+                    </div>
+
+                    <div id="referral-list" class="mt-4 space-y-1.5"></div>
+                </div>
+
                 <div id="user-level-card" class="hidden bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl p-5 border border-indigo-100 dark:border-indigo-800/30">
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-3">
@@ -428,6 +466,12 @@
         data-i18n-level="{{ _('Nível') }}"
         data-i18n-xp-to-next-level="{{ _('{xp} XP para o próximo nível') }}"
         data-i18n-max-level-reached="{{ _('Nível máximo atingido! 🎉') }}"
+        data-referral-info-url="{{ url_for('users_api.get_my_referral_info') }}"
+        data-i18n-referral-reward-days="{{ _('Ganhe {days} dia(s) grátis por cada amigo que assinar pelo seu link.') }}"
+        data-i18n-referral-reward-credit="{{ _('Ganhe R$ {credit} de crédito por cada amigo que assinar pelo seu link.') }}"
+        data-i18n-referral-link-copied="{{ _('Link de indicação copiado!') }}"
+        data-i18n-referral-confirmed-label="{{ _('Confirmado') }}"
+        data-i18n-referral-pending-label="{{ _('Aguarda 1º pagamento') }}"
         data-payment-status-url="{{ url_for('payments_api.get_payment_status_route', txid='__TXID__') }}"
         >
 </script>

@@ -104,6 +104,27 @@ def _run_payment_processing_in_thread(app, txid):
 
                     if payment.get('coupon_code'):
                         extensions.data_manager.record_coupon_usage(payment['coupon_code'], plex_user_id)
+
+                    # 💳 CONSUMO DO CRÉDITO DE INDICAÇÕES: só agora, com o pagamento
+                    # confirmado, o crédito reservado sai do saldo. Fazê-lo antes
+                    # (na criação da cobrança) faria com que um PIX gerado e nunca
+                    # pago consumisse o crédito do utilizador sem contrapartida.
+                    credit_reserved = float(payment.get('referral_credit_used') or 0)
+                    if credit_reserved > 0:
+                        try:
+                            consumed = extensions.referral_manager.consume_credit(plex_user_id, credit_reserved)
+                            logger.info(f"Pagamento {txid}: R$ {consumed:.2f} de crédito de indicações consumido por '{profile.get('username')}'.")
+                        except Exception as e:
+                            logger.error(f"Erro ao consumir o crédito de indicações no pagamento {txid}: {e}", exc_info=True)
+
+                    # 🎁 INDIQUE E GANHE: se este utilizador foi indicado por alguém e
+                    # esta é a sua primeira compra, quem o indicou recebe a recompensa.
+                    # Envolvido em try/except por princípio: uma falha no programa de
+                    # indicações nunca pode comprometer a confirmação de um pagamento.
+                    try:
+                        extensions.referral_manager.reward_referrer_on_payment(plex_user_id)
+                    except Exception as e:
+                        logger.error(f"Erro ao processar a recompensa de indicação para o utilizador {plex_user_id}: {e}", exc_info=True)
                         
                     if not is_reactivation:
                         extensions.data_manager.create_notification(
@@ -277,11 +298,16 @@ def create_charge_route():
         "name": profile.get('name', username), "email": user_email
     }
 
-    price_calculation = extensions.pricing_manager.calculate_price(screens_str, coupon_code, plex_user_id)
+    price_calculation = extensions.pricing_manager.calculate_price(
+        screens_str, coupon_code, plex_user_id, apply_referral_credit=True
+    )
     if not price_calculation.get("success"):
         return jsonify(price_calculation), 400
 
     final_price = price_calculation.get("discounted_price")
+    # Crédito que ESTA cobrança pretende usar. Ainda não foi debitado: fica apenas
+    # registado no pagamento e só sai do saldo quando o pagamento for confirmado.
+    referral_credit_to_use = float(price_calculation.get("referral_credit_applied") or 0)
 
     if final_price <= 0:
         try:
@@ -334,7 +360,14 @@ def create_charge_route():
                         logger.info(f"Utilizador '{username}' ainda não está na lista de amigos (convite pendente). Status local mantido como 'inactive'.")
 
             if coupon_code: extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id)
-            
+
+            # 💳 Se o crédito de indicações foi (parte do) responsável por zerar o
+            # valor, é AQUI que ele sai do saldo — este fluxo conclui na hora, sem
+            # webhook, por isso o débito tem de acontecer neste ponto.
+            if referral_credit_to_use > 0:
+                consumed = extensions.referral_manager.consume_credit(plex_user_id, referral_credit_to_use)
+                logger.info(f"Crédito de indicações de R$ {consumed:.2f} usado por '{username}' numa renovação sem custo.")
+
             extensions.data_manager.add_manual_payment(
                 plex_user_id=plex_user_id, username=username, value=0.00,
                 description=f"Renovação Cupão 100% ({coupon_code})",
@@ -378,6 +411,17 @@ def create_charge_route():
         result = charge_func(user_info, final_price, screens, coupon_code)
     else:
         result = {"success": False, "message": _("O provedor %(provider)s não está habilitado ou é inválido.", provider=provider)}
+
+    # 💳 Regista no pagamento quanto crédito de indicações esta cobrança pretende
+    # consumir. Fica apenas RESERVADO: o débito real acontece no webhook, quando o
+    # pagamento é confirmado. Se o utilizador nunca pagar, o crédito continua
+    # intacto no saldo dele.
+    if referral_credit_to_use > 0 and result.get("success") and result.get("txid"):
+        try:
+            extensions.data_manager.set_payment_referral_credit(result["txid"], referral_credit_to_use)
+            logger.info(f"Cobrança {result['txid']}: R$ {referral_credit_to_use:.2f} de crédito de indicações reservado para '{username}'.")
+        except Exception as e:
+            logger.error(f"Não foi possível registar o crédito de indicações na cobrança {result.get('txid')}: {e}", exc_info=True)
 
     return jsonify(result)
 

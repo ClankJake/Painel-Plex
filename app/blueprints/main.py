@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timezone
-from flask import Blueprint, render_template, redirect, url_for, flash, current_app, request
+from flask import Blueprint, render_template, redirect, url_for, flash, current_app, request, session
 from flask_login import login_required, current_user
 from flask_babel import get_locale, gettext as _
 
@@ -39,6 +39,25 @@ def claim_invite_page(code):
     Página pública para um novo utilizador resgatar um código de convite.
     """
     return render_template('invite.html', invite_code=code)
+
+@main_bp.route('/r/<string:ref_code>')
+def referral_landing(ref_code):
+    """
+    Página de entrada de um link de indicação ("Indique e Ganhe").
+
+    Guarda o código na sessão e encaminha o visitante para o login. Depois de ele
+    se autenticar com o Plex, o código é consumido e a indicação fica registada
+    (ver 'auth._login_user_session'). Usamos a sessão em vez de um parâmetro na
+    URL porque o fluxo de login com o Plex passa por redirecionamentos externos,
+    que fariam perder qualquer query string.
+    """
+    config = load_or_create_config()
+    if not config.get("REFERRAL_ENABLED", False):
+        return redirect(url_for('main.index'))
+
+    session['pending_referral_code'] = str(ref_code).strip().upper()
+    logger.info(f"Visitante chegou por um link de indicação (código: {ref_code}).")
+    return redirect(url_for('auth.login'))
 
 @main_bp.route('/statistics')
 @login_required

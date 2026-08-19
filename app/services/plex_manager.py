@@ -79,6 +79,16 @@ class PlexManager:
             self.plex = self.conn.plex
             self.account = self.conn.account
             self.users.invalidate_user_cache()
+
+            # 📡 A instância de PlexServer acabou de ser substituída: o listener SSE
+            # antigo ficou agarrado à ligação obsoleta e deixaria de entregar eventos
+            # silenciosamente. Paramo-lo aqui; será recriado automaticamente na
+            # próxima verificação de streams, já ligado à nova conexão.
+            try:
+                if self.stream_manager:
+                    self.stream_manager.stop_listener()
+            except Exception as e:
+                logger.debug(f"Aviso ao reiniciar o listener SSE após reload: {e}")
             
             if self.app:
                 with self.app.app_context():

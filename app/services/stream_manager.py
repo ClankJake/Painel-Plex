@@ -51,43 +51,103 @@ class StreamManager:
         self.user_manager = user_manager
         self._listener = None
         self._app = None
-        
+
         # Controlo de Concorrência Otimizado
         self._delayed_check_lock = threading.Lock()
         self._delayed_check_pending = False
         self._sse_debounce_lock = threading.Lock()
         self._sse_debounce_timer = None
+        # 🐛 Protege o arranque do listener: sem este lock, dois pedidos concorrentes
+        # podiam passar ambos pela verificação "is_alive()" e criar DOIS listeners
+        # SSE ligados ao mesmo servidor (o arranque faz I/O de rede, que é um ponto
+        # de cedência com gevent), duplicando eventos e ligações websocket.
+        self._listener_lock = threading.Lock()
+        # Guarda a instância de PlexServer a que o listener atual está ligado, para
+        # detetar quando a ligação foi recarregada e o listener ficou órfão.
+        self._listener_plex_ref = None
 
     # --- LÓGICA DE TEMPO REAL (SSE) ---
 
+    def _is_listener_healthy(self):
+        """
+        Um listener só é considerado saudável se estiver vivo E ligado à instância
+        ATUAL do PlexServer. Depois de um 'reload_connections()' (troca de token,
+        de URL, ou reconexão automática), o objeto PlexServer é substituído — o
+        listener antigo continua vivo mas a falar com uma ligação obsoleta, deixando
+        de entregar eventos sem qualquer erro visível.
+        """
+        listener = getattr(self, '_listener', None)
+        if not listener or not listener.is_alive():
+            return False
+        return self._listener_plex_ref is self.conn.plex
+
+    def _on_listener_error(self, error):
+        """
+        Callback de erro do AlertListener. Sem isto, o plexapi engolia as falhas
+        do websocket em silêncio: o listener morria e o painel só voltava ao tempo
+        real por acaso, na próxima verificação periódica, sem nada nos logs a
+        explicar porquê.
+        """
+        logger.warning(f"📡 Plex Real-Time Listener (SSE) reportou um erro: {error}. Será reiniciado na próxima verificação.")
+
     def start_listener(self, app):
         if not self.conn.plex:
-            return
-
-        if getattr(self, '_listener', None) and self._listener.is_alive():
             return
 
         if not HAS_WEBSOCKET:
             logger.error("🚨 PACOTE EM FALTA: O modo de Tempo Real (Plex SSE) não pode iniciar. Execute no terminal: pip install websocket-client")
             return
 
-        try:
-            # Pega a instância real da App para usar nas threads
-            self._app = app._get_current_object() if hasattr(app, '_get_current_object') else app
-            self._listener = self.conn.plex.startAlertListener(self._on_plex_event)
-            logger.debug("📡 Plex Real-Time Listener (SSE) iniciado com sucesso! Controlo de streams instantâneo ativado.")
-        except Exception as e:
-            logger.error(f"Falha ao iniciar o Plex Listener SSE: {e}")
+        with self._listener_lock:
+            if self._is_listener_healthy():
+                return
+
+            # Se existe um listener antigo (morto ou agarrado a uma ligação obsoleta),
+            # é preciso pará-lo explicitamente para não deixar threads e sockets órfãos.
+            if getattr(self, '_listener', None):
+                try:
+                    self._listener.stop()
+                except Exception as e:
+                    logger.debug(f"Aviso ao parar o listener SSE antigo: {e}")
+                finally:
+                    self._listener = None
+                    self._listener_plex_ref = None
+
+            try:
+                # Pega a instância real da App para usar nas threads
+                self._app = app._get_current_object() if hasattr(app, '_get_current_object') else app
+                self._listener = self.conn.plex.startAlertListener(
+                    self._on_plex_event,
+                    self._on_listener_error
+                )
+                self._listener_plex_ref = self.conn.plex
+                logger.debug("📡 Plex Real-Time Listener (SSE) iniciado com sucesso! Controlo de streams instantâneo ativado.")
+            except Exception as e:
+                self._listener = None
+                self._listener_plex_ref = None
+                logger.error(f"Falha ao iniciar o Plex Listener SSE: {e}")
 
     def stop_listener(self):
-        if getattr(self, '_listener', None):
-            try:
-                self._listener.stop()
-            except Exception as e:
-                logger.debug(f"Aviso silencioso ao parar SSE: {e}")
-            finally:
-                self._listener = None
-                logger.debug("📡 Plex Real-Time Listener (SSE) desligado.")
+        with self._listener_lock:
+            if getattr(self, '_listener', None):
+                try:
+                    self._listener.stop()
+                except Exception as e:
+                    logger.debug(f"Aviso silencioso ao parar SSE: {e}")
+                finally:
+                    self._listener = None
+                    self._listener_plex_ref = None
+                    logger.debug("📡 Plex Real-Time Listener (SSE) desligado.")
+
+        # Cancela também qualquer verificação em debounce ainda pendente, para não
+        # ficar uma thread a acordar depois do encerramento.
+        with self._sse_debounce_lock:
+            if self._sse_debounce_timer:
+                try:
+                    self._sse_debounce_timer.cancel()
+                except Exception:
+                    pass
+                self._sse_debounce_timer = None
 
     def _execute_debounced_check(self):
         """Executa a verificação após o tempo do debounce expirar."""
@@ -102,33 +162,46 @@ class StreamManager:
                 logger.error(f"Falha na verificação de streams por evento SSE: {e}")
 
     def _on_plex_event(self, data):
-        if isinstance(data, dict) and data.get('type') == 'playing':
-            state_notifications = data.get('PlaySessionStateNotification', [])
-            
-            should_check = False
-            for notif in state_notifications:
-                if notif.get('state') in ['playing', 'buffering', 'paused', 'stopped']:
-                    should_check = True
-                    break
-            
-            if should_check and self._app:
-                with self._app.app_context():
-                    # 1. ATUALIZAÇÃO VISUAL IMEDIATA (Sem Lock/Debounce)
-                    # Garante que os botões de Pausa/Play reagem instantaneamente no Frontend
-                    try:
-                        from app.extensions import socketio
-                        socketio.emit('dashboard_update_streams', namespace='/dashboard')
-                    except Exception:
-                        pass
+        # 🛡️ Este callback corre dentro da thread do websocket do plexapi. O plexapi
+        # já apanha exceções aqui, mas regista-as no logger DELE ('plexapi'), o que
+        # as tornava praticamente invisíveis nos nossos logs. Tratamos tudo aqui para
+        # que qualquer falha apareça com o contexto certo — e nunca comprometa a
+        # ligação em tempo real.
+        try:
+            if not isinstance(data, dict) or data.get('type') != 'playing':
+                return
 
-                # 2. VERIFICAÇÃO PESADA COM DEBOUNCE OTIMIZADO (Proteção do Servidor)
-                # Usa threading Timer ao invés da Cache para maior performance e isolamento
-                with self._sse_debounce_lock:
-                    if self._sse_debounce_timer:
-                        self._sse_debounce_timer.cancel()
-                    self._sse_debounce_timer = threading.Timer(2.0, self._execute_debounced_check)
-                    self._sse_debounce_timer.daemon = True
-                    self._sse_debounce_timer.start()
+            state_notifications = data.get('PlaySessionStateNotification') or []
+            if not isinstance(state_notifications, list):
+                return
+
+            should_check = any(
+                isinstance(n, dict) and n.get('state') in ('playing', 'buffering', 'paused', 'stopped')
+                for n in state_notifications
+            )
+
+            if not should_check or not self._app:
+                return
+
+            with self._app.app_context():
+                # 1. ATUALIZAÇÃO VISUAL IMEDIATA (Sem Lock/Debounce)
+                # Garante que os botões de Pausa/Play reagem instantaneamente no Frontend
+                try:
+                    from app.extensions import socketio
+                    socketio.emit('dashboard_update_streams', namespace='/dashboard')
+                except Exception as e:
+                    logger.debug(f"Não foi possível emitir a atualização de streams via WebSocket: {e}")
+
+            # 2. VERIFICAÇÃO PESADA COM DEBOUNCE OTIMIZADO (Proteção do Servidor)
+            # Usa threading Timer ao invés da Cache para maior performance e isolamento
+            with self._sse_debounce_lock:
+                if self._sse_debounce_timer:
+                    self._sse_debounce_timer.cancel()
+                self._sse_debounce_timer = threading.Timer(2.0, self._execute_debounced_check)
+                self._sse_debounce_timer.daemon = True
+                self._sse_debounce_timer.start()
+        except Exception as e:
+            logger.error(f"Erro ao processar evento SSE do Plex: {e}", exc_info=True)
 
     # --- MÉTODOS PÚBLICOS ---
 
@@ -145,7 +218,9 @@ class StreamManager:
             logger.error(f"Erro ao bloquear as sessões do utilizador ID {plex_user_id}: {e}", exc_info=True)
 
     def check_and_enforce_streams(self, from_event=False):
-        if HAS_WEBSOCKET and (not getattr(self, '_listener', None) or not self._listener.is_alive()):
+        # Reinicia o listener SSE se ele morreu OU se ficou agarrado a uma ligação
+        # Plex obsoleta (ver _is_listener_healthy).
+        if HAS_WEBSOCKET and not self._is_listener_healthy():
             try:
                 app = current_app._get_current_object()
                 self.start_listener(app)

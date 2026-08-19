@@ -18,6 +18,7 @@ from .bpix_manager import BpixManager
 from .stream_manager import StreamManager
 from .pricing_manager import PricingManager
 from .backup_manager import BackupManager
+from .referral_manager import ReferralManager
 
 __all__ = [
     'DataManager',
@@ -32,4 +33,5 @@ __all__ = [
     'BpixManager',
     'PricingManager',
     'BackupManager',
+    'ReferralManager',
 ]
