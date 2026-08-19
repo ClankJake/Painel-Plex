@@ -36,6 +36,7 @@ def load_or_create_config():
             "LOG_BACKUP_COUNT": 5,
             "LAST_NOTIFICATION_CHECK": "1970-01-01T00:00:00",
             "ADMIN_USER": "",
+            "ADMIN_USER_ID": "",
             "PLEX_URL": "",
             "PLEX_TOKEN": "",
             "TAUTULLI_URL": "",
@@ -170,6 +171,7 @@ def load_or_create_config():
                     config[key] = value
                     config_was_modified = True
 
+            _set_default("ADMIN_USER_ID", "")
             _set_default("INTERNAL_TRIGGER_KEY", secrets.token_hex(32))
             _set_default("APP_BASE_URL", "")
             _set_default("LOG_LEVEL", "INFO")

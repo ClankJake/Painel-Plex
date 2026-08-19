@@ -158,31 +158,68 @@ def removal_job():
 
         removed_count = 0
         admin_user = str(config.get("ADMIN_USER", "")).strip().lower()
-        
+        admin_id = str(config.get("ADMIN_USER_ID", "") or "").strip()
+
         for plex_user_id in users_to_remove:
             is_admin = False
             user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
-            user_identifier = user_info['username'] if user_info and 'username' in user_info else f"ID '{plex_user_id}'"
-            
-            if user_info and admin_user:
-                plex_username = str(user_info.get('username', '')).strip().lower()
-                plex_email = str(user_info.get('email', '')).strip().lower()
-                if admin_user in (plex_username, plex_email) and admin_user != "":
+
+            # 🐛 CORREÇÃO IMPORTANTE: 'get_user_by_id' procura na lista de AMIGOS do
+            # Plex — e o administrador é o DONO do servidor, por isso nunca aparece
+            # lá e devolve None. Antes, quando isso acontecia, todo o bloco de
+            # verificação de admin era saltado (dependia de "if user_info and ...") e
+            # o identificador ficava como "ID '12345'", impossível de reconhecer nos
+            # logs. Agora resolvemos a identidade a partir do PERFIL LOCAL, que
+            # existe mesmo para utilizadores que já não estão no Plex.
+            profile_dict = None
+            try:
+                profile_dict = extensions.data_manager.get_user_profile(plex_user_id)
+            except Exception as e:
+                logger.warning(f"Não foi possível ler o perfil local do utilizador ID '{plex_user_id}': {e}")
+
+            # Identificador legível: prioriza o Plex, cai para o perfil local, e só
+            # em último caso usa o ID cru.
+            username = (user_info or {}).get('username') or (profile_dict or {}).get('username')
+            email = (user_info or {}).get('email') or (profile_dict or {}).get('email')
+            user_identifier = username or (f"ID '{plex_user_id}'")
+
+            # Camada 1: comparação por ID do administrador (a mais fiável, imune a
+            # mudanças de nome de utilizador ou email).
+            if admin_id and str(plex_user_id) == admin_id:
+                is_admin = True
+
+            # Camada 2: comparação por username/email do administrador, agora usando
+            # os dados do perfil local quando o Plex não devolve nada.
+            if not is_admin and admin_user:
+                if admin_user in (str(username or '').strip().lower(), str(email or '').strip().lower()):
                     is_admin = True
-                    
-            if not is_admin:
-                try:
-                    profile_dict = extensions.data_manager.get_user_profile(plex_user_id)
-                    if profile_dict and profile_dict.get('is_admin'):
-                        is_admin = True
-                except Exception:
-                    pass
 
             if is_admin:
+                logger.info(f"Tarefa 'removal_job': utilizador '{user_identifier}' ignorado por ser o administrador.")
+                continue
+
+            # 🛡️ Se o utilizador já não existe no Plex, não há nada para remover lá.
+            # Antes, o sistema tentava removê-lo na mesma a cada execução, falhava em
+            # silêncio (os erros são engolidos em '_remove_plex_friend') e voltava a
+            # tentar no dia seguinte, indefinidamente. Agora limpamos o registo local
+            # e damos o caso por encerrado.
+            if not user_info:
+                logger.warning(
+                    f"Tarefa 'removal_job': utilizador '{user_identifier}' (ID {plex_user_id}) já não existe "
+                    f"na lista de amigos do Plex. A limpar o registo local em vez de tentar removê-lo de novo."
+                )
+                try:
+                    if profile_dict:
+                        profile_dict['status'] = 'inactive'
+                        profile_dict['expiration_date'] = None
+                        extensions.data_manager.set_user_profile(plex_user_id, profile_dict)
+                    extensions.data_manager.remove_blocked_user(plex_user_id)
+                except Exception as e:
+                    logger.error(f"Falha ao limpar o registo local do utilizador ID '{plex_user_id}': {e}")
                 continue
 
             success = _execute_with_retry(
-                action=lambda: extensions.plex_manager.remove_user(plex_user_id),
+                action=lambda pid=plex_user_id: extensions.plex_manager.remove_user(pid),
                 description=f"remover usuário '{user_identifier}'"
             )
             if success:

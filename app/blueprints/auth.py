@@ -14,7 +14,7 @@ from plexapi.myplex import MyPlexAccount
 from flask_babel import gettext as _
 
 from ..models import User
-from ..config import is_configured, load_or_create_config
+from ..config import is_configured, load_or_create_config, save_app_config
 from ..extensions import plex_manager, data_manager, limiter
 
 # --- Configurações e Constantes ---
@@ -259,6 +259,20 @@ def check_plex_pin(client_id, pin_id):
 
         # 1. Login do Administrador
         if is_admin_login:
+            # 🛡️ Grava o ID Plex do administrador na configuração. Isto permite que
+            # tarefas automáticas (ex: 'removal_job') o identifiquem por ID — um
+            # critério imune a mudanças de username/email e que funciona mesmo
+            # quando o Plex não devolve dados do utilizador (o dono do servidor não
+            # aparece na lista de amigos). Só grava quando o valor muda, para não
+            # escrever no disco a cada login.
+            try:
+                if str(config.get('ADMIN_USER_ID', '') or '') != str(account.id):
+                    config['ADMIN_USER_ID'] = str(account.id)
+                    save_app_config(config)
+                    logger.info(f"ID do administrador ({account.id}) registado na configuração.")
+            except Exception as e:
+                logger.warning(f"Não foi possível registar o ADMIN_USER_ID: {e}")
+
             return _login_user_session(
                 account, 'admin', 'main.index', 
                 from_settings=session.get('from_settings'), plex_token=plex_token
