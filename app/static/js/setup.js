@@ -26,6 +26,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     const stepTitles = [i18n.step0Title, i18n.step1Title, i18n.step2Title, i18n.step3Title];
+    // Passo especial, acessível a partir do ecrã de boas-vindas.
+    const RESTORE_STEP = 4;
+    let stepBeforeRestore = 0;
+    let selectedRestoreFile = null;
 
     // --- LÓGICA DO WIZARD ---
 
@@ -45,8 +49,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 500);
         }
         
+        const previousStep = currentStep;
         currentStep = targetStep;
-        
+
+        // O passo 4 (restauro de backup) é um desvio fora do fluxo normal do
+        // assistente: não entra no cálculo de progresso, senão o wizard nunca
+        // chegaria aos 100% ao concluir a configuração normal.
+        if (currentStep === RESTORE_STEP) {
+            progressBar.style.width = '0%';
+            stepIndicator.textContent = i18n.step4Title || '';
+            stepBeforeRestore = previousStep;
+            return;
+        }
+
         const progress = (currentStep / (stepTitles.length - 1)) * 100;
         progressBar.style.width = `${progress}%`;
         stepIndicator.textContent = stepTitles[currentStep];
@@ -207,7 +222,84 @@ document.addEventListener('DOMContentLoaded', () => {
     // Event Listeners
     document.getElementById('start-setup').addEventListener('click', () => navigateToStep(1));
     document.getElementById('login-with-plex').addEventListener('click', loginWithPlex);
-    document.querySelectorAll('.btn-prev').forEach(btn => btn.addEventListener('click', () => navigateToStep(currentStep - 1)));
+    document.querySelectorAll('.btn-prev').forEach(btn => btn.addEventListener('click', () => {
+        // A partir do ecrã de restauro, "Anterior" volta ao ponto de onde se veio
+        // (o ecrã de boas-vindas), e não para o passo 3 do assistente.
+        navigateToStep(currentStep === RESTORE_STEP ? stepBeforeRestore : currentStep - 1);
+    }));
+
+    // --- RESTAURO DE BACKUP ---
+
+    document.getElementById('go-to-restore')?.addEventListener('click', () => navigateToStep(RESTORE_STEP));
+
+    const restoreInput = document.getElementById('restore-file-input');
+    const restoreLabel = document.getElementById('restore-file-label');
+    const restoreSubmit = document.getElementById('restore-submit');
+    const restoreDropzone = document.getElementById('restore-dropzone');
+
+    function setRestoreFile(file) {
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith('.zip')) {
+            showToast(i18n.invalidFileType || 'Selecione um ficheiro .zip válido.', 'error');
+            return;
+        }
+        selectedRestoreFile = file;
+        if (restoreLabel) {
+            const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+            restoreLabel.textContent = `${file.name} (${sizeMb} MB)`;
+        }
+        if (restoreSubmit) restoreSubmit.disabled = false;
+        restoreDropzone?.classList.add('border-yellow-500');
+    }
+
+    restoreInput?.addEventListener('change', (e) => setRestoreFile(e.target.files?.[0]));
+
+    // Suporte a arrastar-e-largar, além do clique.
+    if (restoreDropzone) {
+        ['dragenter', 'dragover'].forEach(evt =>
+            restoreDropzone.addEventListener(evt, (e) => {
+                e.preventDefault();
+                restoreDropzone.classList.add('border-yellow-500');
+            })
+        );
+        restoreDropzone.addEventListener('dragleave', () => {
+            if (!selectedRestoreFile) restoreDropzone.classList.remove('border-yellow-500');
+        });
+        restoreDropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            setRestoreFile(e.dataTransfer?.files?.[0]);
+        });
+    }
+
+    restoreSubmit?.addEventListener('click', async () => {
+        if (!selectedRestoreFile) return;
+
+        // ⚠️ Ação destrutiva e irreversível: pede confirmação explícita.
+        if (!confirm(i18n.confirmRestore || 'Isto vai substituir todos os dados desta instalação. Continuar?')) return;
+
+        const original = restoreSubmit.textContent;
+        restoreSubmit.disabled = true;
+        restoreSubmit.textContent = i18n.restoring || 'A restaurar...';
+
+        try {
+            const formData = new FormData();
+            formData.append('file', selectedRestoreFile);
+
+            // Upload multipart: não passa pelo fetchAPI (que envia JSON).
+            const response = await fetch(urls.restoreBackup, { method: 'POST', body: formData });
+            const data = await response.json();
+
+            if (!response.ok || !data.success) throw new Error(data.message || `HTTP ${response.status}`);
+
+            showToast(data.message || (i18n.restoreSuccess || 'Backup restaurado!'), 'success');
+            // O servidor reinicia sozinho; damos tempo e recarregamos.
+            setTimeout(() => window.location.reload(), 8000);
+        } catch (error) {
+            showToast(`${i18n.restoreFailed || 'Falha ao restaurar'}: ${error.message}`, 'error');
+            restoreSubmit.disabled = false;
+            restoreSubmit.textContent = original || (i18n.restoreNow || 'Restaurar Agora');
+        }
+    });
     document.getElementById('next-2').addEventListener('click', () => navigateToStep(3));
 
     document.getElementById('finish-setup').addEventListener('click', async () => {

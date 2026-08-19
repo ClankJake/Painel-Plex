@@ -8,7 +8,7 @@ import * as api from './api.js';
 import * as ui from './ui.js';
 import { i18n, fieldMap, urls } from './config.js';
 import { initGamificationSubtabs, addLevelRow, collectLevelsFromEditor, collectResetMonths, loadSeasonStatus, handleManualSeasonReset } from './gamification.js';
-import { showToast } from '../utils.js';
+import { showToast, fetchAPI } from '../utils.js';
 
 let pinCheckInterval = null;
 let authWindow = null;

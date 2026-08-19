@@ -228,7 +228,9 @@ def create_app() -> Flask:
             return
 
         exempt_from_setup = {
-            'main.setup', 'system_api.save_setup', 
+            'main.setup', 'system_api.save_setup', 'system_api.setup_restore_backup',
+            'system_api.test_tautulli_connection', 'system_api.test_overseerr_connection',
+            'system_api.get_plex_servers',
             'auth.get_plex_auth_context', 'auth.check_plex_pin', 
             'auth.check_plex_pin_for_token', 'auth.auth_status'
         }

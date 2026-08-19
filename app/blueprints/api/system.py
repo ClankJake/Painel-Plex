@@ -13,7 +13,14 @@ from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 
-from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager, notifier_manager, backup_manager
+from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager , notifier_manager
+# 🐛 CORREÇÃO: 'backup_manager' NÃO pode ser importado por valor aqui. Ao contrário
+# dos outros gestores, ele é instanciado mais tarde no create_app() (depois deste
+# módulo já ter sido importado), por isso um "from ...extensions import backup_manager"
+# congelava o valor None para sempre e todas as rotas de backup rebentavam com
+# "'NoneType' object has no attribute ...". Importamos o MÓDULO e acedemos ao
+# atributo em tempo de execução, quando já está preenchido.
+from ... import extensions as _ext
 from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
 from ..auth import admin_required, login_required
@@ -471,6 +478,63 @@ def get_plex_servers():
         logger.error(f"Erro ao buscar servidores Plex: {e}", exc_info=True)
         return jsonify({"success": False, "message": str(e)}), 500
 
+@system_api_bp.route('/setup/restore-backup', methods=['POST'])
+@limiter.limit("5 per hour")
+def setup_restore_backup():
+    """
+    Restaura um backup durante a configuração inicial (antes de existir qualquer
+    administrador autenticado). É o caminho de recuperação para quem reinstalou
+    o painel e quer recuperar tudo de uma vez.
+
+    🔒 SEGURANÇA: esta rota não pode exigir login (ainda não há utilizadores), por
+    isso está protegida de outra forma: só funciona enquanto o sistema NÃO estiver
+    configurado. Depois da configuração inicial concluída, devolve 403 — a partir
+    daí o restauro só é possível pela área de administração autenticada
+    (/api/system/backup/restore). Sem isto, qualquer pessoa na rede poderia
+    sobrescrever uma instalação em produção enviando um ficheiro .zip.
+    Há ainda um rate limit para travar tentativas repetidas.
+    """
+    import threading
+    import signal
+
+    if is_configured():
+        logger.warning("Tentativa de usar o restauro de backup do setup com o sistema já configurado. Pedido negado.")
+        return jsonify({
+            "success": False,
+            "message": _("O sistema já está configurado. Use a área de administração para restaurar um backup.")
+        }), 403
+
+    if 'file' not in request.files:
+        return jsonify({"success": False, "message": _("Nenhum ficheiro enviado.")}), 400
+
+    uploaded_file = request.files['file']
+    if not uploaded_file or not uploaded_file.filename:
+        return jsonify({"success": False, "message": _("Nenhum ficheiro selecionado.")}), 400
+
+    try:
+        _ext.backup_manager.restore_from_zip(uploaded_file.stream)
+    except ValueError as e:
+        # Validação falhou (ZIP inválido / config.json corrompido) — nada foi alterado.
+        return jsonify({"success": False, "message": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Erro crítico ao restaurar backup durante o setup: {e}", exc_info=True)
+        return jsonify({"success": False, "message": _("Erro inesperado ao restaurar o backup: %(error)s", error=str(e))}), 500
+
+    logger.warning("⚠️ RESTAURO DE BACKUP concluído a partir do assistente de configuração. A aplicação vai reiniciar...")
+
+    def _delayed_restart():
+        import time as _time
+        _time.sleep(2)  # dá tempo à resposta HTTP de chegar ao navegador
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=_delayed_restart, daemon=True).start()
+
+    return jsonify({
+        "success": True,
+        "message": _("Backup restaurado com sucesso! A aplicação será reiniciada — aguarde e recarregue a página.")
+    })
+
+
 @system_api_bp.route('/setup/save', methods=['POST'])
 def save_setup():
     data = request.json
@@ -659,7 +723,7 @@ def backup_download_now():
     from flask import send_file
     import io
     try:
-        backup_bytes = backup_manager.create_backup_bytes()
+        backup_bytes = _ext.backup_manager.create_backup_bytes()
         timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
         filename = f"painel-plex-backup-{timestamp}.zip"
         return send_file(
@@ -679,7 +743,7 @@ def backup_download_now():
 def backup_list():
     """Lista os backups automáticos guardados em disco."""
     try:
-        return jsonify({"success": True, "backups": backup_manager.list_backups()})
+        return jsonify({"success": True, "backups": _ext.backup_manager.list_backups()})
     except Exception as e:
         logger.error(f"Erro ao listar backups: {e}", exc_info=True)
         return jsonify({"success": False, "message": str(e)}), 500
@@ -691,7 +755,7 @@ def backup_list():
 def backup_download_stored(filename):
     """Descarrega um backup automático já guardado em disco."""
     from flask import send_file
-    filepath = backup_manager.get_backup_path(filename)
+    filepath = _ext.backup_manager.get_backup_path(filename)
     if not filepath:
         return jsonify({"success": False, "message": _("Backup não encontrado.")}), 404
     return send_file(filepath, mimetype='application/zip', as_attachment=True, download_name=os.path.basename(filepath))
@@ -703,7 +767,7 @@ def backup_download_stored(filename):
 def backup_delete(filename):
     """Apaga um backup automático guardado em disco."""
     try:
-        if backup_manager.delete_backup(filename):
+        if _ext.backup_manager.delete_backup(filename):
             return jsonify({"success": True, "message": _("Backup removido com sucesso.")})
         return jsonify({"success": False, "message": _("Backup não encontrado.")}), 404
     except Exception as e:
@@ -734,7 +798,7 @@ def backup_restore():
         return jsonify({"success": False, "message": _("Nenhum ficheiro selecionado.")}), 400
 
     try:
-        backup_manager.restore_from_zip(uploaded_file.stream)
+        _ext.backup_manager.restore_from_zip(uploaded_file.stream)
     except ValueError as e:
         # Erro de validação (ZIP inválido, config.json corrompido, etc.) — seguro, nada foi alterado.
         return jsonify({"success": False, "message": str(e)}), 400
