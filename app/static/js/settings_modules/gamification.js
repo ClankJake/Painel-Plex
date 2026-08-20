@@ -31,6 +31,13 @@ export function initGamificationSubtabs() {
 
         document.querySelectorAll('.gam-subtab-content').forEach(c => c.classList.add('hidden'));
         document.getElementById(`gam-subtab-content-${btn.dataset.subtab}`)?.classList.remove('hidden');
+
+        // 📱 Em ecrãs pequenos a barra faz scroll horizontal, por isso a aba tocada
+        // pode estar apenas meio visível na borda. Trazemo-la para o centro, para
+        // que fique claro qual está selecionada.
+        if (typeof btn.scrollIntoView === 'function') {
+            btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
     });
 }
 

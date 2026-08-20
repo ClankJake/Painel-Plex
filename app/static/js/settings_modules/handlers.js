@@ -8,7 +8,7 @@ import * as api from './api.js';
 import * as ui from './ui.js';
 import { i18n, fieldMap, urls } from './config.js';
 import { initGamificationSubtabs, addLevelRow, collectLevelsFromEditor, collectResetMonths, loadSeasonStatus, handleManualSeasonReset } from './gamification.js';
-import { showToast, fetchAPI, setButtonLoading, restoreButton as restoreButtonState, escapeHTML } from '../utils.js';
+import { showToast, fetchAPI, setButtonLoading, restoreButton as restoreButtonState, escapeHTML, copyToClipboard } from '../utils.js';
 
 let pinCheckInterval = null;
 let authWindow = null;
@@ -16,6 +16,76 @@ export let settingsData = { plex_url: null, plex_token: null };
 
 // --- HELPERS (Auxiliares Visuais) ---
 const getSpinner = (classes = "w-4 h-4 mr-2") => `<svg class="animate-spin inline ${classes}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+
+
+// --- CHAVE DE API (INTEGRAÇÕES / BOTS) ---
+
+// Guardada apenas em memória enquanto a página está aberta. A chave NÃO vem no
+// payload geral de configurações (é removida no servidor por segurança), por isso
+// é pedida numa rota própria só quando o administrador precisa dela.
+let cachedApiKey = null;
+const API_KEY_MASK = '••••••••••••••••••••••••';
+
+async function fetchApiKey() {
+    if (cachedApiKey) return cachedApiKey;
+    const result = await fetchAPI(urls.apiKey);
+    cachedApiKey = result.api_key;
+    return cachedApiKey;
+}
+
+async function handleToggleApiKey() {
+    const field = document.getElementById('api-key-field');
+    if (!field) return;
+
+    // Alterna entre a máscara e o valor real, buscando-o só na primeira vez.
+    if (field.type === 'password') {
+        try {
+            field.value = await fetchApiKey();
+            field.type = 'text';
+        } catch (error) {
+            showToast(`${i18n.errorGeneric || 'Erro'}: ${error.message}`, 'error');
+        }
+    } else {
+        field.type = 'password';
+        field.value = API_KEY_MASK;
+    }
+}
+
+async function handleCopyApiKey() {
+    try {
+        const key = await fetchApiKey();
+        const ok = await copyToClipboard(key);
+        showToast(ok ? (i18n.apiKeyCopied || 'Chave copiada!') : (i18n.errorGeneric || 'Erro'), ok ? 'success' : 'error');
+    } catch (error) {
+        showToast(`${i18n.errorGeneric || 'Erro'}: ${error.message}`, 'error');
+    }
+}
+
+async function handleRegenerateApiKey() {
+    // ⚠️ Ação destrutiva para integrações: pede confirmação explícita.
+    if (!confirm(i18n.confirmRegenerateKey || 'Gerar uma nova chave invalida a atual. Continuar?')) return;
+
+    const btn = document.getElementById('regenerate-api-key');
+    setButtonLoading(btn, i18n.generating || 'A gerar...');
+
+    try {
+        const result = await fetchAPI(urls.apiKeyRegenerate, 'POST');
+        cachedApiKey = result.api_key;
+
+        // Mostra logo a chave nova: o administrador precisa dela imediatamente
+        // para atualizar os bots que acabaram de deixar de funcionar.
+        const field = document.getElementById('api-key-field');
+        if (field) {
+            field.value = result.api_key;
+            field.type = 'text';
+        }
+        showToast(result.message || 'OK', 'success');
+    } catch (error) {
+        showToast(`${i18n.errorGeneric || 'Erro'}: ${error.message}`, 'error');
+    } finally {
+        restoreButtonState(btn);
+    }
+}
 
 // --- HANDLERS DE BACKUP E RESTAURO ---
 
@@ -400,6 +470,11 @@ export function initializeEventListeners() {
     if (document.getElementById('backupList')) {
         loadBackupList();
     }
+
+    // --- Chave de API ---
+    document.getElementById('toggle-api-key')?.addEventListener('click', handleToggleApiKey);
+    document.getElementById('copy-api-key')?.addEventListener('click', handleCopyApiKey);
+    document.getElementById('regenerate-api-key')?.addEventListener('click', handleRegenerateApiKey);
 
     // --- Gamificação: sub-abas, editor de níveis e temporadas de XP ---
     initGamificationSubtabs();

@@ -1,6 +1,7 @@
 # app/blueprints/api/system.py
 
 import logging
+import secrets
 import os
 import pytz
 from collections import deque
@@ -678,6 +679,68 @@ def bulk_notify():
 # ==========================================
 # BACKUP E RESTAURO
 # ==========================================
+
+# ==========================================
+# CHAVE DE API (INTEGRAÇÕES / BOTS)
+# ==========================================
+
+@system_api_bp.route('/api-key', methods=['GET'])
+@login_required
+@admin_required
+def get_api_key():
+    """
+    Devolve a chave de API usada pelas integrações externas (ex: o endpoint de
+    convites para bots).
+
+    🔒 Esta chave é deliberadamente REMOVIDA do payload geral de configurações
+    (ver api_settings), para não circular a cada carregamento da página. Fica
+    disponível apenas aqui, numa rota própria, exigindo sessão de administrador —
+    assim só é transmitida quando o administrador a pede explicitamente.
+
+    Se ainda não existir, é gerada agora (instalações antigas podem não a ter).
+    """
+    try:
+        config = load_or_create_config()
+        key = str(config.get('INTERNAL_TRIGGER_KEY') or '')
+
+        if not key:
+            key = secrets.token_hex(32)
+            config['INTERNAL_TRIGGER_KEY'] = key
+            save_app_config(config)
+            logger.info("Chave de API gerada por não existir na configuração.")
+
+        return jsonify({"success": True, "api_key": key})
+    except Exception as e:
+        logger.error(f"Erro ao obter a chave de API: {e}", exc_info=True)
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@system_api_bp.route('/api-key/regenerate', methods=['POST'])
+@login_required
+@admin_required
+def regenerate_api_key():
+    """
+    Gera uma chave de API nova, invalidando imediatamente a anterior.
+
+    ⚠️ Operação destrutiva para integrações: qualquer bot ou script que use a chave
+    antiga deixa de funcionar até ser atualizado. A confirmação é pedida na interface.
+    """
+    try:
+        config = load_or_create_config()
+        new_key = secrets.token_hex(32)
+        config['INTERNAL_TRIGGER_KEY'] = new_key
+        save_app_config(config)
+
+        logger.warning(f"⚠️ Chave de API regenerada por '{current_user.username}'. As integrações que usavam a chave anterior deixaram de funcionar.")
+        return jsonify({
+            "success": True,
+            "api_key": new_key,
+            "message": _("Nova chave gerada. Atualize os seus bots e integrações com a nova chave.")
+        })
+    except Exception as e:
+        logger.error(f"Erro ao regenerar a chave de API: {e}", exc_info=True)
+        return jsonify({"success": False, "message": str(e)}), 500
+
 
 # ==========================================
 # TEMPORADAS DE XP

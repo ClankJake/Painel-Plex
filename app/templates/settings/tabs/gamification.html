@@ -12,14 +12,29 @@
             </div>
         </div>
 
-        <!-- Sub-abas: Conquistas / Sistema de XP e Níveis -->
-        <div class="px-6 pt-5 border-b border-gray-200 dark:border-gray-700/60">
-            <nav class="flex gap-2" id="gam-subtabs-nav">
-                <button type="button" data-subtab="achievements" class="gam-subtab-button tab-button active">{{ _('Conquistas') }}</button>
-                <button type="button" data-subtab="xp" class="gam-subtab-button tab-button">{{ _('Sistema de XP e Níveis') }}</button>
-                <button type="button" data-subtab="referral" class="gam-subtab-button tab-button">{{ _('Indique e Ganhe') }}</button>
+        <!-- Sub-abas: Conquistas / Sistema de XP e Níveis / Indique e Ganhe -->
+        <!-- 📱 CORREÇÃO MOBILE: os três botões têm rótulos longos e, num 'flex'
+             simples, ficavam espremidos ou saíam fora do ecrã em telemóveis, sem
+             qualquer forma de lá chegar. Agora a barra faz scroll horizontal
+             (o mesmo padrão já usado nas abas do account.html):
+               • overflow-x-auto        -> permite arrastar com o dedo;
+               • whitespace-nowrap      -> impede que os rótulos partam a meio;
+               • flex-shrink-0          -> os botões mantêm a largura legível;
+               • -webkit-overflow-scrolling: touch -> inércia natural no iOS;
+               • touch-action: pan-x    -> o browser sabe que este gesto é scroll
+                                           horizontal e não atrasa o toque. -->
+        <div class="px-4 sm:px-6 pt-5 border-b border-gray-200 dark:border-gray-700/60">
+            <nav class="flex gap-2 overflow-x-auto pb-2 gam-subtabs-scroll" id="gam-subtabs-nav"
+                 style="-webkit-overflow-scrolling: touch; touch-action: pan-x; scrollbar-width: none;">
+                <button type="button" data-subtab="achievements" class="gam-subtab-button tab-button active whitespace-nowrap flex-shrink-0">{{ _('Conquistas') }}</button>
+                <button type="button" data-subtab="xp" class="gam-subtab-button tab-button whitespace-nowrap flex-shrink-0">{{ _('Sistema de XP e Níveis') }}</button>
+                <button type="button" data-subtab="referral" class="gam-subtab-button tab-button whitespace-nowrap flex-shrink-0">{{ _('Indique e Ganhe') }}</button>
             </nav>
         </div>
+        <style>
+            /* Esconde a barra de scroll (Chrome/Safari) sem perder a funcionalidade */
+            .gam-subtabs-scroll::-webkit-scrollbar { display: none; }
+        </style>
 
         <!-- Sub-aba: Conquistas -->
         <div id="gam-subtab-content-achievements" class="gam-subtab-content">
