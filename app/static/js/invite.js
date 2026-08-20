@@ -3,9 +3,42 @@
  * Lógica para a página de resgate de convites.
  */
 
+import { setButtonLoading, restoreButton, escapeHTML } from './utils.js';
+
 // --- INICIALIZAÇÃO ---
 const scriptTag = document.getElementById('invite-script');
 const inviteCode = scriptTag.dataset.inviteCode;
+
+// Idioma ativo da aplicação. Antes as datas estavam fixas em 'pt-BR', o que fazia
+// um utilizador com o painel em inglês ver datas em formato brasileiro.
+const LOCALE = scriptTag.dataset.locale || navigator.language || 'pt-BR';
+
+// Tempo máximo à espera da autenticação no Plex antes de desistir (5 minutos).
+// Sem isto, o polling continuava indefinidamente enquanto a janela estivesse aberta.
+const AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * 🔒 Sanitiza um URL antes de o usar num atributo href.
+ * Impede esquemas executáveis como 'javascript:' — relevante porque o URL do
+ * Overseerr é configurado pelo administrador e chega aqui vindo da API.
+ */
+function safeUrl(url) {
+    if (!url) return null;
+    try {
+        const parsed = new URL(url, window.location.origin);
+        return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : null;
+    } catch {
+        return null;
+    }
+}
+
+function formatDate(date) {
+    return date.toLocaleDateString(LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function formatTime(date) {
+    return date.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
+}
 
 // Mapeia os data-attributes para objetos para facilitar o acesso
 const urls = {};
@@ -32,18 +65,20 @@ function showMessage(title, message, isError = false) {
         ? `<svg class="w-16 h-16 text-red-400 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>`
         : `<svg class="w-16 h-16 text-yellow-400 mx-auto" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>`;
 
+    // 🔒 'title' e 'message' vêm de respostas da API (podem conter nomes de
+    // utilizador ou dados externos), por isso são escapados antes de entrar no HTML.
     mainContainer.innerHTML = `
         ${icon}
-        <h1 class="text-3xl font-bold ${titleColor} mt-4">${title}</h1>
-        <p class="mt-2 text-lg text-gray-600 dark:text-gray-300">${message}</p>
+        <h1 class="text-3xl font-bold ${titleColor} mt-4">${escapeHTML(title)}</h1>
+        <p class="mt-2 text-lg text-gray-600 dark:text-gray-300">${escapeHTML(message)}</p>
     `;
 }
 
 function createAppCard(title, href, svgPath) {
     return `
-        <a href="${href}" target="_blank" rel="noopener noreferrer" class="block bg-gray-100 dark:bg-gray-700/50 p-4 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-500/20 hover:scale-105 transition-all duration-200">
+        <a href="${escapeHTML(href)}" target="_blank" rel="noopener noreferrer" class="block bg-gray-100 dark:bg-gray-700/50 p-4 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-500/20 hover:scale-105 transition-all duration-200">
             <svg class="w-10 h-10 mx-auto text-gray-700 dark:text-gray-300" fill="currentColor" viewBox="0 0 24 24">${svgPath}</svg>
-            <p class="mt-2 text-sm font-semibold text-gray-800 dark:text-gray-200">${title}</p>
+            <p class="mt-2 text-sm font-semibold text-gray-800 dark:text-gray-200">${escapeHTML(title)}</p>
         </a>
     `;
 }
@@ -58,8 +93,8 @@ function showImprovedOnboarding(welcomeMessage, userData) {
 
     if (userData.expiration_date) {
         const date = new Date(userData.expiration_date);
-        const formattedDate = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const formattedTime = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const formattedDate = formatDate(date);
+        const formattedTime = formatTime(date);
 
         if (isTrial) {
             expirationHtml = `
@@ -72,22 +107,29 @@ function showImprovedOnboarding(welcomeMessage, userData) {
     }
 
     let overseerrStep = '';
-    if (userData.overseerr_access && userData.overseerr_url) {
-        const overseerrLink = `<a href="${userData.overseerr_url}" target="_blank" rel="noopener noreferrer" class="text-yellow-500 hover:underline font-semibold">${i18n.step3LinkOverseerr}</a>`;
+    // 🔒 O URL do Overseerr é configurado pelo administrador: validamos o esquema
+    // antes de o colocar num href, para nunca aceitar 'javascript:' e afins.
+    const overseerrHref = userData.overseerr_access ? safeUrl(userData.overseerr_url) : null;
+    if (overseerrHref) {
+        const overseerrLink = `<a href="${escapeHTML(overseerrHref)}" target="_blank" rel="noopener noreferrer" class="text-yellow-500 hover:underline font-semibold">${i18n.step3LinkOverseerr}</a>`;
         overseerrStep = `<li>${i18n.step3Overseerr.replace('{link}', overseerrLink)}</li>`;
     }
     
     let paymentButtonHtml = '';
     if(isTrial && userData.payment_token) {
-        const paymentUrl = `/pay/${userData.payment_token}`;
+        // Usa o URL gerado pelo servidor (url_for) em vez de o construir à mão:
+        // um caminho fixo '/pay/...' quebra se a aplicação correr sob um prefixo.
+        const paymentUrl = (urls.payment || '/pay/__TOKEN__').replace('__TOKEN__', encodeURIComponent(userData.payment_token));
         paymentButtonHtml = `
             <div class="mt-8">
-                 <a href="${paymentUrl}" class="inline-flex items-center justify-center px-4 py-3 rounded-lg font-bold transition-transform duration-200 ease-in-out border border-transparent bg-green-600 text-white hover:bg-green-500 hover:-translate-y-0.5">${i18n.renewNow}</a>
+                 <a href="${escapeHTML(paymentUrl)}" class="inline-flex items-center justify-center px-4 py-3 rounded-lg font-bold transition-transform duration-200 ease-in-out border border-transparent bg-green-600 text-white hover:bg-green-500 hover:-translate-y-0.5">${i18n.renewNow}</a>
             </div>
         `;
     }
 
-    const welcomeTitle = i18n.welcomeUser.replace('{username}', `<strong>${userData.username}</strong>`);
+    // 🔒 O nome de utilizador vem da conta Plex (dado externo). Escapamos antes de
+    // o interpolar — este era o ponto de XSS mais exposto de toda a página.
+    const welcomeTitle = i18n.welcomeUser.replace('{username}', `<strong>${escapeHTML(userData.username)}</strong>`);
 
     mainContainer.innerHTML = `
         <svg class="w-16 h-16 text-green-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -146,14 +188,23 @@ function startPolling(pin_id, client_id) {
     const loginButton = document.getElementById('login-button');
     if (pinCheckInterval) clearInterval(pinCheckInterval);
 
+    const startedAt = Date.now();
+
     pinCheckInterval = setInterval(async () => {
         if (!authWindow || authWindow.closed) {
-            clearInterval(pinCheckInterval);
-            if (loginButton) {
-                loginButton.disabled = false;
-                loginButton.innerHTML = i18n.loginToRedeem;
-            }
-            window.removeEventListener('message', handleAuthMessage);
+            stopPolling();
+            // Restaura o botão recolocando os nós originais, sem reinterpretar HTML.
+            restoreButton(loginButton);
+            return;
+        }
+
+        // ⏱️ Desistência por tempo: sem isto, o polling corria de 3 em 3 segundos
+        // indefinidamente enquanto a janela do Plex ficasse aberta e esquecida.
+        if (Date.now() - startedAt > AUTH_TIMEOUT_MS) {
+            stopPolling();
+            try { if (!authWindow.closed) authWindow.close(); } catch { /* janela externa */ }
+            restoreButton(loginButton);
+            showMessage(i18n.error, i18n.authTimeout || 'Tempo de autenticação esgotado.', true);
             return;
         }
         
@@ -163,20 +214,35 @@ function startPolling(pin_id, client_id) {
             const checkData = await checkResponse.json();
 
             if (checkData.success && checkData.token) {
-                clearInterval(pinCheckInterval);
+                stopPolling();
                 authWindow.close();
                 await claimInvite(checkData.token);
             } else if (checkData.message === 'auth_denied') {
-                clearInterval(pinCheckInterval);
+                stopPolling();
                 if(!authWindow.closed) authWindow.close();
                 showMessage(i18n.error, checkData.error || i18n.authDenied, true);
             }
         } catch (e) {
-            clearInterval(pinCheckInterval);
+            stopPolling();
             showMessage(i18n.error, i18n.authCheckError, true);
         }
     }, 3000);
 }
+
+/**
+ * Para o polling e remove o listener de mensagens. Centralizado para garantir que
+ * nunca fica um intervalo órfão a correr (o que acontecia se o utilizador saísse
+ * da página a meio da autenticação).
+ */
+function stopPolling() {
+    if (pinCheckInterval) {
+        clearInterval(pinCheckInterval);
+        pinCheckInterval = null;
+    }
+    window.removeEventListener('message', handleAuthMessage);
+}
+
+window.addEventListener('beforeunload', stopPolling);
 
 function handleAuthMessage(event) {
     if (event.origin !== window.location.origin) {
@@ -193,11 +259,21 @@ function handleAuthMessage(event) {
 
 function loginWithPlexToClaim() {
     const loginButton = document.getElementById('login-button');
-    loginButton.disabled = true;
-    loginButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>${i18n.waitingAuth}`;
+    setButtonLoading(loginButton, i18n.waitingAuth);
 
     window.addEventListener('message', handleAuthMessage, false);
     authWindow = window.open(urls.redirectToAuth, 'plexAuth', 'width=800,height=700,status=no,scrollbars=yes,resizable=yes');
+
+    // 🐛 Pop-up bloqueado: 'window.open' devolve null (frequente no Safari/iOS e
+    // sempre que o navegador não associa a ação a um clique direto). Antes, o
+    // botão ficava preso em "Aguardando autenticação..." PARA SEMPRE, sem
+    // qualquer mensagem — o visitante concluía que a página estava avariada e
+    // desistia do registo.
+    if (!authWindow || authWindow.closed || typeof authWindow.closed === 'undefined') {
+        window.removeEventListener('message', handleAuthMessage);
+        restoreButton(loginButton);
+        showMessage(i18n.error, i18n.popupBlocked || 'Não foi possível abrir a janela de login. Verifique se o seu navegador está a bloquear pop-ups.', true);
+    }
 }
 
 async function validateInvite() {
@@ -237,7 +313,27 @@ async function validateInvite() {
             const expirationDate = new Date(data.details.expires_at);
             const now = new Date();
             const diffMs = expirationDate - now;
-            
+
+            // 🐛 Convite JÁ EXPIRADO: antes este ramo não mostrava nada. O visitante
+            // via a página normal, clicava em "Entrar com Plex", autenticava-se e só
+            // então descobria que o convite tinha expirado — depois de todo o esforço.
+            // Agora avisamos já, e desativamos o botão.
+            if (diffMs <= 0) {
+                const btn = document.getElementById('login-button');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                    btn.classList.remove('hover:scale-105', 'hover:bg-yellow-600');
+                }
+                document.getElementById('expiration-container').innerHTML = `
+                    <div class="mt-6 p-4 bg-red-100 dark:bg-red-500/20 border-l-4 border-red-500 text-red-700 dark:text-red-200 text-sm text-left rounded-r-lg">
+                        <p class="font-bold">${i18n.inviteExpired || 'Este convite já expirou.'}</p>
+                        <p class="mt-1 text-xs opacity-80">${i18n.inviteExpiredDesc || ''}</p>
+                    </div>
+                `;
+                return;
+            }
+
             let expiresIn = '';
             if (diffMs > 0) {
                 const diffMins = Math.round(diffMs / 60000);
@@ -246,7 +342,7 @@ async function validateInvite() {
                 } else if (diffMins < 60) {
                     expiresIn = i18n.inMinutes.replace('{minutes}', diffMins);
                 } else {
-                     expiresIn = i18n.atTime.replace('{time}', expirationDate.toLocaleTimeString('pt-BR')).replace('{date}', expirationDate.toLocaleDateString('pt-BR'));
+                     expiresIn = i18n.atTime.replace('{time}', formatTime(expirationDate)).replace('{date}', formatDate(expirationDate));
                 }
                 const expirationHtml = `
                     <div class="mt-6 p-3 bg-yellow-100 dark:bg-yellow-500/20 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-200 text-sm text-left rounded-r-lg">

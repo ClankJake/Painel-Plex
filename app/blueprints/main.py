@@ -34,12 +34,39 @@ def users_page():
     """Página de gestão de utilizadores (Exclusivo Admin)."""
     return render_template('users.html')
 
+def get_pending_referrer_name():
+    """
+    Devolve o nome de quem indicou, se houver um código de indicação pendente na
+    sessão. Serve para dar continuidade visual ao fluxo "Indique e Ganhe": depois
+    da landing, o utilizador continua a ver de onde veio no convite e no login.
+
+    IMPORTANTE: apenas LÊ a sessão (não faz 'pop'). O código só deve ser consumido
+    no momento em que a indicação é efetivamente registada, durante o resgate do
+    convite. Se o consumíssemos aqui, uma simples passagem pela página de login
+    faria a indicação perder-se.
+
+    Falha sempre em silêncio: um erro aqui é puramente cosmético e nunca pode
+    impedir alguém de entrar ou de resgatar um convite.
+    """
+    try:
+        code = session.get('pending_referral_code')
+        if not code:
+            return None
+        if not load_or_create_config().get("REFERRAL_ENABLED", False):
+            return None
+        referrer = extensions.data_manager.get_user_profile_by_referral_code(code)
+        return referrer.get('username') if referrer else None
+    except Exception as e:
+        logger.debug(f"Não foi possível obter o nome de quem indicou: {e}")
+        return None
+
+
 @main_bp.route('/invite/<string:code>')
 def claim_invite_page(code):
     """
     Página pública para um novo utilizador resgatar um código de convite.
     """
-    return render_template('invite.html', invite_code=code)
+    return render_template('invite.html', invite_code=code, referrer_name=get_pending_referrer_name())
 
 @main_bp.route('/r/<string:ref_code>')
 def referral_landing(ref_code):

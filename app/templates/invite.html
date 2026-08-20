@@ -22,7 +22,23 @@
         }
     </style>
 </head>
-<body class="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-300 p-4">
+<body class="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-300 p-4">
+
+    {% if referrer_name %}
+    <!-- 🎁 Contexto da indicação: renderizado no servidor (não depende do JS que
+         constrói o resto da página), para que quem chega por um link de amigo
+         perceba imediatamente que está no sítio certo e não abandone o registo. -->
+    <div class="w-full max-w-2xl mb-4">
+        <div class="flex items-center gap-3 px-5 py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg">
+            <span class="text-2xl flex-shrink-0">🎁</span>
+            <p class="text-sm font-medium text-left">
+                {{ _('Você está a usar o convite de') }}
+                <strong>{{ referrer_name }}</strong>{{ _('. Conclua o registo abaixo para garantir o seu acesso.') }}
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
     <div id="main-container" class="w-full max-w-2xl p-6 sm:p-8 space-y-6 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700/50 text-center transition-all duration-500">
         <!-- O conteúdo será preenchido pelo JavaScript -->
         <div id="loading-spinner">
@@ -81,6 +97,13 @@
     data-i18n-all-devices="{{ _('Ver todos os dispositivos compatíveis') }}"
     data-i18n-next-steps="{{ _('Próximos Passos') }}"
     data-i18n-step1-onboarding="{{ _('Baixe o aplicativo Plex no seu dispositivo favorito para começar a assistir.') }}"
+    data-locale="{{ current_locale }}"
+    data-url-payment="{{ url_for('main.payment_page', token='__TOKEN__') }}"
+    data-i18n-popup-blocked="{{ _('Não foi possível abrir a janela de login. Verifique se o seu navegador está a bloquear janelas pop-up e tente novamente.') }}"
+    data-i18n-auth-timeout="{{ _('Tempo de autenticação esgotado. Clique novamente para tentar de novo.') }}"
+    data-i18n-invite-expired="{{ _('Este convite já expirou.') }}"
+    data-i18n-invite-expired-desc="{{ _('Peça um novo convite a quem lhe enviou este link.') }}"
+    data-i18n-try-again="{{ _('Tentar novamente') }}"
 ></script>
 
 </body>

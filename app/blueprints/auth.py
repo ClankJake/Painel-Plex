@@ -204,7 +204,11 @@ def login():
     safe_log_request_info(force=True)
     if current_user.is_authenticated:
         return redirect(url_for('main.index' if current_user.is_admin() else 'main.statistics_page'))
-    return render_template('login.html')
+
+    # 🎁 Mantém o contexto da indicação visível para quem veio de um link de amigo
+    # e escolheu "Já tenho acesso" na landing.
+    from .main import get_pending_referrer_name
+    return render_template('login.html', referrer_name=get_pending_referrer_name())
 
 @auth_bp.route('/logout')
 @login_required

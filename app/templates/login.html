@@ -70,6 +70,20 @@
                     <p class="mt-2 text-lg adaptive-subtitle">{{ _('Acesse com sua conta Plex') }}</p>
                 </div>
 
+                {% if referrer_name %}
+                <!-- 🎁 Contexto da indicação: quem chegou por um link de amigo e
+                     escolheu "Já tenho acesso" continua a ver de onde veio, em vez
+                     de aterrar num login sem qualquer contexto. -->
+                <div class="rounded-xl px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/40 text-center">
+                    <p class="text-sm text-emerald-800 dark:text-emerald-300">
+                        🎁 {{ _('Convite de') }} <strong>{{ referrer_name }}</strong>
+                    </p>
+                    <p class="text-xs text-emerald-700/70 dark:text-emerald-400/70 mt-1">
+                        {{ _('A recompensa de indicação aplica-se apenas a novos utilizadores.') }}
+                    </p>
+                </div>
+                {% endif %}
+
                 <div id="flash-container" class="min-h-[4rem]">
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
