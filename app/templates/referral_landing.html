@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('Convite de um amigo') }} - {{ app_title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto py-10 sm:py-16 px-4">
+
+    {% if error %}
+    <!-- Código de indicação inválido -->
+    <div class="bg-white dark:bg-[#1e293b] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/60 p-8 text-center">
+        <div class="text-5xl mb-4">🔗</div>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{{ _('Link inválido') }}</h1>
+        <p class="text-gray-500 dark:text-gray-400 mb-6">{{ error }}</p>
+        <a href="{{ url_for('main.index') }}" class="btn bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 px-5 py-2.5">
+            {{ _('Ir para a página inicial') }}
+        </a>
+    </div>
+
+    {% else %}
+    <!-- Convite válido -->
+    <div class="text-center mb-8">
+        <div class="text-6xl mb-4">🎁</div>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">
+            {{ _('%(name)s convidou você!', name=referrer_name) }}
+        </h1>
+        <p class="mt-3 text-gray-500 dark:text-gray-400">
+            {{ _('Você foi indicado para o nosso servidor de streaming. Escolha uma opção abaixo para continuar.') }}
+        </p>
+    </div>
+
+    <div class="space-y-4">
+
+        <!-- Caminho 1: utilizador NOVO -->
+        {% if invite_code %}
+        <a href="{{ url_for('main.claim_invite_page', code=invite_code) }}"
+           class="block bg-white dark:bg-[#1e293b] rounded-2xl border-2 border-emerald-400 dark:border-emerald-600 p-6 hover:border-emerald-500 dark:hover:border-emerald-500 transition-all shadow-sm hover:shadow-md group">
+            <div class="flex items-start gap-4">
+                <div class="p-3 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl flex-shrink-0">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+                </div>
+                <div class="flex-1 text-left">
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        {{ _('Sou novo por aqui') }}
+                        <span class="text-emerald-500 group-hover:translate-x-1 transition-transform">&rarr;</span>
+                    </h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        {{ _('Criar o meu acesso agora usando o convite. É rápido: basta entrar com a sua conta Plex.') }}
+                    </p>
+                </div>
+            </div>
+        </a>
+        {% else %}
+        <!-- Sem convite padrão configurado: mensagem clara em vez de um link partido -->
+        <div class="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-2xl p-6">
+            <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                <div>
+                    <h2 class="font-bold text-amber-900 dark:text-amber-300">{{ _('Registo indisponível de momento') }}</h2>
+                    <p class="text-sm text-amber-800/80 dark:text-amber-400/80 mt-1">
+                        {{ _('O administrador ainda não configurou um convite para novos utilizadores. Contacte quem lhe enviou este link.') }}
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Caminho 2: utilizador EXISTENTE -->
+        <a href="{{ url_for('auth.login') }}"
+           class="block bg-white dark:bg-[#1e293b] rounded-2xl border border-gray-200 dark:border-gray-700/60 p-6 hover:border-gray-300 dark:hover:border-gray-600 transition-all group">
+            <div class="flex items-start gap-4">
+                <div class="p-3 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-xl flex-shrink-0">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
+                </div>
+                <div class="flex-1 text-left">
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        {{ _('Já tenho acesso') }}
+                        <span class="text-gray-400 group-hover:translate-x-1 transition-transform">&rarr;</span>
+                    </h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        {{ _('Entrar na minha conta. Note que a recompensa de indicação só se aplica a novos utilizadores.') }}
+                    </p>
+                </div>
+            </div>
+        </a>
+
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

@@ -9,6 +9,7 @@ from flask_babel import get_locale, gettext as _
 from ..models import UserProfile
 from .auth import admin_required  # Otimizado: Importação direta do módulo irmão auth.py
 from ..config import is_configured, load_or_create_config
+from .. import extensions
 
 main_bp = Blueprint('main', __name__)
 logger = logging.getLogger(__name__)
@@ -45,19 +46,59 @@ def referral_landing(ref_code):
     """
     Página de entrada de um link de indicação ("Indique e Ganhe").
 
-    Guarda o código na sessão e encaminha o visitante para o login. Depois de ele
-    se autenticar com o Plex, o código é consumido e a indicação fica registada
-    (ver 'auth._login_user_session'). Usamos a sessão em vez de um parâmetro na
-    URL porque o fluxo de login com o Plex passa por redirecionamentos externos,
-    que fariam perder qualquer query string.
+    🐛 CORREÇÃO DE FLUXO: antes esta rota encaminhava diretamente para o login — o
+    que não funcionava para o público-alvo. Quem chega por um link de indicação é,
+    normalmente, alguém que AINDA NÃO tem acesso ao servidor Plex, e o login só
+    aceita quem já é amigo do servidor ("Acesso negado..."). O caminho correto para
+    entrar de novo é resgatar um convite.
+
+    Agora mostramos um ecrã intermédio com os dois caminhos possíveis:
+      • Sou novo  -> resgatar o convite padrão configurado pelo administrador;
+      • Já tenho acesso -> login normal (a indicação não se aplica, mas o link
+        deixa de parecer avariado para quem já é utilizador).
     """
     config = load_or_create_config()
     if not config.get("REFERRAL_ENABLED", False):
         return redirect(url_for('main.index'))
 
-    session['pending_referral_code'] = str(ref_code).strip().upper()
-    logger.info(f"Visitante chegou por um link de indicação (código: {ref_code}).")
-    return redirect(url_for('auth.login'))
+    ref_code = str(ref_code).strip().upper()
+
+    # Valida o código antes de mostrar o que quer que seja: um código inválido não
+    # deve levar ninguém a criar expectativas de recompensa.
+    referrer = extensions.data_manager.get_user_profile_by_referral_code(ref_code)
+    if not referrer:
+        logger.info(f"Link de indicação com código inválido: {ref_code}")
+        return render_template(
+            'referral_landing.html',
+            error=_("Este link de indicação não é válido ou expirou."),
+            referrer_name=None, invite_code=None, ref_code=ref_code
+        ), 404
+
+    # Guarda na sessão: o fluxo de login/convite do Plex passa por redirecionamentos
+    # externos, que fariam perder qualquer parâmetro na URL.
+    session['pending_referral_code'] = ref_code
+    logger.info(f"Visitante chegou pelo link de indicação de '{referrer.get('username')}'.")
+
+    # Convite padrão definido pelo administrador. Sem ele, não há como dar acesso a
+    # alguém novo — mostramos uma mensagem clara em vez de um erro confuso.
+    invite_code = str(config.get("REFERRAL_DEFAULT_INVITE_CODE", "") or "").strip()
+    invite_available = False
+    if invite_code:
+        invitation, invite_msg = extensions.plex_manager.invites.get_invitation_by_code(invite_code)
+        invite_available = invitation is not None
+        if not invite_available:
+            logger.warning(
+                f"O convite padrão de indicações ('{invite_code}') não é válido: {invite_msg}. "
+                f"Verifique as Configurações -> Gamificação -> Indique e Ganhe."
+            )
+
+    return render_template(
+        'referral_landing.html',
+        error=None,
+        referrer_name=referrer.get('username'),
+        invite_code=invite_code if invite_available else None,
+        ref_code=ref_code
+    )
 
 @main_bp.route('/statistics')
 @login_required

@@ -227,6 +227,47 @@ class PlexInviteManager:
             logger.error(f"Erro ao verificar histórico de testes do utilizador {username}: {e}")
             return False
 
+    def _resolve_pending_referral(self, plex_account):
+        """
+        Converte o código de indicação guardado na sessão no ID de quem indicou.
+
+        Devolve None (sem nunca lançar) em qualquer situação inválida: fora de um
+        contexto HTTP, sistema desativado, código inexistente ou auto-indicação.
+        Um problema no programa de indicações nunca pode impedir alguém de resgatar
+        um convite legítimo.
+        """
+        try:
+            from flask import session, has_request_context
+            from app.config import load_or_create_config
+            if not has_request_context():
+                return None
+
+            code = session.pop('pending_referral_code', None)
+            if not code:
+                return None
+
+            config = load_or_create_config()
+            if not config.get("REFERRAL_ENABLED", False):
+                return None
+
+            referrer = self.data_manager.get_user_profile_by_referral_code(code)
+            if not referrer:
+                logger.info(f"Código de indicação '{code}' não corresponde a nenhum utilizador. Ignorado.")
+                return None
+
+            referrer_id = referrer.get('plex_user_id')
+            # 🛡️ Bloqueia a auto-indicação (usar o próprio código numa segunda conta
+            # é o abuso mais óbvio deste tipo de sistema).
+            if str(referrer_id) == str(plex_account.id):
+                logger.warning(f"Auto-indicação bloqueada no resgate do convite (ID {plex_account.id}).")
+                return None
+
+            logger.info(f"Indicação registada: '{plex_account.username}' foi indicado por '{referrer.get('username')}'.")
+            return referrer_id
+        except Exception as e:
+            logger.error(f"Erro ao resolver a indicação pendente: {e}", exc_info=True)
+            return None
+
     def _handle_telegram_linking(self, invitation, username):
         telegram_id = invitation.get('telegram_id')
         if telegram_id is None or str(telegram_id).strip() == "":
@@ -264,6 +305,15 @@ class PlexInviteManager:
         if telegram_id:
             profile_data['telegram_user'] = telegram_id
             logger.info(f"Telegram ID {telegram_id} vinculado ao utilizador {plex_account.username}.")
+
+        # 🎁 INDIQUE E GANHE: se o utilizador chegou através de um link de indicação
+        # (/r/CODIGO), o código ficou guardado na sessão. É neste momento — quando o
+        # perfil é criado de facto — que a indicação é associada.
+        # A recompensa NÃO é paga aqui: só quando ele efetuar o primeiro pagamento.
+        referred_by = self._resolve_pending_referral(plex_account)
+        if referred_by:
+            profile_data['referred_by'] = referred_by
+            profile_data['referral_rewarded'] = False
 
         is_trial = False
         if invitation.get("trial_duration_minutes", 0) > 0:
