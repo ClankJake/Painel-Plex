@@ -319,7 +319,19 @@ class NotifierManager:
 
     def send_renewal_notification(self, user, new_expiration_date, user_profile):
         # 🛡️ ANTI-DUPLICAÇÃO: Evita enviar a mensagem de Renovação logo após uma Reativação (Janela de 60 Segundos)
-        last_reactivation = user_profile.get('last_reactivation_time', 0)
+        # 🐛 NOTA: usar 'or 0' em vez de confiar no default do .get(). A coluna
+        # 'last_reactivation_time' é nullable, por isso a chave EXISTE no perfil
+        # com valor None para quem nunca foi reativado — e o default do .get()
+        # só se aplica a chaves AUSENTES, não a chaves com valor None. Sem isto,
+        # a subtração rebentava com "unsupported operand type(s) for -: 'float' and 'NoneType'".
+        #
+        # O float() envolvente protege ainda contra o valor vir como texto (o que
+        # pode acontecer se o campo for escrito a partir de JSON ou de um formulário).
+        try:
+            last_reactivation = float(user_profile.get('last_reactivation_time') or 0)
+        except (TypeError, ValueError):
+            last_reactivation = 0.0
+
         if time.time() - last_reactivation < 60:
             logger.info(f"Notificação de Renovação ignorada para '{user.get('username')}' porque a notificação de Reativação já foi enviada.")
             return
