@@ -268,20 +268,6 @@
                     </div>
                 </div>
 
-            </div>
-
-            <!-- Divisória para as Opções Globais -->
-            <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
-                <div class="max-w-md bg-gray-50/50 dark:bg-gray-800/30 p-4 rounded-xl border border-gray-200 dark:border-gray-700/50">
-                    <label for="DAYS_TO_NOTIFY_EXPIRATION" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
-                        <svg class="w-4 h-4 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        {{ _('Avisar Vencimento com (Dias de Antecedência)') }}
-                    </label>
-                    <input type="number" id="DAYS_TO_NOTIFY_EXPIRATION" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow mt-2" min="1">
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ _('Quantos dias antes do vencimento o utilizador deve começar a receber alertas (Ex: se colocar 3, ele será avisado a faltar 3 dias).') }}</p>
-                </div>
-            </div>
-
                 <!-- ================= ABA WHATSAPP ================= -->
                 <div id="subtab-whatsapp" class="sub-tab-content hidden space-y-6 input-group animate-fade-in">
 
@@ -372,6 +358,21 @@
                         </div>
                     </div>
                 </div>
+
+            </div>
+
+            <!-- Divisória para as Opções Globais -->
+            <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <div class="max-w-md bg-gray-50/50 dark:bg-gray-800/30 p-4 rounded-xl border border-gray-200 dark:border-gray-700/50">
+                    <label for="DAYS_TO_NOTIFY_EXPIRATION" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        {{ _('Avisar Vencimento com (Dias de Antecedência)') }}
+                    </label>
+                    <input type="number" id="DAYS_TO_NOTIFY_EXPIRATION" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow mt-2" min="1">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ _('Quantos dias antes do vencimento o utilizador deve começar a receber alertas (Ex: se colocar 3, ele será avisado a faltar 3 dias).') }}</p>
+                </div>
+            </div>
+
 
         </div>
     </div>

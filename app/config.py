@@ -130,11 +130,6 @@ def load_or_create_config():
             "WHATSAPP_INSTANCE": "",
             "WHATSAPP_DEFAULT_COUNTRY_CODE": "55",
             "WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE": "",
-            "WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE": "",
-            "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "",
-            "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "",
-            "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "",
-            "WHATSAPP_BULK_MESSAGE_TEMPLATE": "",
             "REFERRAL_ENABLED": False,
             "REFERRAL_REWARD_TYPE": "days",
             "REFERRAL_REWARD_DAYS": 7,
@@ -263,11 +258,6 @@ def load_or_create_config():
             _set_default("WHATSAPP_INSTANCE", "")
             _set_default("WHATSAPP_DEFAULT_COUNTRY_CODE", "55")
             _set_default("WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE", "")
-            _set_default("WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE", "")
-            _set_default("WHATSAPP_RENEWAL_MESSAGE_TEMPLATE", "")
-            _set_default("WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE", "")
-            _set_default("WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE", "")
-            _set_default("WHATSAPP_BULK_MESSAGE_TEMPLATE", "")
             _set_default("REFERRAL_ENABLED", False)
             _set_default("REFERRAL_REWARD_TYPE", "days")
             _set_default("REFERRAL_REWARD_DAYS", 7)
@@ -306,6 +296,11 @@ def load_or_create_config():
             # esteja em branco, já que um template vazio nunca é um estado intencional válido
             # (diferente de campos como WEBHOOK_URL, que podem ficar vazios legitimamente).
             message_template_defaults = {
+                "WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nO seu acesso vence em {days} dia(s), no dia {date}.\nPlano: {plan_name}\nValor: {price}\n\nRenove aqui para não perder o acesso:\n{payment_link}",
+                "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "✅ Renovação confirmada!\n\nOlá {name}, a sua subscrição foi renovada com sucesso.\nNovo vencimento: {new_date}\n\nBom entretenimento!",
+                "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "✅ Conta reativada!\n\nOlá {name}, a sua conta foi reativada.\nNovo vencimento: {new_date}\n\nAceite o convite para voltar a aceder:\n{invite_link}",
+                "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "⌛ O seu período de teste terminou\n\nOlá {name}, esperamos que tenha gostado!\nPara continuar com acesso, faça a sua assinatura aqui:\n{payment_link}",
+                "WHATSAPP_BULK_MESSAGE_TEMPLATE": "📢 Aviso do servidor\n\nOlá {name},\n\n{message}",
                 "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
                 "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
                 "WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi reativada. Novo vencimento: {new_date}. Acesse o servidor: {invite_link}"}',

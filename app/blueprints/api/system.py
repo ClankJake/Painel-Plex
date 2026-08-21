@@ -415,7 +415,10 @@ def api_settings():
     sensitive_keys = [
         'SECRET_KEY', 'PLEX_TOKEN', 'INTERNAL_TRIGGER_KEY',
         'TELEGRAM_BOT_TOKEN', 'TAUTULLI_API_KEY', 'EFI_CLIENT_SECRET',
-        'MERCADOPAGO_ACCESS_TOKEN', 'BPIX_AUTH_TOKEN', 'OVERSEERR_API_KEY'
+        'MERCADOPAGO_ACCESS_TOKEN', 'BPIX_AUTH_TOKEN', 'OVERSEERR_API_KEY',
+        # A chave da API de WhatsApp é uma credencial: nunca deve viajar em claro
+        # para o navegador, tal como as restantes.
+        'WHATSAPP_API_KEY'
     ]
 
     for key in sensitive_keys:
