@@ -9,6 +9,7 @@ from flask_babel import gettext as _
 from datetime import datetime, timedelta
 
 from ..config import load_or_create_config
+from ..utils.log_sanitizer import mask_token
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,7 @@ class BpixManager:
             lookup_id = data.get("id")
 
             if txid and lookup_id:
-                logger.info(f"Cobrança BPIX criada com sucesso. TXID: {txid}, Lookup ID: {lookup_id}")
+                logger.info(f"Cobrança BPIX criada com sucesso. TXID: {mask_token(txid)}, Lookup ID: {mask_token(lookup_id)}")
                 self.data_manager.create_pix_payment(
                     txid=txid,
                     plex_user_id=user_info['plex_user_id'],
@@ -151,7 +152,7 @@ class BpixManager:
 
         payment = self.data_manager.get_pix_payment(txid)
         if not payment:
-            logger.warning(f"Pagamento BPIX com TXID {txid} não encontrado na base de dados local durante a consulta de estado.")
+            logger.warning(f"Pagamento BPIX com TXID {mask_token(txid)} não encontrado na base de dados local durante a consulta de estado.")
             return {"success": False, "message": "Pagamento não encontrado localmente."}
 
         current_status = payment.get('status')

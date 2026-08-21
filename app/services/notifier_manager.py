@@ -16,6 +16,7 @@ from telebot import types
 from flask_babel import gettext as _
 
 from ..config import load_or_create_config
+from ..utils.log_sanitizer import mask_phone, mask_token, mask_url_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +268,7 @@ class NotifierManager:
         """Envia uma mensagem de WhatsApp através da API não-oficial configurada."""
         normalized = self.normalize_phone(phone)
         if not normalized:
-            logger.warning(f"[ID: {request_id}] Número de WhatsApp inválido, envio ignorado: {phone!r}")
+            logger.warning(f"[ID: {request_id}] Número de WhatsApp inválido, envio ignorado: {mask_phone(phone)}")
             return
 
         url, headers, payload = self._build_whatsapp_request(config, normalized, message)
@@ -275,7 +276,7 @@ class NotifierManager:
         try:
             response = requests.post(url, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
-            logger.info(f"[ID: {request_id}] Mensagem de WhatsApp enviada para {normalized}.")
+            logger.info(f"[ID: {request_id}] Mensagem de WhatsApp enviada para {mask_phone(normalized)}.")
         except requests.exceptions.RequestException as e:
             # Mesmo cuidado do webhook genérico: 'bool(response)' é False em
             # qualquer erro HTTP, por isso comparamos explicitamente com None para
@@ -283,10 +284,15 @@ class NotifierManager:
             # motivo real da falha (sessão desligada, número inexistente, etc.).
             if hasattr(e, 'response') and e.response is not None:
                 body = e.response.text.strip() if e.response.text else "(corpo vazio)"
+                # 🔒 O corpo de erro destas APIs costuma ECOAR o número enviado
+                # (ex: {"error":"5521985852539 is not on WhatsApp"}). Sem esta
+                # substituição, o número completo voltaria a aparecer no log mesmo
+                # com o mascaramento aplicado no resto da linha.
+                body = body.replace(normalized, mask_phone(normalized))
                 detail = f"HTTP {e.response.status_code} - {body[:300]}"
             else:
                 detail = "Sem resposta do servidor (falha de conexão/timeout)"
-            logger.error(f"[ID: {request_id}] Falha no envio de WhatsApp para {normalized}: {detail}")
+            logger.error(f"[ID: {request_id}] Falha no envio de WhatsApp para {mask_phone(normalized)}: {detail}")
             raise Exception(f"Falha de WhatsApp: {detail}")
 
     def test_whatsapp_connection(self, phone=None):

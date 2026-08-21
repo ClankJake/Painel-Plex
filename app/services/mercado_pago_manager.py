@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from flask_babel import gettext as _
 
 from ..config import load_or_create_config
+from ..utils.log_sanitizer import mask_token
 
 logger = logging.getLogger(__name__)
 

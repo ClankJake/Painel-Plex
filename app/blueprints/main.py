@@ -10,6 +10,7 @@ from ..models import UserProfile
 from .auth import admin_required  # Otimizado: Importação direta do módulo irmão auth.py
 from ..config import is_configured, load_or_create_config
 from .. import extensions
+from ..utils.log_sanitizer import mask_token
 
 main_bp = Blueprint('main', __name__)
 logger = logging.getLogger(__name__)
@@ -185,7 +186,7 @@ def payment_page(token):
     profile = UserProfile.query.filter_by(payment_token=token).first()
 
     if not profile:
-        logger.warning(f"Tentativa de acesso com token de pagamento inválido ou expirado: {token}")
+        logger.warning(f"Tentativa de acesso com token de pagamento inválido ou expirado: {mask_token(token)}")
         return render_template('payment_unavailable.html', 
                                reason_title=_("Link de Pagamento Inválido"),
                                reason_message=_("O link que tentou aceder não é válido ou já expirou. Por favor, solicite um novo link ao administrador.")), 404

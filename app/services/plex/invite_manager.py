@@ -12,6 +12,7 @@ from plexapi.myplex import MyPlexAccount
 from plexapi.exceptions import BadRequest, NotFound
 from flask_babel import gettext as _
 from flask import url_for
+from ...utils.log_sanitizer import mask_email
 
 logger = logging.getLogger(__name__)
 
@@ -379,7 +380,7 @@ class PlexInviteManager:
             if profile:
                 updates = {}
                 if profile.get('email') != plex_user.email:
-                    logger.info(f"Sincronização: Email alterado {profile.get('email')} -> {plex_user.email}")
+                    logger.info(f"Sincronização: Email alterado {mask_email(profile.get('email'))} -> {mask_email(plex_user.email)}")
                     updates['email'] = plex_user.email
                 
                 if profile.get('username') != plex_user.username:

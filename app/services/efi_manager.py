@@ -8,6 +8,7 @@ from efipay import EfiPay
 from flask_babel import gettext as _
 
 from ..config import load_or_create_config
+from ..utils.log_sanitizer import mask_token
 
 logger = logging.getLogger(__name__)
 
@@ -176,13 +177,13 @@ class EfiManager:
             # 🛡️ PROTEÇÃO: Valida se 'loc.id' existe antes de pedir o QR Code
             loc_id = response.get('loc', {}).get('id')
             if not loc_id:
-                logger.error(f"Efí: Resposta sem ID de Location ('loc.id') para o TXID {txid}.")
+                logger.error(f"Efí: Resposta sem ID de Location ('loc.id') para o TXID {mask_token(txid)}.")
                 return {"success": False, "message": _("Cobrança gerada, mas o provedor não retornou o identificador do QR Code.")}
 
             # Solicita a imagem do QR Code usando o locator ID
             qr_code_response = self.efi.pix_generate_qrcode(params={'id': loc_id})
             
-            logger.info(f"Efí: Cobrança criada com sucesso. TXID: {txid}")
+            logger.info(f"Efí: Cobrança criada com sucesso. TXID: {mask_token(txid)}")
             
             return {
                 "success": True,
@@ -219,11 +220,11 @@ class EfiManager:
             response = self.efi.pix_detail_charge(params={'txid': txid})
             
             if not isinstance(response, dict):
-                logger.error(f"Efí: Resposta inválida ao consultar detalhes do TXID {txid}.")
+                logger.error(f"Efí: Resposta inválida ao consultar detalhes do TXID {mask_token(txid)}.")
                 return {"success": False, "message": "Resposta inválida da API da Efí."}
                 
             return {"success": True, "data": response}
             
         except Exception as e:
-            logger.error(f"Efí: Falha ao tentar consultar o status do TXID {txid}: {e}")
+            logger.error(f"Efí: Falha ao tentar consultar o status do TXID {mask_token(txid)}: {e}")
             return {"success": False, "message": str(e)}

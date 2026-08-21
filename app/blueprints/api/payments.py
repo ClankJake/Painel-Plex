@@ -16,6 +16,7 @@ from ...config import load_or_create_config
 from ..auth import admin_required
 from ...models import UserProfile, PixPayment
 from ...extensions import limiter
+from ...utils.log_sanitizer import mask_token
 
 logger = logging.getLogger(__name__)
 payments_api_bp = Blueprint('payments_api', __name__)
@@ -113,9 +114,9 @@ def _run_payment_processing_in_thread(app, txid):
                     if credit_reserved > 0:
                         try:
                             consumed = extensions.referral_manager.consume_credit(plex_user_id, credit_reserved)
-                            logger.info(f"Pagamento {txid}: R$ {consumed:.2f} de crédito de indicações consumido por '{profile.get('username')}'.")
+                            logger.info(f"Pagamento {mask_token(txid)}: R$ {consumed:.2f} de crédito de indicações consumido por '{profile.get('username')}'.")
                         except Exception as e:
-                            logger.error(f"Erro ao consumir o crédito de indicações no pagamento {txid}: {e}", exc_info=True)
+                            logger.error(f"Erro ao consumir o crédito de indicações no pagamento {mask_token(txid)}: {e}", exc_info=True)
 
                     # 🎁 INDIQUE E GANHE: se este utilizador foi indicado por alguém e
                     # esta é a sua primeira compra, quem o indicou recebe a recompensa.
@@ -140,7 +141,7 @@ def _run_payment_processing_in_thread(app, txid):
 
                 extensions.data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
                 extensions.db.session.commit()
-                logger.info(f"Processamento do pagamento para TXID {txid} concluído com sucesso.")
+                logger.info(f"Processamento do pagamento para TXID {mask_token(txid)} concluído com sucesso.")
 
                 if extensions.socketio:
                     toast_msg = _("Reativação concluída.") if is_reactivation else _("Pagamento confirmado.")
@@ -153,11 +154,11 @@ def _run_payment_processing_in_thread(app, txid):
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(RETRY_DELAY)
                 else:
-                    logger.error(f"Erro persistente de base de dados bloqueada para o TXID {txid}.", exc_info=True)
+                    logger.error(f"Erro persistente de base de dados bloqueada para o TXID {mask_token(txid)}.", exc_info=True)
             else:
                 break
         except Exception as e:
-            logger.error(f"Erro no processamento do pagamento {txid}: {e}", exc_info=True)
+            logger.error(f"Erro no processamento do pagamento {mask_token(txid)}: {e}", exc_info=True)
             with app.app_context(): 
                 extensions.data_manager.update_pix_payment_status(txid, 'FALHOU')
                 extensions.db.session.commit()
@@ -180,7 +181,7 @@ def _process_successful_payment(txid):
             return 
             
     except Exception as e:
-        logger.error(f"Erro ao atualizar estado na base de dados para {txid}: {e}")
+        logger.error(f"Erro ao atualizar estado na base de dados para {mask_token(txid)}: {e}")
         extensions.db.session.rollback()
         return
 
@@ -515,10 +516,10 @@ def efi_webhook():
 
                 efi_status_result = extensions.efi_manager.detail_pix_charge(txid)
                 if efi_status_result.get("success") and efi_status_result.get("data", {}).get("status") == 'CONCLUIDA':
-                    logger.info(f"Pagamento {txid} confirmado via Webhook Efí. A iniciar renovação.")
+                    logger.info(f"Pagamento {mask_token(txid)} confirmado via Webhook Efí. A iniciar renovação.")
                     _process_successful_payment(txid)
                 else:
-                    logger.warning(f"Webhook recebido para {txid}, mas o estado na Efí não indica conclusão.")
+                    logger.warning(f"Webhook recebido para {mask_token(txid)}, mas o estado na Efí não indica conclusão.")
                     
     except Exception as e:
         logger.error(f"Erro no processamento do Webhook Efí: {e}", exc_info=True)
@@ -549,7 +550,7 @@ def bpix_webhook():
     try:
         txid = data.get("transaction_pix_id")
         if txid and ((data.get("status") == "Pagamento realizado") or (data.get("international_status") == "PAYMENT_RECEIVED")):
-            logger.info(f"Pagamento {txid} confirmado via Webhook BPIX. A iniciar renovação.")
+            logger.info(f"Pagamento {mask_token(txid)} confirmado via Webhook BPIX. A iniciar renovação.")
             _process_successful_payment(txid)
     except Exception as e:
         logger.error(f"Erro no Webhook BPIX: {e}", exc_info=True)
@@ -611,11 +612,11 @@ def add_manual_payment_route():
 def delete_payment_route(txid):
     try:
         if extensions.data_manager.delete_pix_payment(txid):
-            logger.info(f"Transação {txid} apagada manualmente pelo Admin.")
+            logger.info(f"Transação {mask_token(txid)} apagada manualmente pelo Admin.")
             return jsonify({"success": True, "message": _("Transação apagada.")})
         return jsonify({"success": False, "message": _("Transação não encontrada.")}), 404
     except Exception as e:
-        logger.error(f"Erro ao apagar a transação {txid}: {e}")
+        logger.error(f"Erro ao apagar a transação {mask_token(txid)}: {e}")
         return jsonify({"success": False, "message": _("Falha ao apagar.")}), 500
 
 @payments_api_bp.route('/financial/export-csv')

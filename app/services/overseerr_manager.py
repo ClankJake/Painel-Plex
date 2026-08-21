@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional, List
 
 from flask_babel import gettext as _
 from ..config import load_or_create_config
+from ..utils.log_sanitizer import mask_email
 
 logger = logging.getLogger(__name__)
 
@@ -116,18 +117,18 @@ class OverseerrManager:
         """Remove o utilizador do sistema de pedidos Overseerr."""
         user = self.find_user_by_email(email)
         if not user:
-            logger.warning(f"Overseerr: Utilizador '{email}' não encontrado para remoção. A ignorar.")
+            logger.warning(f"Overseerr: Utilizador '{mask_email(email)}' não encontrado para remoção. A ignorar.")
             return {"success": True, "message": _("Utilizador não encontrado no Overseerr.")}
         
         user_id = user.get("id")
-        logger.info(f"Overseerr: A remover o utilizador '{email}' (ID interno: {user_id}).")
+        logger.info(f"Overseerr: A remover o utilizador '{mask_email(email)}' (ID interno: {user_id}).")
         
         result = self._make_request("DELETE", f"/user/{user_id}")
         if result.get("success"):
-            logger.info(f"Overseerr: Utilizador '{email}' removido com sucesso.")
+            logger.info(f"Overseerr: Utilizador '{mask_email(email)}' removido com sucesso.")
             return {"success": True, "message": _("Acesso removido com sucesso.")}
         else:
-            logger.error(f"Overseerr: Falha ao remover utilizador '{email}': {result.get('message')}")
+            logger.error(f"Overseerr: Falha ao remover utilizador '{mask_email(email)}': {result.get('message')}")
             return {"success": False, "message": result.get('message')}
 
     # --- LÓGICA DE PEDIDOS (OTIMIZADA) ---
