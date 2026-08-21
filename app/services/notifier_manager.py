@@ -496,6 +496,29 @@ class NotifierManager:
                 except Exception as e:
                     logger.error(f"[ID: {request_id}] Notificação via Discord falhou para '{user.get('username')}': {e}")
 
+        if can_notify_whatsapp:
+            # 🐛 Este bloco estava EM FALTA: o 'can_notify_whatsapp' era calculado e
+            # usado na verificação de saída, mas nenhum envio era feito. Resultado:
+            # o botão de teste funcionava (chama _send_whatsapp_notification
+            # diretamente), mas notificações manuais, em massa e agendadas passavam
+            # por aqui e saíam sem enviar nada — em silêncio, sem erro no log.
+            template_str = config.get(f"WHATSAPP_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"WHATSAPP_{event_type.upper()}_MESSAGE_TEMPLATE")
+            # O WhatsApp recebe TEXTO SIMPLES: sem JSON e sem escape de HTML
+            # (ao contrário do Telegram, que usa markup).
+            message = self._format_template(template_str, placeholders, is_json=False)
+            if message:
+                try:
+                    self._send_whatsapp_notification(user_profile.get('phone_number'), message, request_id, config)
+                except Exception as e:
+                    # Isolado como os restantes canais: uma falha no WhatsApp não
+                    # impede o envio pelos outros.
+                    logger.error(f"[ID: {request_id}] Notificação via WhatsApp falhou para '{user.get('username')}': {e}")
+            else:
+                logger.warning(
+                    f"[ID: {request_id}] Template de WhatsApp para o evento '{event_type}' está vazio ou inválido. "
+                    f"Nada foi enviado para '{user.get('username')}'."
+                )
+
     def send_expiration_notification(self, user, days_left, user_profile):
         expiration_date_str = user_profile.get('expiration_date')
         formatted_date = ""
