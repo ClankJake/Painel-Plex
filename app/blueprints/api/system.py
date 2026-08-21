@@ -225,6 +225,7 @@ def api_settings():
             'ACHIEVEMENT_PIONEER_BRONZE', 'ACHIEVEMENT_PIONEER_SILVER', 'ACHIEVEMENT_PIONEER_GOLD', 'ACHIEVEMENT_PIONEER_WINDOW_HOURS',
             'XP_PER_MINUTE_WATCHED', 'XP_BONUS_PER_COMPLETED_ITEM', 'XP_COMPLETION_THRESHOLD_PERCENT',
             'XP_LEVEL_TABLE', 'XP_RESET_ENABLED', 'XP_RESET_MONTHS',
+            'WHATSAPP_ENABLED', 'WHATSAPP_PROVIDER', 'WHATSAPP_API_URL', 'WHATSAPP_API_KEY', 'WHATSAPP_INSTANCE', 'WHATSAPP_DEFAULT_COUNTRY_CODE', 'WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE', 'WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE', 'WHATSAPP_RENEWAL_MESSAGE_TEMPLATE', 'WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE', 'WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE', 'WHATSAPP_BULK_MESSAGE_TEMPLATE',
             'REFERRAL_ENABLED', 'REFERRAL_REWARD_TYPE', 'REFERRAL_REWARD_DAYS', 'REFERRAL_REWARD_CREDIT',
             'REFERRAL_DEFAULT_INVITE_CODE',
             'TELEGRAM_BULK_MESSAGE_TEMPLATE', 'DISCORD_BULK_MESSAGE_TEMPLATE', 'WEBHOOK_BULK_MESSAGE_TEMPLATE',
@@ -683,6 +684,28 @@ def bulk_notify():
 # ==========================================
 # CHAVE DE API (INTEGRAÇÕES / BOTS)
 # ==========================================
+
+@system_api_bp.route('/test-whatsapp', methods=['POST'])
+@login_required
+@admin_required
+@limiter.limit("10 per minute")
+def test_whatsapp_connection():
+    """
+    Testa a integração de WhatsApp. Se for enviado um número, dispara uma mensagem
+    real; caso contrário, valida apenas se a configuração está coerente.
+
+    O limite de pedidos existe porque cada teste com número envia uma mensagem
+    verdadeira — sem ele, seria fácil abusar da instância de WhatsApp.
+    """
+    data = request.get_json() or {}
+    phone = (data.get('phone') or '').strip() or None
+    try:
+        result = notifier_manager.test_whatsapp_connection(phone=phone)
+        return jsonify(result), (200 if result.get('success') else 400)
+    except Exception as e:
+        logger.error(f"Erro ao testar a ligação de WhatsApp: {e}", exc_info=True)
+        return jsonify({"success": False, "message": str(e)}), 500
+
 
 @system_api_bp.route('/api-key', methods=['GET'])
 @login_required

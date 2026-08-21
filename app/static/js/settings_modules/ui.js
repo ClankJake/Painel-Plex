@@ -25,6 +25,8 @@ export async function loadSettings() {
         syncTabsSelect();
         renderLevelEditor(config.XP_LEVEL_TABLE);
         renderResetMonthsGrid(config.XP_RESET_MONTHS);
+        // Ajusta a visibilidade do payload personalizado ao provedor já gravado.
+        document.getElementById('WHATSAPP_PROVIDER')?.dispatchEvent(new Event('change'));
     } catch (error) {
         showToast(`Falha ao carregar configurações: ${error.message}`, 'error');
     }

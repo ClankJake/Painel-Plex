@@ -34,7 +34,13 @@ DEFAULT_TEMPLATES = {
     "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}',
     "TELEGRAM_BULK_MESSAGE_TEMPLATE": "📢 *Aviso do Servidor*\n\nOlá {name},\n\n{message}",
     "DISCORD_BULK_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}',
-    "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}'
+    "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}',
+    # --- WhatsApp (texto simples; sem markdown do Telegram nem JSON) ---
+    "WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nO seu acesso vence em {days} dia(s), no dia {date}.\nPlano: {plan_name}\nValor: {price}\n\nRenove aqui para não perder o acesso:\n{payment_link}",
+    "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "✅ Renovação confirmada!\n\nOlá {name}, a sua subscrição foi renovada com sucesso.\nNovo vencimento: {new_date}\n\nBom entretenimento!",
+    "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "✅ Conta reativada!\n\nOlá {name}, a sua conta foi reativada.\nNovo vencimento: {new_date}\n\nAceite o convite para voltar a aceder:\n{invite_link}",
+    "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "⌛ O seu período de teste terminou\n\nOlá {name}, esperamos que tenha gostado!\nPara continuar com acesso, faça a sua assinatura aqui:\n{payment_link}",
+    "WHATSAPP_BULK_MESSAGE_TEMPLATE": "📢 Aviso do servidor\n\nOlá {name},\n\n{message}"
 }
 
 def get_greeting():
@@ -134,6 +140,166 @@ class NotifierManager:
                 logger.error(f"[ID: {request_id}] Erro inesperado ao enviar Telegram: {e}")
                 raise e
 
+    # ==========================================================================
+    # WHATSAPP (APIs NÃO-OFICIAIS: Evolution API, GOWA, Baileys, etc.)
+    # ==========================================================================
+
+    @staticmethod
+    def normalize_phone(phone):
+        """
+        Normaliza um número para o formato esperado pelas APIs de WhatsApp:
+        apenas dígitos, com código de país.
+
+        Os números são introduzidos por pessoas e chegam em todos os formatos
+        possíveis — "+55 (11) 98888-7777", "011988887777", "5511988887777". Sem
+        normalização, o mesmo contacto falharia ou duplicaria consoante como foi
+        escrito.
+        """
+        if not phone:
+            return None
+
+        digits = re.sub(r'\D', '', str(phone))
+        if not digits:
+            return None
+
+        # Remove o prefixo internacional "00" (ex: 005511... -> 5511...)
+        if digits.startswith('00'):
+            digits = digits[2:]
+
+        # Heurística para números guardados SEM o código do país.
+        #
+        # 🐛 CUIDADO: esta heurística é deliberadamente conservadora. Uma versão
+        # anterior aplicava-a a qualquer número de 10-11 dígitos, o que corrompia
+        # números internacionais legítimos — um número dos EUA como +1 415 555 2671
+        # (11 dígitos) tornava-se "5514155552671", um número brasileiro inexistente.
+        #
+        # Só acrescentamos o código do país quando o número tem MESMO o formato
+        # nacional esperado. Para o Brasil (DDI 55): 10 dígitos (fixo com DDD) ou
+        # 11 (telemóvel com DDD e o 9 inicial), e o DDD tem de ser válido (11-99).
+        config = load_or_create_config()
+        default_cc = str(config.get("WHATSAPP_DEFAULT_COUNTRY_CODE", "55") or "").strip()
+
+        if default_cc and len(digits) in (10, 11):
+            ddd = int(digits[:2])
+            is_national_format = 11 <= ddd <= 99
+            # Um telemóvel brasileiro com 11 dígitos tem sempre o 9 na 3ª posição.
+            if default_cc == "55" and len(digits) == 11 and digits[2] != '9':
+                is_national_format = False
+            if is_national_format:
+                digits = f"{default_cc}{digits}"
+
+        return digits
+
+    def _build_whatsapp_request(self, config, phone, message):
+        """
+        Monta o pedido HTTP conforme o provedor escolhido.
+
+        Cada API não-oficial tem o seu próprio formato; centralizamos aqui as
+        diferenças para que o resto do sistema não precise de saber qual está em uso.
+        Devolve (url, headers, payload).
+        """
+        provider = (config.get("WHATSAPP_PROVIDER") or "evolution").strip().lower()
+        base_url = (config.get("WHATSAPP_API_URL") or "").strip().rstrip('/')
+        api_key = (config.get("WHATSAPP_API_KEY") or "").strip()
+        instance = (config.get("WHATSAPP_INSTANCE") or "").strip()
+
+        if not base_url:
+            raise ValueError(_("O URL da API de WhatsApp não está configurado."))
+
+        if provider == "evolution":
+            # Evolution API v2: POST /message/sendText/{instance}
+            if not instance:
+                raise ValueError(_("O nome da instância é obrigatório para a Evolution API."))
+            url = f"{base_url}/message/sendText/{instance}"
+            headers = {"apikey": api_key, "Content-Type": "application/json"}
+            payload = {"number": phone, "text": message}
+
+        elif provider == "gowa":
+            # GOWA / go-whatsapp-web-multidevice: POST /send/message
+            url = f"{base_url}/send/message"
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            payload = {"phone": f"{phone}@s.whatsapp.net", "message": message}
+
+        elif provider == "waha":
+            # WAHA (WhatsApp HTTP API): POST /api/sendText
+            url = f"{base_url}/api/sendText"
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["X-Api-Key"] = api_key
+            payload = {
+                "session": instance or "default",
+                "chatId": f"{phone}@c.us",
+                "text": message,
+            }
+
+        else:
+            # 'custom': o administrador define o corpo através de um template JSON,
+            # cobrindo qualquer API não listada acima (incl. Baileys caseiro).
+            url = base_url
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            tpl = config.get("WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE") or '{"phone": "{phone}", "message": "{message}"}'
+            payload = self._format_template(tpl, {"phone": phone, "message": message}, is_json=True)
+            if payload is None:
+                raise ValueError(_("O template JSON personalizado do WhatsApp é inválido."))
+
+        return url, headers, payload
+
+    def _send_whatsapp_notification(self, phone, message, request_id, config):
+        """Envia uma mensagem de WhatsApp através da API não-oficial configurada."""
+        normalized = self.normalize_phone(phone)
+        if not normalized:
+            logger.warning(f"[ID: {request_id}] Número de WhatsApp inválido, envio ignorado: {phone!r}")
+            return
+
+        url, headers, payload = self._build_whatsapp_request(config, normalized, message)
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            logger.info(f"[ID: {request_id}] Mensagem de WhatsApp enviada para {normalized}.")
+        except requests.exceptions.RequestException as e:
+            # Mesmo cuidado do webhook genérico: 'bool(response)' é False em
+            # qualquer erro HTTP, por isso comparamos explicitamente com None para
+            # não perder o corpo da resposta — que é onde estas APIs explicam o
+            # motivo real da falha (sessão desligada, número inexistente, etc.).
+            if hasattr(e, 'response') and e.response is not None:
+                body = e.response.text.strip() if e.response.text else "(corpo vazio)"
+                detail = f"HTTP {e.response.status_code} - {body[:300]}"
+            else:
+                detail = "Sem resposta do servidor (falha de conexão/timeout)"
+            logger.error(f"[ID: {request_id}] Falha no envio de WhatsApp para {normalized}: {detail}")
+            raise Exception(f"Falha de WhatsApp: {detail}")
+
+    def test_whatsapp_connection(self, phone=None):
+        """
+        Testa a ligação à API de WhatsApp. Se for indicado um número, envia uma
+        mensagem real de teste; caso contrário, valida apenas a configuração.
+        """
+        config = load_or_create_config()
+        if not config.get("WHATSAPP_ENABLED"):
+            return {"success": False, "message": _("O canal de WhatsApp está desativado.")}
+
+        try:
+            if not phone:
+                # Só valida se a configuração está completa e coerente.
+                self._build_whatsapp_request(config, "5511999999999", "teste")
+                return {"success": True, "message": _("Configuração válida. Indique um número para enviar uma mensagem de teste real.")}
+
+            self._send_whatsapp_notification(
+                phone,
+                _("✅ Teste de ligação do %(app)s. Se recebeu esta mensagem, o WhatsApp está configurado corretamente!",
+                  app=config.get("APP_TITLE", "Painel Plex")),
+                str(uuid.uuid4()),
+                config
+            )
+            return {"success": True, "message": _("Mensagem de teste enviada com sucesso!")}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
     def _send_webhook_notification(self, payload, request_id, config):
         webhook_url = config.get("WEBHOOK_URL")
         if not webhook_url: return
@@ -225,8 +391,9 @@ class NotifierManager:
         can_notify_telegram = config.get("TELEGRAM_ENABLED") and telegram_chat_id
         can_notify_webhook = config.get("WEBHOOK_ENABLED") and user_profile.get('phone_number')
         can_notify_discord = config.get("DISCORD_ENABLED") and user_profile.get('discord_user_id')
+        can_notify_whatsapp = config.get("WHATSAPP_ENABLED") and user_profile.get('phone_number')
         
-        if not (can_notify_telegram or can_notify_webhook or can_notify_discord): 
+        if not (can_notify_telegram or can_notify_webhook or can_notify_discord or can_notify_whatsapp): 
             return
 
         t_tpl = config.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE", "")

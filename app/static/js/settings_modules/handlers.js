@@ -18,6 +18,39 @@ export let settingsData = { plex_url: null, plex_token: null };
 const getSpinner = (classes = "w-4 h-4 mr-2") => `<svg class="animate-spin inline ${classes}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
 
 
+
+// --- WHATSAPP ---
+
+/**
+ * O campo de payload JSON personalizado só faz sentido no provedor 'custom':
+ * nos restantes o formato do corpo é fixo e definido pela própria API.
+ */
+function syncWhatsappProviderFields() {
+    const provider = document.getElementById('WHATSAPP_PROVIDER')?.value;
+    const wrapper = document.getElementById('whatsapp-custom-payload-wrapper');
+    if (wrapper) wrapper.classList.toggle('hidden', provider !== 'custom');
+}
+
+async function handleTestWhatsapp() {
+    const btn = document.getElementById('testWhatsapp');
+    const phone = document.getElementById('whatsapp-test-phone')?.value.trim();
+
+    setButtonLoading(btn, i18n.testing || 'Testando...');
+    try {
+        // Envia os valores ATUAIS do formulário, para o administrador poder testar
+        // antes de gravar — evita o ciclo "gravar, testar, corrigir, gravar".
+        const result = await api.testWhatsapp({
+            phone: phone || null,
+            provider: document.getElementById('WHATSAPP_PROVIDER')?.value,
+        });
+        showToast(result.message, result.success ? 'success' : 'error');
+    } catch (error) {
+        showToast(error.message || i18n.unknownError, 'error');
+    } finally {
+        restoreButtonState(btn);
+    }
+}
+
 // --- CHAVE DE API (INTEGRAÇÕES / BOTS) ---
 
 // Guardada apenas em memória enquanto a página está aberta. A chave NÃO vem no
@@ -469,6 +502,14 @@ export function initializeEventListeners() {
 
     if (document.getElementById('backupList')) {
         loadBackupList();
+    }
+
+    // --- WhatsApp ---
+    document.getElementById('testWhatsapp')?.addEventListener('click', handleTestWhatsapp);
+    const waProvider = document.getElementById('WHATSAPP_PROVIDER');
+    if (waProvider) {
+        waProvider.addEventListener('change', syncWhatsappProviderFields);
+        syncWhatsappProviderFields();
     }
 
     // --- Chave de API ---

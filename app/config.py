@@ -123,6 +123,18 @@ def load_or_create_config():
             "XP_PER_MINUTE_WATCHED": 1.0,
             "XP_BONUS_PER_COMPLETED_ITEM": 20,
             "XP_COMPLETION_THRESHOLD_PERCENT": 90,
+            "WHATSAPP_ENABLED": False,
+            "WHATSAPP_PROVIDER": "evolution",
+            "WHATSAPP_API_URL": "",
+            "WHATSAPP_API_KEY": "",
+            "WHATSAPP_INSTANCE": "",
+            "WHATSAPP_DEFAULT_COUNTRY_CODE": "55",
+            "WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE": "",
+            "WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE": "",
+            "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "",
+            "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "",
+            "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "",
+            "WHATSAPP_BULK_MESSAGE_TEMPLATE": "",
             "REFERRAL_ENABLED": False,
             "REFERRAL_REWARD_TYPE": "days",
             "REFERRAL_REWARD_DAYS": 7,
@@ -244,6 +256,18 @@ def load_or_create_config():
             _set_default("XP_BONUS_PER_COMPLETED_ITEM", 20)
             _set_default("XP_COMPLETION_THRESHOLD_PERCENT", 90)
             # Tabela de níveis personalizável. Lista vazia = usa a tabela padrão do código.
+            _set_default("WHATSAPP_ENABLED", False)
+            _set_default("WHATSAPP_PROVIDER", "evolution")
+            _set_default("WHATSAPP_API_URL", "")
+            _set_default("WHATSAPP_API_KEY", "")
+            _set_default("WHATSAPP_INSTANCE", "")
+            _set_default("WHATSAPP_DEFAULT_COUNTRY_CODE", "55")
+            _set_default("WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE", "")
+            _set_default("WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE", "")
+            _set_default("WHATSAPP_RENEWAL_MESSAGE_TEMPLATE", "")
+            _set_default("WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE", "")
+            _set_default("WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE", "")
+            _set_default("WHATSAPP_BULK_MESSAGE_TEMPLATE", "")
             _set_default("REFERRAL_ENABLED", False)
             _set_default("REFERRAL_REWARD_TYPE", "days")
             _set_default("REFERRAL_REWARD_DAYS", 7)

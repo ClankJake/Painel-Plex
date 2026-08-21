@@ -29,6 +29,10 @@
                         <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
                         Webhook Genérico
                     </button>
+                    <button type="button" data-subtab="whatsapp" class="tab-button text-gray-500 dark:text-gray-400 flex items-center gap-2 whitespace-nowrap flex-shrink-0">
+                        <svg class="w-4 h-4 text-emerald-500" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+                        WhatsApp
+                    </button>
                 </nav>
             </div>
 
@@ -277,6 +281,97 @@
                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ _('Quantos dias antes do vencimento o utilizador deve começar a receber alertas (Ex: se colocar 3, ele será avisado a faltar 3 dias).') }}</p>
                 </div>
             </div>
+
+                <!-- ================= ABA WHATSAPP ================= -->
+                <div id="subtab-whatsapp" class="sub-tab-content hidden space-y-6 input-group animate-fade-in">
+
+                    <div class="flex items-center justify-between p-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/40">
+                        <div>
+                            <h4 class="font-bold text-gray-900 dark:text-white">{{ _('Ativar WhatsApp') }}</h4>
+                            <span class="text-xs text-gray-500 dark:text-gray-400">{{ _('Envia cobranças e lembretes via APIs não-oficiais (Evolution API, GOWA, WAHA e outras).') }}</span>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer flex-shrink-0 ml-4">
+                            <input id="WHATSAPP_ENABLED" type="checkbox" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                        </label>
+                    </div>
+
+                    <div class="rounded-xl p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40">
+                        <p class="text-xs text-amber-800 dark:text-amber-300">
+                            <strong>{{ _('Aviso:') }}</strong>
+                            {{ _('Estas APIs não são oficiais do WhatsApp. O uso pode levar ao bloqueio do número pela Meta, sobretudo com envios em massa. Use um número dedicado e evite disparos massivos em curtos intervalos.') }}
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="WHATSAPP_PROVIDER" class="block mb-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Provedor') }}</label>
+                            <select id="WHATSAPP_PROVIDER" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white">
+                                <option value="evolution">Evolution API</option>
+                                <option value="gowa">GOWA (go-whatsapp-web-multidevice)</option>
+                                <option value="waha">WAHA</option>
+                                <option value="custom">{{ _('Personalizado (payload JSON)') }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="WHATSAPP_DEFAULT_COUNTRY_CODE" class="block mb-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Código do país padrão') }}</label>
+                            <input type="text" id="WHATSAPP_DEFAULT_COUNTRY_CODE" placeholder="55" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Aplicado a números guardados sem o código do país (ex: 11988887777 vira 5511988887777).') }}</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="WHATSAPP_API_URL" class="block mb-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('URL da API') }}</label>
+                        <input type="url" id="WHATSAPP_API_URL" placeholder="http://localhost:8080" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white">
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="WHATSAPP_API_KEY" class="block mb-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Chave da API') }}</label>
+                            <input type="password" id="WHATSAPP_API_KEY" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white">
+                        </div>
+                        <div>
+                            <label for="WHATSAPP_INSTANCE" class="block mb-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Instância / Sessão') }}</label>
+                            <input type="text" id="WHATSAPP_INSTANCE" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Obrigatório na Evolution API; usado como "session" no WAHA.') }}</p>
+                        </div>
+                    </div>
+
+                    <div id="whatsapp-custom-payload-wrapper" class="hidden">
+                        <label for="WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE" class="block mb-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Payload JSON personalizado') }}</label>
+                        <textarea id="WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE" rows="4" class="block w-full p-3 text-sm font-mono rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900/80 dark:border-gray-600 dark:text-gray-300 resize-y" placeholder='{"phone": "{phone}", "message": "{message}"}'></textarea>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Variáveis disponíveis: {phone} e {message}.') }}</p>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center pt-2 border-t border-gray-200 dark:border-gray-700/50">
+                        <input type="text" id="whatsapp-test-phone" placeholder="{{ _('Número para teste (ex: 5511988887777)') }}" class="flex-1 min-w-0 p-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white">
+                        <button type="button" id="testWhatsapp" class="btn bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 text-sm font-semibold whitespace-nowrap flex-shrink-0">{{ _('Enviar Teste') }}</button>
+                    </div>
+
+                    <div class="space-y-4 pt-2">
+                        <h4 class="font-bold text-gray-900 dark:text-white text-sm">{{ _('Mensagens') }}</h4>
+                        <div>
+                            <label for="WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Aviso de Vencimento') }}</label>
+                            <textarea id="WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="WHATSAPP_RENEWAL_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Renovação Confirmada') }}</label>
+                            <textarea id="WHATSAPP_RENEWAL_MESSAGE_TEMPLATE" rows="3" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Conta Reativada') }}</label>
+                            <textarea id="WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE" rows="3" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Fim do Período de Teste') }}</label>
+                            <textarea id="WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE" rows="3" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="WHATSAPP_BULK_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Aviso em Massa') }}</label>
+                            <textarea id="WHATSAPP_BULK_MESSAGE_TEMPLATE" rows="3" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                    </div>
+                </div>
 
         </div>
     </div>
