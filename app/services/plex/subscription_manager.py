@@ -103,8 +103,17 @@ class PlexSubscriptionManager:
         # 2. Calcular as Datas de Renovação
         now = datetime.now(get_localzone())
         base_date = self._calculate_base_date(profile, base_mode, base_date_str, now)
-        new_expiration_date = self._calculate_new_expiration_date(base_date, months_to_add, expiration_time_str)
+
+        # 🗓️ Âncora do dia de faturação: define-se na PRIMEIRA renovação e nunca mais
+        # muda, salvo se o administrador escolher explicitamente uma data base nova.
+        # É isto que impede a "erosão" do dia ao passar por meses curtos.
+        billing_day = self._resolve_billing_day(profile, base_date, base_date_str)
+
+        new_expiration_date = self._calculate_new_expiration_date(
+            base_date, months_to_add, expiration_time_str, billing_day=billing_day
+        )
         profile['expiration_date'] = new_expiration_date.isoformat()
+        profile['billing_day'] = billing_day
 
         # 3. Limpar Testes (Trials) Anteriores e Reagendar Expiração
         self._clear_trial_data(profile, plex_user_id)
@@ -225,19 +234,102 @@ class PlexSubscriptionManager:
 
         return base_date
 
-    def _calculate_new_expiration_date(self, base_date, months_to_add, expiration_time_str):
-        """Adiciona os meses de forma precisa usando o calendário e aplica a hora de expiração."""
+    def _resolve_billing_day(self, profile, base_date, base_date_str):
+        """
+        Determina o "dia de aniversário" da assinatura — o dia do mês em que o
+        vencimento deve cair sempre que o calendário permitir.
+
+        Regras, por ordem de prioridade:
+
+        1. Se o administrador definiu explicitamente uma data base nova
+           ('base_date_str'), essa passa a ser a nova âncora. É uma escolha
+           deliberada e deve sobrepor-se ao histórico.
+        2. Se o utilizador já tem um 'billing_day' guardado, mantém-se. É este o
+           ponto que trava a erosão: mesmo que o vencimento atual tenha sido
+           truncado para 28 ao passar por fevereiro, a âncora original (ex: 31)
+           continua a ser respeitada nos meses que a comportam.
+        3. Caso contrário (primeira renovação, ou perfis antigos ainda sem valor),
+           adota-se o dia da data base atual.
+        """
+        if base_date_str:
+            return base_date.day
+
+        existing = profile.get('billing_day')
+        try:
+            if existing:
+                day = int(existing)
+                if 1 <= day <= 31:
+                    return day
+        except (ValueError, TypeError):
+            pass
+
+        return base_date.day
+
+    def _calculate_new_expiration_date(self, base_date, months_to_add, expiration_time_str, billing_day=None):
+        """
+        Adiciona os meses de forma precisa usando o calendário e aplica a hora de expiração.
+
+        🐛 CORREÇÃO DA "EROSÃO DE DATA":
+        O cálculo por si só já lidava bem com fevereiro e anos bissextos (31/jan + 1
+        mês = 28/02, ou 29/02 num ano bissexto). O problema estava em renovações
+        SUCESSIVAS: como a base da renovação seguinte passava a ser a data já
+        truncada, um vencimento a dia 31 tornava-se 28 ao passar por fevereiro e
+        ficava preso nesse dia PARA SEMPRE:
+
+            31/01 -> 28/02 -> 28/03 -> 28/04 -> ...   (dia 31 perdido)
+
+        Na prática, quem contratava nos dias 29, 30 ou 31 e renovava mensalmente
+        perdia cerca de 3 dias por ano, de forma acumulada.
+
+        Com o 'billing_day' (o dia originalmente contratado) como âncora, o dia é
+        restaurado sempre que o mês de destino o comporta:
+
+            31/01 -> 28/02 -> 31/03 -> 30/04 -> 31/05 -> ...   ✅
+
+        É o comportamento habitual de operadoras e serviços de subscrição.
+        """
         try:
             months_to_add = int(months_to_add)
         except (ValueError, TypeError):
             months_to_add = 0
-            
+
         # 1. Adicionar Meses Precisamente (Lida com anos bissextos e fins de mês)
         months_total = base_date.month - 1 + months_to_add
         new_year = base_date.year + months_total // 12
         new_month = months_total % 12 + 1
-        new_day = min(base_date.day, calendar.monthrange(new_year, new_month)[1])
+
+        # O dia desejado é o de "aniversário" da assinatura, quando existe;
+        # caso contrário mantém-se o comportamento anterior (dia da data base).
+        try:
+            desired_day = int(billing_day) if billing_day else base_date.day
+        except (ValueError, TypeError):
+            desired_day = base_date.day
+        desired_day = max(1, min(31, desired_day))
+
+        # min() com o último dia do mês continua a garantir datas sempre válidas
+        # (28/29 de fevereiro, 30 em abril/junho/setembro/novembro).
+        new_day = min(desired_day, calendar.monthrange(new_year, new_month)[1])
         new_expiration_date = base_date.replace(year=new_year, month=new_month, day=new_day)
+
+        # 🛡️ REDE DE SEGURANÇA: a âncora nunca pode ENCURTAR o período pago.
+        # Exemplo do risco: assinatura ancorada no dia 1, que venceu e é renovada
+        # hoje, dia 28. Ao aplicar a âncora obteríamos o dia 1 do mês seguinte —
+        # apenas 3 dias depois de hoje, em vez de um mês inteiro.
+        #
+        # A verificação NÃO pode ser apenas "a data é posterior à base": tem de
+        # garantir que o período entregue é pelo menos o que seria sem âncora.
+        # Comparamos com a data que o cálculo daria usando o dia da própria base
+        # e, se a âncora ficar aquém, ignoramo-la nesta renovação.
+        fallback_day = min(base_date.day, calendar.monthrange(new_year, new_month)[1])
+        fallback_date = base_date.replace(year=new_year, month=new_month, day=fallback_day)
+
+        if months_to_add > 0 and new_expiration_date < fallback_date:
+            logger.info(
+                f"Âncora de faturação (dia {desired_day}) ignorada nesta renovação: encurtaria o período pago "
+                f"({new_expiration_date.strftime('%d/%m/%Y')} em vez de {fallback_date.strftime('%d/%m/%Y')}). "
+                f"O dia do vencimento volta a ancorar-se naturalmente na renovação seguinte."
+            )
+            new_expiration_date = fallback_date
 
         # 2. Aplicar a Hora de Vencimento
         config = load_or_create_config()

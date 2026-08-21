@@ -102,6 +102,11 @@ class UserProfile(db.Model):
     discord_user_id = db.Column(db.String)
     phone_number = db.Column(db.String)
     expiration_date = db.Column(db.String)
+    # Dia do mês em que a assinatura "faz aniversário" (1-31), guardado tal como foi
+    # contratado originalmente. Serve de âncora para as renovações: sem ele, um
+    # vencimento a dia 31 era truncado para 28 ao passar por fevereiro e ficava
+    # preso nesse dia para sempre, fazendo o utilizador perder dias a cada ano.
+    billing_day = db.Column(db.Integer, nullable=True)
     last_notification_sent = db.Column(db.String)
     trial_end_date = db.Column(db.String)
     trial_job_id = db.Column(db.String)
