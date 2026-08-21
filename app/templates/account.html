@@ -250,7 +250,7 @@
                             <input type="text" id="profileDiscord" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: 123456789012345678') }}">
                         </div>
                         
-                        <div id="phone-field-container" class="{% if not config.WEBHOOK_ENABLED %}hidden{% endif %}">
+                        <div id="phone-field-container" class="{% if not (config.WEBHOOK_ENABLED or config.WHATSAPP_ENABLED) %}hidden{% endif %}">
                             <label for="profilePhone" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('Número de Telefone (WhatsApp)') }}</label>
                             <div class="flex">
                                 <select id="countryCode" class="p-2.5 text-sm rounded-l-lg border border-r-0 bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">

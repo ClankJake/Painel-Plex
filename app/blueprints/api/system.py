@@ -653,7 +653,10 @@ def bulk_notify():
         is_any_notifier_enabled = (
             config.get("TELEGRAM_ENABLED", False) or
             config.get("DISCORD_ENABLED", False) or
-            config.get("WEBHOOK_ENABLED", False)
+            config.get("WEBHOOK_ENABLED", False) or
+            # Sem isto, um servidor que use APENAS o WhatsApp tinha o envio em
+            # massa bloqueado com a mensagem "nenhum agente ativado".
+            config.get("WHATSAPP_ENABLED", False)
         )
         if not is_any_notifier_enabled:
             return jsonify({"success": False, "message": _("Nenhum agente de notificação (Telegram, Discord, etc.) está ativado nas configurações.")}), 400

@@ -172,7 +172,8 @@ def get_account_details():
         "notification_settings": {
             "telegram_enabled": config.get("TELEGRAM_ENABLED", False),
             "discord_enabled": config.get("DISCORD_ENABLED", False),
-            "webhook_enabled": config.get("WEBHOOK_ENABLED", False)
+            "webhook_enabled": config.get("WEBHOOK_ENABLED", False),
+            "whatsapp_enabled": config.get("WHATSAPP_ENABLED", False)
         },
         "profile_details": { 
             "name": profile.get("name"), 
@@ -299,7 +300,8 @@ def user_profile_route(plex_user_id):
             "notification_settings": {
                 "telegram_enabled": config.get("TELEGRAM_ENABLED", False), 
                 "discord_enabled": config.get("DISCORD_ENABLED", False), 
-                "webhook_enabled": config.get("WEBHOOK_ENABLED", False)
+                "webhook_enabled": config.get("WEBHOOK_ENABLED", False),
+                "whatsapp_enabled": config.get("WHATSAPP_ENABLED", False)
             },
             "universal_expiration_settings": {
                 "enabled": config.get("UNIVERSAL_EXPIRATION_ENABLED", False), 

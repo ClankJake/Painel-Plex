@@ -1,5 +1,6 @@
 # app/services/notifier_manager.py
 
+import base64
 import json
 import logging
 import uuid
@@ -216,10 +217,24 @@ class NotifierManager:
 
         elif provider == "gowa":
             # GOWA / go-whatsapp-web-multidevice: POST /send/message
+            #
+            # 🔑 AUTENTICAÇÃO: ao contrário da Evolution API (que usa uma chave no
+            # cabeçalho 'apikey'), o GOWA usa BASIC AUTH, configurado na instância
+            # através de APP_BASIC_AUTH=utilizador:senha (ou --basic-auth).
+            # Muitas instalações correm sem autenticação nenhuma — nesse caso, o
+            # campo da chave fica simplesmente vazio.
+            #
+            # Aceitamos os dois formatos no mesmo campo:
+            #   • "utilizador:senha" -> Basic Auth (o correto para o GOWA)
+            #   • qualquer outro     -> Bearer (proxies/forks que exijam token)
             url = f"{base_url}/send/message"
             headers = {"Content-Type": "application/json"}
             if api_key:
-                headers["Authorization"] = f"Basic {api_key}"
+                if ':' in api_key:
+                    encoded = base64.b64encode(api_key.encode('utf-8')).decode('ascii')
+                    headers["Authorization"] = f"Basic {encoded}"
+                else:
+                    headers["Authorization"] = f"Bearer {api_key}"
             payload = {"phone": f"{phone}@s.whatsapp.net", "message": message}
 
         elif provider == "waha":
@@ -389,9 +404,19 @@ class NotifierManager:
         
         telegram_chat_id = user_profile.get('telegram_id') or user_profile.get('telegram_user')
         can_notify_telegram = config.get("TELEGRAM_ENABLED") and telegram_chat_id
-        can_notify_webhook = config.get("WEBHOOK_ENABLED") and user_profile.get('phone_number')
         can_notify_discord = config.get("DISCORD_ENABLED") and user_profile.get('discord_user_id')
         can_notify_whatsapp = config.get("WHATSAPP_ENABLED") and user_profile.get('phone_number')
+
+        # 🐛 CORREÇÃO: o Webhook Genérico exigia que o utilizador tivesse um número de
+        # telefone. Isso fazia sentido quando ele servia sobretudo de ponte para o
+        # WhatsApp — mas o WhatsApp passou a ter canal próprio, e o webhook genérico
+        # é justamente o canal para QUALQUER integração (n8n, Slack, Home Assistant,
+        # sistemas internos...), muitas das quais não têm nada a ver com telefone.
+        #
+        # Continuar a exigir telefone significava que utilizadores sem número nunca
+        # disparavam o webhook, mesmo com o canal ativo e configurado. Agora basta
+        # o canal estar ativo; o template decide que dados usar.
+        can_notify_webhook = bool(config.get("WEBHOOK_ENABLED") and config.get("WEBHOOK_URL"))
         
         if not (can_notify_telegram or can_notify_webhook or can_notify_discord or can_notify_whatsapp): 
             return

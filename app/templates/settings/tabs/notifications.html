@@ -196,7 +196,7 @@
                     <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700/50 shadow-sm">
                         <div class="flex flex-col">
                             <span class="font-bold text-gray-900 dark:text-white">{{ _('Habilitar Webhook Genérico') }}</span>
-                            <span class="text-xs text-gray-500 dark:text-gray-400">{{ _('Dispara payloads JSON para integrações com WhatsApp (Evolution API), Slack, n8n, etc.') }}</span>
+                            <span class="text-xs text-gray-500 dark:text-gray-400">{{ _('Dispara payloads JSON para qualquer integração: n8n, Slack, Home Assistant, sistemas internos. Para WhatsApp, use a aba dedicada.') }}</span>
                         </div>
                         <label class="relative inline-flex items-center cursor-pointer">
                             <input id="WEBHOOK_ENABLED" type="checkbox" class="sr-only peer">
@@ -313,8 +313,11 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label for="WHATSAPP_API_KEY" class="block mb-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Chave da API') }}</label>
+                            <label for="WHATSAPP_API_KEY" class="block mb-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Chave da API / Credenciais') }}</label>
                             <input type="password" id="WHATSAPP_API_KEY" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                {{ _('Evolution API e WAHA: a chave da API. GOWA: usa Basic Auth — escreva no formato utilizador:senha (o mesmo do APP_BASIC_AUTH). Deixe vazio se o servidor não exigir autenticação.') }}
+                            </p>
                         </div>
                         <div>
                             <label for="WHATSAPP_INSTANCE" class="block mb-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Instância / Sessão') }}</label>
