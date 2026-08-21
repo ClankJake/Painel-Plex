@@ -219,7 +219,7 @@ class NotifierManager:
             url = f"{base_url}/send/message"
             headers = {"Content-Type": "application/json"}
             if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
+                headers["Authorization"] = f"Basic {api_key}"
             payload = {"phone": f"{phone}@s.whatsapp.net", "message": message}
 
         elif provider == "waha":
