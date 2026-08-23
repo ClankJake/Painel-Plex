@@ -392,10 +392,10 @@ function updatePixButtonForProration(quote, pixBtn, applyCouponBtn) {
         pixBtn.textContent = (state.i18n.upgradeButton || 'Pagar diferença de R$ {price}').replace('{price}', valor);
     }
     pixBtn.disabled = false;
-    if (applyCouponBtn) {
-        applyCouponBtn.disabled = true;
-        state.validatedCouponCode = null;
-    }
+    // O cupão CONTINUA disponível: aplica-se sobre o valor proporcional, não sobre
+    // o preço cheio. Desativá-lo confundia quem tentava usar um cupão de 100% para
+    // fazer upgrade — o pedido acabava a seguir o caminho da renovação normal.
+    if (applyCouponBtn) applyCouponBtn.disabled = false;
 }
 
 const setupPaymentSection = (prices, providers, canDowngrade) => {
@@ -542,7 +542,7 @@ const bindPaymentEvents = (providers) => {
 
         handlePixGenerationRequest({
             screens: plan.value,
-            coupon_code: usarProrata ? null : state.validatedCouponCode,
+            coupon_code: state.validatedCouponCode,
             proration: usarProrata
         }, providers);
     });

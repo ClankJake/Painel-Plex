@@ -388,8 +388,57 @@ def create_charge_route():
     # crédito de indicações NÃO se acumulam aqui: o valor já é reduzido, e somar
     # descontos permitiria fazer upgrade por quase nada.
     if is_proration_request and proration_quote:
+        # O preço base passa a ser o valor PROPORCIONAL. Se houver cupão válido,
+        # o desconto é aplicado sobre essa diferença (e não sobre o preço cheio do
+        # plano) — assim um cupão de 100% torna o upgrade gratuito, sem transformar
+        # o pedido numa renovação de mês inteiro.
         final_price = proration_quote['amount']
+        if price_calculation.get('coupon_applied'):
+            desconto_ratio = 0.0
+            original = price_calculation.get('original_price') or 0
+            if original > 0:
+                desconto_ratio = 1 - (price_calculation.get('discounted_price', 0) / original)
+            final_price = round(max(0.0, final_price * (1 - desconto_ratio)), 2)
+            logger.info(
+                f"Cupão '{coupon_code}' aplicado ao upgrade pro-rata de '{username}': "
+                f"R$ {proration_quote['amount']:.2f} -> R$ {final_price:.2f}"
+            )
+        # Crédito de indicações não se acumula aqui (o valor já é reduzido).
         referral_credit_to_use = 0.0
+
+    # 🔼 UPGRADE PRO-RATA COM VALOR ZERO (ex: cupão de 100%, ou diferença abaixo do
+    # mínimo). Este ramo TEM de vir antes do bloco de renovação gratuita: sem ele, um
+    # pedido de upgrade acabava tratado como renovação normal e o utilizador ganhava
+    # um mês inteiro em vez de apenas trocar de plano — que foi exatamente o que
+    # acontecia ao usar um cupão de 100% para subir de telas.
+    if is_proration_request and final_price <= 0:
+        try:
+            profile_up = extensions.data_manager.get_user_profile(plex_user_id)
+            anterior = profile_up.get('screen_limit')
+            profile_up['screen_limit'] = screens
+            extensions.data_manager.set_user_profile(plex_user_id, profile_up)
+
+            if coupon_code:
+                extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id)
+
+            logger.info(
+                f"Upgrade pro-rata sem custo para '{username}': {anterior} -> {screens} telas. "
+                f"Vencimento mantido em {profile_up.get('expiration_date')}."
+            )
+            extensions.data_manager.create_notification(
+                message=_("O seu plano foi atualizado para %(screens)d tela(s)!", screens=screens),
+                category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
+            )
+            if extensions.socketio:
+                extensions.socketio.emit('new_notification', namespace='/')
+
+            return jsonify({
+                "success": True, "free_upgrade": True,
+                "message": _("Plano atualizado para %(screens)d tela(s)! O seu vencimento não foi alterado.", screens=screens)
+            })
+        except Exception as e:
+            logger.error(f"Erro ao aplicar upgrade pro-rata sem custo: {e}", exc_info=True)
+            return jsonify({"success": False, "message": str(e)}), 500
 
     if final_price <= 0:
         try:
