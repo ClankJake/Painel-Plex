@@ -26,7 +26,10 @@ const state = {
     validatedCouponCode: null,
     historySearchTimeout: null,
     currentRequestFilter: 'all',
-    currentPage: 1
+    currentPage: 1,
+    // Plano atual do utilizador e cotação de upgrade pro-rata em curso.
+    currentScreens: 0,
+    prorationQuote: null
 };
 
 const dom = {};
@@ -186,6 +189,8 @@ const renderProfileBaseInfo = (data, expiration) => {
     document.getElementById('user-email').textContent = data.email;
     document.getElementById('user-join-date').textContent = data.join_date;
     document.getElementById('user-screen-limit').textContent = data.screen_limit;
+    // Guardado para detetar upgrades a meio do ciclo (pro-rata).
+    state.currentScreens = parseInt(data.screen_limit, 10) || 0;
     
     if (dom.privacyToggle) dom.privacyToggle.checked = data.hide_from_leaderboard;
     
@@ -310,6 +315,89 @@ const renderPaymentHistory = (payments) => {
 // LÓGICA DE PAGAMENTOS E PIX
 // ==========================================
 
+
+/**
+ * Mostra (ou limpa) a caixa que explica o upgrade proporcional.
+ * Passar 'null' remove a caixa — usado sempre que o utilizador troca de plano.
+ */
+function renderProrationBox(quote) {
+    const existing = document.getElementById('proration-box');
+    if (existing) existing.remove();
+    if (!quote) return;
+
+    const plansContainer = document.querySelector('input[name="payment-plan"]')?.closest('.space-y-3');
+    if (!plansContainer) return;
+
+    const box = document.createElement('div');
+    box.id = 'proration-box';
+    box.className = 'mt-4 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/40';
+
+    if (quote.is_free) {
+        box.innerHTML = `
+            <div class="flex items-start gap-3">
+                <span class="text-2xl leading-none">🎉</span>
+                <div>
+                    <p class="font-bold text-emerald-800 dark:text-emerald-300 text-sm">${escapeHTML(state.i18n.upgradeFreeTitle || 'Upgrade sem custo!')}</p>
+                    <p class="text-xs text-emerald-700/80 dark:text-emerald-400/80 mt-1">
+                        ${escapeHTML((state.i18n.upgradeFreeDesc || 'Faltam {days} dia(s) para o vencimento — o valor proporcional é tão baixo que o upgrade é gratuito.').replace('{days}', quote.days_remaining))}
+                    </p>
+                </div>
+            </div>`;
+    } else {
+        const valor = Number(quote.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        box.innerHTML = `
+            <div class="flex items-start gap-3">
+                <span class="text-2xl leading-none">🔼</span>
+                <div class="flex-1">
+                    <p class="font-bold text-emerald-800 dark:text-emerald-300 text-sm">${escapeHTML(state.i18n.upgradeNowTitle || 'Faça upgrade agora, pagando só a diferença')}</p>
+                    <p class="text-xs text-emerald-700/80 dark:text-emerald-400/80 mt-1">
+                        ${escapeHTML((state.i18n.upgradeNowDesc || 'Como faltam {days} dia(s) no seu plano atual, você paga apenas {price} e as telas ficam disponíveis imediatamente. O seu vencimento não muda.')
+                            .replace('{days}', quote.days_remaining).replace('{price}', valor))}
+                    </p>
+                    <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                        <input type="checkbox" id="proration-toggle" checked class="h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300 dark:border-gray-600">
+                        <span class="text-xs font-semibold text-emerald-800 dark:text-emerald-300">${escapeHTML(state.i18n.upgradeUseProration || 'Pagar apenas a diferença')}</span>
+                    </label>
+                </div>
+            </div>`;
+    }
+
+    plansContainer.insertAdjacentElement('afterend', box);
+
+    // Alternar entre pagar só a diferença ou um ciclo completo.
+    document.getElementById('proration-toggle')?.addEventListener('change', (e) => {
+        const pixBtn = document.getElementById('initiatePixButton');
+        const applyCouponBtn = document.getElementById('applyCouponBtn');
+        if (e.target.checked) {
+            updatePixButtonForProration(quote, pixBtn, applyCouponBtn);
+        } else {
+            const radio = document.querySelector('input[name="payment-plan"]:checked');
+            const price = parseFloat(radio.dataset.price).toFixed(2).replace('.', ',');
+            pixBtn.textContent = state.i18n.generatePixForPrice.replace('{price}', price);
+            if (applyCouponBtn) applyCouponBtn.disabled = false;
+        }
+    });
+}
+
+/**
+ * Ajusta o botão de pagamento para refletir o valor proporcional e desativa o
+ * cupão — descontos não acumulam com o pro-rata (o valor já é reduzido).
+ */
+function updatePixButtonForProration(quote, pixBtn, applyCouponBtn) {
+    if (!pixBtn) return;
+    if (quote.is_free) {
+        pixBtn.textContent = state.i18n.upgradeFreeButton || 'Ativar Upgrade Gratuito';
+    } else {
+        const valor = Number(quote.amount).toFixed(2).replace('.', ',');
+        pixBtn.textContent = (state.i18n.upgradeButton || 'Pagar diferença de R$ {price}').replace('{price}', valor);
+    }
+    pixBtn.disabled = false;
+    if (applyCouponBtn) {
+        applyCouponBtn.disabled = true;
+        state.validatedCouponCode = null;
+    }
+}
+
 const setupPaymentSection = (prices, providers, canDowngrade) => {
     const paymentCard = document.getElementById('payment-card');
     if (!dom.paymentSection || !paymentCard) return;
@@ -372,16 +460,37 @@ const bindPaymentEvents = (providers) => {
 
     // Mudança de plano selecionado
     document.querySelectorAll('input[name="payment-plan"]').forEach(radio => {
-        radio.addEventListener('change', () => {
+        radio.addEventListener('change', async () => {
             const price = parseFloat(radio.dataset.price).toFixed(2).replace('.', ',');
             pixBtn.textContent = state.i18n.generatePixForPrice.replace('{price}', price);
             pixBtn.disabled = false;
             applyCouponBtn.disabled = false;
-            
+
             // Reset Cupão
             statusDiv.innerHTML = '';
             couponInput.value = '';
             state.validatedCouponCode = null;
+            state.prorationQuote = null;
+            renderProrationBox(null);
+
+            // 🔼 UPGRADE PRO-RATA: se o utilizador escolheu MAIS telas do que tem
+            // hoje e a subscrição ainda está a meio do ciclo, oferecemos pagar só a
+            // diferença proporcional em vez de um ciclo completo.
+            const selected = parseInt(radio.value, 10);
+            if (!state.urls.upgradeQuoteUrl || !selected || selected <= state.currentScreens) return;
+
+            try {
+                const quote = await fetchAPI(state.urls.upgradeQuoteUrl, 'POST', { screens: selected });
+                if (quote && quote.eligible) {
+                    state.prorationQuote = quote;
+                    renderProrationBox(quote);
+                    updatePixButtonForProration(quote, pixBtn, applyCouponBtn);
+                }
+            } catch (error) {
+                // O upgrade proporcional é um extra: se a consulta falhar, o
+                // utilizador continua a poder renovar normalmente pelo preço cheio.
+                console.warn('Não foi possível obter a cotação de upgrade:', error);
+            }
         });
     });
 
@@ -424,7 +533,18 @@ const bindPaymentEvents = (providers) => {
     // Iniciar Pagamento
     pixBtn?.addEventListener('click', () => {
         const plan = document.querySelector('input[name="payment-plan"]:checked');
-        if (plan) handlePixGenerationRequest({ screens: plan.value, coupon_code: state.validatedCouponCode }, providers);
+        if (!plan) return;
+
+        // Só envia 'proration' se houver cotação válida E o utilizador não tiver
+        // desmarcado a opção de pagar apenas a diferença.
+        const usarProrata = !!state.prorationQuote &&
+            (document.getElementById('proration-toggle')?.checked !== false);
+
+        handlePixGenerationRequest({
+            screens: plan.value,
+            coupon_code: usarProrata ? null : state.validatedCouponCode,
+            proration: usarProrata
+        }, providers);
     });
 };
 
@@ -475,7 +595,8 @@ const executePixGeneration = async (payload) => {
         const result = await fetchAPI(state.urls.createChargeUrl, 'POST', payload);
         
         if (result && result.success) {
-            if (result.free_renewal) {
+            if (result.free_renewal || result.free_upgrade) {
+                // Upgrade abaixo do mínimo cobrável: aplicado de imediato, sem PIX.
                 showToast(result.message, 'success');
                 setTimeout(() => window.location.reload(), 2500);
             } else {
