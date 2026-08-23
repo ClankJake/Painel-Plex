@@ -130,6 +130,10 @@ def load_or_create_config():
             "WHATSAPP_INSTANCE": "",
             "WHATSAPP_DEFAULT_COUNTRY_CODE": "55",
             "WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE": "",
+            "PRORATION_ENABLED": False,
+            "PRORATION_MIN_CHARGE": 2.0,
+            "PRORATION_MIN_DAYS": 3,
+            "PRORATION_FREE_BELOW_MINIMUM": True,
             "REFERRAL_ENABLED": False,
             "REFERRAL_REWARD_TYPE": "days",
             "REFERRAL_REWARD_DAYS": 7,
@@ -258,6 +262,10 @@ def load_or_create_config():
             _set_default("WHATSAPP_INSTANCE", "")
             _set_default("WHATSAPP_DEFAULT_COUNTRY_CODE", "55")
             _set_default("WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE", "")
+            _set_default("PRORATION_ENABLED", False)
+            _set_default("PRORATION_MIN_CHARGE", 2.0)
+            _set_default("PRORATION_MIN_DAYS", 3)
+            _set_default("PRORATION_FREE_BELOW_MINIMUM", True)
             _set_default("REFERRAL_ENABLED", False)
             _set_default("REFERRAL_REWARD_TYPE", "days")
             _set_default("REFERRAL_REWARD_DAYS", 7)

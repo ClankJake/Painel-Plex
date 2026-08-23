@@ -478,6 +478,15 @@ class DataManager:
         payment.referral_credit_used = float(amount or 0)
         return True
 
+    @db_transaction
+    def mark_payment_as_proration(self, txid):
+        """Marca uma cobrança como upgrade pro-rata (não estende o vencimento)."""
+        payment = PixPayment.query.get(txid)
+        if not payment:
+            return False
+        payment.is_proration = True
+        return True
+
     def get_pix_payment(self, txid):
         return self._row_to_dict(PixPayment.query.get(txid))
 

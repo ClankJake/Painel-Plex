@@ -76,6 +76,39 @@ def _run_payment_processing_in_thread(app, txid):
                 if not user_info_for_renewal and is_reactivation:
                     user_info_for_renewal = { 'id': plex_user_id, 'username': profile.get('username'), 'email': profile.get('email') }
 
+                # 🔼 UPGRADE PRO-RATA: esta cobrança é apenas a DIFERENÇA de preço
+                # pelos dias que faltavam. NÃO é uma renovação — o vencimento tem de
+                # ficar exatamente onde estava. Se caísse no fluxo normal abaixo, o
+                # utilizador ganharia um mês inteiro por uma fração do preço.
+                if payment.get('is_proration'):
+                    novo_limite = payment.get('screens')
+                    profile_upgrade = extensions.data_manager.get_user_profile(plex_user_id)
+                    if profile_upgrade and novo_limite is not None:
+                        limite_anterior = profile_upgrade.get('screen_limit')
+                        profile_upgrade['screen_limit'] = int(novo_limite)
+                        extensions.data_manager.set_user_profile(plex_user_id, profile_upgrade)
+                        logger.info(
+                            f"Upgrade pro-rata concluído para '{profile_upgrade.get('username')}': "
+                            f"{limite_anterior} -> {novo_limite} telas. Vencimento inalterado "
+                            f"({profile_upgrade.get('expiration_date')})."
+                        )
+                        extensions.data_manager.create_notification(
+                            message=_("O seu plano foi atualizado para %(screens)d tela(s)!", screens=int(novo_limite)),
+                            category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
+                        )
+                        extensions.data_manager.create_notification(
+                            message=_("%(username)s fez upgrade para %(screens)d tela(s). Pagamento de %(value)s confirmado.",
+                                      username=profile_upgrade.get('username'), screens=int(novo_limite),
+                                      value=f"R$ {payment['value']:.2f}"),
+                            category='success', link=url_for('main.users_page')
+                        )
+                        if extensions.socketio:
+                            extensions.socketio.emit('new_notification', namespace='/')
+
+                    extensions.data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
+                    logger.info(f"Processamento do upgrade pro-rata para TXID {mask_token(txid)} concluído.")
+                    return
+
                 if user_info_for_renewal:
                     config = load_or_create_config()
                     expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
@@ -252,6 +285,24 @@ def validate_coupon_route():
         screens=data.get('screens'), coupon_code=data.get('code'), plex_user_id=plex_user_id
     ))
 
+@payments_api_bp.route('/upgrade-quote', methods=['POST'])
+@login_required
+def get_upgrade_quote():
+    """
+    Devolve quanto custaria fazer upgrade de plano agora (pro-rata), sem criar
+    qualquer cobrança. Serve para a interface mostrar o valor antes de o
+    utilizador confirmar.
+    """
+    data = request.json or {}
+    try:
+        new_screens = int(data.get('screens'))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": _("Número de telas inválido.")}), 400
+
+    quote = extensions.pricing_manager.calculate_upgrade_proration(int(current_user.id), new_screens)
+    return jsonify({"success": True, **quote})
+
+
 @payments_api_bp.route('/create-charge', methods=['POST'])
 @limiter.limit("3 per minute")
 def create_charge_route():
@@ -299,6 +350,29 @@ def create_charge_route():
         "name": profile.get('name', username), "email": user_email
     }
 
+    # 🔼 UPGRADE PRO-RATA: se o pedido vier marcado como upgrade e o utilizador for
+    # elegível, cobramos apenas a DIFERENÇA proporcional aos dias restantes, em vez
+    # do preço cheio de um novo ciclo.
+    is_proration_request = bool(data.get('proration'))
+    proration_quote = None
+    if is_proration_request:
+        proration_quote = extensions.pricing_manager.calculate_upgrade_proration(plex_user_id, screens)
+        if not proration_quote.get('eligible'):
+            return jsonify({"success": False, "message": proration_quote.get('reason') or _("Upgrade não disponível.")}), 400
+
+        # Valor abaixo do mínimo cobrável: aplica-se de imediato, sem gerar cobrança
+        # (cobrar cêntimos custaria mais em taxas do que o próprio valor).
+        if proration_quote.get('is_free'):
+            profile_free = extensions.data_manager.get_user_profile(plex_user_id)
+            anterior = profile_free.get('screen_limit')
+            profile_free['screen_limit'] = screens
+            extensions.data_manager.set_user_profile(plex_user_id, profile_free)
+            logger.info(f"Upgrade gratuito (abaixo do mínimo) para '{username}': {anterior} -> {screens} telas.")
+            return jsonify({
+                "success": True, "free_upgrade": True,
+                "message": _("Plano atualizado para %(screens)d tela(s)!", screens=screens)
+            })
+
     price_calculation = extensions.pricing_manager.calculate_price(
         screens_str, coupon_code, plex_user_id, apply_referral_credit=True
     )
@@ -309,6 +383,13 @@ def create_charge_route():
     # Crédito que ESTA cobrança pretende usar. Ainda não foi debitado: fica apenas
     # registado no pagamento e só sai do saldo quando o pagamento for confirmado.
     referral_credit_to_use = float(price_calculation.get("referral_credit_applied") or 0)
+
+    # No upgrade pro-rata o preço é o valor proporcional, não o do plano. Cupões e
+    # crédito de indicações NÃO se acumulam aqui: o valor já é reduzido, e somar
+    # descontos permitiria fazer upgrade por quase nada.
+    if is_proration_request and proration_quote:
+        final_price = proration_quote['amount']
+        referral_credit_to_use = 0.0
 
     if final_price <= 0:
         try:
@@ -417,6 +498,14 @@ def create_charge_route():
     # consumir. Fica apenas RESERVADO: o débito real acontece no webhook, quando o
     # pagamento é confirmado. Se o utilizador nunca pagar, o crédito continua
     # intacto no saldo dele.
+    # Marca a cobrança como pro-rata para que o webhook aplique só a troca de
+    # plano, sem estender o vencimento.
+    if is_proration_request and result.get("success") and result.get("txid"):
+        try:
+            extensions.data_manager.mark_payment_as_proration(result["txid"])
+        except Exception as e:
+            logger.error(f"Falha ao marcar a cobrança {result.get('txid')} como pro-rata: {e}", exc_info=True)
+
     if referral_credit_to_use > 0 and result.get("success") and result.get("txid"):
         try:
             extensions.data_manager.set_payment_referral_credit(result["txid"], referral_credit_to_use)

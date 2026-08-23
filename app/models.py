@@ -154,6 +154,11 @@ class PixPayment(db.Model):
     # o pagamento ser confirmado — só nessa altura é debitado do saldo do utilizador.
     # Assim, um PIX gerado e abandonado nunca consome o crédito de ninguém.
     referral_credit_used = db.Column(db.Float, default=0.0, nullable=False)
+    # Marca uma cobrança como UPGRADE PRO-RATA (troca de plano a meio do ciclo).
+    # É essencial distinguir: numa renovação normal o vencimento é estendido, mas
+    # num upgrade pro-rata o utilizador paga só a diferença e o vencimento fica
+    # EXATAMENTE onde estava — sem esta marca, o webhook daria um mês grátis.
+    is_proration = db.Column(db.Boolean, default=False, nullable=False)
 
 class Notification(db.Model):
     __tablename__ = 'notifications'

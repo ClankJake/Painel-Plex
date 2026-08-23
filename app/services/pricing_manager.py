@@ -1,6 +1,7 @@
 # app/services/pricing_manager.py
 
 import logging
+import math
 from datetime import datetime, timezone
 from flask_babel import gettext as _
 
@@ -113,6 +114,115 @@ class PricingManager:
             return self._get_private_plans(current_screens, screen_prices, renewal_price, user_profile, config)
 
     # --- MÉTODOS AUXILIARES (SRP) ---
+
+    def calculate_upgrade_proration(self, plex_user_id, new_screens):
+        """
+        Calcula quanto custa fazer um UPGRADE de plano a meio do ciclo (pro-rata):
+        o utilizador paga apenas a DIFERENÇA de preço pelos dias que ainda faltam,
+        e o vencimento NÃO se altera.
+
+        Exemplo: tem 1 ecrã (R$20), quer 3 (R$30), faltam 12 dias:
+            (30 - 20) / 30 * 12 = R$ 4,00
+
+        Devolve sempre um dicionário com 'eligible' a indicar se a operação é
+        possível — nunca lança exceção, para que o fluxo normal de renovação
+        continue a funcionar mesmo que algo aqui falhe.
+        """
+        config = load_or_create_config()
+        result = {
+            "eligible": False,
+            "reason": None,
+            "current_screens": 0,
+            "new_screens": new_screens,
+            "days_remaining": 0,
+            "amount": 0.0,
+            "is_free": False,
+        }
+
+        if not config.get("PRORATION_ENABLED", False):
+            result["reason"] = _("O upgrade proporcional está desativado.")
+            return result
+
+        try:
+            profile = self.data_manager.get_user_profile(plex_user_id)
+        except Exception:
+            profile = None
+
+        if not profile:
+            result["reason"] = _("Perfil não encontrado.")
+            return result
+
+        current_screens = int(profile.get('screen_limit') or 0)
+        result["current_screens"] = current_screens
+
+        # 🛡️ Só UPGRADE. Downgrade a meio do ciclo continua bloqueado: devolver
+        # dinheiro ou crédito por telas já disponíveis seria um vetor de abuso
+        # (subir o plano, usar, descer e pedir de volta).
+        if int(new_screens) <= current_screens:
+            result["reason"] = _("O upgrade proporcional aplica-se apenas ao aumentar o número de telas.")
+            return result
+
+        # Subscrição tem de estar ativa e com dias por usar.
+        expiration_str = profile.get('expiration_date')
+        if not expiration_str:
+            result["reason"] = _("Sem data de vencimento definida.")
+            return result
+
+        try:
+            expiration = datetime.fromisoformat(expiration_str)
+            if expiration.tzinfo is None:
+                expiration = expiration.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            result["reason"] = _("Data de vencimento inválida.")
+            return result
+
+        # 🐛 Usar '.days' diretamente trunca a fração: uma subscrição que vence
+        # daqui a 1 dia e 20 horas dá '.days == 1', mas uma que vence daqui a 20
+        # horas dá '.days == 0' e seria tratada como JÁ EXPIRADA. Arredondamos
+        # para cima, para que qualquer tempo restante conte como pelo menos 1 dia.
+        delta = expiration - datetime.now(timezone.utc)
+        total_seconds = delta.total_seconds()
+        days_remaining = math.ceil(total_seconds / 86400) if total_seconds > 0 else 0
+        result["days_remaining"] = days_remaining
+
+        if days_remaining <= 0:
+            # Já venceu: não há nada a "aproveitar", o utilizador deve renovar
+            # normalmente escolhendo o plano novo.
+            result["reason"] = _("A subscrição já expirou. Faça uma renovação normal com o novo plano.")
+            return result
+
+        # Se falta pouco tempo, não vale a pena cobrar uma fração: o utilizador
+        # está prestes a renovar já com o plano novo.
+        min_days = int(config.get("PRORATION_MIN_DAYS", 3) or 0)
+        if days_remaining < min_days:
+            result["reason"] = _("Faltam poucos dias para o vencimento. Escolha o novo plano na renovação.")
+            return result
+
+        current_price = self._get_base_price(str(current_screens))
+        new_price = self._get_base_price(str(new_screens))
+        if current_price is None or new_price is None:
+            result["reason"] = _("Preço não encontrado para um dos planos.")
+            return result
+
+        # Base de 30 dias: simples, previsível e fácil de explicar ao utilizador.
+        # Usar os dias reais de cada mês mudaria o valor em cêntimos e tornaria a
+        # conta difícil de justificar no suporte.
+        daily_difference = (new_price - current_price) / 30
+        amount = round(daily_difference * days_remaining, 2)
+
+        # Abaixo de um mínimo, cobrar não compensa (taxas de PIX/gateway podem
+        # ultrapassar o próprio valor). O administrador decide se nesses casos o
+        # upgrade é oferecido gratuitamente ou simplesmente recusado.
+        min_charge = float(config.get("PRORATION_MIN_CHARGE", 5.0) or 0)
+        if amount < min_charge:
+            if config.get("PRORATION_FREE_BELOW_MINIMUM", True):
+                result.update({"eligible": True, "amount": 0.0, "is_free": True})
+                return result
+            result["reason"] = _("O valor proporcional é inferior ao mínimo cobrável.")
+            return result
+
+        result.update({"eligible": True, "amount": amount})
+        return result
 
     def _get_base_price(self, screens):
         """Obtém o preço base de um plano a partir da configuração."""
