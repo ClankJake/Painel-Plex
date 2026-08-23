@@ -29,7 +29,8 @@ const state = {
     currentPage: 1,
     // Plano atual do utilizador e cotação de upgrade pro-rata em curso.
     currentScreens: 0,
-    prorationQuote: null
+    prorationQuote: null,
+    requiresProrationForUpgrade: false
 };
 
 const dom = {};
@@ -354,10 +355,19 @@ function renderProrationBox(quote) {
                         ${escapeHTML((state.i18n.upgradeNowDesc || 'Como faltam {days} dia(s) no seu plano atual, você paga apenas {price} e as telas ficam disponíveis imediatamente. O seu vencimento não muda.')
                             .replace('{days}', quote.days_remaining).replace('{price}', valor))}
                     </p>
-                    <label class="flex items-center gap-2 mt-3 cursor-pointer">
-                        <input type="checkbox" id="proration-toggle" checked class="h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300 dark:border-gray-600">
-                        <span class="text-xs font-semibold text-emerald-800 dark:text-emerald-300">${escapeHTML(state.i18n.upgradeUseProration || 'Pagar apenas a diferença')}</span>
-                    </label>
+                    ${state.requiresProrationForUpgrade ? `
+                        <!-- Pro-rata obrigatório: o checkbox fica fixo (a renovação a preço
+                             cheio com mais telas só é permitida perto do vencimento). -->
+                        <input type="checkbox" id="proration-toggle" checked class="hidden">
+                        <p class="text-xs text-emerald-700/70 dark:text-emerald-400/70 mt-3 italic">
+                            ${escapeHTML(state.i18n.upgradeOnlyProration || 'A troca de plano numa renovação completa fica disponível perto do vencimento.')}
+                        </p>
+                    ` : `
+                        <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                            <input type="checkbox" id="proration-toggle" checked class="h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300 dark:border-gray-600">
+                            <span class="text-xs font-semibold text-emerald-800 dark:text-emerald-300">${escapeHTML(state.i18n.upgradeUseProration || 'Pagar apenas a diferença')}</span>
+                        </label>
+                    `}
                 </div>
             </div>`;
     }
@@ -876,6 +886,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadReferralCard();
         
         if(paymentOptions.success) {
+            state.requiresProrationForUpgrade = !!paymentOptions.requires_proration_for_upgrade;
             setupPaymentSection(paymentOptions.prices, paymentOptions.providers, paymentOptions.can_downgrade);
         }
 

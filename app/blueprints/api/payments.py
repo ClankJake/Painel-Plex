@@ -254,7 +254,13 @@ def get_payment_options():
         "mercadopago": config.get("MERCADOPAGO_ENABLED"),
         "bpix": config.get("BPIX_ENABLED")
     }
-    return jsonify({"success": True, "prices": available_prices, "providers": enabled_providers, "can_downgrade": True})
+    return jsonify({
+        "success": True, "prices": available_prices, "providers": enabled_providers,
+        "can_downgrade": True,
+        # Indica que subir de plano agora exige o pro-rata (renovação a preço
+        # cheio com mais telas está bloqueada até perto do vencimento).
+        "requires_proration_for_upgrade": extensions.pricing_manager.requires_proration_for_upgrade(user_profile)
+    })
 
 @payments_api_bp.route('/validate-coupon', methods=['POST'])
 @limiter.limit("5 per minute")
@@ -372,6 +378,18 @@ def create_charge_route():
                 "success": True, "free_upgrade": True,
                 "message": _("Plano atualizado para %(screens)d tela(s)!", screens=screens)
             })
+
+    # 🔒 Bloqueio do upgrade a preço cheio a meio do ciclo: sem isto, renovar
+    # normalmente com mais telas dava ao utilizador os dias restantes já com o plano
+    # superior sem pagar a diferença — tornando o pro-rata sempre desvantajoso e,
+    # na prática, inútil.
+    if not is_proration_request and screens > int(profile.get('screen_limit') or 0):
+        if extensions.pricing_manager.requires_proration_for_upgrade(profile):
+            return jsonify({
+                "success": False,
+                "requires_proration": True,
+                "message": _("Para aumentar o número de telas agora, use a opção de pagar apenas a diferença. A troca de plano numa renovação completa fica disponível perto do vencimento.")
+            }), 400
 
     price_calculation = extensions.pricing_manager.calculate_price(
         screens_str, coupon_code, plex_user_id, apply_referral_credit=True

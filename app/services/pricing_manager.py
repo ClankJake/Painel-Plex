@@ -115,6 +115,38 @@ class PricingManager:
 
     # --- MÉTODOS AUXILIARES (SRP) ---
 
+    def requires_proration_for_upgrade(self, user_profile):
+        """
+        Indica se, para este utilizador, subir de plano AGORA exige usar o
+        pro-rata (em vez de uma renovação a preço cheio).
+
+        Retorna False quando o pro-rata está desativado ou quando o utilizador já
+        está na janela de renovação — nesses casos a renovação normal é permitida
+        e o upgrade acontece junto com ela, como sempre funcionou.
+
+        É um método puro (sem estado partilhado entre pedidos), por isso é seguro
+        chamá-lo a partir de vários pedidos em simultâneo.
+        """
+        config = load_or_create_config()
+        if not config.get("PRORATION_ENABLED", False):
+            return False
+
+        expiration_str = user_profile.get('expiration_date')
+        if not expiration_str:
+            return False
+
+        try:
+            expiration = datetime.fromisoformat(expiration_str)
+            if expiration.tzinfo is None:
+                expiration = expiration.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            return False
+
+        days_left = (expiration - datetime.now(timezone.utc)).days
+        renewal_window = int(config.get("DAYS_TO_NOTIFY_EXPIRATION", 7))
+        # Dentro da janela de renovação, a renovação normal já é o caminho natural.
+        return days_left > renewal_window
+
     def calculate_upgrade_proration(self, plex_user_id, new_screens):
         """
         Calcula quanto custa fazer um UPGRADE de plano a meio do ciclo (pro-rata):
@@ -333,15 +365,32 @@ class PricingManager:
         renewal_window_days = int(config.get("DAYS_TO_NOTIFY_EXPIRATION", 7))
         can_downgrade = days_left <= renewal_window_days
         
+        # 🔒 UPGRADE A MEIO DO CICLO: quando o pro-rata está ativo, um upgrade pago
+        # a preço cheio é SEMPRE mais vantajoso para o utilizador do que pagar a
+        # diferença — ele recebe os dias que restam do ciclo atual já com o plano
+        # superior, sem pagar por eles (ex: 25 dias restantes = R$8,33 não cobrados).
+        # Na prática isso tornaria o pro-rata inútil, porque ninguém o escolheria.
+        #
+        # Por isso, com o pro-rata ativo, o upgrade por renovação normal só fica
+        # disponível perto do vencimento — o mesmo tratamento que já se dá ao
+        # downgrade. Quem quiser subir de plano antes disso usa o pro-rata.
+        proration_on = bool(config.get("PRORATION_ENABLED", False))
+        block_full_price_upgrade = proration_on and not can_downgrade
+
         available_prices = {}
         for screens, price in valid_screen_prices.items():
-            # Só permite downgrade (ex: passar de 2 para 1 tela) se estiver perto de expirar.
-            # Caso contrário, só permite upgrades.
-            if can_downgrade or int(screens) >= current_screens:
-                available_prices[screens] = price
+            n = int(screens)
+            # Downgrade: só perto de expirar.
+            if n < current_screens and not can_downgrade:
+                continue
+            # NOTA: os planos superiores CONTINUAM na lista mesmo quando o upgrade a
+            # preço cheio está bloqueado — senão o utilizador não teria como sequer
+            # chegar ao pro-rata. O bloqueio efetivo é feito no momento de gerar a
+            # cobrança (ver 'proration_required' abaixo e a validação em payments.py).
+            available_prices[screens] = price
         
         # Fallback: Adiciona o preço padrão se não houver opções multipantalla ativadas
         if not available_prices and renewal_price and float(renewal_price) > 0:
             available_prices["0"] = renewal_price
-            
+
         return available_prices
