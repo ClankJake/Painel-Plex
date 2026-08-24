@@ -26,7 +26,22 @@ class EfiManager:
     def reload_credentials(self) -> None:
         """Recarrega as configurações e reinicializa o cliente da API Efí."""
         self.config = load_or_create_config()
-        
+
+        # 🐛 Mesma correção aplicada à BPIX: verificar PRIMEIRO se a integração está
+        # ativada. Sem isto, uma instalação com a Efí desativada mas com credenciais
+        # antigas guardadas continuava a inicializar o cliente e a escrever no log
+        # "credenciais carregadas com sucesso" — sugerindo que o gateway estava a
+        # funcionar quando na verdade não está em uso. Também evita o custo de
+        # instanciar o cliente e de validar o certificado sem necessidade.
+        is_enabled = self.config.get("EFI_ENABLED", False)
+        if isinstance(is_enabled, str):
+            is_enabled = is_enabled.lower() in ['true', '1', 't', 'y', 'yes']
+
+        if not is_enabled:
+            self.efi = None
+            logger.debug("Efí está desativada nas configurações. Inicialização ignorada.")
+            return
+
         client_id = self.config.get('EFI_CLIENT_ID')
         client_secret = self.config.get('EFI_CLIENT_SECRET')
         certificate = self.config.get('EFI_CERTIFICATE')

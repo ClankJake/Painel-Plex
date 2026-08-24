@@ -26,11 +26,30 @@ class BpixManager:
     def reload_credentials(self):
         """Recarrega a configuração e reinicia a instância da API."""
         self.config = load_or_create_config()
+
+        # 1. Verifica PRIMEIRO se a integração está ativada.
+        #
+        # 🐛 CORREÇÃO: antes o método olhava apenas para a existência do token, pelo
+        # que uma instalação com a BPIX DESATIVADA — mas com um token guardado de
+        # uma configuração anterior — continuava a registar "Credenciais da BPIX
+        # recarregadas com sucesso" a cada arranque e a cada gravação de definições.
+        # Isso dava a impressão de que o gateway estava ativo quando não estava, e
+        # poluía os logs com ruído sobre um serviço que não está em uso.
+        is_enabled = self.config.get("BPIX_ENABLED", False)
+        if isinstance(is_enabled, str):
+            is_enabled = is_enabled.lower() in ['true', '1', 't', 'y', 'yes']
+
+        if not is_enabled:
+            self.auth_token = None
+            logger.debug("BPIX está desativado nas configurações. Inicialização ignorada.")
+            return
+
+        # 2. Só depois de confirmar que está ativo é que validamos as credenciais.
         self.auth_token = self.config.get('BPIX_AUTH_TOKEN')
         if self.auth_token:
             logger.info("Credenciais da BPIX recarregadas com sucesso.")
         else:
-            logger.warning("Credenciais da BPIX não estão completamente configuradas.")
+            logger.warning("BPIX está ativado, mas o Token de Autorização não está configurado.")
 
     def check_status(self):
         """Verifica se o serviço da BPIX está configurado e ativo."""
