@@ -787,12 +787,42 @@ def _handle_mercadopago_reversal(payment_id, status):
 @payments_api_bp.route('/webhook/bpix', methods=['POST'])
 @limiter.exempt
 def gates2b_webhook():
-    data = request.json
+    data = request.json or {}
     try:
-        txid = data.get("transaction_pix_id")
-        if txid and ((data.get("status") == "Pagamento realizado") or (data.get("international_status") == "PAYMENT_RECEIVED")):
-            logger.info(f"Pagamento {mask_token(txid)} confirmado via Webhook Gates2b. A iniciar renovação.")
+        # 🔀 Aceita o formato NOVO (/charge) e o ANTIGO (/payments), porque durante
+        # a transição podem existir cobranças criadas pelos dois endpoints ainda
+        # por pagar. Procuramos o identificador em todos os campos conhecidos.
+        txid = (
+            data.get("id")                      # /charge: 'chg_...'
+            or data.get("chargeId")
+            or data.get("charge_id")
+            or data.get("transaction_pix_id")   # /payments (formato antigo)
+        )
+
+        # Alguns webhooks encapsulam a cobrança num objeto 'charge'/'data'.
+        if not txid:
+            interno = data.get("charge") or data.get("data") or {}
+            if isinstance(interno, dict):
+                txid = interno.get("id") or interno.get("transaction_pix_id")
+
+        estado = str(
+            data.get("status")
+            or data.get("international_status")
+            or ((data.get("charge") or data.get("data") or {}).get("status") if isinstance(data.get("charge") or data.get("data"), dict) else "")
+            or ""
+        ).strip().upper()
+
+        # Estados que significam 'pago', nos dois formatos.
+        PAGO = {"PAID", "PAYMENT_RECEIVED", "APPROVED", "COMPLETED", "PAGAMENTO REALIZADO"}
+
+        if txid and estado in PAGO:
+            logger.info(f"Pagamento {mask_token(txid)} confirmado via Webhook Gates2b (estado: {estado}). A iniciar renovação.")
             _process_successful_payment(txid)
+        elif txid:
+            logger.debug(f"Webhook Gates2b recebido para {mask_token(txid)} com estado '{estado}'. Nenhuma ação necessária.")
+        else:
+            # Sem identificador não há nada a fazer — registamos para diagnóstico.
+            logger.warning(f"Webhook Gates2b sem identificador reconhecível. Campos recebidos: {list(data.keys())}")
     except Exception as e:
         logger.error(f"Erro no Webhook Gates2b: {e}", exc_info=True)
         return jsonify(status="error", message="Server Error"), 500

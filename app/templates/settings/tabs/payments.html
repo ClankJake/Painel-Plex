@@ -273,6 +273,10 @@
                         <input type="text" id="GATES2B_MIN_AMOUNT" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="3.00">
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('A Gates2b recusa cobranças abaixo do mínimo da sua conta (padrão: R$ 3,00). Validado antes de contactar o gateway, para dar uma mensagem clara ao utilizador.') }}</p>
                     </div>
+                    <div class="mt-4 flex items-center gap-3">
+                        <button id="testGates2b" type="button" class="btn bg-purple-600 hover:bg-purple-500 text-white text-sm px-4 py-2.5 font-semibold">{{ _('Validar Chave de API') }}</button>
+                        <span id="gates2b-test-result" class="text-xs"></span>
+                    </div>
                 </div>
 
             </div>

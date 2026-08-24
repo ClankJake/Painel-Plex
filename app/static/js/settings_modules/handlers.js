@@ -19,6 +19,37 @@ const getSpinner = (classes = "w-4 h-4 mr-2") => `<svg class="animate-spin inlin
 
 
 
+
+async function handleTestGates2b() {
+    const btn = document.getElementById('testGates2b');
+    const resultado = document.getElementById('gates2b-test-result');
+    const campo = document.getElementById('GATES2B_AUTH_TOKEN');
+
+    setButtonLoading(btn, i18n.testing || 'Testando...');
+    if (resultado) resultado.textContent = '';
+
+    try {
+        // Envia o valor ATUAL do campo, para o administrador poder validar a chave
+        // antes de gravar. Se não tiver sido alterado (vem mascarado), o servidor
+        // usa a chave já guardada.
+        const result = await api.testGates2b({ auth_token: campo ? campo.value : '' });
+        showToast(result.message, result.success ? 'success' : 'error');
+        if (resultado) {
+            resultado.textContent = result.message;
+            resultado.className = `text-xs ${result.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`;
+        }
+    } catch (error) {
+        const msg = error.message || i18n.unknownError;
+        showToast(msg, 'error');
+        if (resultado) {
+            resultado.textContent = msg;
+            resultado.className = 'text-xs text-red-600 dark:text-red-400';
+        }
+    } finally {
+        restoreButtonState(btn);
+    }
+}
+
 // --- WHATSAPP ---
 
 /**
@@ -503,6 +534,8 @@ export function initializeEventListeners() {
     if (document.getElementById('backupList')) {
         loadBackupList();
     }
+
+    document.getElementById('testGates2b')?.addEventListener('click', handleTestGates2b);
 
     // --- WhatsApp ---
     document.getElementById('testWhatsapp')?.addEventListener('click', handleTestWhatsapp);

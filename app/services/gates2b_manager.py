@@ -6,7 +6,7 @@ import uuid
 import time
 from flask import url_for
 from flask_babel import gettext as _
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from ..config import load_or_create_config
 from ..utils.log_sanitizer import mask_token
@@ -102,6 +102,24 @@ class Gates2bManager:
             logger.error(f"Erro de comunicação ao testar a conexão com a Gates2b: {e}", exc_info=True)
             return {'success': False, 'message': _("Falha na conexão: Verifique a URL e a sua conexão de rede.")}
 
+    def _build_webhook_url(self):
+        """
+        URL público do webhook, construído a partir do URL Base da aplicação.
+        Enviar o webhookUrl em cada cobrança torna a integração mais robusta: deixa
+        de depender de o administrador ter colado o endereço certo no painel do
+        gateway.
+        """
+        base = (self.config.get("APP_BASE_URL") or "").strip().rstrip('/')
+        if not base:
+            logger.warning("URL Base da Aplicação não configurado: a cobrança será criada sem webhookUrl.")
+            return None
+        if 'localhost' in base or '127.0.0.1' in base:
+            logger.error(
+                "ALERTA CRÍTICO: a 'URL Base da Aplicação' aponta para um endereço local (%s). "
+                "A Gates2b não conseguirá notificar o pagamento e as renovações NÃO serão automáticas.", base
+            )
+        return f"{base}/api/payments/webhook/gates2b"
+
     def create_pix_charge(self, user_info, price, screens, coupon_code=None):
         """Cria uma cobrança PIX na Gates2b."""
         if not self.auth_token:
@@ -121,7 +139,7 @@ class Gates2bManager:
                 "message": _("O valor mínimo aceite pelo gateway é de R$ %(min).2f. Ajuste o preço do plano ou o desconto aplicado.", min=minimo)
             }
 
-        endpoint = f"{self.base_url}/payments"
+        endpoint = f"{self.base_url}/charge"
         
         headers = {
             "Authorization": f"Bearer {self.auth_token}",
@@ -130,50 +148,86 @@ class Gates2bManager:
         
         service_description = f"Renovacao Plex - {screens} Telas" if screens > 0 else "Renovacao Plex - Plano Padrao"
         
-        expire_at = datetime.utcnow() + timedelta(minutes=20)
+        expire_at = datetime.now(timezone.utc) + timedelta(minutes=20)
 
+        # Referência própria: liga a cobrança ao nosso registo e serve de chave de
+        # idempotência — repetir o mesmo pedido (ex: após um timeout de rede, em que
+        # a cobrança pode já ter sido criada) devolve a existente em vez de gerar
+        # uma segunda cobrança ao mesmo cliente.
+        external_reference = str(uuid.uuid4())
+
+        # 📌 Payload do endpoint /charge (o antigo /payments foi descontinuado em
+        # 01/09/2026). O /charge suporta vários métodos de pagamento; aqui pedimos
+        # explicitamente apenas PIX.
         payload = {
-            "amount": float(price),
-            "clientMode": "fillDataNow",
-            "expire_at": expire_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "grossAmount": f"{float(price):.2f}",   # a API espera STRING, não número
+            "currency": "BRL",
+            "paymentMethod": "PIX",
+            "externalReference": external_reference,
             "description": f"Pagamento para {user_info.get('username')} - {service_description}",
-            "name_client": user_info.get('name', user_info.get('username')),
-            "email": user_info.get('email')
+            "expiresAt": expire_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "attemptIdempotencyKey": external_reference,
+            "customerMeta": {
+                "name": user_info.get('name') or user_info.get('username'),
+                "email": user_info.get('email'),
+            },
         }
+
+        # O /charge aceita o URL do webhook por cobrança. Enviá-lo aqui garante que
+        # a notificação chega mesmo que o URL não esteja configurado no painel do
+        # gateway — uma causa comum de "paguei e não renovou".
+        webhook_url = self._build_webhook_url()
+        if webhook_url:
+            payload["webhookUrl"] = webhook_url
 
         try:
             logger.info(f"A criar cobrança PIX na Gates2b para o utilizador '{user_info['username']}' no valor de {price:.2f}.")
             response = requests.post(endpoint, json=payload, headers=headers, timeout=15)
             response.raise_for_status()
-            data = response.json()
-            
-            txid = data.get("transaction_pix_id")
-            lookup_id = data.get("id")
+            data = response.json() or {}
 
-            if txid and lookup_id:
-                logger.info(f"Cobrança Gates2b criada com sucesso. TXID: {mask_token(txid)}, Lookup ID: {mask_token(lookup_id)}")
+            # Estrutura da resposta do /charge:
+            #   id                                   -> "chg_..." (id da cobrança)
+            #   attempt.checkoutMeta.pix.brCode      -> código copia-e-cola
+            #   attempt.checkoutMeta.pix.qrCodeImage -> "data:image/png;base64,..."
+            #   attempt.checkoutMeta.pix.txId        -> txid do PIX
+            charge_id = data.get("id")
+            checkout = (data.get("attempt") or {}).get("checkoutMeta") or {}
+            pix = checkout.get("pix") or {}
+
+            pix_copy_paste = pix.get("brCode")
+            qr_image = pix.get("qrCodeImage") or checkout.get("qr_image")
+            pix_txid = pix.get("txId")
+
+            if charge_id and pix_copy_paste:
+                # Guardamos o ID DA COBRANÇA ('chg_...') como identificador interno:
+                # é ele que identifica o recurso na API e o que as notificações
+                # referem. O txId do PIX é apenas informativo.
+                logger.info(f"Cobrança Gates2b criada com sucesso. Charge ID: {mask_token(charge_id)}")
                 self.data_manager.create_pix_payment(
-                    txid=txid,
+                    txid=charge_id,
                     plex_user_id=user_info['plex_user_id'],
                     username=user_info['username'],
                     value=price,
                     provider='GATES2B',
                     screens=screens,
-                    external_reference=str(lookup_id),
+                    external_reference=external_reference,
                     coupon_code=coupon_code
                 )
-                
-                qr_image_base64 = data.get('qr_image')
-                qr_code_image_url = f"data:image/png;base64,{qr_image_base64}" if qr_image_base64 else None
+
+                # O 'qrCodeImage' já vem com o prefixo 'data:image/png;base64,'.
+                # Só o acrescentamos se vier em base64 puro, para não duplicar.
+                if qr_image and not str(qr_image).startswith('data:'):
+                    qr_image = f"data:image/png;base64,{qr_image}"
 
                 return {
                     "success": True,
-                    "txid": txid,
-                    "pix_copy_paste": data.get('qr_text'),
-                    "qr_code_image": qr_code_image_url
+                    "txid": charge_id,
+                    "pix_copy_paste": pix_copy_paste,
+                    "qr_code_image": qr_image
                 }
             else:
-                error_message = data.get("message", "Erro desconhecido ao criar cobrança na Gates2b. IDs não encontrados na resposta.")
+                error_message = data.get("message") or "Resposta da Gates2b sem os dados do PIX."
                 logger.error(f"Falha ao criar cobrança PIX na Gates2b: {data}")
                 return {"success": False, "message": error_message}
 

@@ -693,6 +693,38 @@ def bulk_notify():
 # CHAVE DE API (INTEGRAÇÕES / BOTS)
 # ==========================================
 
+@system_api_bp.route('/test-gates2b', methods=['POST'])
+@login_required
+@admin_required
+@limiter.limit("20 per minute")
+def test_gates2b_connection():
+    """
+    Valida a chave de API da Gates2b através do endpoint dedicado
+    '/api-key/validate', que confirma a validade e devolve a data de expiração.
+
+    Aceita a chave no corpo do pedido para que o administrador possa testar antes
+    de gravar as configurações. Se vier mascarada (o formulário devolve asteriscos
+    quando o valor não foi alterado), usamos a que já está guardada.
+    """
+    data = request.get_json() or {}
+    auth_token = (data.get('auth_token') or '').strip()
+
+    # O formulário devolve '*' repetidos quando a senha não foi alterada: nesse
+    # caso testamos com a chave já gravada, em vez de falhar com um valor falso.
+    if not auth_token or all(c == '*' for c in auth_token):
+        auth_token = load_or_create_config().get('GATES2B_AUTH_TOKEN', '')
+
+    if not auth_token:
+        return jsonify({'success': False, 'message': _('O Token de Autorização é obrigatório.')}), 400
+
+    try:
+        result = gates2b_manager.test_connection(auth_token)
+        return jsonify(result), (200 if result.get('success') else 400)
+    except Exception as e:
+        logger.error(f"Erro ao testar a ligação à Gates2b: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 @system_api_bp.route('/test-whatsapp', methods=['POST'])
 @login_required
 @admin_required

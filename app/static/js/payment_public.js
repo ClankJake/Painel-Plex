@@ -259,8 +259,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (providers.includes('MERCADOPAGO')) {
             buttonsHtml += `<button data-provider="MERCADOPAGO" class="btn bg-blue-600 hover:bg-blue-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold mt-3">${i18n.payWithMp}</button>`;
         }
-        if (providers.includes('Gates2b')) {
-            buttonsHtml += `<button data-provider="Gates2b" class="btn bg-purple-600 hover:bg-purple-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold mt-3">${i18n.payWithGates2b || 'Pagar com Gates2b'}</button>`;
+        // 🐛 A lista de provedores é normalizada com .toUpperCase() acima, por isso a
+        // comparação tem de ser em MAIÚSCULAS. Com 'Gates2b' a condição nunca era
+        // verdadeira e o botão simplesmente não aparecia quando havia mais de um
+        // gateway ativo.
+        if (providers.includes('GATES2B')) {
+            buttonsHtml += `<button data-provider="GATES2B" class="btn bg-purple-600 hover:bg-purple-500 text-white w-full py-3 rounded-xl shadow-md transition-colors font-bold mt-3">${i18n.payWithGates2b || 'Pagar com Gates2b'}</button>`;
         }
 
         const body = `<div class="space-y-3 mt-2">${buttonsHtml}</div>`;

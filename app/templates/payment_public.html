@@ -172,12 +172,12 @@
                                     {{ _('Entrar no Plex') }}
                                 </button>
 
-                                <!-- Nova Área de Fallback Manual -->
-                                <div id="manual-invite-area" class="hidden mt-4 pt-4 border-t border-blue-200/50 dark:border-blue-800/50 animate-fade-in-up">
-                                    <p class="text-xs text-gray-600 dark:text-gray-400 mb-3">{{ _('O sistema não conseguiu ativar automaticamente? Aceite o convite manualmente clicando no botão abaixo:') }}</p>
-                                    <a id="manual-invite-btn" href="https://app.plex.tv/desktop" target="_blank" class="w-full btn bg-gray-800 hover:bg-gray-700 text-white shadow-lg py-3 text-sm font-bold rounded-xl transition-all flex justify-center items-center gap-2">
-                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                                        {{ _('Aceitar Convite Manualmente') }}
+                                <!-- Botão alternativo: link direto do convite (fallback caso a ativação automática falhe) -->
+                                <div id="reactivation-invite-link-area" class="hidden mt-3">
+                                    <p class="text-xs text-blue-700/80 dark:text-blue-400/70 mb-2 text-center">{{ _('Ou, se preferir, confirme diretamente pelo link do convite:') }}</p>
+                                    <a id="reactivation-invite-link-btn" href="#" target="_blank" rel="noopener noreferrer" class="w-full btn bg-white dark:bg-gray-800 border-2 border-blue-200 dark:border-blue-800/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-700 dark:text-blue-300 py-3 text-sm font-bold transition-all flex justify-center items-center gap-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                        {{ _('Confirmar Convite') }}
                                     </a>
                                 </div>
                             </div>
@@ -225,6 +225,7 @@
         data-i18n-choose-provider="{{ _('Escolha um Provedor') }}"
         data-i18n-pay-with-efi="{{ _('Pagar com Efí') }}"
         data-i18n-pay-with-mp="{{ _('Pagar com Mercado Pago') }}"
+        data-i18n-pay-with-gates2b="{{ _('Pagar com Gates2b') }}"
         data-i18n-cancel="{{ _('Cancelar') }}"
         data-i18n-wait="{{ _('Aguarde...') }}"
         data-i18n-polling-error="{{ _('Erro ao verificar o estado do pagamento (a tentar novamente):') }}"
@@ -247,6 +248,8 @@
         data-i18n-auth-denied="{{ _('A autenticação foi cancelada ou falhou.') }}"
         data-i18n-auth-check-error="{{ _('Erro ao verificar autenticação.') }}"
         data-i18n-activating="{{ _('Ativando...') }}"
+        data-i18n-invite-link-button="{{ _('Confirmar Convite') }}"
+        data-i18n-invite-link-hint="{{ _('Ou, se preferir, confirme diretamente pelo link do convite:') }}"
     ></script>
 </body>
 </html>

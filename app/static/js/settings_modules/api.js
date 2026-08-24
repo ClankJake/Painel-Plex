@@ -17,6 +17,7 @@ export const checkPlexPin = (clientId, pinId) => fetchAPI(urls.checkPlexPin.repl
 export const getPlexServers = () => fetchAPI(`${urls.getPlexServers}?from_settings=true`);
 
 // --- Backup e Restauro ---
+export const testGates2b = (payload) => fetchAPI(urls.testGates2b, 'POST', payload);
 export const testWhatsapp = (payload) => fetchAPI(urls.testWhatsapp, 'POST', payload);
 export const backupList = () => fetchAPI(urls.backupList);
 export const backupDelete = (filename) => fetchAPI(urls.backupDelete.replace('__FILENAME__', encodeURIComponent(filename)), 'DELETE');

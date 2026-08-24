@@ -92,7 +92,8 @@ Isto é relevante em três situações:
 ```
 Utilizador escolhe o plano
         ↓
-Painel cria a cobrança:  POST https://api.gates2b.com/payments
+Painel cria a cobrança:  POST https://api.gates2b.com/charge
+   (paymentMethod: "PIX", com chave de idempotência e webhookUrl)
         ↓
 Gates2b devolve QR Code (imagem base64) + código copia-e-cola
         ↓
@@ -107,17 +108,40 @@ Painel confirma o pagamento e renova a subscrição
 
 ```json
 {
-  "amount": 30.00,
-  "clientMode": "fillDataNow",
-  "expire_at": "2026-08-24T12:20:00Z",
+  "grossAmount": "30.00",
+  "currency": "BRL",
+  "paymentMethod": "PIX",
+  "externalReference": "uuid-gerado-pelo-painel",
   "description": "Pagamento para utilizador - Renovacao Plex - 3 Telas",
-  "name_client": "Nome do Utilizador",
-  "email": "utilizador@exemplo.com"
+  "expiresAt": "2026-08-24T12:20:00.000Z",
+  "attemptIdempotencyKey": "uuid-gerado-pelo-painel",
+  "webhookUrl": "https://SEU-DOMINIO/api/payments/webhook/gates2b",
+  "customerMeta": { "name": "Nome do Utilizador", "email": "utilizador@exemplo.com" }
 }
 ```
 
-O painel guarda o `transaction_pix_id` devolvido como identificador interno da
-transação, e o `id` como referência externa.
+> **Nota:** `grossAmount` é enviado como **string** (`"30.00"`), não como número —
+> é o que a API exige.
+
+**Idempotência:** o `attemptIdempotencyKey` é derivado da referência do pedido. Se
+um pedido for repetido (por exemplo após um timeout de rede, em que a cobrança
+pode já ter sido criada), a Gates2b devolve a cobrança existente em vez de criar
+uma segunda — evitando cobranças duplicadas ao mesmo cliente.
+
+**Webhook por cobrança:** o painel envia o `webhookUrl` em cada pedido, além do
+que estiver configurado no painel do gateway. Isto torna a integração mais
+robusta caso o URL não esteja (ou esteja mal) registado.
+
+O painel guarda o `id` da cobrança (`chg_...`) como identificador interno.
+
+### ⚠️ Migração do endpoint /payments
+
+O endpoint antigo `/payments` foi **descontinuado a 01/09/2026**. O painel usa
+agora o `/charge`. Não é preciso fazer nada: a alteração é interna.
+
+O webhook aceita **os dois formatos** durante a transição, por isso cobranças
+criadas antes da atualização e ainda por pagar continuam a ser confirmadas
+normalmente.
 
 ### Payload recebido no webhook
 
