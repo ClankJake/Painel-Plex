@@ -385,11 +385,22 @@ def create_charge_route():
     # na prática, inútil.
     if not is_proration_request and screens > int(profile.get('screen_limit') or 0):
         if extensions.pricing_manager.requires_proration_for_upgrade(profile):
-            return jsonify({
-                "success": False,
-                "requires_proration": True,
-                "message": _("Para aumentar o número de telas agora, use a opção de pagar apenas a diferença. A troca de plano numa renovação completa fica disponível perto do vencimento.")
-            }), 400
+            # 🐛 Só bloqueamos se o pro-rata for MESMO uma alternativa viável para
+            # este plano. Sem esta verificação, um utilizador cujo pro-rata não
+            # fosse elegível (valor abaixo do mínimo sem oferta gratuita, dias
+            # insuficientes, preço em falta...) ficava sem qualquer forma de subir
+            # de plano: a renovação normal bloqueada e o pro-rata indisponível.
+            alternativa = extensions.pricing_manager.calculate_upgrade_proration(plex_user_id, screens)
+            if alternativa.get('eligible'):
+                return jsonify({
+                    "success": False,
+                    "requires_proration": True,
+                    "message": _("Para aumentar o número de telas agora, use a opção de pagar apenas a diferença. A troca de plano numa renovação completa fica disponível perto do vencimento.")
+                }), 400
+            logger.info(
+                f"Upgrade a preço cheio permitido para '{username}': o pro-rata não está "
+                f"disponível ({alternativa.get('reason')})."
+            )
 
     price_calculation = extensions.pricing_manager.calculate_price(
         screens_str, coupon_code, plex_user_id, apply_referral_credit=True

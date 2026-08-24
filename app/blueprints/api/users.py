@@ -782,6 +782,15 @@ def _update_manual_expiration_job(plex_user_id, username, profile_to_update, loc
         profile_to_update['expiration_date'] = naive_dt.astimezone(timezone.utc).isoformat()
         profile_to_update['expiration_job_id'] = new_job_id
 
+        # 🐛 CORREÇÃO: ao definir a data de vencimento MANUALMENTE, é preciso mover
+        # também a âncora do dia de faturação. Caso contrário, a âncora antiga
+        # continuava a mandar nas renovações seguintes e "puxava" o vencimento de
+        # volta para o dia antigo — por exemplo, definir 05/09 e, ao renovar, obter
+        # 26/10 em vez de 05/10, porque o billing_day ainda era 26.
+        # Uma data definida à mão pelo administrador é uma decisão explícita e deve
+        # passar a ser a nova referência.
+        profile_to_update['billing_day'] = naive_dt.day
+
 def _enforce_user_status_by_date(plex_user_id, username, profile_to_update):
     is_blocked = extensions.data_manager.get_blocked_user(plex_user_id) is not None
     now_utc = datetime.now(timezone.utc)
