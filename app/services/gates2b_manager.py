@@ -186,18 +186,41 @@ class Gates2bManager:
             response.raise_for_status()
             data = response.json() or {}
 
-            # Estrutura da resposta do /charge:
-            #   id                                   -> "chg_..." (id da cobrança)
-            #   attempt.checkoutMeta.pix.brCode      -> código copia-e-cola
-            #   attempt.checkoutMeta.pix.qrCodeImage -> "data:image/png;base64,..."
-            #   attempt.checkoutMeta.pix.txId        -> txid do PIX
-            charge_id = data.get("id")
-            checkout = (data.get("attempt") or {}).get("checkoutMeta") or {}
+            # ⚠️ A resposta real difere do exemplo da documentação. Na prática a API
+            # devolve o objeto da TENTATIVA (attempt), com esta forma:
+            #   id           -> uuid da tentativa
+            #   chargeId     -> id da COBRANÇA (ULID, ex: '01M0TAX...')
+            #   checkoutMeta -> NO TOPO (não aninhado em 'attempt')
+            #     .qr_text   -> código copia-e-cola
+            #     .qr_image  -> base64 SEM o prefixo 'data:'
+            #     .emv       -> txid do PIX
+            #   charge       -> objeto da cobrança aninhado
+            #
+            # A documentação mostra outra forma (attempt.checkoutMeta.pix.brCode).
+            # Suportamos AS DUAS, para a integração não voltar a partir se a API
+            # mudar de formato ou se as contas antigas responderem de outra maneira.
+            charge_obj = data.get("charge") or {}
+            attempt = data.get("attempt") or {}
+
+            # checkoutMeta pode estar no topo ou dentro de 'attempt'
+            checkout = data.get("checkoutMeta") or attempt.get("checkoutMeta") or {}
             pix = checkout.get("pix") or {}
 
-            pix_copy_paste = pix.get("brCode")
-            qr_image = pix.get("qrCodeImage") or checkout.get("qr_image")
-            pix_txid = pix.get("txId")
+            # Identificador da cobrança: preferimos sempre o ID DA COBRANÇA (não o
+            # da tentativa), porque é ele que aparece no checkoutUrl e que as
+            # notificações referem.
+            charge_id = (
+                data.get("chargeId")
+                or charge_obj.get("id")
+                or (data.get("id") if str(data.get("id", "")).startswith("chg_") else None)
+                or data.get("id")
+            )
+
+            # Código copia-e-cola: 'qr_text' (real) ou 'pix.brCode' (documentado)
+            pix_copy_paste = checkout.get("qr_text") or pix.get("brCode")
+
+            # Imagem: 'qr_image' (real, base64 puro) ou 'pix.qrCodeImage' (documentado, já com prefixo)
+            qr_image = checkout.get("qr_image") or pix.get("qrCodeImage")
 
             if charge_id and pix_copy_paste:
                 # Guardamos o ID DA COBRANÇA ('chg_...') como identificador interno:
