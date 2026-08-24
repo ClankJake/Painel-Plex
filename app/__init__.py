@@ -150,7 +150,7 @@ def create_app() -> Flask:
     from .services import (
         DataManager, TautulliManager, PlexManager, 
         NotifierManager, EfiManager, MercadoPagoManager,
-        OverseerrManager, LinkShortener, BpixManager, StreamManager,
+        OverseerrManager, LinkShortener, Gates2bManager, StreamManager,
         PricingManager, BackupManager, ReferralManager
     )
 
@@ -161,7 +161,7 @@ def create_app() -> Flask:
     extensions.notifier_manager = NotifierManager(link_shortener_service=extensions.link_shortener, socketio_instance=extensions.socketio)
     extensions.efi_manager = EfiManager(data_manager=extensions.data_manager)
     extensions.mercado_pago_manager = MercadoPagoManager(data_manager=extensions.data_manager)
-    extensions.bpix_manager = BpixManager(data_manager=extensions.data_manager)
+    extensions.gates2b_manager = Gates2bManager(data_manager=extensions.data_manager)
     extensions.overseerr_manager = OverseerrManager()
     extensions.backup_manager = BackupManager(config_dir=config_dir_path)
     extensions.referral_manager = ReferralManager(

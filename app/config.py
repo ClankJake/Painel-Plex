@@ -82,8 +82,11 @@ def load_or_create_config():
             "EFI_WEBHOOK_HMAC_SECRET": secrets.token_hex(16),
             "MERCADOPAGO_ENABLED": False,
             "MERCADOPAGO_ACCESS_TOKEN": "",
-            "BPIX_ENABLED": False,
-            "BPIX_AUTH_TOKEN": "",
+            "MERCADOPAGO_WEBHOOK_SECRET": "",
+            "MERCADOPAGO_MIN_AMOUNT": 1.0,
+            "GATES2B_ENABLED": False,
+            "GATES2B_AUTH_TOKEN": "",
+            "GATES2B_MIN_AMOUNT": 3.0,
             "RENEWAL_PRICE": "10.00",
             "SCREEN_PRICES": {
                 "1": "10.00",
@@ -222,8 +225,25 @@ def load_or_create_config():
             _set_default("RENEWAL_PRICE", "10.00")
             _set_default("MERCADOPAGO_ENABLED", False)
             _set_default("MERCADOPAGO_ACCESS_TOKEN", "")
-            _set_default("BPIX_ENABLED", False)
-            _set_default("BPIX_AUTH_TOKEN", "")
+            _set_default("MERCADOPAGO_WEBHOOK_SECRET", "")
+            _set_default("MERCADOPAGO_MIN_AMOUNT", 1.0)
+            _set_default("GATES2B_ENABLED", False)
+            _set_default("GATES2B_AUTH_TOKEN", "")
+            _set_default("GATES2B_MIN_AMOUNT", 3.0)
+
+            # 🔄 MIGRAÇÃO BPIX -> GATES2B: o gateway mudou de marca e de domínio
+            # (api.bpix.app -> api.gates2b.com). Quem já tinha a integração
+            # configurada não deve perder as credenciais nem ter de as reintroduzir,
+            # por isso copiamos os valores antigos uma única vez. As chaves antigas
+            # são removidas a seguir para não ficarem a confundir no config.json.
+            if "BPIX_AUTH_TOKEN" in config:
+                if not config.get("GATES2B_AUTH_TOKEN"):
+                    config["GATES2B_AUTH_TOKEN"] = config.get("BPIX_AUTH_TOKEN", "")
+                    config["GATES2B_ENABLED"] = config.get("BPIX_ENABLED", False)
+                    logger.info("Configuração da BPIX migrada automaticamente para a Gates2b.")
+                config.pop("BPIX_AUTH_TOKEN", None)
+                config.pop("BPIX_ENABLED", None)
+                config_was_modified = True
             _set_default("OVERSEERR_ENABLED", False)
             _set_default("OVERSEERR_URL", "")
             _set_default("OVERSEERR_API_KEY", "")

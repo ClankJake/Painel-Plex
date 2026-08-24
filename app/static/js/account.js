@@ -573,8 +573,8 @@ const handlePixGenerationRequest = async (payload, providers) => {
     } else if (activeProviders.length > 1) {
         // Modal de escolha se houver +1 gateway configurado
         const buttonsHtml = activeProviders.map(p => {
-            const colors = p === 'MERCADOPAGO' ? 'bg-blue-600 hover:bg-blue-500' : p === 'BPIX' ? 'bg-purple-600 hover:bg-purple-500' : 'bg-green-600 hover:bg-green-500';
-            const name = p === 'MERCADOPAGO' ? state.i18n.payWithMp : p === 'BPIX' ? 'Pagar com BPIX' : state.i18n.payWithEfi;
+            const colors = p === 'MERCADOPAGO' ? 'bg-blue-600 hover:bg-blue-500' : p === 'Gates2b' ? 'bg-purple-600 hover:bg-purple-500' : 'bg-green-600 hover:bg-green-500';
+            const name = p === 'MERCADOPAGO' ? state.i18n.payWithMp : p === 'Gates2b' ? 'Pagar com Gates2b' : state.i18n.payWithEfi;
             return `<button data-provider="${p}" class="btn ${colors} text-white w-full mb-2 shadow-md">${name}</button>`;
         }).join('');
 

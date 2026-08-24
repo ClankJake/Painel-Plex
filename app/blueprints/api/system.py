@@ -14,7 +14,7 @@ from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 
-from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, bpix_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager , notifier_manager
+from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, gates2b_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager , notifier_manager
 # 🐛 CORREÇÃO: 'backup_manager' NÃO pode ser importado por valor aqui. Ao contrário
 # dos outros gestores, ele é instanciado mais tarde no create_app() (depois deste
 # módulo já ter sido importado), por isso um "from ...extensions import backup_manager"
@@ -137,7 +137,7 @@ def get_system_health():
         "tautulli": tautulli_manager.check_status(),
         "efi": efi_manager.check_status(),
         "mercado_pago": mercado_pago_manager.check_status(),
-        "bpix": bpix_manager.check_status(),
+        "gates2b": gates2b_manager.check_status(),
         "scheduler": {
             "status": "RUNNING" if scheduler.running else "STOPPED",
             "message": _("Agendador em execução.") if scheduler.running else _("Agendador parado.")
@@ -209,8 +209,9 @@ def api_settings():
             'TAUTULLI_URL', 'TAUTULLI_API_KEY',
             'EFI_CLIENT_ID', 'EFI_CLIENT_SECRET', 'EFI_CERTIFICATE', 'EFI_SANDBOX', 'EFI_PIX_KEY',
             'EFI_USE_MTLS', 'EFI_WEBHOOK_HMAC_SECRET',
-            'MERCADOPAGO_ACCESS_TOKEN', 'RENEWAL_PRICE', 'EFI_ENABLED', 'MERCADOPAGO_ENABLED',
-            'BPIX_ENABLED', 'BPIX_AUTH_TOKEN',
+            'MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_WEBHOOK_SECRET', 'MERCADOPAGO_MIN_AMOUNT',
+            'RENEWAL_PRICE', 'EFI_ENABLED', 'MERCADOPAGO_ENABLED',
+            'GATES2B_ENABLED', 'GATES2B_AUTH_TOKEN', 'GATES2B_MIN_AMOUNT',
             'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE', 'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE',
             'OVERSEERR_ENABLED', 'OVERSEERR_URL', 'OVERSEERR_API_KEY',
             'CLEANUP_PENDING_PAYMENTS_ENABLED', 'CLEANUP_PENDING_PAYMENTS_DAYS', 'CLEANUP_TIME',
@@ -254,7 +255,7 @@ def api_settings():
         # 🐛 CORREÇÃO: XP_PER_MINUTE_WATCHED precisa de aceitar valores decimais
         # (ex: 0.1), mas estava dentro de 'numeric_fields', que força int(value)
         # e truncava qualquer casa decimal para 0. Tratado à parte, com float().
-        float_fields = ['XP_PER_MINUTE_WATCHED', 'REFERRAL_REWARD_CREDIT', 'PRORATION_MIN_CHARGE']
+        float_fields = ['XP_PER_MINUTE_WATCHED', 'REFERRAL_REWARD_CREDIT', 'PRORATION_MIN_CHARGE', 'GATES2B_MIN_AMOUNT', 'MERCADOPAGO_MIN_AMOUNT']
 
         if 'SCREEN_PRICES' in new_data:
             config_to_update['SCREEN_PRICES'] = new_data['SCREEN_PRICES']
@@ -323,7 +324,7 @@ def api_settings():
             'APP_BASE_URL'
         )
         tautulli_changed = _changed('TAUTULLI_URL', 'TAUTULLI_API_KEY')
-        mp_changed = _changed('MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_ENABLED')
+        mp_changed = _changed('MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_ENABLED', 'MERCADOPAGO_WEBHOOK_SECRET')
         overseerr_changed = _changed('OVERSEERR_URL', 'OVERSEERR_API_KEY', 'OVERSEERR_ENABLED')
 
         if efi_changed:
@@ -416,7 +417,7 @@ def api_settings():
     sensitive_keys = [
         'SECRET_KEY', 'PLEX_TOKEN', 'INTERNAL_TRIGGER_KEY',
         'TELEGRAM_BOT_TOKEN', 'TAUTULLI_API_KEY', 'EFI_CLIENT_SECRET',
-        'MERCADOPAGO_ACCESS_TOKEN', 'BPIX_AUTH_TOKEN', 'OVERSEERR_API_KEY',
+        'MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_WEBHOOK_SECRET', 'GATES2B_AUTH_TOKEN', 'OVERSEERR_API_KEY',
         # A chave da API de WhatsApp é uma credencial: nunca deve viajar em claro
         # para o navegador, tal como as restantes.
         'WHATSAPP_API_KEY'

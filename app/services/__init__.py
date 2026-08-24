@@ -14,7 +14,7 @@ from .efi_manager import EfiManager
 from .mercado_pago_manager import MercadoPagoManager
 from .overseerr_manager import OverseerrManager
 from .link_shortener import LinkShortener
-from .bpix_manager import BpixManager
+from .gates2b_manager import Gates2bManager
 from .stream_manager import StreamManager
 from .pricing_manager import PricingManager
 from .backup_manager import BackupManager
@@ -30,7 +30,7 @@ __all__ = [
     'OverseerrManager',
     'StreamManager',
     'LinkShortener',
-    'BpixManager',
+    'Gates2bManager',
     'PricingManager',
     'BackupManager',
     'ReferralManager',

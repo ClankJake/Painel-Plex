@@ -1,6 +1,8 @@
 # app/services/mercado_pago_manager.py
 
 import logging
+import hmac
+import hashlib
 import mercadopago
 import uuid
 from flask import url_for
@@ -11,6 +13,52 @@ from ..config import load_or_create_config
 from ..utils.log_sanitizer import mask_token
 
 logger = logging.getLogger(__name__)
+
+
+def _build_payer(user_info):
+    """
+    Monta o bloco 'payer' do pagamento.
+
+    🐛 Antes era enviado 'last_name': " " (um espaço). O Mercado Pago usa os dados
+    do pagador na análise antifraude, e um apelido em branco é um sinal negativo
+    que pode baixar a taxa de aprovação. Aqui dividimos o nome real quando existe,
+    e omitimos os campos quando não há informação — omitir é melhor do que enviar
+    lixo.
+    """
+    payer = {"email": user_info.get('email')}
+
+    nome_completo = (user_info.get('name') or user_info.get('username') or '').strip()
+    if nome_completo:
+        partes = nome_completo.split()
+        payer["first_name"] = partes[0]
+        if len(partes) > 1:
+            payer["last_name"] = " ".join(partes[1:])
+
+    return payer
+
+
+def _extract_mp_error(payload):
+    """
+    Extrai a mensagem de erro mais útil da resposta do Mercado Pago.
+
+    A API devolve os detalhes em 'cause' (uma lista de {code, description}) e um
+    resumo em 'message'. Preferimos a descrição da causa, que é o que realmente
+    explica o problema a quem está a configurar o gateway.
+    """
+    if not isinstance(payload, dict):
+        return None
+
+    causas = payload.get('cause')
+    if isinstance(causas, list) and causas:
+        descricoes = [
+            str(c.get('description') or c.get('code'))
+            for c in causas if isinstance(c, dict)
+        ]
+        if descricoes:
+            return " | ".join(d for d in descricoes if d)
+
+    return payload.get('message')
+
 
 class MercadoPagoManager:
     def __init__(self, data_manager):
@@ -74,6 +122,18 @@ class MercadoPagoManager:
         if not self.sdk:
             return {"success": False, "message": "Credenciais do Mercado Pago não configuradas."}
 
+        # 💰 Valor mínimo: o Mercado Pago recusa transações abaixo do mínimo
+        # (bastante baixo para PIX, mas relevante com upgrades pro-rata, onde a
+        # diferença a pagar pode ser de cêntimos). Validar aqui dá uma mensagem
+        # clara em vez de um erro cru da API.
+        minimo = float(self.config.get("MERCADOPAGO_MIN_AMOUNT", 1.0) or 0)
+        if minimo > 0 and float(price) < minimo:
+            logger.warning(f"Cobrança Mercado Pago recusada localmente: R$ {float(price):.2f} < mínimo de R$ {minimo:.2f}.")
+            return {
+                "success": False,
+                "message": f"O valor mínimo aceite pelo Mercado Pago é de R$ {minimo:.2f}."
+            }
+
         external_reference = str(uuid.uuid4())
         
         item_title = f"Renovação Plex - {screens} Tela(s)" if screens > 0 else "Renovação Plex - Plano Padrão"
@@ -92,11 +152,7 @@ class MercadoPagoManager:
             "payment_method_id": "pix",
             "description": payment_description,
             "date_of_expiration": date_of_expiration_iso,
-            "payer": {
-                "email": user_info.get('email'),
-                "first_name": user_info.get('name', user_info.get('username')),
-                "last_name": " "
-            },
+            "payer": _build_payer(user_info),
             "additional_info": {
                 "items": [
                     {
@@ -114,10 +170,17 @@ class MercadoPagoManager:
             "notification_url": f"{self.config.get('APP_BASE_URL', '').rstrip('/')}{url_for('payments_api.mercadopago_webhook')}"
         }
 
-        idempotency_key = str(uuid.uuid4())
+        # 🐛 IDEMPOTÊNCIA REAL: antes era gerado um uuid4 NOVO a cada chamada, o que
+        # anula por completo o propósito do cabeçalho. Se a criação falhasse por
+        # timeout (a cobrança podia já ter sido criada do lado do Mercado Pago) e o
+        # pedido fosse repetido, uma chave diferente criava uma SEGUNDA cobrança —
+        # o cliente podia acabar a pagar duas vezes.
+        #
+        # A chave passa a derivar do próprio pedido: repetir o mesmo pedido devolve
+        # a cobrança já existente em vez de criar outra.
         request_options = mercadopago.config.RequestOptions()
         request_options.custom_headers = {
-            'x-idempotency-key': idempotency_key
+            'x-idempotency-key': external_reference
         }
 
         try:
@@ -145,12 +208,67 @@ class MercadoPagoManager:
                     "qr_code_image": f"data:image/png;base64,{payment['point_of_interaction']['transaction_data']['qr_code_base64']}"
                 }
             else:
-                error_message = payment.get('message', 'Falha ao criar cobrança PIX no Mercado Pago.')
+                # 🐛 O Mercado Pago devolve o motivo real em 'cause' (ex: conta sem PIX
+                # ativo, CPF inválido, valor abaixo do mínimo). Antes ficava tudo
+                # reduzido a uma mensagem genérica, o que tornava o diagnóstico quase
+                # impossível a partir dos logs.
+                error_message = _extract_mp_error(payment) or 'Falha ao criar cobrança PIX no Mercado Pago.'
                 logger.error(f"Falha ao criar cobrança PIX no Mercado Pago: {payment_response}")
                 return {"success": False, "message": error_message}
         except Exception as e:
             logger.error(f"Erro ao criar cobrança PIX no Mercado Pago: {e}", exc_info=True)
-            return {"success": False, "message": "Ocorreu um erro ao comunicar com o serviço de pagamentos."}
+            return {"success": False, "message": f"Erro ao comunicar com o Mercado Pago: {e}"}
+
+
+    def validate_webhook_signature(self, x_signature, x_request_id, data_id):
+        """
+        Valida a assinatura HMAC-SHA256 de uma notificação do Mercado Pago.
+
+        Porque isto importa: a rota do webhook é pública e está isenta de rate
+        limit. Sem validação, qualquer pessoa pode enviar notificações forjadas e,
+        embora o pagamento seja sempre reconfirmado na API antes de ser aceite
+        (o que impede fraudes), cada pedido falso gera uma chamada à API do
+        Mercado Pago — um vetor fácil para esgotar o rate limit da conta.
+
+        Formato do cabeçalho 'x-signature':
+            ts=1704908010,v1=<hash>
+
+        Manifesto assinado (a ordem e os separadores são obrigatórios):
+            id:<data.id>;request-id:<x-request-id>;ts:<ts>;
+
+        Devolve (True, None) quando é válida ou quando a validação está desativada
+        (sem segredo configurado), e (False, motivo) quando falha.
+        """
+        secret = (self.config.get("MERCADOPAGO_WEBHOOK_SECRET") or "").strip()
+        if not secret:
+            # Sem segredo configurado a validação fica desligada, para não quebrar
+            # instalações existentes que ainda não a configuraram. A proteção real
+            # continua a ser a reconfirmação do pagamento na API.
+            return True, None
+
+        if not x_signature:
+            return False, "Cabeçalho 'x-signature' em falta."
+
+        ts = None
+        received_hash = None
+        for parte in x_signature.split(','):
+            chave, _, valor = parte.strip().partition('=')
+            if chave == 'ts':
+                ts = valor.strip()
+            elif chave == 'v1':
+                received_hash = valor.strip()
+
+        if not ts or not received_hash:
+            return False, "Formato inesperado do cabeçalho 'x-signature'."
+
+        manifest = f"id:{data_id};request-id:{x_request_id};ts:{ts};"
+        expected = hmac.new(secret.encode('utf-8'), manifest.encode('utf-8'), hashlib.sha256).hexdigest()
+
+        # compare_digest evita fugas de informação através do tempo de comparação.
+        if not hmac.compare_digest(expected, received_hash):
+            return False, "Assinatura inválida."
+
+        return True, None
 
     def get_payment_details(self, payment_id):
         """Consulta os detalhes de um pagamento no Mercado Pago."""

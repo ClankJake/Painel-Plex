@@ -1,4 +1,5 @@
 import logging
+import hmac
 import csv
 from io import StringIO
 import threading
@@ -252,7 +253,7 @@ def get_payment_options():
     enabled_providers = {
         "efi": config.get("EFI_ENABLED"), 
         "mercadopago": config.get("MERCADOPAGO_ENABLED"),
-        "bpix": config.get("BPIX_ENABLED")
+        "gates2b": config.get("GATES2B_ENABLED")
     }
     return jsonify({
         "success": True, "prices": available_prices, "providers": enabled_providers,
@@ -562,7 +563,7 @@ def create_charge_route():
     provider_map = {
         'EFI': ('EFI_ENABLED', extensions.efi_manager.create_pix_charge if hasattr(extensions, 'efi_manager') else None),
         'MERCADOPAGO': ('MERCADOPAGO_ENABLED', extensions.mercado_pago_manager.create_pix_payment if hasattr(extensions, 'mercado_pago_manager') else None),
-        'BPIX': ('BPIX_ENABLED', extensions.bpix_manager.create_pix_charge if hasattr(extensions, 'bpix_manager') else None)
+        'GATES2B': ('GATES2B_ENABLED', extensions.gates2b_manager.create_pix_charge if hasattr(extensions, 'gates2b_manager') else None)
     }
 
     config_key, charge_func = provider_map.get(provider, (None, None))
@@ -623,8 +624,8 @@ def get_payment_status_route(txid):
             status_result = extensions.mercado_pago_manager.get_payment_details(txid)
             if status_result.get("success") and status_result.get("data", {}).get("status") == "approved":
                 is_confirmed = True
-        elif provider == 'BPIX':
-            status_result = extensions.bpix_manager.detail_pix_charge(txid)
+        elif provider in ('GATES2B', 'BPIX'):  # 'BPIX' aceite por retrocompatibilidade
+            status_result = extensions.gates2b_manager.detail_pix_charge(txid)
             st = status_result.get("data", {})
             if status_result.get("success") and (st.get("status") == 'Pagamento realizado' or st.get("international_status") == "PAYMENT_RECEIVED"):
                 is_confirmed = True
@@ -653,8 +654,13 @@ def efi_webhook():
         hmac_secret = config.get("EFI_WEBHOOK_HMAC_SECRET")
         received_hmac = request.args.get('hmac')
         
-        if not hmac_secret or not received_hmac or hmac_secret != received_hmac:
-            logger.warning("Webhook Efí bloqueado: HMAC inválido ou ausente.")
+        # 🔒 A comparação TEM de ser feita com 'compare_digest'. Um simples '!='
+        # compara caractere a caractere e para no primeiro que difere — a
+        # diferença no tempo de resposta é mensurável e permite descobrir o
+        # segredo byte a byte (timing attack). O 'compare_digest' demora sempre
+        # o mesmo tempo, independentemente de onde está a diferença.
+        if not hmac_secret or not received_hmac or not hmac.compare_digest(str(hmac_secret), str(received_hmac)):
+            logger.warning(f"Webhook Efí bloqueado: HMAC inválido ou ausente. IP: {request.remote_addr}")
             return jsonify(status="error", message="Invalid HMAC"), 403
 
     try:
@@ -697,30 +703,98 @@ def efi_webhook():
 @payments_api_bp.route('/webhook/mercadopago', methods=['POST'])
 @limiter.exempt
 def mercadopago_webhook():
-    data = request.json
+    data = request.json or {}
     try:
-        if data.get("type") == "payment":
-            payment_id = str(data.get("data", {}).get("id"))
-            mp_status_result = extensions.mercado_pago_manager.get_payment_details(payment_id)
-            if mp_status_result.get("success") and mp_status_result.get("data", {}).get("status") == "approved":
-                logger.info(f"Pagamento {payment_id} confirmado via Webhook Mercado Pago. A iniciar renovação.")
-                _process_successful_payment(payment_id)
+        if data.get("type") != "payment":
+            return jsonify(status="ignored"), 200
+
+        payment_id = str(data.get("data", {}).get("id"))
+
+        # 🔒 Valida a assinatura HMAC antes de qualquer trabalho. Sem isto, um
+        # atacante podia disparar pedidos em massa nesta rota (que é pública e
+        # isenta de rate limit) e cada um provocaria uma chamada à API do Mercado
+        # Pago, esgotando o rate limit da conta. Se não houver segredo configurado,
+        # a validação é ignorada para não quebrar instalações existentes.
+        valido, motivo = extensions.mercado_pago_manager.validate_webhook_signature(
+            request.headers.get('x-signature'),
+            request.headers.get('x-request-id'),
+            payment_id
+        )
+        if not valido:
+            logger.warning(f"Webhook do Mercado Pago rejeitado ({motivo}). IP: {request.remote_addr}")
+            return jsonify(status="error", message="Invalid signature"), 401
+
+        # A confirmação NUNCA se baseia no corpo recebido: consultamos sempre a API
+        # para saber o estado real do pagamento.
+        mp_status_result = extensions.mercado_pago_manager.get_payment_details(payment_id)
+        if not mp_status_result.get("success"):
+            return jsonify(status="received"), 200
+
+        status = mp_status_result.get("data", {}).get("status")
+
+        if status == "approved":
+            logger.info(f"Pagamento {mask_token(payment_id)} confirmado via Webhook Mercado Pago. A iniciar renovação.")
+            _process_successful_payment(payment_id)
+
+        # 💸 REEMBOLSOS E ESTORNOS: antes só se tratava 'approved'. Um pagamento
+        # devolvido ou contestado passava despercebido e o utilizador ficava com
+        # acesso já pago de volta. Não revogamos o acesso automaticamente (pode ser
+        # um reembolso parcial ou acordado), mas registamos e avisamos o
+        # administrador para que decida.
+        elif status in ("refunded", "charged_back", "cancelled"):
+            _handle_mercadopago_reversal(payment_id, status)
+
     except Exception as e:
         logger.error(f"Erro no Webhook Mercado Pago: {e}", exc_info=True)
         return jsonify(status="error", message="Server Error"), 500
     return jsonify(status="received"), 200
 
+
+def _handle_mercadopago_reversal(payment_id, status):
+    """Regista um reembolso/estorno e notifica o administrador."""
+    try:
+        payment = extensions.data_manager.get_pix_payment(payment_id)
+        if not payment:
+            logger.warning(f"Reversão recebida para o pagamento {mask_token(payment_id)}, que não existe localmente.")
+            return
+
+        rotulos = {
+            "refunded": _("reembolsado"),
+            "charged_back": _("contestado (chargeback)"),
+            "cancelled": _("cancelado"),
+        }
+        rotulo = rotulos.get(status, status)
+
+        extensions.data_manager.update_pix_payment_status(payment_id, 'REVERTIDO')
+        logger.warning(
+            f"⚠️ Pagamento {mask_token(payment_id)} de '{payment.get('username')}' foi {rotulo} "
+            f"(valor: R$ {payment.get('value', 0):.2f}). O acesso NÃO foi revogado automaticamente."
+        )
+
+        extensions.data_manager.create_notification(
+            message=_("Pagamento de %(username)s foi %(estado)s (R$ %(valor).2f). Verifique se o acesso deve ser revogado.",
+                      username=payment.get('username'), estado=rotulo, valor=payment.get('value', 0)),
+            category='error', link=url_for('main.users_page')
+        )
+        if extensions.socketio:
+            extensions.socketio.emit('new_notification', namespace='/')
+    except Exception as e:
+        logger.error(f"Erro ao processar a reversão do pagamento {mask_token(payment_id)}: {e}", exc_info=True)
+
+@payments_api_bp.route('/webhook/gates2b', methods=['POST'])
+# Rota antiga mantida para não quebrar integrações já configuradas no painel
+# do gateway antes da mudança de marca (BPIX -> Gates2b).
 @payments_api_bp.route('/webhook/bpix', methods=['POST'])
 @limiter.exempt
-def bpix_webhook():
+def gates2b_webhook():
     data = request.json
     try:
         txid = data.get("transaction_pix_id")
         if txid and ((data.get("status") == "Pagamento realizado") or (data.get("international_status") == "PAYMENT_RECEIVED")):
-            logger.info(f"Pagamento {mask_token(txid)} confirmado via Webhook BPIX. A iniciar renovação.")
+            logger.info(f"Pagamento {mask_token(txid)} confirmado via Webhook Gates2b. A iniciar renovação.")
             _process_successful_payment(txid)
     except Exception as e:
-        logger.error(f"Erro no Webhook BPIX: {e}", exc_info=True)
+        logger.error(f"Erro no Webhook Gates2b: {e}", exc_info=True)
         return jsonify(status="error", message="Server Error"), 500
     return jsonify(status="received"), 200
 

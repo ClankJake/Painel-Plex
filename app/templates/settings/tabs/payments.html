@@ -151,7 +151,7 @@
                     <!-- A classe tab-button aqui é lida pelo handlers.js que as transforma em Pills Ativas -->
                     <button type="button" data-subtab="EFI" class="tab-button active bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-600">Efí Bank</button>
                     <button type="button" data-subtab="MERCADOPAGO" class="tab-button text-gray-500 dark:text-gray-400">Mercado Pago</button>
-                    <button type="button" data-subtab="BPIX" class="tab-button text-gray-500 dark:text-gray-400">BPIX</button>
+                    <button type="button" data-subtab="Gates2b" class="tab-button text-gray-500 dark:text-gray-400">Gates2b</button>
                 </nav>
             </div>
 
@@ -237,26 +237,41 @@
                             <input type="password" id="MERCADOPAGO_ACCESS_TOKEN" class="block w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="APP_USR-...">
                         </div>
                     </div>
+                    <div class="mt-4">
+                        <label for="MERCADOPAGO_WEBHOOK_SECRET" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Chave secreta do Webhook') }}</label>
+                        <input type="password" id="MERCADOPAGO_WEBHOOK_SECRET" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="{{ _('Opcional, mas recomendado') }}">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Obtenha em: Mercado Pago → Suas integrações → a sua aplicação → Webhooks → Assinatura secreta. Permite validar que as notificações vêm mesmo do Mercado Pago. Se ficar vazio, a validação é ignorada.') }}</p>
+                    </div>
+                    <div class="mt-4">
+                        <label for="MERCADOPAGO_MIN_AMOUNT" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Valor mínimo aceite (R$)') }}</label>
+                        <input type="text" id="MERCADOPAGO_MIN_AMOUNT" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="1.00">
+                    </div>
                 </div>
 
-                <!-- ABA BPIX -->
-                <div id="subtab-BPIX" class="sub-tab-content hidden space-y-5 animate-fade-in">
+                <!-- ABA Gates2b -->
+                <div id="subtab-Gates2b" class="sub-tab-content hidden space-y-5 animate-fade-in">
                     <div class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
                         <div>
-                            <p class="font-bold text-gray-900 dark:text-white">BPIX</p>
+                            <p class="font-bold text-gray-900 dark:text-white">Gates2b</p>
                             <p class="text-xs text-gray-500 dark:text-gray-400">Gateway Alternativo</p>
                         </div>
                         <label class="relative inline-flex items-center cursor-pointer">
-                            <input id="BPIX_ENABLED" type="checkbox" class="sr-only peer">
+                            <input id="GATES2B_ENABLED" type="checkbox" class="sr-only peer">
                             <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-500"></div>
                         </label>
                     </div>
                     <div class="max-w-md pl-1">
-                        <label for="BPIX_AUTH_TOKEN" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Token de Autorização</label>
+                        <label for="GATES2B_AUTH_TOKEN" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Token de Autorização</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg></div>
-                            <input type="password" id="BPIX_AUTH_TOKEN" class="block w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="Bearer ...">
+                            <input type="password" id="GATES2B_AUTH_TOKEN" class="block w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="Bearer ...">
                         </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Obtenha em painel.gates2b.com → Integração.') }}</p>
+                    </div>
+                    <div class="mt-4">
+                        <label for="GATES2B_MIN_AMOUNT" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Valor mínimo aceite (R$)') }}</label>
+                        <input type="text" id="GATES2B_MIN_AMOUNT" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="3.00">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('A Gates2b recusa cobranças abaixo do mínimo da sua conta (padrão: R$ 3,00). Validado antes de contactar o gateway, para dar uma mensagem clara ao utilizador.') }}</p>
                     </div>
                 </div>
 

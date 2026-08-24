@@ -8,7 +8,7 @@ from efipay import EfiPay
 from flask_babel import gettext as _
 
 from ..config import load_or_create_config
-from ..utils.log_sanitizer import mask_token
+from ..utils.log_sanitizer import mask_token, mask_secret, mask_url_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -123,12 +123,16 @@ class EfiManager:
             params = {'chave': pix_key}
             body = {'webhookUrl': webhook_url}
             
-            logger.info(f"A registar Webhook na Efí para a chave '{pix_key}'. URL destino: {webhook_url}")
+            # 🔒 Nem a chave PIX (que pode ser um CPF, telemóvel ou email) nem o
+            # segredo HMAC podem ir para o log: os ficheiros de log são
+            # frequentemente partilhados em pedidos de suporte. Registamos apenas
+            # o URL base, sem a query string que transporta o segredo.
+            logger.info(f"A registar Webhook na Efí para a chave {mask_secret(pix_key)}. URL destino: {base_webhook_url}")
             self.efi.pix_config_webhook(params=params, body=body, headers=headers)
             logger.info("Webhook da Efí configurado com sucesso.")
             
         except Exception as e:
-            logger.error(f"Falha ao tentar registar o Webhook na Efí para a chave '{pix_key}': {e}", exc_info=True)
+            logger.error(f"Falha ao tentar registar o Webhook na Efí para a chave {mask_secret(pix_key)}: {e}", exc_info=True)
 
     def create_pix_charge(self, user_info: Dict[str, Any], price: float, screens: int, coupon_code: Optional[str] = None) -> Dict[str, Any]:
         """Gera uma cobrança PIX imediata (QR Code e Copia/Cola)."""

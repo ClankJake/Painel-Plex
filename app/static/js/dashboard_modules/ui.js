@@ -127,7 +127,7 @@ export function renderSystemHealth(health) {
     const { i18n } = state;
     const serviceMap = {
         plex: i18n.plexServer, tautulli: i18n.tautulli, efi: i18n.paymentEfi,
-        mercado_pago: i18n.paymentMp, bpix: i18n.paymentBpix, scheduler: i18n.scheduler
+        mercado_pago: i18n.paymentMp, gates2b: i18n.paymentGates2b, scheduler: i18n.scheduler
     };
 
     dom.systemHealthContainer.innerHTML = Object.entries(health).map(([key, value]) => {
