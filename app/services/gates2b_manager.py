@@ -52,10 +52,22 @@ class Gates2bManager:
             logger.warning("Gates2b está ativado, mas o Token de Autorização não está configurado.")
 
     def check_status(self):
-        """Verifica se o serviço da Gates2b está configurado e ativo."""
-        if not self.config.get("GATES2B_ENABLED"):
+        """
+        Verifica se o serviço da Gates2b está configurado e ativo.
+
+        🐛 CORREÇÃO: esta função lia 'self.config', que é um SNAPSHOT carregado na
+        última vez que 'reload_credentials()' correu. Como a recarga de credenciais
+        é seletiva (só acontece quando as chaves da Gates2b mudam), desativar o
+        gateway sem tocar no token deixava o snapshot desatualizado — e o painel
+        continuava a mostrar "ONLINE" para um gateway já desligado.
+        Passamos a ler a configuração fresca do disco, como já faziam a Efí e o
+        Mercado Pago.
+        """
+        config = load_or_create_config()
+        if not config.get("GATES2B_ENABLED"):
             return {"status": "DISABLED", "message": _("Desativado na configuração.")}
-        if self.auth_token:
+        # O token também vem da configuração atual, pela mesma razão.
+        if config.get("GATES2B_AUTH_TOKEN"):
             return {"status": "ONLINE", "message": _("Ativo e configurado.")}
         else:
             return {"status": "OFFLINE", "message": _("Ativado, mas falha na configuração (verifique o Token de Autorização).")}
