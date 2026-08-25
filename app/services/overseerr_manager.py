@@ -1,6 +1,8 @@
 # app/services/overseerr_manager.py
 
 import logging
+import time
+import threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, Optional, List
@@ -14,10 +16,21 @@ logger = logging.getLogger(__name__)
 class OverseerrManager:
     """Gerencia a comunicação com a API do Overseerr/Jellyseerr."""
 
+    # Tempo de vida das caches em memória.
+    USER_CACHE_TTL = 600      # 10 min — o ID de um utilizador quase nunca muda
+    MEDIA_CACHE_TTL = 86400   # 24 h  — título e ano de um filme NUNCA mudam
+
     def __init__(self):
         self.enabled = False
         self.api_url = None
         self.api_key = None
+        # Caches simples em memória: {chave: (timestamp, valor)}.
+        # Protegidas por lock porque o processamento dos pedidos é feito em várias
+        # threads (ver ThreadPoolExecutor em get_user_requests).
+        self._user_cache = {}
+        self._media_cache = {}
+        self._cache_lock = threading.Lock()
+
 
     def _get_config(self) -> bool:
         """
@@ -80,6 +93,9 @@ class OverseerrManager:
 
     def import_from_plex(self, user_info: Dict[str, Any]) -> Dict[str, Any]:
         """Importa ou atualiza um utilizador no Overseerr a partir do Plex ID."""
+        # Um utilizador acabado de importar não pode ficar preso a uma cache
+        # anterior que dizia 'não existe'.
+        self.invalidate_user_cache(user_info.get('email'))
         plex_id = user_info.get('id')
         username = user_info.get('username')
         
@@ -98,21 +114,72 @@ class OverseerrManager:
             return {"success": False, "message": result.get('message')}
 
     def find_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        """Procura o ID de um utilizador no Overseerr com base no endereço de e-mail."""
+        """
+        Procura um utilizador do Overseerr pelo e-mail.
+
+        ⚡ OTIMIZAÇÃO: antes esta função descarregava a lista COMPLETA de
+        utilizadores (`/user?take=1000`) a cada carregamento da página de pedidos,
+        só para extrair um único ID. Num servidor com centenas de utilizadores
+        isso é uma resposta enorme, repetida sem necessidade.
+
+        Agora tentamos primeiro a pesquisa nativa do Overseerr (`?q=`), que
+        devolve poucos registos. A listagem completa fica apenas como recurso de
+        último caso, para versões do Overseerr que não suportem o parâmetro.
+
+        O resultado é guardado em cache (10 min): o ID de um utilizador
+        praticamente não muda.
+        """
         if not email:
             return None
-            
-        result = self._make_request("GET", "/user?take=1000")
-        if not result.get("success"):
-            return None
-        
-        users = result.get("data", {}).get("results", [])
-        for user in users:
-            if user.get("email", "").lower() == email.lower():
-                return user
-                
+
+        email_norm = email.lower().strip()
+
+        # 1. Cache em memória — evita repetir a procura em cada F5 da página.
+        cached = self._user_cache.get(email_norm)
+        if cached and (time.time() - cached[0]) < self.USER_CACHE_TTL:
+            return cached[1]
+
+        user = self._search_user(email_norm)
+        if user:
+            self._user_cache[email_norm] = (time.time(), user)
+        return user
+
+    def _search_user(self, email_norm: str) -> Optional[Dict[str, Any]]:
+        """Procura o utilizador, primeiro pela pesquisa nativa e depois por listagem."""
+        # 1ª tentativa: pesquisa do lado do servidor (resposta pequena).
+        result = self._make_request("GET", "/user", params={"q": email_norm, "take": 20})
+        if result.get("success"):
+            for user in result.get("data", {}).get("results", []) or []:
+                if (user.get("email") or "").lower() == email_norm:
+                    return user
+
+        # 2ª tentativa (fallback): listagem paginada. Percorremos por páginas em vez
+        # de pedir 1000 de uma vez, e paramos assim que encontramos.
+        skip = 0
+        page_size = 100
+        while skip < 2000:  # limite de segurança para não iterar indefinidamente
+            result = self._make_request("GET", "/user", params={"take": page_size, "skip": skip})
+            if not result.get("success"):
+                return None
+
+            resultados = result.get("data", {}).get("results", []) or []
+            for user in resultados:
+                if (user.get("email") or "").lower() == email_norm:
+                    return user
+
+            if len(resultados) < page_size:
+                break  # última página
+            skip += page_size
+
         return None
-        
+
+    def invalidate_user_cache(self, email: str = None):
+        """Limpa a cache de utilizadores (usada ao importar ou remover alguém)."""
+        if email:
+            self._user_cache.pop(email.lower().strip(), None)
+        else:
+            self._user_cache.clear()
+
     def remove_user(self, email: str) -> Dict[str, Any]:
         """Remove o utilizador do sistema de pedidos Overseerr."""
         user = self.find_user_by_email(email)
@@ -125,6 +192,9 @@ class OverseerrManager:
         
         result = self._make_request("DELETE", f"/user/{user_id}")
         if result.get("success"):
+            # O utilizador deixou de existir: a entrada em cache ficaria a apontar
+            # para um ID inválido nas próximas consultas.
+            self.invalidate_user_cache(email)
             logger.info(f"Overseerr: Utilizador '{mask_email(email)}' removido com sucesso.")
             return {"success": True, "message": _("Acesso removido com sucesso.")}
         else:
@@ -133,7 +203,7 @@ class OverseerrManager:
 
     # --- LÓGICA DE PEDIDOS (OTIMIZADA) ---
 
-    def get_user_requests(self, email: str, limit: int = 10, filter: str = 'all') -> Dict[str, Any]:
+    def get_user_requests(self, email: str, limit: int = 10, filter: str = 'all', skip: int = 0) -> Dict[str, Any]:
         """
         Busca os pedidos de um utilizador. 
         Otimizado com processamento paralelo para buscar as imagens do TMDB rapidamente.
@@ -146,7 +216,7 @@ class OverseerrManager:
             return {"success": False, "message": _("Utilizador não encontrado no Overseerr.")}
         
         params = {
-            "take": limit, "skip": 0, "filter": filter,
+            "take": limit, "skip": skip, "filter": filter,
             "sort": "added", "requestedBy": user.get("id")
         }
         
@@ -154,25 +224,90 @@ class OverseerrManager:
         if not result.get("success"):
             return result
 
-        requests_data = result.get("data", {}).get("results", [])
+        dados = result.get("data", {}) or {}
+        requests_data = dados.get("results", []) or []
+        page_info = dados.get("pageInfo", {}) or {}
         processed_requests = []
 
         # OTIMIZAÇÃO: Usa 5 threads em paralelo para buscar as informações do TMDB (Posters)
         # em vez de esperar 1 segundo por cada filme individualmente.
         with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(self._process_single_request, req) for req in requests_data]
+            futures = {executor.submit(self._process_single_request, req): req for req in requests_data}
             for future in as_completed(futures):
+                req_original = futures[future]
                 try:
                     res = future.result()
                     if res:
                         processed_requests.append(res)
                 except Exception as e:
+                    # 🐛 Antes, um erro aqui fazia o pedido DESAPARECER da lista: o
+                    # utilizador via menos pedidos do que tem, sem qualquer indicação
+                    # de que algo falhou. Agora devolvemos uma entrada degradada —
+                    # sem capa, mas com o estado correto — para o pedido continuar visível.
                     logger.error(f"Erro ao processar item do Overseerr em background: {e}")
+                    media_err = req_original.get("media", {}) or {}
+                    estado = self._get_status_info(req_original.get("status"), media_err.get("status"))
+                    processed_requests.append({
+                        "id": req_original.get("id"),
+                        "title": _("Título indisponível"),
+                        "year": "----",
+                        "type": media_err.get("mediaType"),
+                        "status_text": estado["text"],
+                        "status_color": estado["color"],
+                        "poster_url": None,
+                        "requested_at": req_original.get("createdAt"),
+                    })
 
         # Como as threads terminam em ordem aleatória, voltamos a ordenar pela data do pedido
-        processed_requests.sort(key=lambda x: x.get("requested_at", ""), reverse=True)
-        
-        return {"success": True, "requests": processed_requests}
+        processed_requests.sort(key=lambda x: x.get("requested_at") or "", reverse=True)
+
+        return {
+            "success": True,
+            "requests": processed_requests,
+            # Informação de paginação, para a interface poder oferecer "ver mais".
+            "pagination": {
+                "total": page_info.get("results", len(processed_requests)),
+                "has_more": (skip + len(requests_data)) < page_info.get("results", 0),
+            }
+        }
+
+    def _get_media_details(self, media_type: str, tmdb_id: int) -> Dict[str, Any]:
+        """
+        Obtém título, ano e capa de um item, com cache de 24 horas.
+
+        ⚡ OTIMIZAÇÃO: estes dados eram procurados a CADA carregamento da página —
+        uma chamada por pedido listado. Como o título e o ano de um filme nunca
+        mudam (e a capa quase nunca), guardá-los em cache elimina a esmagadora
+        maioria das chamadas à API sem qualquer perda prática de atualidade.
+
+        O estado do pedido (pendente/aprovado/disponível) NÃO é guardado em cache:
+        esse muda com frequência e continua a ser lido a cada pedido.
+        """
+        chave = f"{media_type}:{tmdb_id}"
+
+        with self._cache_lock:
+            em_cache = self._media_cache.get(chave)
+            if em_cache and (time.time() - em_cache[0]) < self.MEDIA_CACHE_TTL:
+                return em_cache[1]
+
+        detalhes = {"title": None, "year": None, "poster_url": None}
+
+        result = self._make_request("GET", f"/{media_type}/{tmdb_id}")
+        if result.get("success"):
+            dados = result.get("data", {}) or {}
+            if poster_path := dados.get("posterPath"):
+                detalhes["poster_url"] = f"https://image.tmdb.org/t/p/w200{poster_path}"
+            detalhes["title"] = dados.get("title") or dados.get("name")
+            data_lancamento = dados.get("releaseDate") or dados.get("firstAirDate")
+            detalhes["year"] = data_lancamento[:4] if data_lancamento else None
+
+            # Só guardamos em cache respostas ÚTEIS. Guardar uma falha faria o item
+            # aparecer sem título durante 24 h por causa de um erro momentâneo.
+            if detalhes["title"]:
+                with self._cache_lock:
+                    self._media_cache[chave] = (time.time(), detalhes)
+
+        return detalhes
 
     def _process_single_request(self, req: Dict[str, Any]) -> Dict[str, Any]:
         """Processa um pedido individual, buscando os detalhes no TMDB via Overseerr."""
@@ -185,18 +320,11 @@ class OverseerrManager:
         year_str = "----"
         poster_url = None
 
-        # Busca Detalhes (Capa/Título/Ano)
         if tmdb_id and media_type in ['movie', 'tv']:
-            details_result = self._make_request("GET", f"/{media_type}/{tmdb_id}")
-            if details_result.get("success"):
-                source_data = details_result.get("data", {})
-                
-                if poster_path := source_data.get("posterPath"):
-                    poster_url = f"https://image.tmdb.org/t/p/w200{poster_path}"
-                    
-                title = source_data.get("title") or source_data.get("name") or title
-                release_date = source_data.get("releaseDate") or source_data.get("firstAirDate")
-                year_str = release_date[:4] if release_date else "----"
+            detalhes = self._get_media_details(media_type, tmdb_id)
+            title = detalhes.get("title") or title
+            year_str = detalhes.get("year") or "----"
+            poster_url = detalhes.get("poster_url")
 
         status_info = self._get_status_info(req.get("status"), media.get("status"))
 

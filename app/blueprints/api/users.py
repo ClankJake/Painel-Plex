@@ -217,7 +217,13 @@ def get_account_requests():
         filter_status = 'all'
     if not extensions.overseerr_manager.enabled: 
         return jsonify({"success": True, "requests": [], "overseerr_disabled": True})
-    return jsonify(extensions.overseerr_manager.get_user_requests(current_user.email, limit=20, filter=filter_status))
+    # Paginação: permite ao frontend oferecer "ver mais" em vez de ficar preso aos
+    # primeiros 20 pedidos.
+    limit = min(request.args.get('limit', 20, type=int), 50)
+    skip = max(0, request.args.get('skip', 0, type=int))
+    return jsonify(extensions.overseerr_manager.get_user_requests(
+        current_user.email, limit=limit, filter=filter_status, skip=skip
+    ))
 
 @users_api_bp.route('/account/devices')
 @login_required
