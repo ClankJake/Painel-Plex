@@ -26,6 +26,22 @@
             </svg>
             <h1 class="text-2xl font-bold text-gray-900 dark:text-white mt-4">{{ reason_title }}</h1>
             <p class="mt-2 text-gray-600 dark:text-gray-400">{{ reason_message }}</p>
+
+            {% if action_url %}
+            <!-- Ação opcional: só é mostrada quando a rota fornece um destino.
+                 Serve para não deixar o utilizador num beco sem saída — por
+                 exemplo, quem chega cedo demais para renovar pode ir à sua conta
+                 e antecipar o pagamento a partir de lá. -->
+            <a href="{{ action_url }}"
+               class="mt-6 inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3 rounded-xl font-semibold bg-yellow-500 hover:bg-yellow-400 text-gray-900 shadow-lg shadow-yellow-500/20 transition-all transform hover:-translate-y-0.5">
+                {{ action_label or _('Ir para a Minha Conta') }}
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </a>
+            {% if action_hint %}
+            <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ action_hint }}</p>
+            {% endif %}
+            {% endif %}
+
             <p class="mt-6 text-xs text-gray-400 dark:text-gray-500">&copy; {{ app_title }}</p>
         </div>
     </div>

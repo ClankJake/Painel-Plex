@@ -213,9 +213,28 @@ def payment_page(token):
             # 1. Proteção: Bloqueia a renovação se ainda faltar muito tempo para expirar
             if days_left > renewal_window:
                 message = _("A sua assinatura vence em %(days)d dias. A renovação só estará disponível quando faltarem %(window)d dias (ou menos) para o vencimento.", days=days_left, window=renewal_window)
+
+                # 🔁 Em vez de deixar o utilizador num beco sem saída, oferecemos um
+                # caminho: na área de conta ele pode antecipar o pagamento, mudar de
+                # plano ou consultar o histórico.
+                #
+                # Se já estiver autenticado como o próprio dono do link, vai direto
+                # para a conta. Caso contrário passa pelo login com 'next', para
+                # regressar automaticamente ao sítio certo depois de entrar — sem
+                # isso, aterraria no dashboard e teria de procurar sozinho.
+                if current_user.is_authenticated and current_user.username == username:
+                    action_url = url_for('main.account_page')
+                    action_hint = None
+                else:
+                    action_url = url_for('auth.login', next=url_for('main.account_page'))
+                    action_hint = _("Vai ser-lhe pedido para entrar com a sua conta Plex.")
+
                 return render_template('payment_unavailable.html',
                                        reason_title=_("Renovação Indisponível no Momento"),
-                                       reason_message=message)
+                                       reason_message=message,
+                                       action_url=action_url,
+                                       action_label=_("Ir para a Minha Conta"),
+                                       action_hint=action_hint)
 
             # 2. Proteção: Bloqueia o link se já passou demasiado tempo desde a expiração (Período de Carência)
             days_expired = -days_left
