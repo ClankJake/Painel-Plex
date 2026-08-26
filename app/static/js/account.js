@@ -30,7 +30,9 @@ const state = {
     // Plano atual do utilizador e cotação de upgrade pro-rata em curso.
     currentScreens: 0,
     prorationQuote: null,
-    requiresProrationForUpgrade: false
+    requiresProrationForUpgrade: false,
+    requestsSkip: 0,
+    requestsLoaded: false
 };
 
 const dom = {};
@@ -408,6 +410,183 @@ function updatePixButtonForProration(quote, pixBtn, applyCouponBtn) {
     if (applyCouponBtn) applyCouponBtn.disabled = false;
 }
 
+
+// --- MEUS PEDIDOS (OVERSEERR) ---
+
+const STATUS_STYLES = {
+    green:  'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400 ring-green-600/20',
+    blue:   'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400 ring-blue-600/20',
+    yellow: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 ring-amber-600/20',
+    teal:   'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400 ring-teal-600/20',
+    red:    'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400 ring-red-600/20',
+    gray:   'bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-400 ring-gray-500/20',
+};
+
+/**
+ * Esqueleto de carregamento. Mostrar a "forma" do conteúdo enquanto ele chega
+ * transmite progresso muito melhor do que um texto "a carregar...", sobretudo
+ * porque estes pedidos dependem de uma API externa e podem demorar.
+ */
+function renderRequestsSkeleton(n = 3) {
+    const container = document.getElementById('requests-container');
+    if (!container) return;
+    container.innerHTML = Array.from({ length: n }).map(() => `
+        <div class="flex gap-4 p-3 rounded-xl bg-gray-50 dark:bg-gray-900/40 animate-pulse">
+            <div class="w-14 h-20 rounded-lg bg-gray-200 dark:bg-gray-700 flex-shrink-0"></div>
+            <div class="flex-1 py-1 space-y-2">
+                <div class="h-4 w-2/3 rounded bg-gray-200 dark:bg-gray-700"></div>
+                <div class="h-3 w-1/3 rounded bg-gray-200 dark:bg-gray-700"></div>
+                <div class="h-5 w-24 rounded-full bg-gray-200 dark:bg-gray-700 mt-3"></div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderEmptyRequests(mensagem, icone = '🎬') {
+    const container = document.getElementById('requests-container');
+    if (!container) return;
+    // Sem resultados não faz sentido mostrar "0 de 0 pedidos".
+    document.getElementById('requests-count')?.classList.add('hidden');
+    container.innerHTML = `
+        <div class="text-center py-12 px-4">
+            <div class="text-5xl mb-3 opacity-60">${icone}</div>
+            <p class="text-sm text-gray-500 dark:text-gray-400">${escapeHTML(mensagem)}</p>
+        </div>
+    `;
+}
+
+function buildRequestCard(req) {
+    const badge = STATUS_STYLES[req.status_color] || STATUS_STYLES.gray;
+    const isSerie = req.type === 'tv';
+
+    // A data vem em ISO (UTC); mostramos no formato e idioma do utilizador.
+    let dataPedido = '';
+    if (req.requested_at) {
+        try {
+            dataPedido = new Date(req.requested_at).toLocaleDateString(
+                document.documentElement.lang || undefined,
+                { day: '2-digit', month: 'short', year: 'numeric' }
+            );
+        } catch { dataPedido = ''; }
+    }
+
+    const capa = req.poster_url
+        ? `<img src="${escapeHTML(req.poster_url)}" alt="" loading="lazy"
+                class="w-14 h-20 object-cover rounded-lg shadow-sm bg-gray-200 dark:bg-gray-700"
+                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+           <div class="w-14 h-20 rounded-lg bg-gray-200 dark:bg-gray-700 items-center justify-center text-2xl" style="display:none">🎞️</div>`
+        : `<div class="w-14 h-20 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-2xl">${isSerie ? '📺' : '🎬'}</div>`;
+
+    return `
+        <div class="group flex gap-4 p-3 rounded-xl border border-gray-200 dark:border-gray-700/60 bg-white dark:bg-gray-900/30 hover:border-purple-300 dark:hover:border-purple-700/60 hover:shadow-sm transition-all">
+            <div class="flex-shrink-0 relative">${capa}</div>
+            <div class="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                <div>
+                    <p class="font-semibold text-gray-900 dark:text-white leading-snug line-clamp-2" title="${escapeHTML(req.title)}">
+                        ${escapeHTML(req.title)}
+                    </p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1.5">
+                        <span>${isSerie ? '📺' : '🎬'}</span>
+                        <span>${escapeHTML(req.year || '----')}</span>
+                        ${dataPedido ? `<span class="text-gray-300 dark:text-gray-600">•</span><span>${escapeHTML(state.i18n.requestedOn || 'Pedido a')} ${escapeHTML(dataPedido)}</span>` : ''}
+                    </p>
+                </div>
+                <div class="mt-2">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ring-1 ring-inset ${badge}">
+                        <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+                        ${escapeHTML(req.status_text)}
+                    </span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function fetchRequests(append = false) {
+    const container = document.getElementById('requests-container');
+    if (!container || !state.urls.getAccountRequestsUrl) return;
+
+    if (!append) {
+        state.requestsSkip = 0;
+        renderRequestsSkeleton();
+    }
+
+    try {
+        const url = `${state.urls.getAccountRequestsUrl}?filter=${encodeURIComponent(state.currentRequestFilter)}&skip=${state.requestsSkip}&limit=20`;
+        const data = await fetchAPI(url);
+
+        if (data.overseerr_disabled) {
+            renderEmptyRequests(state.i18n.overseerrDisabled || 'Módulo de pedidos desativado no servidor.', '🔌');
+            return;
+        }
+        if (!data.success) {
+            renderEmptyRequests(data.message || (state.i18n.errorGeneric || 'Erro'), '⚠️');
+            return;
+        }
+
+        const pedidos = data.requests || [];
+        const cards = pedidos.map(buildRequestCard).join('');
+
+        if (append) {
+            document.getElementById('requests-load-more-wrapper')?.remove();
+            container.insertAdjacentHTML('beforeend', cards);
+        } else if (pedidos.length === 0) {
+            renderEmptyRequests(state.i18n.noRequestsFound || 'Nenhum pedido condiz com este filtro.');
+            return;
+        } else {
+            container.innerHTML = cards;
+        }
+
+        state.requestsSkip += pedidos.length;
+
+        // Contador "X de Y pedidos": dá contexto de quantos ainda faltam ver.
+        const contador = document.getElementById('requests-count');
+        if (contador) {
+            const total = data.pagination?.total ?? state.requestsSkip;
+            if (total > 0) {
+                contador.textContent = (state.i18n.requestsCount || '{shown} de {total} pedido(s)')
+                    .replace('{shown}', state.requestsSkip).replace('{total}', total);
+                contador.classList.remove('hidden');
+            } else {
+                contador.classList.add('hidden');
+            }
+        }
+
+        // Botão "ver mais": só aparece quando há mesmo mais para mostrar.
+        if (data.pagination?.has_more) {
+            container.insertAdjacentHTML('beforeend', `
+                <div id="requests-load-more-wrapper" class="pt-2">
+                    <button id="requests-load-more" class="w-full py-2.5 rounded-xl text-sm font-semibold text-purple-600 dark:text-purple-400 border border-dashed border-purple-300 dark:border-purple-700/60 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors">
+                        ${escapeHTML(state.i18n.loadMore || 'Ver mais pedidos')}
+                    </button>
+                </div>
+            `);
+            document.getElementById('requests-load-more')?.addEventListener('click', (e) => {
+                e.target.disabled = true;
+                e.target.textContent = state.i18n.loadingRequests || 'A carregar...';
+                fetchRequests(true);
+            });
+        }
+    } catch (error) {
+        renderEmptyRequests(`${state.i18n.errorGeneric || 'Erro'}: ${error.message}`, '⚠️');
+    }
+}
+
+function initRequestsTab() {
+    const filtros = document.getElementById('request-filters');
+    if (!filtros) return;
+
+    filtros.addEventListener('click', (e) => {
+        const btn = e.target.closest('.filter-btn');
+        if (!btn || btn.classList.contains('active')) return;
+
+        filtros.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.currentRequestFilter = btn.dataset.filter || 'all';
+        fetchRequests(false);
+    });
+}
+
 const setupPaymentSection = (prices, providers, canDowngrade) => {
     const paymentCard = document.getElementById('payment-card');
     if (!dom.paymentSection || !paymentCard) return;
@@ -732,6 +911,12 @@ const initTabs = () => {
         dom.contentContainer.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
         document.getElementById(`tab-${tabName}`)?.classList.add('active');
         if (tabName === 'history') fetchWatchHistory();
+        // Carrega os pedidos só ao abrir a aba: são chamadas a uma API externa,
+        // não faz sentido pagá-las se o utilizador nunca lá for.
+        if (tabName === 'requests' && !state.requestsLoaded) {
+            state.requestsLoaded = true;
+            fetchRequests(false);
+        }
     };
 
     // 🐛 CORREÇÃO: o listener de clique precisa de estar registado ANTES de
@@ -903,6 +1088,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         initTabs();
+        initRequestsTab();
         initGlobalEventListeners();
 
         // Reveal Interface

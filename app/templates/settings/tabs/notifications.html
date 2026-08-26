@@ -120,6 +120,33 @@
                             <textarea id="TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE" rows="3" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow shadow-inner resize-y"></textarea>
                         </div>
                     </div>
+                
+                    <div class="space-y-4 pt-4 mt-2 border-t border-gray-200 dark:border-gray-700/50">
+                        <div>
+                            <h4 class="font-bold text-gray-900 dark:text-white text-sm">{{ _('Pedidos (Seerr)') }}</h4>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Mensagens enviadas ao utilizador quando o estado do pedido dele muda. Variáveis: {title}, {overview}, {status}, {username}, {media_url}. Deixe em branco para usar a mensagem genérica.') }}</p>
+                        </div>
+                        <div>
+                            <label for="TELEGRAM_MEDIA_PENDING_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Pedido Pendente') }}</label>
+                            <textarea id="TELEGRAM_MEDIA_PENDING_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="TELEGRAM_MEDIA_APPROVED_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Pedido Aprovado') }}</label>
+                            <textarea id="TELEGRAM_MEDIA_APPROVED_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="TELEGRAM_MEDIA_AVAILABLE_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Conteúdo Disponível') }}</label>
+                            <textarea id="TELEGRAM_MEDIA_AVAILABLE_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="TELEGRAM_MEDIA_DECLINED_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Pedido Recusado') }}</label>
+                            <textarea id="TELEGRAM_MEDIA_DECLINED_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="TELEGRAM_MEDIA_FAILED_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Falha no Pedido') }}</label>
+                            <textarea id="TELEGRAM_MEDIA_FAILED_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ================= ABA DISCORD ================= -->
@@ -186,6 +213,33 @@
                                 </button>
                             </div>
                             <textarea id="DISCORD_TRIAL_END_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900/80 dark:border-gray-600 dark:text-gray-300 transition-shadow shadow-inner resize-y"></textarea>
+                        </div>
+                    </div>
+                
+                    <div class="space-y-4 pt-4 mt-2 border-t border-gray-200 dark:border-gray-700/50">
+                        <div>
+                            <h4 class="font-bold text-gray-900 dark:text-white text-sm">{{ _('Pedidos (Seerr)') }}</h4>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Mensagens enviadas ao utilizador quando o estado do pedido dele muda. Variáveis: {title}, {overview}, {status}, {username}, {media_url}. Deixe em branco para usar a mensagem genérica.') }}</p>
+                        </div>
+                        <div>
+                            <label for="DISCORD_MEDIA_PENDING_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Pedido Pendente') }}</label>
+                            <textarea id="DISCORD_MEDIA_PENDING_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="DISCORD_MEDIA_APPROVED_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Pedido Aprovado') }}</label>
+                            <textarea id="DISCORD_MEDIA_APPROVED_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="DISCORD_MEDIA_AVAILABLE_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Conteúdo Disponível') }}</label>
+                            <textarea id="DISCORD_MEDIA_AVAILABLE_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="DISCORD_MEDIA_DECLINED_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Pedido Recusado') }}</label>
+                            <textarea id="DISCORD_MEDIA_DECLINED_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="DISCORD_MEDIA_FAILED_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Falha no Pedido') }}</label>
+                            <textarea id="DISCORD_MEDIA_FAILED_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
                         </div>
                     </div>
                 </div>
@@ -374,6 +428,33 @@
                             </button>
                             </div>
                             <textarea id="WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE" rows="3" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                    </div>
+                
+                    <div class="space-y-4 pt-4 mt-2 border-t border-gray-200 dark:border-gray-700/50">
+                        <div>
+                            <h4 class="font-bold text-gray-900 dark:text-white text-sm">{{ _('Pedidos (Seerr)') }}</h4>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Mensagens enviadas ao utilizador quando o estado do pedido dele muda. Variáveis: {title}, {overview}, {status}, {username}, {media_url}. Deixe em branco para usar a mensagem genérica.') }}</p>
+                        </div>
+                        <div>
+                            <label for="WHATSAPP_MEDIA_PENDING_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Pedido Pendente') }}</label>
+                            <textarea id="WHATSAPP_MEDIA_PENDING_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="WHATSAPP_MEDIA_APPROVED_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Pedido Aprovado') }}</label>
+                            <textarea id="WHATSAPP_MEDIA_APPROVED_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="WHATSAPP_MEDIA_AVAILABLE_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Conteúdo Disponível') }}</label>
+                            <textarea id="WHATSAPP_MEDIA_AVAILABLE_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="WHATSAPP_MEDIA_DECLINED_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Pedido Recusado') }}</label>
+                            <textarea id="WHATSAPP_MEDIA_DECLINED_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        <div>
+                            <label for="WHATSAPP_MEDIA_FAILED_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Falha no Pedido') }}</label>
+                            <textarea id="WHATSAPP_MEDIA_FAILED_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
                         </div>
                     </div>
                 </div>

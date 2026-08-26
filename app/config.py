@@ -323,7 +323,30 @@ def load_or_create_config():
             # setdefault não o corrige. Aqui reescrevemos qualquer template de mensagem que
             # esteja em branco, já que um template vazio nunca é um estado intencional válido
             # (diferente de campos como WEBHOOK_URL, que podem ficar vazios legitimamente).
+            # Importado aqui dentro (e não no topo) para evitar import circular:
+            # 'notifier_manager' importa 'config'. Assim os textos padrão vivem
+            # num único sítio, sem duplicação entre os dois ficheiros.
+            from .services.notifier_manager import DEFAULT_TEMPLATES
+
             message_template_defaults = {
+                "TELEGRAM_MEDIA_PENDING_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("TELEGRAM_MEDIA_PENDING_MESSAGE_TEMPLATE", ""),
+                "WHATSAPP_MEDIA_PENDING_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("WHATSAPP_MEDIA_PENDING_MESSAGE_TEMPLATE", ""),
+                "DISCORD_MEDIA_PENDING_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("DISCORD_MEDIA_PENDING_MESSAGE_TEMPLATE", ""),
+                "TELEGRAM_MEDIA_APPROVED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("TELEGRAM_MEDIA_APPROVED_MESSAGE_TEMPLATE", ""),
+                "WHATSAPP_MEDIA_APPROVED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("WHATSAPP_MEDIA_APPROVED_MESSAGE_TEMPLATE", ""),
+                "DISCORD_MEDIA_APPROVED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("DISCORD_MEDIA_APPROVED_MESSAGE_TEMPLATE", ""),
+                "TELEGRAM_MEDIA_AVAILABLE_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("TELEGRAM_MEDIA_AVAILABLE_MESSAGE_TEMPLATE", ""),
+                "WHATSAPP_MEDIA_AVAILABLE_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("WHATSAPP_MEDIA_AVAILABLE_MESSAGE_TEMPLATE", ""),
+                "DISCORD_MEDIA_AVAILABLE_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("DISCORD_MEDIA_AVAILABLE_MESSAGE_TEMPLATE", ""),
+                "TELEGRAM_MEDIA_DECLINED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("TELEGRAM_MEDIA_DECLINED_MESSAGE_TEMPLATE", ""),
+                "WHATSAPP_MEDIA_DECLINED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("WHATSAPP_MEDIA_DECLINED_MESSAGE_TEMPLATE", ""),
+                "DISCORD_MEDIA_DECLINED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("DISCORD_MEDIA_DECLINED_MESSAGE_TEMPLATE", ""),
+                "TELEGRAM_MEDIA_FAILED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("TELEGRAM_MEDIA_FAILED_MESSAGE_TEMPLATE", ""),
+                "WHATSAPP_MEDIA_FAILED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("WHATSAPP_MEDIA_FAILED_MESSAGE_TEMPLATE", ""),
+                "DISCORD_MEDIA_FAILED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("DISCORD_MEDIA_FAILED_MESSAGE_TEMPLATE", ""),
+                "TELEGRAM_MEDIA_REQUEST_MESSAGE_TEMPLATE": "🍿 *Novo Conteúdo Solicitado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acesse o pedido:*\n{media_url}",
+                "WHATSAPP_MEDIA_REQUEST_MESSAGE_TEMPLATE": "🍿 *Novo Conteúdo Solicitado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acesse o pedido:*\n{media_url}",
+                "DISCORD_MEDIA_REQUEST_MESSAGE_TEMPLATE": '{"embeds": [{"title": "🍿 Novo Conteúdo Solicitado", "description": "**{title}**\\n\\n📝 {overview}", "color": 10181046, "fields": [{"name": "👤 Usuário", "value": "{username}", "inline": true}, {"name": "📊 Status", "value": "{status}", "inline": true}], "url": "{media_url}"}]}',
                 "WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nO seu acesso vence em {days} dia(s), no dia {date}.\nPlano: {plan_name}\nValor: {price}\n\nRenove aqui para não perder o acesso:\n{payment_link}",
                 "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "✅ Renovação confirmada!\n\nOlá {name}, a sua subscrição foi renovada com sucesso.\nNovo vencimento: {new_date}\n\nBom entretenimento!",
                 "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "✅ Conta reativada!\n\nOlá {name}, a sua conta foi reativada.\nNovo vencimento: {new_date}\n\nAceite o convite para voltar a aceder:\n{invite_link}",

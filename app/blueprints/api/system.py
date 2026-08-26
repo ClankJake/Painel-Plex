@@ -227,9 +227,25 @@ def api_settings():
             'XP_PER_MINUTE_WATCHED', 'XP_BONUS_PER_COMPLETED_ITEM', 'XP_COMPLETION_THRESHOLD_PERCENT',
             'XP_LEVEL_TABLE', 'XP_RESET_ENABLED', 'XP_RESET_MONTHS',
             'WHATSAPP_ENABLED', 'WHATSAPP_PROVIDER', 'WHATSAPP_API_URL', 'WHATSAPP_API_KEY', 'WHATSAPP_INSTANCE', 'WHATSAPP_DEFAULT_COUNTRY_CODE', 'WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE', 'WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE', 'WHATSAPP_RENEWAL_MESSAGE_TEMPLATE', 'WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE', 'WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE', 'WHATSAPP_BULK_MESSAGE_TEMPLATE',
+            'TELEGRAM_MEDIA_REQUEST_MESSAGE_TEMPLATE', 'WHATSAPP_MEDIA_REQUEST_MESSAGE_TEMPLATE', 'DISCORD_MEDIA_REQUEST_MESSAGE_TEMPLATE',
             'PRORATION_ENABLED', 'PRORATION_MIN_CHARGE', 'PRORATION_MIN_DAYS', 'PRORATION_FREE_BELOW_MINIMUM',
             'REFERRAL_ENABLED', 'REFERRAL_REWARD_TYPE', 'REFERRAL_REWARD_DAYS', 'REFERRAL_REWARD_CREDIT',
             'REFERRAL_DEFAULT_INVITE_CODE',
+            'TELEGRAM_MEDIA_PENDING_MESSAGE_TEMPLATE',
+            'WHATSAPP_MEDIA_PENDING_MESSAGE_TEMPLATE',
+            'DISCORD_MEDIA_PENDING_MESSAGE_TEMPLATE',
+            'TELEGRAM_MEDIA_APPROVED_MESSAGE_TEMPLATE',
+            'WHATSAPP_MEDIA_APPROVED_MESSAGE_TEMPLATE',
+            'DISCORD_MEDIA_APPROVED_MESSAGE_TEMPLATE',
+            'TELEGRAM_MEDIA_AVAILABLE_MESSAGE_TEMPLATE',
+            'WHATSAPP_MEDIA_AVAILABLE_MESSAGE_TEMPLATE',
+            'DISCORD_MEDIA_AVAILABLE_MESSAGE_TEMPLATE',
+            'TELEGRAM_MEDIA_DECLINED_MESSAGE_TEMPLATE',
+            'WHATSAPP_MEDIA_DECLINED_MESSAGE_TEMPLATE',
+            'DISCORD_MEDIA_DECLINED_MESSAGE_TEMPLATE',
+            'TELEGRAM_MEDIA_FAILED_MESSAGE_TEMPLATE',
+            'WHATSAPP_MEDIA_FAILED_MESSAGE_TEMPLATE',
+            'DISCORD_MEDIA_FAILED_MESSAGE_TEMPLATE',
             'TELEGRAM_BULK_MESSAGE_TEMPLATE', 'DISCORD_BULK_MESSAGE_TEMPLATE', 'WEBHOOK_BULK_MESSAGE_TEMPLATE',
             'UNIVERSAL_EXPIRATION_ENABLED', 'UNIVERSAL_EXPIRATION_TIME',
             'DISCORD_ENABLED', 'DISCORD_WEBHOOK_URL', 'DISCORD_EXPIRATION_MESSAGE_TEMPLATE',
@@ -326,11 +342,16 @@ def api_settings():
         tautulli_changed = _changed('TAUTULLI_URL', 'TAUTULLI_API_KEY')
         mp_changed = _changed('MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_ENABLED', 'MERCADOPAGO_WEBHOOK_SECRET')
         overseerr_changed = _changed('OVERSEERR_URL', 'OVERSEERR_API_KEY', 'OVERSEERR_ENABLED')
+        # 🐛 A Gates2b tinha sido esquecida na recarga seletiva: as credenciais
+        # em memória nunca eram atualizadas ao gravar as configurações.
+        gates2b_changed = _changed('GATES2B_ENABLED', 'GATES2B_AUTH_TOKEN', 'GATES2B_MIN_AMOUNT', 'APP_BASE_URL')
 
         if efi_changed:
             efi_manager.reload_credentials()
         if mp_changed:
             mercado_pago_manager.reload_credentials()
+        if gates2b_changed:
+            gates2b_manager.reload_credentials()
         if tautulli_changed:
             tautulli_manager.reload_credentials()
 
@@ -745,6 +766,59 @@ def test_whatsapp_connection():
     except Exception as e:
         logger.error(f"Erro ao testar a ligação de WhatsApp: {e}", exc_info=True)
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+@system_api_bp.route('/webhook/overseerr', methods=['POST'])
+@limiter.exempt
+def overseerr_webhook():
+    """
+    Recebe notificações do agente de Webhook do Overseerr/Jellyseerr e reencaminha-as
+    para o canal pessoal do utilizador que fez o pedido (Telegram, WhatsApp ou Discord).
+
+    🔒 SEGURANÇA: a rota é pública (o Overseerr não faz login), por isso é protegida
+    por uma chave partilhada enviada no cabeçalho 'X-API-Key' ou 'Authorization:
+    Bearer'. Usa-se a mesma chave das restantes integrações
+    (Configurações → Geral → Chave de API). Sem isso, qualquer pessoa poderia
+    enviar mensagens falsas aos utilizadores em nome do painel.
+
+    Configuração no Overseerr:
+      Settings → Notifications → Webhook
+        Webhook URL   : https://SEU-PAINEL/api/system/webhook/overseerr
+        Authorization : a sua Chave de API
+        (o payload JSON pode ficar com o modelo por omissão)
+    """
+    config = load_or_create_config()
+    expected_key = str(config.get('INTERNAL_TRIGGER_KEY') or '')
+
+    provided = request.headers.get('X-API-Key', '')
+    if not provided:
+        auth = request.headers.get('Authorization', '')
+        provided = auth[7:].strip() if auth.lower().startswith('bearer ') else auth.strip()
+
+    if not expected_key or not provided or not secrets.compare_digest(provided, expected_key):
+        logger.warning(f"Webhook do Overseerr rejeitado: chave inválida ou ausente. IP: {request.remote_addr}")
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+
+    # O Overseerr envia um evento de teste ao gravar as definições — respondemos
+    # OK para que o teste seja dado como bem-sucedido no painel dele.
+    tipo = (data.get('notification_type') or '').upper()
+    if tipo in ('TEST_NOTIFICATION', 'TEST'):
+        logger.info("Webhook de teste do Overseerr recebido com sucesso.")
+        return jsonify({"success": True, "message": "Teste recebido."}), 200
+
+    try:
+        # NOTA: neste módulo o pacote de extensões é importado como '_ext'
+        # (ver imports no topo). Usar 'extensions' aqui dava NameError em runtime,
+        # e o erro ficava escondido no except que devolve sempre HTTP 200.
+        resultado = _ext.overseerr_manager.handle_notification_webhook(data)
+        return jsonify(resultado), (200 if resultado.get('success') else 200)
+    except Exception as e:
+        logger.error(f"Erro ao processar o webhook do Overseerr: {e}", exc_info=True)
+        # Devolvemos 200 de propósito: um erro do nosso lado não deve fazer o
+        # Overseerr repetir a notificação indefinidamente.
+        return jsonify({"success": False, "message": str(e)}), 200
 
 
 @system_api_bp.route('/api-key', methods=['GET'])

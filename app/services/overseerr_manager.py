@@ -145,30 +145,35 @@ class OverseerrManager:
         return user
 
     def _search_user(self, email_norm: str) -> Optional[Dict[str, Any]]:
-        """Procura o utilizador, primeiro pela pesquisa nativa e depois por listagem."""
-        # 1ª tentativa: pesquisa do lado do servidor (resposta pequena).
-        result = self._make_request("GET", "/user", params={"q": email_norm, "take": 20})
-        if result.get("success"):
-            for user in result.get("data", {}).get("results", []) or []:
-                if (user.get("email") or "").lower() == email_norm:
-                    return user
+        """
+        Procura o utilizador percorrendo a listagem por páginas.
 
-        # 2ª tentativa (fallback): listagem paginada. Percorremos por páginas em vez
-        # de pedir 1000 de uma vez, e paramos assim que encontramos.
+        ⚠️ NOTA: a API do Seerr/Overseerr **não** oferece pesquisa de utilizadores
+        por email — o endpoint `/user` aceita apenas 'take', 'skip', 'sort' e
+        'sortDirection' (confirmado na especificação oficial do Seerr). Parâmetros
+        desconhecidos são simplesmente ignorados, o que tornaria uma tentativa de
+        pesquisa uma chamada desperdiçada.
+        Por isso paginamos — mas paramos assim que encontramos, em vez de pedir os
+        1000 utilizadores de uma vez como acontecia antes.
+        """
         skip = 0
         page_size = 100
-        while skip < 2000:  # limite de segurança para não iterar indefinidamente
+        while skip < 5000:  # limite de segurança para não iterar indefinidamente
             result = self._make_request("GET", "/user", params={"take": page_size, "skip": skip})
             if not result.get("success"):
                 return None
 
-            resultados = result.get("data", {}).get("results", []) or []
+            dados = result.get("data", {}) or {}
+            resultados = dados.get("results", []) or []
+
             for user in resultados:
                 if (user.get("email") or "").lower() == email_norm:
                     return user
 
-            if len(resultados) < page_size:
-                break  # última página
+            # Última página: ou veio menos do que pedimos, ou já cobrimos o total.
+            total = (dados.get("pageInfo") or {}).get("results")
+            if len(resultados) < page_size or (total is not None and skip + page_size >= total):
+                break
             skip += page_size
 
         return None
@@ -338,6 +343,86 @@ class OverseerrManager:
             "poster_url": poster_url,
             "requested_at": req.get("createdAt")
         }
+
+    def handle_notification_webhook(self, data):
+        """
+        Traduz uma notificação do Overseerr numa mensagem para o utilizador que
+        fez o pedido.
+
+        O payload do agente de Webhook do Overseerr tem esta forma:
+            notification_type, subject, message, image,
+            media:   {media_type, tmdbId, status, ...}
+            request: {request_id, requestedBy_email, requestedBy_username, ...}
+
+        Devolve sempre um dicionário (nunca lança), porque o Overseerr repete
+        notificações que não recebem resposta de sucesso.
+        """
+        from .. import extensions
+
+        pedido = data.get('request') or {}
+        media = data.get('media') or {}
+
+        email = (pedido.get('requestedBy_email') or '').strip()
+        username_seerr = pedido.get('requestedBy_username') or ''
+
+        if not email:
+            logger.warning("Webhook do Overseerr sem email de quem pediu; não é possível identificar o utilizador.")
+            return {"success": False, "message": "Pedido sem email do requerente."}
+
+        # Localiza o utilizador NO PAINEL pelo email (o mesmo que ele usa no Plex).
+        perfil = extensions.data_manager.get_user_profile_by_email(email)
+        if not perfil:
+            logger.info(f"Webhook do Overseerr: nenhum utilizador local corresponde a {mask_email(email)}. Ignorado.")
+            return {"success": True, "message": "Utilizador não encontrado no painel."}
+
+        # Monta o URL para o item no Overseerr (o mesmo destino que a interface usa).
+        #
+        # 🐛 'self.api_url' só é preenchido por '_get_config()', que corre quando o
+        # serviço é usado. Um webhook pode chegar antes disso (o Overseerr chama-nos
+        # de forma independente), e então o link saía VAZIO na mensagem — o
+        # utilizador recebia "Acesse o pedido:" sem endereço nenhum.
+        # Garantimos a configuração antes de montar o URL.
+        if not self.api_url:
+            self._get_config()
+
+        media_type = media.get('media_type') or ''
+        tmdb_id = media.get('tmdbId')
+        base = (self.api_url or '').replace('/api/v1', '').rstrip('/')
+
+        # Último recurso: lê diretamente da configuração (cobre o caso de o módulo
+        # estar desativado no painel mas o webhook continuar a ser enviado).
+        if not base:
+            base = (load_or_create_config().get('OVERSEERR_URL') or '').rstrip('/')
+
+        media_url = f"{base}/{media_type}/{tmdb_id}" if (base and media_type and tmdb_id) else ''
+        if not media_url:
+            logger.warning("Webhook do Overseerr: não foi possível montar o link do item (URL do Overseerr por configurar?).")
+
+        # 'subject' costuma vir como "Título (Ano)" e 'message' como a sinopse.
+        dados = {
+            "title": data.get('subject') or '',
+            "overview": data.get('message') or '',
+            "status": media.get('status') or data.get('notification_type') or '',
+            "username": username_seerr or perfil.get('username') or '',
+            "media_url": media_url,
+            "image_url": data.get('image') or None,
+            "event": data.get('event') or '',
+            # Tipo do evento (MEDIA_PENDING, MEDIA_APPROVED, MEDIA_AVAILABLE,
+            # MEDIA_DECLINED, MEDIA_FAILED...). É o que permite ao notificador
+            # escolher a mensagem certa para cada situação.
+            "notification_type": (data.get('notification_type') or '').upper(),
+        }
+
+        try:
+            extensions.notifier_manager.send_media_request_notification(perfil, dados)
+            logger.info(
+                f"Notificação de pedido reencaminhada para '{perfil.get('username')}' "
+                f"({dados['title'][:40]})."
+            )
+            return {"success": True, "message": "Notificação enviada."}
+        except Exception as e:
+            logger.error(f"Falha ao reencaminhar a notificação de pedido: {e}", exc_info=True)
+            return {"success": False, "message": str(e)}
 
     def _get_status_info(self, request_status_code: Optional[int], media_availability_code: Optional[int]) -> Dict[str, str]:
         """Calcula o estado final baseando-se na hierarquia do Pedido vs Média."""

@@ -42,7 +42,30 @@ DEFAULT_TEMPLATES = {
     "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "✅ Renovação confirmada!\n\nOlá {name}, a sua subscrição foi renovada com sucesso.\nNovo vencimento: {new_date}\n\nBom entretenimento!",
     "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "✅ Conta reativada!\n\nOlá {name}, a sua conta foi reativada.\nNovo vencimento: {new_date}\n\nAceite o convite para voltar a aceder:\n{invite_link}",
     "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "⌛ O seu período de teste terminou\n\nOlá {name}, esperamos que tenha gostado!\nPara continuar com acesso, faça a sua assinatura aqui:\n{payment_link}",
-    "WHATSAPP_BULK_MESSAGE_TEMPLATE": "📢 Aviso do servidor\n\nOlá {name},\n\n{message}"
+    "WHATSAPP_BULK_MESSAGE_TEMPLATE": "📢 Aviso do servidor\n\nOlá {name},\n\n{message}",
+    # --- Pedidos no Overseerr/Jellyseerr ---
+    "TELEGRAM_MEDIA_REQUEST_MESSAGE_TEMPLATE": "🍿 *Novo Conteúdo Solicitado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acesse o pedido:*\n{media_url}",
+    "WHATSAPP_MEDIA_REQUEST_MESSAGE_TEMPLATE": "🍿 *Novo Conteúdo Solicitado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acesse o pedido:*\n{media_url}",
+    "DISCORD_MEDIA_REQUEST_MESSAGE_TEMPLATE": '{"embeds": [{"title": "🍿 Novo Conteúdo Solicitado", "description": "**{title}**\\n\\n📝 {overview}", "color": 10181046, "fields": [{"name": "👤 Usuário", "value": "{username}", "inline": true}, {"name": "📊 Status", "value": "{status}", "inline": true}], "url": "{media_url}"}]}',
+    # --- Templates por TIPO de evento do Seerr ---
+    # Mensagens distintas para pendente / aprovado / disponível / recusado.
+    # Se algum ficar em branco, recai no MEDIA_REQUEST genérico.
+    "TELEGRAM_MEDIA_PENDING_MESSAGE_TEMPLATE": "🍿 *Novo Conteúdo Solicitado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acesse o pedido:*\n{media_url}",
+    "WHATSAPP_MEDIA_PENDING_MESSAGE_TEMPLATE": "🍿 *Novo Conteúdo Solicitado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acesse o pedido:*\n{media_url}",
+    "DISCORD_MEDIA_PENDING_MESSAGE_TEMPLATE": '{"embeds": [{"title": "🍿 Novo Conteúdo Solicitado", "description": "**{title}**\\n\\n📝 {overview}", "color": 10181046, "fields": [{"name": "👤 Usuário", "value": "{username}", "inline": true}, {"name": "📊 Status", "value": "{status}", "inline": true}], "url": "{media_url}"}]}',
+    "TELEGRAM_MEDIA_APPROVED_MESSAGE_TEMPLATE": "✅ *Pedido Aprovado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acompanhe aqui:*\n{media_url}",
+    "WHATSAPP_MEDIA_APPROVED_MESSAGE_TEMPLATE": "✅ *Pedido Aprovado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acompanhe aqui:*\n{media_url}",
+    "DISCORD_MEDIA_APPROVED_MESSAGE_TEMPLATE": '{"embeds": [{"title": "✅ Pedido Aprovado", "description": "**{title}**\\n\\n📝 {overview}", "color": 10181046, "fields": [{"name": "👤 Usuário", "value": "{username}", "inline": true}, {"name": "📊 Status", "value": "{status}", "inline": true}], "url": "{media_url}"}]}',
+    "TELEGRAM_MEDIA_AVAILABLE_MESSAGE_TEMPLATE": "🎉 *Já Está Disponível!*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n▶️ *Assista agora:*\n{media_url}",
+    "WHATSAPP_MEDIA_AVAILABLE_MESSAGE_TEMPLATE": "🎉 *Já Está Disponível!*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n▶️ *Assista agora:*\n{media_url}",
+    "DISCORD_MEDIA_AVAILABLE_MESSAGE_TEMPLATE": '{"embeds": [{"title": "🎉 Já Está Disponível!", "description": "**{title}**\\n\\n📝 {overview}", "color": 10181046, "fields": [{"name": "👤 Usuário", "value": "{username}", "inline": true}, {"name": "📊 Status", "value": "{status}", "inline": true}], "url": "{media_url}"}]}',
+    "TELEGRAM_MEDIA_DECLINED_MESSAGE_TEMPLATE": "❌ *Pedido Recusado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\nℹ️ *Ver detalhes:*\n{media_url}",
+    "WHATSAPP_MEDIA_DECLINED_MESSAGE_TEMPLATE": "❌ *Pedido Recusado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\nℹ️ *Ver detalhes:*\n{media_url}",
+    "DISCORD_MEDIA_DECLINED_MESSAGE_TEMPLATE": '{"embeds": [{"title": "❌ Pedido Recusado", "description": "**{title}**\\n\\n📝 {overview}", "color": 10181046, "fields": [{"name": "👤 Usuário", "value": "{username}", "inline": true}, {"name": "📊 Status", "value": "{status}", "inline": true}], "url": "{media_url}"}]}',
+    "TELEGRAM_MEDIA_FAILED_MESSAGE_TEMPLATE": "⚠️ *Falha no Pedido*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\nℹ️ *Ver detalhes:*\n{media_url}",
+    "WHATSAPP_MEDIA_FAILED_MESSAGE_TEMPLATE": "⚠️ *Falha no Pedido*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\nℹ️ *Ver detalhes:*\n{media_url}",
+    "DISCORD_MEDIA_FAILED_MESSAGE_TEMPLATE": '{"embeds": [{"title": "⚠️ Falha no Pedido", "description": "**{title}**\\n\\n📝 {overview}", "color": 10181046, "fields": [{"name": "👤 Usuário", "value": "{username}", "inline": true}, {"name": "📊 Status", "value": "{status}", "inline": true}], "url": "{media_url}"}]}',
+
 }
 
 def get_greeting():
@@ -50,6 +73,36 @@ def get_greeting():
     if 5 <= current_hour < 12: return _("Bom dia")
     elif 12 <= current_hour < 18: return _("Boa tarde")
     else: return _("Boa noite")
+
+
+# Mapa: tipo de notificação do Seerr -> sufixo do template no config.
+# Os tipos vêm do enum 'Notification' do Seerr (server/lib/notifications/index.ts).
+# Eventos não mapeados usam o template genérico MEDIA_REQUEST, para que uma
+# notificação nova do Seerr nunca fique sem mensagem.
+SEERR_EVENT_TEMPLATES = {
+    "MEDIA_PENDING": "MEDIA_PENDING",
+    "MEDIA_APPROVED": "MEDIA_APPROVED",
+    "MEDIA_AUTO_APPROVED": "MEDIA_APPROVED",   # aprovação automática usa o mesmo texto
+    "MEDIA_AVAILABLE": "MEDIA_AVAILABLE",
+    "MEDIA_DECLINED": "MEDIA_DECLINED",
+    "MEDIA_FAILED": "MEDIA_FAILED",
+}
+
+
+def resolve_seerr_template_key(canal, notification_type):
+    """
+    Devolve a chave de configuração do template a usar para um dado canal e tipo
+    de evento — por exemplo ('TELEGRAM', 'MEDIA_APPROVED') ->
+    'TELEGRAM_MEDIA_APPROVED_MESSAGE_TEMPLATE'.
+
+    Se o evento não tiver template próprio (ou o administrador o tiver deixado em
+    branco), recai no template genérico de pedidos.
+    """
+    sufixo = SEERR_EVENT_TEMPLATES.get(str(notification_type or "").upper())
+    if not sufixo:
+        return f"{canal}_MEDIA_REQUEST_MESSAGE_TEMPLATE"
+    return f"{canal}_{sufixo}_MESSAGE_TEMPLATE"
+
 
 class NotifierManager:
     def __init__(self, link_shortener_service=None, socketio_instance=None):
@@ -264,12 +317,80 @@ class NotifierManager:
 
         return url, headers, payload
 
-    def _send_whatsapp_notification(self, phone, message, request_id, config):
-        """Envia uma mensagem de WhatsApp através da API não-oficial configurada."""
+    def _build_whatsapp_media_request(self, config, phone, caption, image_url):
+        """
+        Monta o pedido de envio de IMAGEM com legenda, conforme o provedor.
+        Cada API não-oficial tem o seu próprio endpoint e formato para média.
+        """
+        provider = (config.get("WHATSAPP_PROVIDER") or "evolution").strip().lower()
+        base_url = (config.get("WHATSAPP_API_URL") or "").strip().rstrip('/')
+        api_key = (config.get("WHATSAPP_API_KEY") or "").strip()
+        instance = (config.get("WHATSAPP_INSTANCE") or "").strip()
+
+        if not base_url:
+            raise ValueError(_("O URL da API de WhatsApp não está configurado."))
+
+        if provider == "evolution":
+            url = f"{base_url}/message/sendMedia/{instance}"
+            headers = {"apikey": api_key, "Content-Type": "application/json"}
+            payload = {"number": phone, "mediatype": "image", "media": image_url, "caption": caption}
+
+        elif provider == "gowa":
+            url = f"{base_url}/send/image"
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                if ':' in api_key:
+                    headers["Authorization"] = f"Basic {base64.b64encode(api_key.encode('utf-8')).decode('ascii')}"
+                else:
+                    headers["Authorization"] = f"Bearer {api_key}"
+            payload = {"phone": f"{phone}@s.whatsapp.net", "caption": caption, "image_url": image_url}
+
+        elif provider == "waha":
+            url = f"{base_url}/api/sendImage"
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["X-Api-Key"] = api_key
+            payload = {
+                "session": instance or "default",
+                "chatId": f"{phone}@c.us",
+                "file": {"url": image_url},
+                "caption": caption,
+            }
+
+        else:
+            # 'custom': sem forma fiável de saber o endpoint de média, por isso
+            # deixamos o chamador fazer fallback para texto.
+            raise ValueError("O provedor personalizado não tem envio de imagem definido.")
+
+        return url, headers, payload
+
+    def _send_whatsapp_notification(self, phone, message, request_id, config, image_url=None):
+        """
+        Envia uma mensagem de WhatsApp através da API não-oficial configurada.
+
+        Se 'image_url' for indicado, tenta enviar como imagem com legenda. Nem
+        todos os provedores suportam envio de média — se falhar, fazemos fallback
+        para texto simples, porque é preferível o utilizador receber a mensagem
+        sem capa do que não receber nada.
+        """
         normalized = self.normalize_phone(phone)
         if not normalized:
             logger.warning(f"[ID: {request_id}] Número de WhatsApp inválido, envio ignorado: {mask_phone(phone)}")
             return
+
+        if image_url:
+            try:
+                url, headers, payload = self._build_whatsapp_media_request(config, normalized, message, image_url)
+                response = requests.post(url, json=payload, headers=headers, timeout=30)
+                response.raise_for_status()
+                logger.info(f"[ID: {request_id}] Mensagem de WhatsApp COM IMAGEM enviada para {mask_phone(normalized)}.")
+                return
+            except Exception as e:
+                logger.warning(
+                    f"[ID: {request_id}] Falha ao enviar imagem por WhatsApp ({e}). "
+                    f"A reenviar apenas como texto."
+                )
+                # segue para o envio de texto abaixo
 
         url, headers, payload = self._build_whatsapp_request(config, normalized, message)
 
@@ -537,6 +658,88 @@ class NotifierManager:
             except (ValueError, TypeError):
                 formatted_date = expiration_date_str[:10]
         self._prepare_and_send('expiration', user, user_profile, {'days': days_left, 'date': formatted_date})
+
+    def send_media_request_notification(self, user_profile, dados):
+        """
+        Notifica o utilizador sobre um pedido feito no Overseerr/Jellyseerr.
+
+        'dados' vem do webhook do Overseerr, já normalizado, e contém:
+            title, overview, status, username, media_url, image_url, event
+
+        A imagem (capa do filme/série) é enviada quando o canal a suporta:
+        Telegram e WhatsApp enviam como foto com legenda; o Discord usa embed.
+        """
+        request_id = str(uuid.uuid4())
+        config = load_or_create_config()
+
+        placeholders = {
+            "title": dados.get("title") or _("Título desconhecido"),
+            "overview": dados.get("overview") or "",
+            "status": dados.get("status") or "",
+            "username": dados.get("username") or user_profile.get("username") or "",
+            "media_url": dados.get("media_url") or "",
+            "event": dados.get("event") or "",
+            "name": user_profile.get("name") or user_profile.get("username") or "",
+        }
+        image_url = dados.get("image_url")
+
+        can_telegram = config.get("TELEGRAM_ENABLED") and (user_profile.get('telegram_id') or user_profile.get('telegram_user'))
+        can_whatsapp = config.get("WHATSAPP_ENABLED") and user_profile.get('phone_number')
+        can_discord = config.get("DISCORD_ENABLED") and user_profile.get('discord_user_id')
+
+        if not (can_telegram or can_whatsapp or can_discord):
+            logger.debug(f"[ID: {request_id}] Utilizador sem canais de contacto para notificar o pedido.")
+            return
+
+        # Cada canal é isolado: uma falha não impede os restantes.
+        if can_telegram:
+            try:
+                chave = resolve_seerr_template_key("TELEGRAM", dados.get("notification_type"))
+                # Recai no template genérico se o específico estiver em branco.
+                tpl = (config.get(chave) or DEFAULT_TEMPLATES.get(chave)
+                       or config.get("TELEGRAM_MEDIA_REQUEST_MESSAGE_TEMPLATE")
+                       or DEFAULT_TEMPLATES.get("TELEGRAM_MEDIA_REQUEST_MESSAGE_TEMPLATE"))
+                msg = self._format_template(tpl, placeholders, is_json=False, use_html_escape=True)
+                if msg:
+                    chat_id = user_profile.get('telegram_id') or user_profile.get('telegram_user')
+                    self._send_telegram_notification(
+                        msg, chat_id, request_id,
+                        plex_user_id=user_profile.get('plex_user_id'),
+                        photo_url=image_url
+                    )
+            except Exception as e:
+                logger.error(f"[ID: {request_id}] Notificação de pedido via Telegram falhou: {e}")
+
+        if can_whatsapp:
+            try:
+                chave = resolve_seerr_template_key("WHATSAPP", dados.get("notification_type"))
+                # Recai no template genérico se o específico estiver em branco.
+                tpl = (config.get(chave) or DEFAULT_TEMPLATES.get(chave)
+                       or config.get("WHATSAPP_MEDIA_REQUEST_MESSAGE_TEMPLATE")
+                       or DEFAULT_TEMPLATES.get("WHATSAPP_MEDIA_REQUEST_MESSAGE_TEMPLATE"))
+                msg = self._format_template(tpl, placeholders, is_json=False)
+                if msg:
+                    self._send_whatsapp_notification(
+                        user_profile.get('phone_number'), msg, request_id, config, image_url=image_url
+                    )
+            except Exception as e:
+                logger.error(f"[ID: {request_id}] Notificação de pedido via WhatsApp falhou: {e}")
+
+        if can_discord:
+            try:
+                chave = resolve_seerr_template_key("DISCORD", dados.get("notification_type"))
+                # Recai no template genérico se o específico estiver em branco.
+                tpl = (config.get(chave) or DEFAULT_TEMPLATES.get(chave)
+                       or config.get("DISCORD_MEDIA_REQUEST_MESSAGE_TEMPLATE")
+                       or DEFAULT_TEMPLATES.get("DISCORD_MEDIA_REQUEST_MESSAGE_TEMPLATE"))
+                payload = self._format_template(tpl, placeholders, is_json=True)
+                if payload:
+                    # Anexa a capa ao embed, quando existe.
+                    if image_url and isinstance(payload.get("embeds"), list) and payload["embeds"]:
+                        payload["embeds"][0]["image"] = {"url": image_url}
+                    self._send_discord_notification(payload, request_id, config)
+            except Exception as e:
+                logger.error(f"[ID: {request_id}] Notificação de pedido via Discord falhou: {e}")
 
     def send_renewal_notification(self, user, new_expiration_date, user_profile):
         # 🛡️ ANTI-DUPLICAÇÃO: Evita enviar a mensagem de Renovação logo após uma Reativação (Janela de 60 Segundos)
