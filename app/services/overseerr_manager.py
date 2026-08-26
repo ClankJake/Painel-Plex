@@ -21,7 +21,7 @@ class OverseerrManager:
     MEDIA_CACHE_TTL = 86400   # 24 h  — título e ano de um filme NUNCA mudam
 
     def __init__(self):
-        self.enabled = False
+        self._enabled = False
         self.api_url = None
         self.api_key = None
         # Caches simples em memória: {chave: (timestamp, valor)}.
@@ -32,17 +32,33 @@ class OverseerrManager:
         self._cache_lock = threading.Lock()
 
 
+    @property
+    def enabled(self):
+        """
+        Indica se o módulo de pedidos está ativo.
+
+        🐛 CORREÇÃO: isto era um atributo simples, preenchido apenas quando
+        '_get_config()' corria. Como a recarga de credenciais é seletiva (só
+        acontece quando as chaves do Seerr mudam), o valor ficava preso em False
+        desde o arranque — e a aba de pedidos do utilizador mostrava
+        "Módulo de pedidos desativado no servidor" mesmo com a ligação
+        configurada e a funcionar.
+        Passa a ser uma propriedade que lê a configuração atual.
+        """
+        self._get_config()
+        return bool(self._enabled)
+
     def _get_config(self) -> bool:
         """
         Lê as configurações atuais da BD. Retorna True se o serviço estiver ativo e configurado.
         Isto previne o uso de configurações "presas" na memória.
         """
         config = load_or_create_config()
-        self.enabled = config.get("OVERSEERR_ENABLED", False)
+        self._enabled = config.get("OVERSEERR_ENABLED", False)
         self.api_url = config.get("OVERSEERR_URL", "").rstrip('/')
         self.api_key = config.get("OVERSEERR_API_KEY")
         
-        return bool(self.enabled and self.api_url and self.api_key)
+        return bool(self._enabled and self.api_url and self.api_key)
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """Executa uma requisição centralizada e segura para a API do Overseerr/Jellyseerr."""
@@ -361,6 +377,16 @@ class OverseerrManager:
 
         pedido = data.get('request') or {}
         media = data.get('media') or {}
+
+        # 🧪 NOTIFICAÇÃO DE TESTE: o botão "Testar" do Seerr envia
+        # notification_type='TEST_NOTIFICATION' SEM os blocos 'request' e 'media'.
+        # Sem este tratamento, o pedido caía no erro "sem email do requerente" e o
+        # Seerr mostrava falha — mesmo estando tudo bem configurado.
+        # Respondemos com sucesso para que o teste confirme que o endereço está
+        # correto e acessível.
+        if str(data.get('notification_type') or '').upper() == 'TEST_NOTIFICATION':
+            logger.info("Webhook do Seerr: notificação de TESTE recebida com sucesso.")
+            return {"success": True, "message": "Notificação de teste recebida com sucesso."}
 
         email = (pedido.get('requestedBy_email') or '').strip()
         username_seerr = pedido.get('requestedBy_username') or ''
