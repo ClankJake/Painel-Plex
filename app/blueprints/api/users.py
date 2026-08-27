@@ -213,7 +213,15 @@ def update_privacy_settings():
 @login_required
 def get_account_requests():
     filter_status = request.args.get('filter', 'all', type=str)
-    if filter_status not in ['all', 'approved', 'available', 'pending', 'processing', 'declined']: 
+    # ⚠️ Estes valores TÊM de corresponder aos aceites pelo Seerr. Enviar um valor
+    # fora da lista faz a API responder HTTP 500 com
+    # "filter must be equal to one of the allowed values".
+    # 'declined' NÃO é aceite pelo Seerr — o equivalente é 'unavailable'.
+    FILTROS_VALIDOS = [
+        'all', 'approved', 'available', 'pending', 'processing',
+        'unavailable', 'failed', 'deleted', 'completed'
+    ]
+    if filter_status not in FILTROS_VALIDOS: 
         filter_status = 'all'
     if not extensions.overseerr_manager.enabled: 
         return jsonify({"success": True, "requests": [], "overseerr_disabled": True})
