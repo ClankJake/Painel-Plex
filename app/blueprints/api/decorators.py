@@ -18,12 +18,12 @@ def user_lookup_by_id(f):
 
         if not plex_user_id:
             logger.warning("Nenhum ID de utilizador do Plex fornecido no pedido.")
-            return jsonify({"success": False, "message": _("ID do utilizador não fornecido.")}), 400
+            return jsonify({"success": False, "message": _("ID do usuário não fornecido.")}), 400
         
         try:
             plex_user_id = int(plex_user_id)
         except (ValueError, TypeError):
-            return jsonify({"success": False, "message": _("ID do utilizador inválido.")}), 400
+            return jsonify({"success": False, "message": _("ID do usuário inválido.")}), 400
 
         user = plex_manager.get_user_by_id(plex_user_id)
         

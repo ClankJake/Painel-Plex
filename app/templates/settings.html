@@ -106,7 +106,7 @@
         </div>
         
         <div class="p-6">
-            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">{{ _('Pode utilizar as seguintes variáveis mágicas nos seus templates de texto. O sistema irá substituí-las automaticamente pelos dados reais do utilizador no momento do envio.') }}</p>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">{{ _('Pode utilizar as seguintes variáveis mágicas nos seus templates de texto. O sistema irá substituí-las automaticamente pelos dados reais do usuário no momento do envio.') }}</p>
             
             <!-- Grelha de Placeholders Premium -->
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -118,7 +118,7 @@
                 
                 <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
                     <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{username}</code>
-                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('O nome de utilizador do cliente no Plex.') }}</span>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('O nome de usuário do cliente no Plex.') }}</span>
                 </div>
                 
                 <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
@@ -128,7 +128,7 @@
                 
                 <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
                     <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{email}</code>
-                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('O endereço de email vinculado à conta do utilizador.') }}</span>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('O endereço de email vinculado à conta do usuário.') }}</span>
                 </div>
                 
                 <div class="p-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600/50 flex flex-col">
@@ -158,7 +158,7 @@
                 
                 <div class="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800/50 flex flex-col lg:col-span-2">
                     <code class="text-green-600 dark:text-green-400 font-bold mb-1 font-mono text-sm">{payment_link}</code>
-                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Link secreto e único para o utilizador gerar o PIX e renovar a conta automaticamente.') }}</span>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Link secreto e único para o usuário gerar o PIX e renovar a conta automaticamente.') }}</span>
                 </div>
                 
                 <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800/50 flex flex-col lg:col-span-1">
@@ -204,12 +204,12 @@
     data-urls-test-whatsapp="{{ url_for('system_api.test_whatsapp_connection') }}"
     data-i18n-whatsapp-test-sent="{{ _('Mensagem de teste enviada!') }}"
     data-urls-sync-profiles="{{ url_for('system_api.sync_profiles_route') }}"
-    data-i18n-importing="{{ _('A importar...') }}"
+    data-i18n-importing="{{ _('Importando...') }}"
     data-urls-api-key="{{ url_for('system_api.get_api_key') }}"
     data-urls-api-key-regenerate="{{ url_for('system_api.regenerate_api_key') }}"
     data-i18n-api-key-copied="{{ _('Chave de API copiada!') }}"
     data-i18n-confirm-regenerate-key="{{ _('ATENÇÃO: gerar uma nova chave invalida imediatamente a atual. Todos os bots e integrações que a usam deixarão de funcionar até serem atualizados. Deseja continuar?') }}"
-    data-i18n-generating="{{ _('A gerar...') }}"
+    data-i18n-generating="{{ _('Gerando...') }}"
     data-i18n-show-hide="{{ _('Mostrar/ocultar') }}"
     data-urls-xp-season="{{ url_for('system_api.xp_season_info') }}"
     data-urls-xp-season-reset="{{ url_for('system_api.xp_season_reset') }}"
@@ -220,26 +220,26 @@
     data-i18n-duplicate-level-xp-warning="{{ _('Níveis com o mesmo XP mínimo foram combinados automaticamente.') }}"
     data-i18n-season-disabled="{{ _('Reset periódico desativado — o XP acumula indefinidamente.') }}"
     data-i18n-season-next-reset="{{ _('Próximo reset: {date} (em {days} dias).') }}"
-    data-i18n-confirm-season-reset="{{ _('ATENÇÃO: isto vai zerar o XP da temporada atual de TODOS os utilizadores e reiniciar o ranking. O XP acumulado de sempre (vitalício) será preservado. Deseja continuar?') }}"
+    data-i18n-confirm-season-reset="{{ _('ATENÇÃO: isto vai zerar o XP da temporada atual de TODOS os usuários e reiniciar o ranking. O XP acumulado de sempre (vitalício) será preservado. Deseja continuar?') }}"
     data-i18n-reset-confirmation-word="{{ _('ZERAR') }}"
     data-i18n-confirm-season-reset-type="{{ _('Para confirmar, digite: {word}') }}"
     data-i18n-action-cancelled="{{ _('Ação cancelada.') }}"
-    data-i18n-resetting="{{ _('A zerar...') }}"
+    data-i18n-resetting="{{ _('Zerando...') }}"
     data-i18n-season-reset-done="{{ _('XP reposto com sucesso.') }}"
     data-i18n-backup-deleted="{{ _('Backup removido.') }}"
-    data-i18n-confirm-delete-backup="{{ _('Apagar este backup permanentemente?') }}"
-    data-i18n-confirm-restore-step1="{{ _('ATENÇÃO: Isto vai SUBSTITUIR o config.json e as bases de dados atuais pelos dados do ficheiro de backup selecionado. Todos os dados criados depois desse backup serão PERDIDOS. A aplicação será reiniciada automaticamente em seguida. Deseja continuar?') }}"
+    data-i18n-confirm-delete-backup="{{ _('Excluir este backup permanentemente?') }}"
+    data-i18n-confirm-restore-step1="{{ _('ATENÇÃO: Isto vai SUBSTITUIR o config.json e as bases de dados atuais pelos dados do arquivo de backup selecionado. Todos os dados criados depois desse backup serão PERDIDOS. A aplicação será reiniciada automaticamente em seguida. Deseja continuar?') }}"
     data-i18n-confirm-restore-step2="{{ _('Para confirmar esta ação irreversível, digite: RESTAURAR') }}"
     data-i18n-restore-confirmation-word="{{ _('RESTAURAR') }}"
     data-i18n-restore-cancelled="{{ _('Restauro cancelado.') }}"
     data-i18n-restore-failed="{{ _('Falha ao restaurar') }}"
     data-i18n-restore-success="{{ _('Backup restaurado! A aplicação vai reiniciar...') }}"
-    data-i18n-restoring="{{ _('A restaurar...') }}"
-    data-i18n-generating-backup="{{ _('A gerar backup...') }}"
+    data-i18n-restoring="{{ _('Restaurando...') }}"
+    data-i18n-generating-backup="{{ _('Gerando backup...') }}"
     data-i18n-no-backups-yet="{{ _('Nenhum backup automático ainda. Ative o backup automático acima, ou use \"Baixar Backup Agora\" para gerar um agora mesmo.') }}"
     data-i18n-error-loading-backups="{{ _('Falha ao carregar a lista de backups.') }}"
     data-i18n-download="{{ _('Baixar') }}"
-    data-i18n-delete="{{ _('Apagar') }}"
+    data-i18n-delete="{{ _('Excluir') }}"
     data-i18n-unknown-error="{{ _('Erro desconhecido.') }}"
     data-urls-test-overseerr="{{ url_for('system_api.test_overseerr_connection') }}"
     data-urls-set-language="/language/"
@@ -251,7 +251,7 @@
     data-i18n-authenticated="{{ _('Autenticado com sucesso! Buscando servidores...') }}"
     data-i18n-verification-error="{{ _('Erro de verificação:') }}"
     data-i18n-verifying="{{ _('Verificando... Por favor, conclua a autenticação na nova janela.') }}"
-    data-i18n-fetching-servers="{{ _('A buscar servidores...') }}"
+    data-i18n-fetching-servers="{{ _('Buscando servidores...') }}"
     data-i18n-select-new-server="{{ _('Selecione o novo servidor:') }}"
     data-i18n-no-servers-found="{{ _('Nenhum servidor encontrado.') }}"
     data-i18n-error-generic="{{ _('Erro:') }}"

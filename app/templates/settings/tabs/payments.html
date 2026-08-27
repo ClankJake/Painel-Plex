@@ -41,7 +41,7 @@
                 </label>
             </div>
             <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">
-                {{_('Permite ao utilizador aumentar o número de telas a meio do ciclo pagando apenas a diferença proporcional aos dias restantes. O vencimento não é alterado. A redução de telas (downgrade) continua a só ser possível perto da renovação.')}}
+                {{_('Permite ao usuário aumentar o número de telas a meio do ciclo pagando apenas a diferença proporcional aos dias restantes. O vencimento não é alterado. A redução de telas (downgrade) continua a só ser possível perto da renovação.')}}
             </p>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -56,7 +56,7 @@
                 <div>
                     <label for="PRORATION_MIN_DAYS" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">{{ _('Dias mínimos restantes') }}</label>
                     <input type="number" id="PRORATION_MIN_DAYS" min="1" class="block w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="3">
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{_('Com menos dias que isto, o utilizador é encaminhado para a renovação normal já com o plano novo.')}}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{_('Com menos dias que isto, o usuário é encaminhado para a renovação normal já com o plano novo.')}}</p>
                 </div>
             </div>
 
@@ -72,7 +72,7 @@
                 <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
                 {{ _('Tabela de Preços') }}
             </h3>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{_('Defina os valores de renovação. O sistema aplicará automaticamente consoante o limite de ecrãs do utilizador.')}}</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{_('Defina os valores de renovação. O sistema aplicará automaticamente consoante o limite de telas do usuário.')}}</p>
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <!-- Preço Padrão (Destaque) -->
@@ -271,7 +271,7 @@
                     <div class="mt-4">
                         <label for="GATES2B_MIN_AMOUNT" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Valor mínimo aceite (R$)') }}</label>
                         <input type="text" id="GATES2B_MIN_AMOUNT" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="3.00">
-                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('A Gates2b recusa cobranças abaixo do mínimo da sua conta (padrão: R$ 3,00). Validado antes de contactar o gateway, para dar uma mensagem clara ao utilizador.') }}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('A Gates2b recusa cobranças abaixo do mínimo da sua conta (padrão: R$ 3,00). Validado antes de contactar o gateway, para dar uma mensagem clara ao usuário.') }}</p>
                     </div>
                     <div class="mt-4 flex items-center gap-3">
                         <button id="testGates2b" type="button" class="btn bg-purple-600 hover:bg-purple-500 text-white text-sm px-4 py-2.5 font-semibold">{{ _('Validar Chave de API') }}</button>

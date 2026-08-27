@@ -21,7 +21,7 @@
                 <div>
                     <label for="EXPIRATION_NOTIFICATION_TIME" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Hora dos Avisos de Vencimento') }}</label>
                     <input type="time" id="EXPIRATION_NOTIFICATION_TIME" class="block w-full sm:max-w-xs px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow">
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A verificação de utilizadores prestes a vencer será executada diariamente a esta hora.')}}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A verificação de usuários prestes a vencer será executada diariamente a esta hora.')}}</p>
                 </div>
                 <div>
                     <label for="BLOCK_REMOVAL_TIME" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Hora do Bloqueio Automático') }}</label>
@@ -29,10 +29,10 @@
                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('A verificação de contas expiradas (para bloqueio) ocorrerá a esta hora.')}}</p>
                 </div>
                 <div class="md:col-span-2 pt-4 border-t border-gray-200 dark:border-gray-700/50">
-                    <label for="DAYS_TO_REMOVE_BLOCKED_USER" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Eliminar do Servidor Após (Dias)') }}</label>
+                    <label for="DAYS_TO_REMOVE_BLOCKED_USER" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Excluir do Servidor Após (Dias)') }}</label>
                     <div class="flex items-center gap-4">
                         <input type="number" id="DAYS_TO_REMOVE_BLOCKED_USER" class="block w-32 px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-red-500 focus:border-red-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow" min="0">
-                        <p class="text-xs text-gray-500 dark:text-gray-400">{{_('Se um utilizador estiver bloqueado há X dias, será removido da sua lista de amigos Plex permanentemente. Defina 0 para nunca eliminar.')}}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">{{_('Se um usuário estiver bloqueado há X dias, será removido da sua lista de amigos Plex permanentemente. Defina 0 para nunca excluir.')}}</p>
                     </div>
                 </div>
             </div>
@@ -54,7 +54,7 @@
             <div class="disablable-input pl-1">
                 <label for="UNIVERSAL_EXPIRATION_TIME" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Horário de Corte') }}</label>
                 <input type="time" id="UNIVERSAL_EXPIRATION_TIME" class="block w-full sm:max-w-xs px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Força todas as assinaturas a expirarem nesta hora exata, em vez de expirarem na hora em que o utilizador foi inicialmente criado.')}}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Força todas as assinaturas a expirarem nesta hora exata, em vez de expirarem na hora em que o usuário foi inicialmente criado.')}}</p>
             </div>
         </div>
 
@@ -84,7 +84,7 @@
                     <div>
                         <label for="CLEANUP_PENDING_PAYMENTS_DAYS" class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">{{ _('Remover ao fim de (dias):') }}</label>
                         <input type="number" id="CLEANUP_PENDING_PAYMENTS_DAYS" class="block w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-red-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" min="1">
-                        <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1 leading-tight">{{_('Elimina cobranças PIX abandonadas pelo utilizador para aliviar a base de dados.')}}</p>
+                        <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1 leading-tight">{{_('Elimina cobranças PIX abandonadas pelo usuário para aliviar a base de dados.')}}</p>
                     </div>
                 </div>
 
@@ -123,7 +123,7 @@
                 <div>
                     <label for="IMAGE_CACHE_MAX_AGE_DAYS" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Idade Máxima da Imagem (dias)') }}</label>
                     <input type="number" id="IMAGE_CACHE_MAX_AGE_DAYS" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white" min="1">
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Apaga miniaturas e capas de filmes antigas guardadas localmente para poupar espaço no disco do Servidor.')}}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{_('Apaga miniaturas e capas de filmes antigas salvas localmente para poupar espaço no disco do Servidor.')}}</p>
                 </div>
                 <div>
                     <label for="IMAGE_CACHE_CLEANUP_TIME" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Hora de Execução') }}</label>
@@ -144,7 +144,7 @@
                     <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-500"></div>
                 </label>
             </div>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mb-4 -mt-2">{{ _('O backup contém o config.json e as bases de dados (utilizadores, pagamentos, cupões, etc.). Guarde os ficheiros gerados num local seguro, fora do servidor.') }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-4 -mt-2">{{ _('O backup contém o config.json e as bases de dados (usuários, pagamentos, cupões, etc.). Guarde os arquivos gerados num local seguro, fora do servidor.') }}</p>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pl-1">
                 <div>
@@ -172,9 +172,9 @@
 
             <!-- Lista de backups automáticos guardados no servidor -->
             <div class="mt-6">
-                <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{{ _('Backups guardados no servidor') }}</h4>
+                <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{{ _('Backups salvos no servidor') }}</h4>
                 <div id="backupList" class="space-y-2">
-                    <p class="text-xs text-gray-400 dark:text-gray-500">{{ _('A carregar...') }}</p>
+                    <p class="text-xs text-gray-400 dark:text-gray-500">{{ _('Carregando...') }}</p>
                 </div>
             </div>
         </div>

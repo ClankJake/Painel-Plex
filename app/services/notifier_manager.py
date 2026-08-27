@@ -433,7 +433,7 @@ class NotifierManager:
 
             self._send_whatsapp_notification(
                 phone,
-                _("✅ Teste de ligação do %(app)s. Se recebeu esta mensagem, o WhatsApp está configurado corretamente!",
+                _("✅ Teste de conexão do %(app)s. Se recebeu esta mensagem, o WhatsApp está configurado corretamente!",
                   app=config.get("APP_TITLE", "Painel Plex")),
                 str(uuid.uuid4()),
                 config

@@ -152,7 +152,7 @@
                         <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
                         {{ _('Modo Fantasma (Rankings)') }}
                     </h4>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Oculte o seu nome verdadeiro das estatísticas globais visíveis aos outros utilizadores.') }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Oculte o seu nome verdadeiro das estatísticas globais visíveis aos outros usuários.') }}</p>
                 </div>
                 <label for="hide-leaderboard-toggle" class="relative inline-flex items-center cursor-pointer flex-shrink-0 self-end sm:self-auto">
                     <input type="checkbox" id="hide-leaderboard-toggle" class="sr-only peer">
@@ -263,12 +263,12 @@
                         </div>
                         
                         <div id="telegram-field-container" class="{% if not config.TELEGRAM_ENABLED %}hidden{% endif %}">
-                            <label for="profileTelegram" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID de Utilizador do Telegram') }}</label>
+                            <label for="profileTelegram" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID de Usuário do Telegram') }}</label>
                             <input type="text" id="profileTelegram" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Apenas números') }}">
                         </div>
                         
                         <div id="discord-field-container" class="{% if not config.DISCORD_ENABLED %}hidden{% endif %}">
-                            <label for="profileDiscord" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID de Utilizador do Discord') }}</label>
+                            <label for="profileDiscord" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID de Usuário do Discord') }}</label>
                             <input type="text" id="profileDiscord" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: 123456789012345678') }}">
                         </div>
                         
@@ -322,7 +322,7 @@
                             <div id="polling-status" class="mt-4">
                                 <div class="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                                     <svg class="animate-spin h-4 w-4 text-blue-500" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                    {{ _('A aguardar pagamento no banco...') }}
+                                    {{ _('A asalvar pagamento no banco...') }}
                                 </div>
                             </div>
                         </div>
@@ -359,7 +359,7 @@
                         <div id="request-filters" class="flex gap-2 p-1 bg-gray-100 dark:bg-gray-900/50 rounded-full border border-gray-200 dark:border-gray-700 overflow-x-auto max-w-full requests-filters-scroll" style="scrollbar-width: none; -webkit-overflow-scrolling: touch;">
                             <button class="filter-btn active flex-shrink-0" data-filter="all">{{ _('Todos') }}</button>
                             <button class="filter-btn flex-shrink-0" data-filter="available">{{ _('Disponível') }}</button>
-                            <button class="filter-btn flex-shrink-0" data-filter="processing">{{ _('A Descarregar') }}</button>
+                            <button class="filter-btn flex-shrink-0" data-filter="processing">{{ _('Baixando') }}</button>
                             <button class="filter-btn flex-shrink-0" data-filter="pending">{{ _('Pendente') }}</button>
                             <button class="filter-btn flex-shrink-0" data-filter="unavailable">{{ _('Indisponível') }}</button>
                         </div>
@@ -379,7 +379,7 @@
                         <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
                         {{ _('Dispositivos Vinculados') }}
                     </h3>
-                    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('Registo de aplicações e dispositivos que acederam ao Plex com a sua conta recentemente.') }}</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('Registro de aplicações e dispositivos que acederam ao Plex com a sua conta recentemente.') }}</p>
                     <div id="device-list-container" class="space-y-3 max-h-[500px] overflow-y-auto pr-2"></div>
                 </div>
             </div>
@@ -449,7 +449,7 @@
         data-i18n-wait="{{ _('Aguarde...') }}"
         data-i18n-payment-confirmed="{{ _('Pagamento confirmado com sucesso!') }}"
         data-i18n-polling-confirmed="{{ _('Sucesso! A atualizar perfil...') }}"
-        data-i18n-polling-error="{{ _('A tentar ligação ao banco:') }}"
+        data-i18n-polling-error="{{ _('A tentar conexão ao banco:') }}"
         data-i18n-code-copied="{{ _('Chave PIX Copiada!') }}"
         data-i18n-test-ended="{{ _('O Seu Período de Teste Terminou') }}"
         data-i18n-test-ended-message="{{ _('Esperamos que tenha gostado! Para continuar a aceder ao servidor, por favor ative uma assinatura abaixo.') }}"
@@ -465,7 +465,7 @@
         data-i18n-expires-on="{{ _('Expira a:') }}"
         data-i18n-screen-singular="{{ _('Tela') }}"
         data-i18n-screen-plural="{{ _('Telas') }}"
-        data-i18n-no-payments-found="{{ _('Sem registo de pagamentos anteriores.') }}"
+        data-i18n-no-payments-found="{{ _('Sem registro de pagamentos anteriores.') }}"
         data-i18n-date="{{ _('Data') }}"
         data-i18n-description="{{ _('Descrição') }}"
         data-i18n-value="{{ _('Valor') }}"
@@ -478,7 +478,7 @@
         data-i18n-minutes-ago="{{ _('{count} min') }}"
         data-i18n-just-now="{{ _('Agora') }}"
         data-i18n-no-devices-found="{{ _('Não existem aparelhos no seu histórico recente.') }}"
-        data-i18n-saving="{{ _('A Guardar...') }}"
+        data-i18n-saving="{{ _('Salvando...') }}"
         data-i18n-save-details="{{ _('Salvar Alterações') }}"
         data-i18n-coupon-applied-success="{{ _('Desconto Aplicado!') }}"
         data-i18n-no-history-found="{{ _('O seu histórico de visualizações está vazio.') }}"
@@ -489,7 +489,7 @@
         data-i18n-progress="{{ _('Progresso') }}"
         data-i18n-player="{{ _('Aparelho') }}"
         data-i18n-title="{{ _('Filme / Série') }}"
-        data-i18n-loading-requests="{{ _('A verificar a base de dados central...') }}"
+        data-i18n-loading-requests="{{ _('Verificando a base de dados central...') }}"
         data-i18n-no-requests-found="{{ _('Nenhum pedido condiz com este filtro.') }}"
         data-i18n-requested-on="{{ _('Pedido a') }}"
         data-i18n-overseerr-disabled="{{ _('Módulo de pedidos desativado no servidor.') }}"

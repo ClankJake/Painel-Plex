@@ -76,7 +76,7 @@
         </h2>
         <p class="text-gray-500 dark:text-gray-400 mt-2 text-sm md:text-base">
             {% if current_user.is_admin() %}
-                {{ _('Analise os padrões de visualização dos seus utilizadores.') }}
+                {{ _('Analise os padrões de visualização dos seus usuários.') }}
             {% else %}
                 {{ _('Veja o seu desempenho e histórico de visualização ao longo do tempo.') }}
             {% endif %}
@@ -152,7 +152,7 @@
                     <thead class="bg-gray-100 dark:bg-gray-800">
                         <tr>
                             <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">#</th>
-                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Utilizador') }}</th>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Usuário') }}</th>
                             <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Tempo Assistido') }}</th>
                             <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Reproduções') }}</th>
                         </tr>
@@ -244,7 +244,7 @@
         data-recently-added-url="{{ url_for('stats_api.get_recently_added_route') }}"
         data-i18n-loading-failed="{{ _('Falha ao comunicar com o servidor.') }}"
         data-i18n-no-data="{{ _('Nenhum dado de visualização encontrado.') }}"
-        data-i18n-user-analysis-error="{{ _('Não foi possível carregar a análise deste utilizador:') }}"
+        data-i18n-user-analysis-error="{{ _('Não foi possível carregar a análise deste usuário:') }}"
         data-i18n-no-recent-activity="{{ _('Nenhuma atividade recente encontrada neste período.') }}"
         data-i18n-viewed-on="{{ _('Visto em:') }}"
         data-i18n-no-art="{{ _('Sem Arte') }}"
@@ -275,7 +275,7 @@
         data-i18n-you="{{ _('Você') }}"
         data-i18n-total-time-watched="{{ _('Tempo Total Assistido') }}"
         data-i18n-total-plays="{{ _('Total de Reproduções') }}"
-        data-i18n-active-users="{{ _('Utilizadores Ativos') }}"
+        data-i18n-active-users="{{ _('Usuários Ativos') }}"
         data-i18n-period-champion="{{ _('Campeão do Período') }}"
         data-i18n-my-achievements="{{ _('As Minhas Conquistas') }}"
         data-i18n-user-achievements="{{ _('Conquistas de {username}') }}"
@@ -284,7 +284,7 @@
         data-i18n-level="{{ _('Nível') }}"
         data-i18n-xp-to-next-level="{{ _('{xp} XP para o próximo nível') }}"
         data-i18n-max-level-reached="{{ _('Nível máximo atingido! 🎉') }}"
-        data-i18n-loading-newly-added="{{ _('A carregar novidades quentinhas...') }}"
+        data-i18n-loading-newly-added="{{ _('Carregando novidades quentinhas...') }}"
         data-i18n-no-newly-added="{{ _('Nenhum item adicionado recentemente no período selecionado.') }}"
         data-i18n-added="{{ _('Adicionado há') }}"
         data-i18n-years-ago="{{ _('{count} anos') }}"

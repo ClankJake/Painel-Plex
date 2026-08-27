@@ -63,7 +63,7 @@ def _run_payment_processing_in_thread(app, txid):
                         
                     logger.info(f"A processar a reativação paga para o utilizador '{profile['username']}' (ID: {plex_user_id}).")
                     extensions.data_manager.create_notification(
-                        message=_("O utilizador %(username)s reativou a conta. Pagamento de %(value)s confirmado.", username=profile['username'], value=f"R$ {payment['value']:.2f}"),
+                        message=_("O usuário %(username)s reativou a conta. Pagamento de %(value)s confirmado.", username=profile['username'], value=f"R$ {payment['value']:.2f}"),
                         category='success', link=url_for('main.users_page')
                     )
                     extensions.data_manager.create_notification(
@@ -242,7 +242,7 @@ def get_payment_options():
         user_profile = extensions.data_manager.get_user_profile(int(current_user.id))
     
     if not user_profile:
-        return jsonify({"success": False, "message": _("Utilizador não especificado ou token inválido.")}), 400
+        return jsonify({"success": False, "message": _("Usuário não especificado ou token inválido.")}), 400
 
     config = load_or_create_config()
     available_prices = extensions.pricing_manager.get_available_plans(user_profile, is_public_request)
@@ -283,7 +283,7 @@ def validate_coupon_route():
         plex_user_id = int(current_user.id)
         
     if not plex_user_id:
-        return jsonify({"success": False, "message": _("Utilizador não autorizado ou token inválido.")}), 404
+        return jsonify({"success": False, "message": _("Usuário não autorizado ou token inválido.")}), 404
 
     if not data.get('code') or data.get('screens') is None:
         return jsonify({"success": False, "message": "Código e plano são obrigatórios."}), 400
@@ -338,7 +338,7 @@ def create_charge_route():
         plex_user_id, username = int(current_user.id), current_user.username
     
     if not plex_user_id:
-        return jsonify({"success": False, "message": _("Utilizador não especificado ou token inválido.")}), 400
+        return jsonify({"success": False, "message": _("Usuário não especificado ou token inválido.")}), 400
 
     profile = extensions.data_manager.get_user_profile(plex_user_id)
     if not profile:
@@ -483,7 +483,7 @@ def create_charge_route():
                     extensions.data_manager.set_user_profile(plex_user_id, profile)
                     
                 extensions.data_manager.create_notification(
-                    message=_("O utilizador %(username)s reativou a conta com um cupão de 100%%.", username=username),
+                    message=_("O usuário %(username)s reativou a conta com um cupão de 100%%.", username=username),
                     category='success', link=url_for('main.users_page')
                 )
                 extensions.data_manager.create_notification(
@@ -888,7 +888,7 @@ def delete_payment_route(txid):
         return jsonify({"success": False, "message": _("Transação não encontrada.")}), 404
     except Exception as e:
         logger.error(f"Erro ao apagar a transação {mask_token(txid)}: {e}")
-        return jsonify({"success": False, "message": _("Falha ao apagar.")}), 500
+        return jsonify({"success": False, "message": _("Falha ao excluir.")}), 500
 
 @payments_api_bp.route('/financial/export-csv')
 @login_required

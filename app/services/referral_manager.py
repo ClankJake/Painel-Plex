@@ -98,11 +98,11 @@ class ReferralManager:
 
         profile = self.data_manager.get_user_profile(new_user_plex_id)
         if not profile:
-            return {"success": False, "message": _("Utilizador não encontrado.")}
+            return {"success": False, "message": _("Usuário não encontrado.")}
 
         # Só se aceita uma indicação por utilizador, e apenas se ainda não tiver uma.
         if profile.get('referred_by'):
-            return {"success": False, "message": _("Este utilizador já foi indicado por alguém.")}
+            return {"success": False, "message": _("Este usuário já foi indicado por alguém.")}
 
         profile['referred_by'] = referrer_id
         profile['referral_rewarded'] = False

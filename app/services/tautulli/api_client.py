@@ -119,7 +119,7 @@ class TautulliApiClient:
             
         try:
             api_url = f"{url.rstrip('/')}/api/v2"
-            logger.info(_("A testar a ligação de configuração com o Tautulli em: %(url)s", url=api_url))
+            logger.info(_("A testar a conexão de configuração com o Tautulli em: %(url)s", url=api_url))
             
             # Como é um teste isolado e único, usa requests base sem polling para testar a rota "crua"
             response = requests.get(
@@ -133,15 +133,15 @@ class TautulliApiClient:
             data = response.json()
             if data.get("response", {}).get("result") == "success":
                 logger.info("Ligação de teste com Tautulli bem-sucedida.")
-                return {'success': True, 'message': _('Ligação com Tautulli bem-sucedida!')}
+                return {'success': True, 'message': _('Conexão com Tautulli bem-sucedida!')}
             else:
                 error_message = data.get("response", {}).get("message", _('As credenciais do Tautulli parecem inválidas.'))
                 logger.warning(f"Falha na autenticação do Tautulli: {error_message}")
                 return {'success': False, 'message': error_message}
                 
         except ConnectionError:
-            return {'success': False, 'message': _('Falha de ligação. Verifique a URL e se o servidor Tautulli está online e sem bloqueios de rede.')}
+            return {'success': False, 'message': _('Falha de conexão. Verifique a URL e se o servidor Tautulli está online e sem bloqueios de rede.')}
         except Timeout:
-            return {'success': False, 'message': _('A ligação expirou. O servidor pode estar sobrecarregado ou offline.')}
+            return {'success': False, 'message': _('A conexão expirou. O servidor pode estar sobrecarregado ou offline.')}
         except Exception as e:
             return {'success': False, 'message': str(e)}

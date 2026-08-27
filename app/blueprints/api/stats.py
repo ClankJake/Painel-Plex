@@ -105,7 +105,7 @@ def get_wrapped_data_route(plex_user_id):
     """
     profile = data_manager.get_user_profile(plex_user_id)
     if not profile:
-        return jsonify({"success": False, "message": _("Utilizador não encontrado.")}), 404
+        return jsonify({"success": False, "message": _("Usuário não encontrado.")}), 404
 
     is_private = profile.get('hide_from_leaderboard', False)
     if is_private and not current_user.is_admin() and current_user.id != str(plex_user_id):

@@ -61,7 +61,7 @@ def get_logs():
             lines = deque(f, maxlen=500)
             return jsonify({"success": True, "logs": "".join(lines)})
     except FileNotFoundError:
-        return jsonify({"success": True, "logs": _("O ficheiro de log ainda não foi criado.")})
+        return jsonify({"success": True, "logs": _("O arquivo de log ainda não foi criado.")})
     except Exception as e:
         logger.error(f"Erro ao ler o ficheiro de log: {e}")
         return jsonify({"success": False, "message": str(e)}), 500
@@ -75,7 +75,7 @@ def clear_logs():
         with open(log_file, 'w') as f:
             pass # Trunca o ficheiro para 0 bytes
         logger.info(f"O ficheiro de log '{log_file}' foi limpo pelo utilizador '{current_user.username}'.")
-        return jsonify({"success": True, "message": _("Ficheiro de log limpo com sucesso.")})
+        return jsonify({"success": True, "message": _("Arquivo de log limpo com sucesso.")})
     except Exception as e:
         logger.error(f"Erro ao limpar o ficheiro de log: {e}")
         return jsonify({"success": False, "message": str(e)}), 500
@@ -428,7 +428,7 @@ def api_settings():
         if plex_changed:
             success, message = plex_manager.reload_connections()
         else:
-            success, message = True, _("Configurações guardadas com sucesso.")
+            success, message = True, _("Configurações salvas com sucesso.")
 
         return jsonify({"success": success, "message": message})
 
@@ -535,11 +535,11 @@ def setup_restore_backup():
         }), 403
 
     if 'file' not in request.files:
-        return jsonify({"success": False, "message": _("Nenhum ficheiro enviado.")}), 400
+        return jsonify({"success": False, "message": _("Nenhum arquivo enviado.")}), 400
 
     uploaded_file = request.files['file']
     if not uploaded_file or not uploaded_file.filename:
-        return jsonify({"success": False, "message": _("Nenhum ficheiro selecionado.")}), 400
+        return jsonify({"success": False, "message": _("Nenhum arquivo selecionado.")}), 400
 
     try:
         _ext.backup_manager.restore_from_zip(uploaded_file.stream)
@@ -666,11 +666,11 @@ def bulk_notify():
 
         if target_audience == 'specific':
             if not target_user_ids or not isinstance(target_user_ids, list):
-                return jsonify({"success": False, "message": _("Lista de IDs de utilizadores inválida ou ausente para o público 'specific'.")}), 400
+                return jsonify({"success": False, "message": _("Lista de IDs de usuários inválida ou ausente para o público 'specific'.")}), 400
             try:
                 target_user_ids = [int(uid) for uid in target_user_ids]
             except (ValueError, TypeError):
-                 return jsonify({"success": False, "message": _("Lista de IDs de utilizadores contém valores inválidos.")}), 400
+                 return jsonify({"success": False, "message": _("Lista de IDs de usuários contém valores inválidos.")}), 400
 
         config = load_or_create_config()
         is_any_notifier_enabled = (
@@ -840,7 +840,7 @@ def sync_profiles_route():
         if resultado.get('success'):
             resultado['message'] = _(
                 "%(atualizados)d perfil(s) atualizado(s) de %(verificados)d verificado(s). "
-                "%(sem_email)d utilizador(es) não expõem o email no Plex.",
+                "%(sem_email)d usuário(s) não expõem o e-mail no Plex.",
                 atualizados=resultado.get('atualizados', 0),
                 verificados=resultado.get('verificados', 0),
                 sem_email=resultado.get('sem_email_no_plex', 0),
@@ -1023,11 +1023,11 @@ def backup_restore():
     import signal
 
     if 'file' not in request.files:
-        return jsonify({"success": False, "message": _("Nenhum ficheiro enviado.")}), 400
+        return jsonify({"success": False, "message": _("Nenhum arquivo enviado.")}), 400
 
     uploaded_file = request.files['file']
     if not uploaded_file or not uploaded_file.filename:
-        return jsonify({"success": False, "message": _("Nenhum ficheiro selecionado.")}), 400
+        return jsonify({"success": False, "message": _("Nenhum arquivo selecionado.")}), 400
 
     try:
         _ext.backup_manager.restore_from_zip(uploaded_file.stream)

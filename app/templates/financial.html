@@ -77,7 +77,7 @@
                 <div class="absolute inset-0 rounded-full border-t-2 border-yellow-500 animate-spin"></div>
                 <div class="absolute inset-2 rounded-full border-r-2 border-green-500 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
             </div>
-            <p class="text-lg font-medium text-gray-500 dark:text-gray-400">{{ _('A carregar a magia financeira...') }}</p>
+            <p class="text-lg font-medium text-gray-500 dark:text-gray-400">{{ _('Carregando a magia financeira...') }}</p>
         </div>
 
         <!-- Estado de Erro (Alinhado com index.html) -->
@@ -223,7 +223,7 @@
             <div class="mt-8 flex justify-end">
                 <button id="exportCsvBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30 flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all transform hover:-translate-y-0.5">
                     <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                    {{ _('Exportar Ficheiro CSV') }}
+                    {{ _('Exportar Arquivo CSV') }}
                 </button>
             </div>
         </div>
@@ -325,10 +325,10 @@
         data-i18n-expired="{{ _('Expirado') }}"
         data-i18n-no-transactions="{{ _('Nenhuma transação este mês.') }}"
         data-i18n-no-renewals-in-days="{{ _('Nenhuma renovação nos próximos {days} dias.') }}"
-        data-i18n-confirm-delete-coupon="{{ _('Tem a certeza que deseja apagar o cupão') }}"
+        data-i18n-confirm-delete-coupon="{{ _('Tem a certeza que deseja excluir o cupão') }}"
         data-i18n-action-cannot-be-undone="{{ _('Esta ação não pode ser desfeita.') }}"
-        data-i18n-confirm-delete-button="{{ _('Sim, Apagar') }}"
+        data-i18n-confirm-delete-button="{{ _('Sim, Excluir') }}"
         data-i18n-cancel="{{ _('Cancelar') }}"
-        data-i18n-confirm-delete-transaction="{{ _('Apagar Transação') }}"
+        data-i18n-confirm-delete-transaction="{{ _('Excluir Transação') }}"
 ></script>
 {% endblock %}

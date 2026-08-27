@@ -167,7 +167,7 @@
                 <!-- Progresso do Envio -->
                 <div id="bulk-progress-container" class="w-full mt-4 hidden animate-fade-in">
                     <div class="flex justify-between mb-2">
-                        <span id="bulk-progress-text" class="text-xs font-bold text-blue-600 dark:text-blue-400">{{ _('A preparar envio...') }}</span>
+                        <span id="bulk-progress-text" class="text-xs font-bold text-blue-600 dark:text-blue-400">{{ _('Preparando envio...') }}</span>
                         <span id="bulk-progress-percent" class="text-xs font-bold text-gray-700 dark:text-gray-300">0%</span>
                     </div>
                     <div class="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700 shadow-inner overflow-hidden">
@@ -179,7 +179,7 @@
             <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700/50 mt-auto">
                 <button type="button" id="send-bulk-notification-btn" class="w-full btn bg-blue-600 hover:bg-blue-500 text-white shadow-xl shadow-blue-500/20 py-3 text-base rounded-xl font-bold transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:transform-none disabled:shadow-none flex items-center justify-center gap-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-                    <span id="send-bulk-btn-text">{{ _('Enviar para Utilizadores Ativos') }}</span>
+                    <span id="send-bulk-btn-text">{{ _('Enviar para Usuários Ativos') }}</span>
                 </button>
             </div>
         </div>
@@ -228,7 +228,7 @@
         <div class="lg:col-span-2 bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/50">
             <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2">
                 <svg class="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
-                {{ _('Distribuição de Utilizadores') }}
+                {{ _('Distribuição de Usuários') }}
             </h3>
             <div class="h-80 flex items-center justify-center w-full"><canvas id="userStatusChart"></canvas></div>
         </div>
@@ -244,7 +244,7 @@
         <div class="flex justify-between items-center px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
             <h3 class="modal-title text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                {{ _('Selecionar Utilizadores') }}
+                {{ _('Selecionar Usuários') }}
             </h3>
             <button type="button" class="modal-close text-gray-400 hover:text-red-500 text-3xl leading-none transition-colors focus:outline-none">&times;</button>
         </div>
@@ -281,7 +281,7 @@
         data-clear-all-logs-url="{{ url_for('system_api.clear_all_termination_logs') }}"
         data-list-users-url="{{ url_for('users_api.get_user_list') }}"
         data-i18n-active-streams="{{ _('Streams Ativos') }}"
-        data-i18n-total-users="{{ _('Utilizadores Totais') }}"
+        data-i18n-total-users="{{ _('Usuários Totais') }}"
         data-i18n-monthly-revenue="{{ _('Receita do Mês') }}"
         data-i18n-upcoming-renewals="{{ _('Próximas Renovações (7d)') }}"
         data-i18n-revenue-label="{{ _('Receita') }}"
@@ -308,9 +308,9 @@
         data-i18n-confirm-send-button="{{ _('Sim, Enviar') }}"
         data-i18n-cancel="{{ _('Cancelar') }}"
         data-i18n-sending-bulk-notification="{{ _('Enviando...') }}"
-        data-i18n-send-to-all-active="{{ _('Enviar para Utilizadores Ativos') }}"
-        data-i18n-send-to-all-blocked="{{ _('Enviar para Utilizadores Bloqueados') }}"
-        data-i18n-send-to-all-users="{{ _('Enviar para TODOS os Utilizadores') }}"
+        data-i18n-send-to-all-active="{{ _('Enviar para Usuários Ativos') }}"
+        data-i18n-send-to-all-blocked="{{ _('Enviar para Usuários Bloqueados') }}"
+        data-i18n-send-to-all-users="{{ _('Enviar para TODOS os Usuários') }}"
         data-i18n-send-to-specific-users="{{ _('Enviar para Selecionados ({count})') }}"
         data-i18n-bulk-send-started="{{ _('O envio em massa foi iniciado.') }}"
         data-i18n-bulk-send-complete="{{ _('Envio em massa concluído!') }}"
@@ -326,11 +326,11 @@
         data-i18n-reason-blocked-expired="{{ _('Bloqueado (Vencimento)') }}"
         data-i18n-reason-blocked-trial-expired="{{ _('Bloqueado (Teste Expirado)') }}"
         data-i18n-confirm-clear-logs-title="{{ _('Confirmar Limpeza de Logs') }}"
-        data-i18n-confirm-clear-logs-message="{{ _('Tem a certeza de que deseja apagar TODOS os logs de término? Esta ação não pode ser desfeita.') }}"
+        data-i18n-confirm-clear-logs-message="{{ _('Tem a certeza de que deseja excluir TODOS os logs de término? Esta ação não pode ser desfeita.') }}"
         data-i18n-confirm-clear-logs-button="{{ _('Sim, Limpar Tudo') }}"
         data-i18n-confirm-delete-log-title="{{ _('Confirmar Exclusão') }}"
-        data-i18n-confirm-delete-log-message="{{ _('Tem a certeza de que deseja apagar este log?') }}"
-        data-i18n-confirm-delete-log-button="{{ _('Sim, Apagar') }}"
+        data-i18n-confirm-delete-log-message="{{ _('Tem a certeza de que deseja excluir este log?') }}"
+        data-i18n-confirm-delete-log-button="{{ _('Sim, Excluir') }}"
         data-i18n-select-all="{{ _('Selecionar Todos') }}"
         data-i18n-deselect-all="{{ _('Desmarcar Todos') }}"
         data-i18n-selected="{{ _('selecionados') }}"
@@ -338,9 +338,9 @@
         data-i18n-loading-users="{{ _('Carregando usuários...') }}"
         data-i18n-error-loading-users="{{ _('Erro ao carregar usuários.') }}"
         data-i18n-select-at-least-one-user="{{ _('Por favor, selecione pelo menos um usuário.') }}"
-        data-i18n-select-users="{{ _('Selecionar Utilizadores para Notificação') }}"
+        data-i18n-select-users="{{ _('Selecionar Usuários para Notificação') }}"
         data-i18n-confirm-selection="{{ _('Confirmar Seleção') }}"
-        data-i18n-search-users="{{ _('Pesquisar utilizadores...') }}"
+        data-i18n-search-users="{{ _('Pesquisar usuários...') }}"
         data-i18n-select-button-text="{{ _('Selecionar...') }}"
         data-i18n-write-a-message="{{ _('Por favor, escreva uma mensagem para enviar.') }}"
         data-i18n-select-target-audience="{{ _('Por favor, selecione um público-alvo.') }}"

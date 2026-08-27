@@ -316,7 +316,7 @@ class StatsHandler:
                 "success": True,
                 "reset": True,
                 "affected_users": affected,
-                "message": _("Nova temporada iniciada: o XP de %(count)d utilizador(es) foi reposto a zero.", count=affected)
+                "message": _("Nova temporada iniciada: o XP de %(count)d usuário(es) foi reposto a zero.", count=affected)
             }
         except Exception as e:
             logger.error(f"[XP] Falha ao repor o XP da temporada: {e}", exc_info=True)

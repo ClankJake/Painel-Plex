@@ -34,7 +34,7 @@ class ExtendTrialSchema(BaseModel):
 def get_public_user_profile_by_token(token):
     profile = UserProfile.query.filter_by(payment_token=token).first()
     if not profile:
-        return jsonify({"success": False, "message": _("Link de pagamento inválido ou utilizador não encontrado.")}), 404
+        return jsonify({"success": False, "message": _("Link de pagamento inválido ou usuário não encontrado.")}), 404
 
     user_thumb = None
     username = profile.username
@@ -114,7 +114,7 @@ def finalize_reactivation_route():
 
     except IntegrityError:
         extensions.db.session.rollback()
-        return jsonify({"success": False, "message": _("Erro de integridade ao sincronizar nome de utilizador.")}), 409
+        return jsonify({"success": False, "message": _("Erro de integridade ao sincronizar nome de usuário.")}), 409
     except Exception as e:
         extensions.db.session.rollback()
         logger.error(f"Erro ao finalizar reativação local: {e}", exc_info=True)
@@ -294,7 +294,7 @@ def user_profile_route(plex_user_id):
     """Consulta ou edita diretamente as informações de um utilizador específico (Admin)."""
     user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
     if not user_info:
-        return jsonify({"success": False, "message": _("Utilizador não encontrado no Plex.")}), 404
+        return jsonify({"success": False, "message": _("Usuário não encontrado no Plex.")}), 404
 
     username = user_info['username']
 
@@ -341,7 +341,7 @@ def user_profile_route(plex_user_id):
     _enforce_user_status_by_date(plex_user_id, username, profile_to_update)
 
     logger.info(f"Admin '{current_user.username}' atualizou o perfil de '{username}'.")
-    return jsonify({"success": True, "message": _("Perfil do utilizador atualizado com sucesso.")})
+    return jsonify({"success": True, "message": _("Perfil do usuário atualizado com sucesso.")})
 
 @users_api_bp.route('/extend-trial/<int:plex_user_id>', methods=['POST'])
 @login_required
@@ -413,7 +413,7 @@ def reactivate_user_route():
 
     profile = extensions.data_manager.get_user_profile(plex_user_id)
     if not profile or profile.get('status') != 'inactive':
-        return jsonify({"success": False, "message": _("Apenas utilizadores inativos podem ser reativados.")}), 404
+        return jsonify({"success": False, "message": _("Apenas usuários inativos podem ser reativados.")}), 404
 
     username = profile.get('username')
     identifier = profile.get('email') or username
@@ -433,9 +433,9 @@ def reactivate_user_route():
         extensions.data_manager.remove_blocked_user(plex_user_id)
 
         if extensions.socketio:
-            extensions.socketio.emit('user_list_updated', {'message': _("O utilizador %(username)s foi reativado.", username=username)}, namespace='/dashboard')
+            extensions.socketio.emit('user_list_updated', {'message': _("O usuário %(username)s foi reativado.", username=username)}, namespace='/dashboard')
 
-        return jsonify({"success": True, "message": _("Utilizador reativado. Convite enviado com sucesso!")})
+        return jsonify({"success": True, "message": _("Usuário reativado. Convite enviado com sucesso!")})
 
     except Exception as e:
         logger.error(f"Erro interno ao reativar {plex_user_id}: {e}", exc_info=True)
@@ -531,16 +531,16 @@ def delete_permanently_route():
     plex_user_id = request.json.get('plex_user_id')
     profile = extensions.data_manager.get_user_profile(plex_user_id)
     if not profile or profile.get('status') != 'inactive':
-        return jsonify({"success": False, "message": _("Apenas utilizadores inativos podem ser apagados permanentemente.")}), 400
+        return jsonify({"success": False, "message": _("Apenas usuários inativos podem ser apagados permanentemente.")}), 400
 
     try:
         username = profile.get('username', 'Desconhecido')
         extensions.data_manager.delete_user_profile(plex_user_id)
         logger.info(f"Admin '{current_user.username}' apagou permanentemente o utilizador '{username}' (ID: {plex_user_id}).")
-        return jsonify({"success": True, "message": _("Utilizador apagado permanentemente.")})
+        return jsonify({"success": True, "message": _("Usuário apagado permanentemente.")})
     except Exception as e:
         logger.error(f"Erro ao apagar utilizador {plex_user_id}: {e}", exc_info=True)
-        return jsonify({"success": False, "message": _("Erro interno ao apagar o utilizador.")}), 500
+        return jsonify({"success": False, "message": _("Erro interno ao excluir o usuário.")}), 500
 
 @users_api_bp.route('/notify/<int:plex_user_id>', methods=['POST'])
 @login_required
@@ -549,7 +549,7 @@ def delete_permanently_route():
 def notify_user_route(user):
     profile = extensions.data_manager.get_user_profile(user['id'])
     if not profile.get('expiration_date'):
-        return jsonify({"success": False, "message": _("Utilizador sem data de vencimento.")})
+        return jsonify({"success": False, "message": _("Usuário sem data de vencimento.")})
     
     local_tz = get_localzone()
     exp_date = datetime.fromisoformat(profile['expiration_date']).astimezone(local_tz).date()
@@ -845,7 +845,7 @@ def get_my_referral_info():
     try:
         plex_user_id = int(current_user.id)
     except (TypeError, ValueError):
-        return jsonify({"success": False, "message": _("Utilizador inválido.")}), 400
+        return jsonify({"success": False, "message": _("Usuário inválido.")}), 400
 
     code = extensions.referral_manager.get_or_create_code(plex_user_id)
     stats = extensions.referral_manager.get_referral_stats(plex_user_id)
@@ -871,7 +871,7 @@ def claim_referral_code():
     try:
         plex_user_id = int(current_user.id)
     except (TypeError, ValueError):
-        return jsonify({"success": False, "message": _("Utilizador inválido.")}), 400
+        return jsonify({"success": False, "message": _("Usuário inválido.")}), 400
 
     result = extensions.referral_manager.register_referral(plex_user_id, code)
     return jsonify(result), (200 if result.get('success') else 400)

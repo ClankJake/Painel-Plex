@@ -206,7 +206,7 @@ class OverseerrManager:
         user = self.find_user_by_email(email)
         if not user:
             logger.warning(f"Overseerr: Utilizador '{mask_email(email)}' não encontrado para remoção. A ignorar.")
-            return {"success": True, "message": _("Utilizador não encontrado no Overseerr.")}
+            return {"success": True, "message": _("Usuário não encontrado no Overseerr.")}
         
         user_id = user.get("id")
         logger.info(f"Overseerr: A remover o utilizador '{mask_email(email)}' (ID interno: {user_id}).")
@@ -234,7 +234,7 @@ class OverseerrManager:
 
         user = self.find_user_by_email(email)
         if not user:
-            return {"success": False, "message": _("Utilizador não encontrado no Overseerr.")}
+            return {"success": False, "message": _("Usuário não encontrado no Overseerr.")}
         
         params = {
             "take": limit, "skip": skip, "filter": filter,
@@ -468,11 +468,41 @@ class OverseerrManager:
             5: {"text": _("Disponível"), "color": "green"},
         }
 
-        # Estado Base vem do Pedido
-        status_info = request_status_map.get(request_status_code, {"text": _("Desconhecido"), "color": "gray"})
-        
-        # Se o pedido foi Aprovado, o que importa é o estado do download (Média)
-        if request_status_code == 2:
-            status_info = media_availability_map.get(media_availability_code, status_info)
-            
-        return status_info
+        # 🐛 Os códigos podem chegar como STRING (ex: "2") em vez de inteiro,
+        # consoante a versão do Seerr e o que houver pelo caminho. Uma comparação
+        # direta falhava em silêncio e o estado caía em "Desconhecido".
+        def _int(valor):
+            try:
+                return int(valor)
+            except (TypeError, ValueError):
+                return None
+
+        req_code = _int(request_status_code)
+        media_code = _int(media_availability_code)
+
+        # 🐛 A DISPONIBILIDADE MANDA. Antes, o estado da média só era considerado
+        # quando o pedido estava exatamente como "Aprovado" (código 2). Um item já
+        # disponível no servidor mas sem pedido formal aprovado — ou com o pedido
+        # noutro estado — aparecia como "Desconhecido", mesmo quando o próprio
+        # filtro "Disponível" o tinha devolvido.
+        # Se a média está disponível (5) ou parcialmente disponível (4), é isso que
+        # interessa ao utilizador, independentemente do estado do pedido.
+        if media_code in (4, 5):
+            return media_availability_map[media_code]
+
+        # Estado base vem do pedido.
+        status_info = request_status_map.get(req_code)
+
+        # Pedido aprovado: o que importa a seguir é o progresso do download.
+        if req_code == 2 and media_code in media_availability_map:
+            return media_availability_map[media_code]
+
+        if status_info:
+            return status_info
+
+        # Sem estado de pedido reconhecível, tentamos ainda assim o da média antes
+        # de desistir — é melhor mostrar "Processando" do que "Desconhecido".
+        if media_code in media_availability_map:
+            return media_availability_map[media_code]
+
+        return {"text": _("Desconhecido"), "color": "gray"}

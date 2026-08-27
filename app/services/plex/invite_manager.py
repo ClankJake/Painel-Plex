@@ -89,7 +89,7 @@ class PlexInviteManager:
         if telegram_id:
             existing_user = self.data_manager.get_user_profile_by_telegram(telegram_id)
             if existing_user:
-                 return {"success": False, "message": _("Este Telegram ID já está vinculado ao utilizador '%(username)s'.", username=existing_user['username'])}
+                 return {"success": False, "message": _("Este Telegram ID já está vinculado ao usuário '%(username)s'.", username=existing_user['username'])}
             
             if self.data_manager.check_telegram_id_exists_in_invites(telegram_id):
                  return {"success": False, "message": _("Já existe um convite ativo gerado para este Telegram ID.")}
@@ -451,14 +451,14 @@ class PlexInviteManager:
                 if self.conn.plex.machineIdentifier in [s.machineIdentifier for s in user_to_invite.servers]:
                     logger.info(f"O utilizador {user_to_invite.username} já é amigo. Restaurando bibliotecas e permissão de Sync via Atualização de Fundo...")
                     self.user_manager.update_user_libraries(user_to_invite.id, library_titles, allow_sync=allow_sync)
-                    return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso. Permissões restauradas."), "email": user_to_invite.email, "invite_token": "ACCEPTED"}
+                    return {"success": True, "already_exists": True, "message": _("O usuário já tem acesso. Permissões restauradas."), "email": user_to_invite.email, "invite_token": "ACCEPTED"}
 
                 try:
                     self.conn.account.updateFriend(user=user_to_invite, server=self.conn.plex, sections=libraries_to_share, allowSync=allow_sync)
-                    return {"success": True, "message": _("Acesso do utilizador atualizado com sucesso!"), "email": user_to_invite.email, "invite_token": self._get_invite_token(user_to_invite)}
+                    return {"success": True, "message": _("Acesso do usuário atualizado com sucesso!"), "email": user_to_invite.email, "invite_token": self._get_invite_token(user_to_invite)}
                 except Exception as update_err:
                     self.user_manager.update_user_libraries(user_to_invite.id, library_titles, allow_sync=allow_sync)
-                    return {"success": True, "message": _("Acesso do utilizador atualizado com sucesso (via Sistema Seguro)!"), "email": user_to_invite.email, "invite_token": "ACCEPTED"}
+                    return {"success": True, "message": _("Acesso do usuário atualizado com sucesso (via Sistema Seguro)!"), "email": user_to_invite.email, "invite_token": "ACCEPTED"}
 
             # É um amigo Novo: Usa o convite nativo do PlexAPI que funciona perfeitamente para novos e-mails
             self.conn.account.inviteFriend(user=identifier, server=self.conn.plex, sections=libraries_to_share, allowSync=allow_sync)
@@ -467,7 +467,7 @@ class PlexInviteManager:
         except BadRequest as e:
             error_str = str(e).lower()
             if 'user is already a friend' in error_str or "already sharing" in error_str or "invite has already been sent" in error_str:
-                return {"success": True, "already_exists": True, "message": _("O utilizador já tem acesso ou um convite pendente.")}
+                return {"success": True, "already_exists": True, "message": _("O usuário já tem acesso ou um convite pendente.")}
             
             clean_error = extract_plex_error_message(e)
             logger.error(f"Erro 'BadRequest' ao convidar '{identifier}': {clean_error}")
@@ -552,7 +552,7 @@ class PlexInviteManager:
                 self.user_manager.invalidate_user_cache()
                 all_users = self.user_manager.get_all_plex_users()
                 if any(str(u['id']) == str(user_account.id) for u in all_users):
-                    return {"success": True, "message": _("O utilizador já está ativo no servidor."), "user": user_account}
+                    return {"success": True, "message": _("O usuário já está ativo no servidor."), "user": user_account}
                 return accept_result
 
             return {"success": True, "message": _("Convite aceite com sucesso."), "user": user_account}

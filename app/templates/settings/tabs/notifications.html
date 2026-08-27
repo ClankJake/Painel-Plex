@@ -53,7 +53,7 @@
                     <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700/50 shadow-sm">
                         <div class="flex flex-col">
                             <span class="font-bold text-gray-900 dark:text-white">{{ _('Habilitar Agente Telegram') }}</span>
-                            <span class="text-xs text-gray-500 dark:text-gray-400">{{ _('Permite enviar notificações diretamente para os utilizadores via Bot do Telegram.') }}</span>
+                            <span class="text-xs text-gray-500 dark:text-gray-400">{{ _('Permite enviar notificações diretamente para os usuários via Bot do Telegram.') }}</span>
                         </div>
                         <label class="relative inline-flex items-center cursor-pointer">
                             <input id="TELEGRAM_ENABLED" type="checkbox" class="sr-only peer">
@@ -79,7 +79,7 @@
                                 </div>
                                 <input type="text" id="TELEGRAM_CHAT_ID" class="block w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow" placeholder="{{ _('Ex: -100123456789') }}">
                             </div>
-                            <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 leading-tight">{{_('Se preenchido, alertas de erro do sistema e resumos globais serão enviados para este grupo/chat. Notificações de utilizadores usam o ID configurado no perfil de cada um.')}}</p>
+                            <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 leading-tight">{{_('Se preenchido, alertas de erro do sistema e resumos globais serão enviados para este grupo/chat. Notificações de usuários usam o ID configurado no perfil de cada um.')}}</p>
                         </div>
                     </div>
 
@@ -135,7 +135,7 @@
 <div class="space-y-4 pt-4 mt-2 border-t border-gray-200 dark:border-gray-700/50">
                         <div>
                             <h4 class="font-bold text-gray-900 dark:text-white text-sm">{{ _('Pedidos (Seerr)') }}</h4>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Mensagens enviadas ao utilizador quando o estado do pedido dele muda. Variáveis: {title}, {overview}, {status}, {username}, {media_url}. Deixe em branco para usar a mensagem genérica.') }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Mensagens enviadas ao usuário quando o estado do pedido dele muda. Variáveis: {title}, {overview}, {status}, {username}, {media_url}. Deixe em branco para usar a mensagem genérica.') }}</p>
                         </div>
                         <div>
                             <label for="TELEGRAM_MEDIA_PENDING_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Pedido Pendente') }}</label>
@@ -242,7 +242,7 @@
 <div class="space-y-4 pt-4 mt-2 border-t border-gray-200 dark:border-gray-700/50">
                         <div>
                             <h4 class="font-bold text-gray-900 dark:text-white text-sm">{{ _('Pedidos (Seerr)') }}</h4>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Mensagens enviadas ao utilizador quando o estado do pedido dele muda. Variáveis: {title}, {overview}, {status}, {username}, {media_url}. Deixe em branco para usar a mensagem genérica.') }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Mensagens enviadas ao usuário quando o estado do pedido dele muda. Variáveis: {title}, {overview}, {status}, {username}, {media_url}. Deixe em branco para usar a mensagem genérica.') }}</p>
                         </div>
                         <div>
                             <label for="DISCORD_MEDIA_PENDING_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Pedido Pendente') }}</label>
@@ -388,7 +388,7 @@
                         <div>
                             <label for="WHATSAPP_DEFAULT_COUNTRY_CODE" class="block mb-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Código do país padrão') }}</label>
                             <input type="text" id="WHATSAPP_DEFAULT_COUNTRY_CODE" placeholder="55" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white">
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Aplicado a números guardados sem o código do país (ex: 11988887777 vira 5511988887777).') }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Aplicado a números salvos sem o código do país (ex: 11988887777 vira 5511988887777).') }}</p>
                         </div>
                     </div>
 
@@ -402,7 +402,7 @@
                             <label for="WHATSAPP_API_KEY" class="block mb-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Chave da API / Credenciais') }}</label>
                             <input type="password" id="WHATSAPP_API_KEY" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white">
                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                {{ _('Evolution API e WAHA: a chave da API. GOWA: usa Basic Auth — escreva no formato utilizador:senha (o mesmo do APP_BASIC_AUTH). Deixe vazio se o servidor não exigir autenticação.') }}
+                                {{ _('Evolution API e WAHA: a chave da API. GOWA: usa Basic Auth — escreva no formato usuário:senha (o mesmo do APP_BASIC_AUTH). Deixe vazio se o servidor não exigir autenticação.') }}
                             </p>
                         </div>
                         <div>
@@ -469,7 +469,7 @@
 <div class="space-y-4 pt-4 mt-2 border-t border-gray-200 dark:border-gray-700/50">
                         <div>
                             <h4 class="font-bold text-gray-900 dark:text-white text-sm">{{ _('Pedidos (Seerr)') }}</h4>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Mensagens enviadas ao utilizador quando o estado do pedido dele muda. Variáveis: {title}, {overview}, {status}, {username}, {media_url}. Deixe em branco para usar a mensagem genérica.') }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Mensagens enviadas ao usuário quando o estado do pedido dele muda. Variáveis: {title}, {overview}, {status}, {username}, {media_url}. Deixe em branco para usar a mensagem genérica.') }}</p>
                         </div>
                         <div>
                             <label for="WHATSAPP_MEDIA_PENDING_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Pedido Pendente') }}</label>
@@ -505,7 +505,7 @@
                         {{ _('Avisar Vencimento com (Dias de Antecedência)') }}
                     </label>
                     <input type="number" id="DAYS_TO_NOTIFY_EXPIRATION" class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow mt-2" min="1">
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ _('Quantos dias antes do vencimento o utilizador deve começar a receber alertas (Ex: se colocar 3, ele será avisado a faltar 3 dias).') }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ _('Quantos dias antes do vencimento o usuário deve começar a receber alertas (Ex: se colocar 3, ele será avisado a faltar 3 dias).') }}</p>
                 </div>
             </div>
 

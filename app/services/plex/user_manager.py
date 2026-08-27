@@ -31,7 +31,7 @@ class PlexUserManager:
     def invalidate_user_cache(self):
         """Invalida a cache de utilizadores."""
         cache.delete_memoized(self.get_all_plex_users)
-        logger.info(_("Cache de utilizadores do Plex invalidado."))
+        logger.info(_("Cache de usuários do Plex invalidado."))
 
     def get_user_by_id(self, plex_user_id):
         """Busca um único utilizador pelo seu ID do Plex, utilizando a cache."""
@@ -91,7 +91,7 @@ class PlexUserManager:
             self.invalidate_user_cache()
             return None
         except Exception as e:
-            logger.error(_("Erro inesperado ao obter utilizadores do Plex: %(error)s", error=e), exc_info=True)
+            logger.error(_("Erro inesperado ao obter usuários do Plex: %(error)s", error=e), exc_info=True)
             self.invalidate_user_cache()
             return None
 
@@ -318,7 +318,7 @@ class PlexUserManager:
         """Atualiza bibliotecas em massa de forma paralela, evitando timeouts do servidor web."""
         all_users = self.get_all_plex_users()
         if not all_users: 
-            return {"success": False, "message": _("Falha ao ler utilizadores.")}
+            return {"success": False, "message": _("Falha ao ler usuários.")}
 
         admin_id = str(self.conn.account.id)
         success_count = 0
@@ -343,7 +343,7 @@ class PlexUserManager:
         self.conn.account._users = None
         self.invalidate_user_cache()
 
-        return {"success": True, "message": _("Bibliotecas atualizadas para %(count)d utilizadores.", count=success_count)}
+        return {"success": True, "message": _("Bibliotecas atualizadas para %(count)d usuários.", count=success_count)}
 
     def block_user(self, plex_user_id, reason='manual'):
         user_to_block = self.get_user_by_id(plex_user_id)
@@ -356,7 +356,7 @@ class PlexUserManager:
             self.data_manager.add_blocked_user(plex_user_id, username, reason=reason)
             if self.stream_manager:
                 self.stream_manager.block_user_sessions(plex_user_id, reason="O seu acesso ao servidor foi bloqueado pelo administrador.")
-            return {"success": True, "message": _("Utilizador bloqueado.")}
+            return {"success": True, "message": _("Usuário bloqueado.")}
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -365,13 +365,13 @@ class PlexUserManager:
         username = user_to_unblock['username'] if user_to_unblock else str(plex_user_id)
         try:
             self.data_manager.remove_blocked_user(plex_user_id)
-            return {"success": True, "message": _("Utilizador desbloqueado.")}
+            return {"success": True, "message": _("Usuário desbloqueado.")}
         except Exception as e:
             return {"success": False, "message": str(e)}
 
     def remove_user(self, plex_user_id):
         profile = self.data_manager.get_user_profile(plex_user_id)
-        if not profile: return {"success": False, "message": _("Utilizador não encontrado.")}
+        if not profile: return {"success": False, "message": _("Usuário não encontrado.")}
         if not self.conn.account: return {"success": False, "message": _("O Plex não está configurado.")}
 
         username, email = profile.get('username'), profile.get('email')
@@ -380,7 +380,7 @@ class PlexUserManager:
             if profile.get('overseerr_access') and email: self.overseerr_manager.remove_user(email)
             self._remove_plex_friend(plex_user_id, email, username)
             self._deactivate_user_profile(plex_user_id, profile)
-            return {"success": True, "message": _("Utilizador desativado."), "username": username}
+            return {"success": True, "message": _("Usuário desativado."), "username": username}
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -416,7 +416,7 @@ class PlexUserManager:
 
     def toggle_overseerr_access(self, plex_user_id, access: bool):
         user_info = self.get_user_by_id(plex_user_id)
-        if not user_info: return {"success": False, "message": _("Utilizador não encontrado.")}
+        if not user_info: return {"success": False, "message": _("Usuário não encontrado.")}
         profile = self.data_manager.get_user_profile(plex_user_id)
         
         if access: result = self.overseerr_manager.import_from_plex(user_info)

@@ -55,7 +55,7 @@
             <div data-step="0" class="wizard-step transition-opacity duration-500 ease-in-out text-center">
                 <div class="text-6xl mb-4">👋</div>
                 <h2 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ _('Bem-vindo ao Painel de Gestão Plex!') }}</h2>
-                <p class="text-gray-500 dark:text-gray-400 mt-4 max-w-lg mx-auto">{{ _('Esta ferramenta simplifica a gestão do seu servidor Plex: convide utilizadores, controle acessos e telas simultâneas, e acompanhe estatísticas detalhadas de uso.') }}</p>
+                <p class="text-gray-500 dark:text-gray-400 mt-4 max-w-lg mx-auto">{{ _('Esta ferramenta simplifica a gestão do seu servidor Plex: convide usuários, controle acessos e telas simultâneas, e acompanhe estatísticas detalhadas de uso.') }}</p>
                 <div class="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
                     <button type="button" id="start-setup" class="btn bg-green-600 hover:bg-green-500 text-white px-6 py-3 font-semibold shadow-lg shadow-green-500/20">{{ _('Vamos Começar') }} &rarr;</button>
                     <button type="button" id="go-to-restore" class="btn bg-transparent border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 px-6 py-3 font-semibold">
@@ -138,7 +138,7 @@
                                     <span>🎞️</span>{{ _('Seerr (Overseerr / Jellyseerr)') }}
                                     <span class="text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">{{ _('Opcional') }}</span>
                                 </h4>
-                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Permite que os utilizadores façam pedidos de conteúdo pelo painel.') }}</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Permite que os usuários façam pedidos de conteúdo pelo painel.') }}</p>
                             </div>
                             <label class="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
                                 <input id="overseerr_enabled" type="checkbox" class="sr-only peer">
@@ -171,7 +171,7 @@
             <!-- PASSO 4: Restaurar backup (acessível a partir do ecrã inicial) -->
             <div data-step="4" class="wizard-step hidden opacity-0 transition-opacity duration-500 ease-in-out">
                 <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">{{ _('Restaurar a partir de um Backup') }}</h2>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('Selecione o ficheiro .zip gerado pelo painel. As configurações, utilizadores, pagamentos e todo o histórico serão restaurados.') }}</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('Selecione o arquivo .zip gerado pelo painel. As configurações, usuários, pagamentos e todo o histórico serão restaurados.') }}</p>
 
                 <div class="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-xl p-4 mb-5">
                     <p class="text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
@@ -182,8 +182,8 @@
 
                 <label for="restore-file-input" id="restore-dropzone" class="block border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center cursor-pointer hover:border-yellow-500 dark:hover:border-yellow-500 transition-colors">
                     <svg class="w-10 h-10 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                    <p id="restore-file-label" class="text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Clique para selecionar o ficheiro de backup') }}</p>
-                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('Apenas ficheiros .zip') }}</p>
+                    <p id="restore-file-label" class="text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Clique para selecionar o arquivo de backup') }}</p>
+                    <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ _('Apenas arquivos .zip') }}</p>
                 </label>
                 <input type="file" id="restore-file-input" accept=".zip" class="hidden">
 
@@ -226,12 +226,12 @@
     data-i18n-step4-title="{{ _('Restaurar Backup') }}"
     data-i18n-local="{{ _('Local') }}"
     data-i18n-remote="{{ _('Remoto') }}"
-    data-i18n-confirm-restore="{{ _('ATENÇÃO: isto vai substituir todos os dados desta instalação pelos do ficheiro de backup, e a aplicação será reiniciada. Deseja continuar?') }}"
-    data-i18n-restoring="{{ _('A restaurar...') }}"
+    data-i18n-confirm-restore="{{ _('ATENÇÃO: isto vai substituir todos os dados desta instalação pelos do arquivo de backup, e a aplicação será reiniciada. Deseja continuar?') }}"
+    data-i18n-restoring="{{ _('Restaurando...') }}"
     data-i18n-restore-success="{{ _('Backup restaurado! A aplicação vai reiniciar — aguarde e recarregue a página.') }}"
     data-i18n-restore-failed="{{ _('Falha ao restaurar o backup') }}"
     data-i18n-restore-now="{{ _('Restaurar Agora') }}"
-    data-i18n-invalid-file-type="{{ _('Selecione um ficheiro .zip válido.') }}"
+    data-i18n-invalid-file-type="{{ _('Selecione um arquivo .zip válido.') }}"
     data-i18n-unknown-error="{{ _('Erro desconhecido.') }}"
 ></script>
 
