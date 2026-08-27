@@ -7,17 +7,25 @@
     body {
         font-family: 'Inter', sans-serif;
     }
+    /* 🐛 O #toast no HTML traz classes de posição do Tailwind, mas o showToast()
+       reescreve o className INTEIRO ao mostrar a mensagem — apagando-as. Sem
+       posição própria aqui, o toast perdia-se a partir do primeiro uso.
+       Usamos "top" (e não "bottom") para coincidir com o que o template
+       pretende; definir ambos sem altura esticaria o elemento pelo ecrã. */
     .toast {
         position: fixed;
-        bottom: 1.5rem;
-        right: 1.5rem;
+        top: 5rem;
+        right: 1rem;
         padding: 1rem 1.5rem;
         border-radius: 0.5rem;
         color: white;
         opacity: 0;
-        transform: translateY(20px);
+        transform: translateY(-20px);
         transition: opacity 0.3s ease, transform 0.3s ease;
         z-index: 9999;
+        max-width: min(90vw, 28rem);
+        word-break: break-word;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
     }
     .toast.show {
         opacity: 1;
@@ -137,7 +145,7 @@
     /* Regras específicas para desabilitar campos com base na checkbox principal de cada provedor */
     #subtab-EFI:has(#EFI_ENABLED:not(:checked)) .disablable-input,
     #subtab-MERCADOPAGO:has(#MERCADOPAGO_ENABLED:not(:checked)) .disablable-input,
-    #subtab-BPIX:has(#BPIX_ENABLED:not(:checked)) .disablable-input {
+    #subtab-Gates2b:has(#GATES2B_ENABLED:not(:checked)) .disablable-input {
         @apply bg-gray-200 dark:bg-gray-800 cursor-not-allowed opacity-50;
         /* Impede interações com os campos desativados */
         pointer-events: none;
@@ -151,16 +159,16 @@
     #subtab-MERCADOPAGO:has(#MERCADOPAGO_ENABLED:not(:checked)) .disablable-input select,
     #subtab-MERCADOPAGO:has(#MERCADOPAGO_ENABLED:not(:checked)) .disablable-input textarea,
     #subtab-MERCADOPAGO:has(#MERCADOPAGO_ENABLED:not(:checked)) .disablable-input button,
-    #subtab-BPIX:has(#BPIX_ENABLED:not(:checked)) .disablable-input input,
-    #subtab-BPIX:has(#BPIX_ENABLED:not(:checked)) .disablable-input select,
-    #subtab-BPIX:has(#BPIX_ENABLED:not(:checked)) .disablable-input textarea,
-    #subtab-BPIX:has(#BPIX_ENABLED:not(:checked)) .disablable-input button {
+    #subtab-Gates2b:has(#GATES2B_ENABLED:not(:checked)) .disablable-input input,
+    #subtab-Gates2b:has(#GATES2B_ENABLED:not(:checked)) .disablable-input select,
+    #subtab-Gates2b:has(#GATES2B_ENABLED:not(:checked)) .disablable-input textarea,
+    #subtab-Gates2b:has(#GATES2B_ENABLED:not(:checked)) .disablable-input button {
          @apply cursor-not-allowed;
     }
     /* Estilo específico para checkboxes dentro da área desativada */
     #subtab-EFI:has(#EFI_ENABLED:not(:checked)) .disablable-input input[type="checkbox"],
     #subtab-MERCADOPAGO:has(#MERCADOPAGO_ENABLED:not(:checked)) .disablable-input input[type="checkbox"],
-    #subtab-BPIX:has(#BPIX_ENABLED:not(:checked)) .disablable-input input[type="checkbox"] {
+    #subtab-Gates2b:has(#GATES2B_ENABLED:not(:checked)) .disablable-input input[type="checkbox"] {
          @apply opacity-50; /* Apenas reduz a opacidade */
     }
 
@@ -170,9 +178,12 @@
         font-family: 'Courier New', Courier, monospace;
         font-size: 0.8rem;
     }
-    .modal-backdrop { /* Este já existe, mas mantemos para garantir */
-        @apply fixed inset-0 z-50 flex items-center justify-center bg-gray-100 dark:bg-gray-900;
-    }
+    /* 🐛 CORREÇÃO: existia aqui uma SEGUNDA definição de .modal-backdrop com
+       "bg-gray-100 dark:bg-gray-900" — um fundo OPACO. Por vir depois, vencia a
+       definição original (mais acima) e anulava o fundo escurecido translúcido e
+       o "backdrop-filter: blur()". O modal ficava com fundo sólido em vez do
+       overlay pretendido. Removida: a definição original já trata posição,
+       centragem e z-index. */
     .provider-fields {
         display: none;
     }
@@ -198,9 +209,37 @@
     #bulk-notify-selection-list::-webkit-scrollbar { width: 4px; }
     #bulk-notify-selection-list::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 4px; }
     
-    /* Estilo para o filtro de 'Meus Pedidos' */
+    /* Filtros de 'Os Meus Pedidos'.
+       ⚠️ NOTA: o account.html define o SEU PRÓPRIO .filter-btn (em azul) num
+       bloco @layer components local, que por ser carregado depois vence esta
+       regra. Mantemos aqui apenas o estado base, para que a classe funcione em
+       qualquer página que a use sem ter estilos próprios — evitando um botão
+       sem qualquer aparência. */
+    .filter-btn {
+        @apply px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors;
+        @apply text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700/50;
+        @apply hover:bg-gray-200 dark:hover:bg-gray-600;
+    }
     .filter-btn.active {
         @apply bg-yellow-500 text-white dark:bg-yellow-600;
+    }
+
+    /* line-clamp-2: o plugin @tailwindcss/line-clamp NÃO está incluído na build
+       deste projeto, por isso a classe utilitária não existe no CSS compilado.
+       Definimo-la manualmente — é usada nos cartões de pedidos para cortar
+       títulos longos em duas linhas em vez de os deixar transbordar. */
+    .line-clamp-2 {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    /* Respeita quem prefere menos movimento (acessibilidade / enjoo de movimento). */
+    @media (prefers-reduced-motion: reduce) {
+        .animate-fade-in { animation: none; }
+        .btn:hover:not(:disabled) { transform: none; }
+        .toast, .modal-content, #notification-panel { transition: none; }
     }
     
 }
