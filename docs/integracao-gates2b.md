@@ -19,7 +19,7 @@ Guia para configurar o gateway de pagamentos **Gates2b** no Painel Plex.
 
 A chave é usada no cabeçalho `Authorization: Bearer {chave}` de todos os pedidos.
 
-> ⚠️ Trate a chave como uma palavra-passe. Quem a tiver pode criar cobranças na
+> ⚠️ Trate a chave como uma senha. Quem a tiver pode criar cobranças na
 > sua conta. No Painel Plex ela é guardada mascarada e nunca é devolvida em claro
 > pela API de configurações.
 
@@ -71,7 +71,7 @@ devolvendo HTTP 400. O mínimo por omissão é **R$ 3,00** — nenhuma conta tem
 inferior a esse valor.
 
 O painel valida esse limite **antes** de contactar o gateway, para que o
-utilizador receba uma mensagem clara em vez de um erro cru da API.
+usuário receba uma mensagem clara em vez de um erro cru da API.
 
 Isto é relevante em três situações:
 
@@ -90,14 +90,14 @@ Isto é relevante em três situações:
 ## 5. Como funciona o fluxo
 
 ```
-Utilizador escolhe o plano
+Usuário escolhe o plano
         ↓
 Painel cria a cobrança:  POST https://api.gates2b.com/charge
    (paymentMethod: "PIX", com chave de idempotência e webhookUrl)
         ↓
 Gates2b devolve QR Code (imagem base64) + código copia-e-cola
         ↓
-Utilizador paga
+Usuário paga
         ↓
 Gates2b chama o webhook: POST /api/payments/webhook/gates2b
         ↓
@@ -112,11 +112,11 @@ Painel confirma o pagamento e renova a subscrição
   "currency": "BRL",
   "paymentMethod": "PIX",
   "externalReference": "uuid-gerado-pelo-painel",
-  "description": "Pagamento para utilizador - Renovacao Plex - 3 Telas",
+  "description": "Pagamento para usuário - Renovacao Plex - 3 Telas",
   "expiresAt": "2026-08-24T12:20:00.000Z",
   "attemptIdempotencyKey": "uuid-gerado-pelo-painel",
   "webhookUrl": "https://SEU-DOMINIO/api/payments/webhook/gates2b",
-  "customerMeta": { "name": "Nome do Utilizador", "email": "utilizador@exemplo.com" }
+  "customerMeta": { "name": "Nome do Usuário", "email": "usuário@exemplo.com" }
 }
 ```
 

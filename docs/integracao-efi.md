@@ -36,7 +36,7 @@ pedidos — não basta o Client ID/Secret.
 1. Ainda em **API** → **Minhas Aplicações**, selecione a aplicação
 2. Vá a **Certificados** → **Criar novo certificado**
 3. Escolha o ambiente (Produção ou Homologação)
-4. Descarregue o ficheiro `.p12`
+4. Descarregue o arquivo `.p12`
 
 ### 2.1. Converter para `.pem`
 
@@ -46,8 +46,8 @@ O painel usa o formato `.pem`. Converta com o OpenSSL:
 openssl pkcs12 -in seu-certificado.p12 -out certificado.pem -nodes
 ```
 
-Quando pedir a palavra-passe, basta pressionar **Enter** (os certificados da Efí
-não têm palavra-passe).
+Quando pedir a senha, basta pressionar **Enter** (os certificados da Efí
+não têm senha).
 
 ### 2.2. Colocar o certificado no servidor
 
@@ -71,7 +71,7 @@ volumes:
 
 > A pasta `certs/` está no `.dockerignore` de propósito: o certificado **não deve
 > ser incluído na imagem Docker**, apenas montado como volume. Assim não vai
-> parar a um registo de imagens por engano.
+> parar a um registro de imagens por engano.
 
 ---
 
@@ -84,7 +84,7 @@ Vá a **Configurações → Pagamentos → Efí**:
 | **Ativar Efí** | Liga o gateway. |
 | **Client ID** | Da aplicação criada no passo 1. |
 | **Client Secret** | Da mesma aplicação. |
-| **Caminho do Certificado** | `/app/certs/certificado.pem` (caminho **dentro** do contentor). |
+| **Caminho do Certificado** | `/app/certs/certificado.pem` (caminho **dentro** do contêiner). |
 | **Modo Sandbox** | Ative para testes com credenciais de homologação. |
 | **Chave PIX** | A chave PIX da sua conta Efí que vai receber os pagamentos. |
 | **Usar mTLS** | **Recomendado: ativado.** Ver secção 4. |
@@ -111,7 +111,7 @@ Existem dois modos de proteger essa comunicação:
 
 ### Modo mTLS (recomendado, padrão)
 
-A Efí apresenta um certificado de cliente e a ligação é autenticada mutuamente.
+A Efí apresenta um certificado de cliente e a conexão é autenticada mutuamente.
 É o modo mais seguro e não exige configuração extra no painel.
 
 **Requisito:** o seu servidor tem de aceitar a validação mTLS da Efí. Em algumas
@@ -144,13 +144,13 @@ não deixar o endpoint desprotegido.
 ## 5. Como funciona o fluxo
 
 ```
-Utilizador escolhe o plano
+Usuário escolhe o plano
         ↓
 Painel cria a cobrança:  POST /v2/cob   (pix_create_immediate_charge)
         ↓
 Painel pede o QR Code:   GET  /v2/loc/{id}/qrcode
         ↓
-Utilizador paga
+Usuário paga
         ↓
 Efí chama o webhook:     POST /api/payments/webhook/efi
         ↓
@@ -165,7 +165,7 @@ Painel valida (mTLS ou HMAC) → consulta a API → confirma → renova a subscr
 - **Idempotência:** se o webhook chegar repetido, pagamentos já marcados como
   `CONCLUIDA` são ignorados — não há risco de renovar duas vezes.
 - **Evento de teste:** a Efí envia um `teste_webhook` ao registar o endereço; o
-  painel responde corretamente para que o registo seja aceite.
+  painel responde corretamente para que o registro seja aceite.
 - **Expiração:** as cobranças expiram 20 minutos após a criação.
 
 ---
@@ -177,8 +177,8 @@ O cliente não foi inicializado. Verifique Client ID, Client Secret e se o
 certificado existe no caminho indicado.
 
 **"Certificado Efí não encontrado no caminho especificado"**
-O ficheiro não está onde o painel espera. Lembre-se de que o caminho é o de
-**dentro do contentor** (`/app/certs/...`), não o do seu computador. Confirme que
+O arquivo não está onde o painel espera. Lembre-se de que o caminho é o de
+**dentro do contêiner** (`/app/certs/...`), não o do seu computador. Confirme que
 o volume `./certs:/app/certs` está no `docker-compose.yml`.
 
 **"Erro interno ao comunicar. Verifique o certificado SSL"**
@@ -217,7 +217,7 @@ registar um webhook sem qualquer proteção.
   propositadamente — os certificados da Efí usam algoritmos que as versões mais
   recentes do Debian rejeitariam por omissão. Sem esse ajuste, o handshake TLS
   falharia.
-- **Registo do webhook:** feito automaticamente sempre que as credenciais da Efí
+- **Registro do webhook:** feito automaticamente sempre que as credenciais da Efí
   (ou o URL Base) são alteradas nas configurações. Não é preciso registar
   manualmente no painel da Efí.
 - **Dados sensíveis:** a chave PIX e o segredo HMAC nunca são escritos em claro

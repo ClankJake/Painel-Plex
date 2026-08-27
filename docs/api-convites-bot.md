@@ -1,9 +1,9 @@
 # API de Convites para Bots — Vínculo automático de Telegram ID
 
 Endpoint dedicado a integrações automatizadas (bots do Telegram, scripts, n8n,
-etc.) que precisam de gerar convites já vinculados a um utilizador do Telegram.
+etc.) que precisam de gerar convites já vinculados a um usuário do Telegram.
 
-Quando o convite é resgatado, o perfil do novo utilizador é criado **já com o
+Quando o convite é resgatado, o perfil do novo usuário é criado **já com o
 Telegram ID associado**, dispensando qualquer vinculação manual posterior.
 
 ---
@@ -23,15 +23,29 @@ ou, em alternativa:
 Authorization: Bearer SUA_CHAVE
 ```
 
-**Onde encontrar a chave:** é o valor de `INTERNAL_TRIGGER_KEY` no ficheiro
-`config/config.json`. É gerada automaticamente na primeira execução e **nunca é
-devolvida pela API de configurações**, por isso tem de ser lida diretamente do
-ficheiro no servidor.
+### Onde encontrar a chave
 
-> ⚠️ Trate esta chave como uma palavra-passe: quem a tiver pode criar convites.
-> Se precisar de a rodar, altere o valor em `config.json` e reinicie a aplicação.
+No painel, vá a **Configurações → Geral → Chave de API (Integrações)**:
 
-A comparação da chave usa `secrets.compare_digest`, para não revelar informação
+1. Clique no ícone do **olho** para revelar a chave
+2. Use o botão **Copiar**
+
+A chave é gerada automaticamente na primeira execução. Se a sua instalação for
+antiga e ainda não tiver uma, ela é criada na primeira vez que abrir essa página.
+
+> Por segurança, a chave **não é enviada** no carregamento normal das
+> configurações — só é obtida quando você clica em mostrar ou copiar.
+
+### Gerar uma chave nova
+
+No mesmo cartão existe o botão **Gerar Nova Chave**.
+
+> ⚠️ **Isto invalida a chave anterior imediatamente.** Todos os bots e
+> integrações que a usam deixam de funcionar até serem atualizados com a nova.
+> A chave nova aparece já visível na página, para você a copiar de imediato.
+
+Trate esta chave como uma senha: quem a tiver pode criar convites no seu
+servidor. A comparação usa `secrets.compare_digest`, para não revelar informação
 através do tempo de resposta.
 
 ---
@@ -47,13 +61,13 @@ Content-Type: application/json
 
 | Campo | Tipo | Obrigatório | Padrão | Descrição |
 |---|---|:---:|---|---|
-| `telegram_id` | string \| int | **sim** | — | ID do chat/utilizador no Telegram. Aceita número ou texto. |
+| `telegram_id` | string \| int | **sim** | — | ID do chat/usuário no Telegram. Aceita número ou texto. |
 | `libraries` | lista de strings | não | *todas* | Bibliotecas a partilhar. Se omitido, usa **todas** as do servidor. |
-| `screens` | int (0–6) | não | `0` | Limite de ecrãs simultâneos. |
+| `screens` | int (0–6) | não | `0` | Limite de telas simultâneos. |
 | `allow_downloads` | bool | não | `false` | Permitir downloads/sync. |
 | `expires_in_minutes` | int | não | `null` | Validade do convite. `null` = não expira. |
 | `trial_duration_minutes` | int | não | `0` | Duração do período de teste. `0` = sem teste. |
-| `overseerr_access` | bool | não | `false` | Criar também acesso no Overseerr/Jellyseerr. |
+| `overseerr_access` | bool | não | `false` | Criar também acesso no Seerr (Overseerr / Jellyseerr). Ver [integracao-seerr.md](integracao-seerr.md). |
 | `custom_code` | string | não | *aleatório* | Código personalizado para o convite. |
 | `max_uses` | int | não | `1` | Número de utilizações permitidas. |
 
@@ -83,7 +97,7 @@ curl -X POST https://o-seu-painel/api/invites/bot/create \
 }
 ```
 
-Basta enviar `invite_url` ao utilizador no Telegram.
+Basta enviar `invite_url` ao usuário no Telegram.
 
 ### Respostas de erro
 
@@ -99,7 +113,7 @@ Exemplo de `409`:
 ```json
 {
   "success": false,
-  "message": "Este Telegram ID já está vinculado ao utilizador 'joao'."
+  "message": "Este Telegram ID já está vinculado ao usuário 'joao'."
 }
 ```
 
@@ -107,18 +121,18 @@ Exemplo de `409`:
 
 ## Regras de unicidade
 
-O sistema impede que dois utilizadores fiquem ligados ao mesmo chat do Telegram,
+O sistema impede que dois usuárioes fiquem ligados ao mesmo chat do Telegram,
 verificando em **três** momentos:
 
 1. **Ao criar o convite** — recusa (`409`) se o `telegram_id` já estiver vinculado
-   a um utilizador existente.
+   a um usuário existente.
 2. **Ao criar o convite** — recusa (`409`) se já existir outro convite **ativo e
    não expirado** para o mesmo `telegram_id`. Convites já usados ou expirados não
    bloqueiam.
 3. **Ao resgatar o convite** — o ID é revalidado. Se, entretanto, tiver sido
-   vinculado a outra conta, o **registo continua normalmente**, mas o vínculo do
+   vinculado a outra conta, o **registro continua normalmente**, mas o vínculo do
    Telegram é ignorado e fica um aviso no log. Isto evita que um convite antigo
-   "roube" o chat de outro utilizador.
+   "roube" o chat de outro usuário.
 
 ### Normalização
 
@@ -134,7 +148,7 @@ independentemente de como o bot envia o valor.
 Existem dois campos com nomes parecidos, em tabelas diferentes:
 
 - `invitations.telegram_id` — o ID pré-atribuído ao convite.
-- `user_profiles.telegram_user` — o ID efetivamente vinculado ao utilizador.
+- `user_profiles.telegram_user` — o ID efetivamente vinculado ao usuário.
 
 São normalmente lidos através de `data_manager.get_user_profile_by_telegram()`,
 que já trata a normalização e sabe qual coluna consultar. Evite comparar estes

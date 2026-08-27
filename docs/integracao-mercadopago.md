@@ -4,7 +4,7 @@ Guia para configurar o gateway de pagamentos **Mercado Pago** no Painel Plex.
 
 A integração usa o **Checkout Transparente** (API de Pagamentos), o que significa
 que o QR Code do PIX é gerado e apresentado dentro do próprio painel — o
-utilizador nunca sai do seu site.
+usuário nunca sai do seu site.
 
 > **Nota:** apenas o **PIX** está integrado. O Mercado Pago também suporta cartão
 > de crédito, boleto e outros métodos, mas não fazem parte desta integração.
@@ -23,9 +23,9 @@ O token começa por `APP_USR-...`
 > ⚠️ **Credenciais de teste vs. produção**
 > O painel de programador oferece dois conjuntos de credenciais. Use as de
 > **produção** para receber pagamentos reais. As de teste só funcionam com
-> utilizadores de teste e não movimentam dinheiro.
+> usuários de teste e não movimentam dinheiro.
 
-> 🔒 Trate o Access Token como uma palavra-passe: quem o tiver pode criar
+> 🔒 Trate o Access Token como uma senha: quem o tiver pode criar
 > cobranças e consultar movimentos da sua conta. No Painel Plex ele é guardado
 > mascarado e nunca é devolvido em claro pela API de configurações.
 
@@ -128,14 +128,14 @@ Isto é relevante em três situações:
 ## 6. Como funciona o fluxo
 
 ```
-Utilizador escolhe o plano
+Usuário escolhe o plano
         ↓
 Painel cria o pagamento:  POST https://api.mercadopago.com/v1/payments
    (payment_method_id: "pix", com chave de idempotência)
         ↓
 Mercado Pago devolve QR Code (base64) + código copia-e-cola
         ↓
-Utilizador paga
+Usuário paga
         ↓
 Mercado Pago chama o webhook: POST /api/payments/webhook/mercadopago
         ↓
@@ -163,7 +163,7 @@ duplicadas ao mesmo cliente.
 > **Importante:** em reembolsos e chargebacks o acesso **não é revogado
 > automaticamente**. Pode tratar-se de um reembolso parcial ou acordado, por isso
 > a decisão fica com o administrador. Receberá uma notificação no painel a
-> indicar o utilizador e o valor.
+> indicar o usuário e o valor.
 
 ---
 
