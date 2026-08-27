@@ -5,20 +5,40 @@
 ![Framework](https://img.shields.io/badge/flask-2.x-orange)
 [![Build and Publish Docker Image to GHCR](https://github.com/ClankJake/Painel-Plex/actions/workflows/docker-publish.yml/badge.svg?branch=stable)](https://github.com/ClankJake/Painel-Plex/actions/workflows/docker-publish.yml)
 
-O Painel de Gestão Plex é uma aplicação web completa projetada para simplificar a administração de servidores Plex. Ele oferece uma interface centralizada para gerenciar usuários, convites, assinaturas, finanças e visualizar estatísticas detalhadas de uso, tudo com uma experiência de usuário moderna e interativa.
+O Painel de Gestão Plex é uma aplicação web completa projetada para simplificar a administração de servidores Plex. Ele oferece uma interface centralizada para gerenciar usuários, convites, assinaturas, finanças e visualizar estatísticas detalhadas de uso, tudo com uma experiência moderna e interativa.
 
 ## Principais Funcionalidades
 
+### Gestão e Acesso
 -   **Dashboard de Admin**: Visão geral em tempo real com streams ativos, contagem de usuários, receita mensal e próximas renovações.
 -   **Gestão de Usuários**: Visualize, filtre, pesquise e gerencie todos os usuários do seu servidor. Aplique ações como bloqueio, desbloqueio, remoção e edição de perfis.
 -   **Sistema de Convites**: Crie links de convite seguros e personalizáveis com data de expiração, limite de telas, acesso a bibliotecas específicas e períodos de teste.
--   **Portal do Usuário**: Uma área dedicada para seus usuários visualizarem suas próprias estatísticas de uso, gerenciarem configurações de privacidade e renovarem o acesso.
--   **Integração com Pagamentos**: Processe renovações de assinatura via PIX com integração nativa com a **Efí** e o **Mercado Pago**.
--   **Controle Financeiro**: Um dashboard financeiro para administradores acompanharem a receita mensal, o histórico de transações e as renovações futuras.
--   **Estatísticas Detalhadas**: Integração com o Tautulli para fornecer gráficos e rankings de conteúdo mais assistido, atividade por dia da semana e gêneros favoritos.
--   **Notificações Automatizadas**: Envie notificações de vencimento, renovação e fim de teste para os usuários através do Telegram e/ou Webhooks (compatível com Discord).
--   **Tarefas Agendadas**: Processos automatizados em segundo plano para verificar expirações, remover usuários bloqueados e enviar lembretes.
--   **Interface Moderna**: Frontend reativo construído com JavaScript moderno e Tailwind CSS, oferecendo uma experiência de usuário rápida e agradável, incluindo tema claro e escuro.
+-   **API para Bots**: Gere convites automaticamente a partir de bots do Telegram ou outras automações, já vinculados ao ID do usuário.
+-   **Portal do Usuário**: Área dedicada para o usuário ver suas estatísticas, gerenciar privacidade, acompanhar pedidos e renovar o acesso.
+-   **Controle de Telas**: Limite de streams simultâneos com encerramento automático da sessão excedente.
+
+### Pagamentos e Assinaturas
+-   **Três gateways PIX**: **Efí**, **Mercado Pago** e **Gates2b**, com QR Code gerado dentro do próprio painel.
+-   **Upgrade proporcional (pro-rata)**: O usuário pode aumentar o número de telas no meio do ciclo pagando apenas a diferença dos dias restantes, sem alterar o vencimento.
+-   **Cupons de desconto** com percentual ou valor fixo, e limite de utilizações.
+-   **Controle Financeiro**: Dashboard com receita mensal, histórico de transações e renovações futuras.
+-   **Cobrança consistente**: O dia de vencimento é preservado ao longo das renovações, mesmo passando por meses curtos como fevereiro.
+
+### Engajamento
+-   **Indique e Ganhe**: Cada usuário recebe um link próprio. Quando um amigo assina por ele, o indicador ganha dias grátis ou crédito — configurável pelo administrador.
+-   **Gamificação**: Sistema de XP e níveis totalmente personalizáveis (adicione, remova ou renomeie níveis), com conquistas e reset periódico por temporada.
+-   **Plex Wrapped**: Retrospectiva anual em modo história, com os destaques do ano do usuário e cartão compartilhável.
+-   **Estatísticas Detalhadas**: Integração com o Tautulli para gráficos e rankings de conteúdo mais assistido, atividade por dia da semana e gêneros favoritos.
+
+### Notificações
+-   **Quatro canais**: **Telegram**, **WhatsApp** (via Evolution API, GOWA ou WAHA), **Discord** e **Webhook genérico**.
+-   **Mensagens personalizáveis** por evento: vencimento, renovação, reativação, fim de teste e avisos em massa.
+-   **Pedidos do Seerr**: O usuário é avisado no canal pessoal dele — com a capa do filme/série — sempre que o pedido muda de estado (pendente, aprovado, disponível, recusado).
+
+### Operação
+-   **Backup automático** do banco de dados e configurações, com restauração pelo próprio painel.
+-   **Tarefas Agendadas**: Verificação de expirações, remoção de usuários bloqueados, lembretes e sincronização de perfis.
+-   **Interface Moderna**: Frontend reativo com Tailwind CSS, tema claro e escuro, e layout adaptado para celular.
 
 ## Imagens
 <p align="center">
@@ -33,17 +53,15 @@ Esta é a forma mais simples e rápida de colocar a aplicação em funcionamento
 ### Pré-requisitos
 
 -   **Docker** e **Docker Compose** instalados na sua máquina.
--   **Plex Media Server** e **Tautulli** a funcionar e acessíveis na sua rede.
+-   **Plex Media Server** em funcionamento e acessível na sua rede.
+-   **Tautulli** (opcional, mas necessário para as estatísticas e a gamificação).
 
 ### Passos
 
 1.  **Crie o arquivo `docker-compose.yml`:**
-    Crie um arquivo `docker-compose.yml` e cole o seguinte conteúdo:
 
     ```yaml
     # docker-compose.yml
-    version: '3.8'
-
     services:
       painel-plex:
         image: ghcr.io/clankjake/painel-plex:stable
@@ -62,26 +80,96 @@ Esta é a forma mais simples e rápida de colocar a aplicação em funcionamento
         restart: unless-stopped
     ```
 
+    > O `restart: unless-stopped` é **necessário** para que a restauração de backup funcione: o painel reinicia sozinho após restaurar.
+
 2.  **Inicie a Aplicação:**
-    No mesmo diretório onde criou o arquivo, execute o comando:
     ```bash
-    docker-compose up -d
+    docker compose up -d
     ```
-    O Docker irá baixar a imagem mais recente e iniciar o conteiner em segundo plano.
 
-3.  **Configuração:**
-    Abra o seu navegador e aceda a `http://SEU_ENDERECO_IP:5000`. Será redirecionado para a página de configuração inicial, onde poderá conectar a sua conta Plex, Tautulli e outros serviços.
+3.  **Configuração inicial:**
+    Acesse `http://SEU_ENDERECO_IP:5000`. Você será levado ao assistente de configuração, onde poderá conectar sua conta Plex, escolher o servidor e ligar os serviços opcionais.
 
-    -   O aplicativo irá criar automaticamente uma pasta `config` no mesmo local do seu `docker-compose.yml`. É aqui que o seu ficheiro `config.json` e a base de dados `app_data.db` serão guardados de forma persistente.
-    -   Se utilizar pagamentos via Efí, coloque o seu arquivo de certificado `.pem` na pasta `certs` que também será criada.
+    -   Uma pasta `config` é criada automaticamente. É onde ficam o `config.json` e o banco `app_data.db`.
+    -   Se usar a Efí, coloque o certificado `.pem` na pasta `certs`.
+    -   Já tem um backup de uma instalação anterior? O assistente permite **restaurá-lo logo no primeiro passo**, sem precisar reconfigurar tudo.
+
+4.  **URL Base da Aplicação:**
+    Em **Configurações → Geral**, preencha o endereço público do painel (ex.: `https://painel.seudominio.com`).
+
+    > ⚠️ Este passo é **essencial** se você usar pagamentos. É a partir dele que os webhooks são construídos — sem um endereço público válido, os pagamentos são criados mas **nunca são confirmados automaticamente**.
+
+## Guias de Configuração
+
+Cada integração tem um guia próprio, com passo a passo e resolução de problemas:
+
+| Integração | Guia | O que cobre |
+|---|---|---|
+| **Efí Bank** (PIX) | [docs/integracao-efi.md](docs/integracao-efi.md) | Certificado digital, escopos, mTLS vs. HMAC |
+| **Mercado Pago** (PIX) | [docs/integracao-mercadopago.md](docs/integracao-mercadopago.md) | Access Token, webhook assinado, reembolsos |
+| **Gates2b** (PIX) | [docs/integracao-gates2b.md](docs/integracao-gates2b.md) | Chave de API, valor mínimo, migração da BPIX |
+| **Seerr** (pedidos) | [docs/integracao-seerr.md](docs/integracao-seerr.md) | Pedidos no portal, notificações com capa |
+| **API de Convites** | [docs/api-convites-bot.md](docs/api-convites-bot.md) | Criar convites via bot, vínculo de Telegram ID |
+
+As demais funcionalidades (notificações, gamificação, indicações, backup) são configuradas diretamente em **Configurações**, com explicações na própria interface.
+
+## Atualização
+
+O painel não atualiza sozinho. Para atualizar:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+As migrações do banco de dados são aplicadas automaticamente no arranque. Suas configurações e dados são preservados, pois ficam na pasta `config`.
+
+> 💡 Antes de atualizar, vale gerar um backup em **Configurações → Automações e Tarefas → Baixar Backup Agora**.
 
 ## Instalação Manual (Desenvolvimento)
 
-Esta abordagem é recomendada apenas se pretender contribuir para o desenvolvimento da aplicação.
+Recomendada apenas para quem pretende contribuir com o desenvolvimento.
 
-1.  **Pré-requisitos:** Instale Python 3.8+, Node.js e npm.
-2.  **Clone o repositório:** `git clone https://github.com/ClankJake/Painel-Plex.git`
-3.  **Crie um ambiente virtual e instale as dependências Python:** `pip install -r requirements.txt`
-4.  **Instale as dependências Frontend:** `npm install`
-5.  **Inicie o processo de build do CSS:** `npm run watch:css`
-6.  **Noutro terminal, inicie a aplicação:** `python run.py`
+1.  **Pré-requisitos:** Python 3.8+, Node.js e npm.
+2.  **Clone o repositório:**
+    ```bash
+    git clone https://github.com/ClankJake/Painel-Plex.git
+    cd Painel-Plex
+    ```
+3.  **Instale as dependências:**
+    ```bash
+    pip install -r requirements.txt
+    npm install
+    ```
+4.  **Compile o CSS** (em um terminal separado):
+    ```bash
+    npm run watch:css
+    ```
+5.  **Inicie a aplicação:**
+    ```bash
+    python run.py
+    ```
+
+### Notas para desenvolvedores
+
+-   O painel roda com **1 worker Gunicorn** de propósito. O Flask-SocketIO é usado sem `message_queue`, então múltiplos workers fariam os eventos de tempo real se perderem entre processos.
+-   O modo assíncrono é **gevent**. Não misture com eventlet — o monkey-patching entra em conflito.
+-   O CSS é compilado do `app/static/css/input.css` para `app/static/dist/output.css`. Alterações no primeiro exigem rebuild.
+
+## Estrutura de Pastas
+
+```
+Painel-Plex/
+├── config/          # config.json e bancos de dados (criado automaticamente)
+├── certs/           # certificado da Efí, se usado
+├── docs/            # guias de configuração das integrações
+└── app/
+    ├── blueprints/  # rotas (páginas e API)
+    ├── services/    # integrações: Plex, Tautulli, gateways, notificações
+    ├── templates/   # HTML (Jinja2)
+    └── static/      # CSS, JavaScript
+```
+
+## Licença
+
+Consulte o arquivo de licença do repositório.
