@@ -159,6 +159,70 @@ class PlexManager:
     # --- BIBLIOTECAS E ACESSOS ---
     def get_libraries(self): return self.conn.get_libraries()
     
+    def sync_profiles_from_plex(self, only_missing=True):
+        """
+        Preenche os perfis locais com os dados que o Plex já disponibiliza —
+        sobretudo o EMAIL — sem que o utilizador tenha de iniciar sessão no painel.
+
+        Porque isto é preciso: o email só era gravado quando alguém resgatava um
+        convite ou entrava no painel. Quem já estava no servidor antes disso (ou
+        foi adicionado como amigo diretamente no Plex) ficava sem email na base de
+        dados — e sem email não é possível ligar o utilizador ao Seerr, nem enviar
+        notificações que dependam desse dado.
+
+        'only_missing=True' (padrão) atualiza apenas quem está SEM email, para não
+        sobrescrever correções feitas manualmente pelo administrador. Com False,
+        força a atualização a partir do Plex em todos os perfis.
+
+        Devolve um resumo com o que foi feito.
+        """
+        resumo = {"verificados": 0, "atualizados": 0, "sem_email_no_plex": 0, "erros": 0}
+
+        try:
+            utilizadores_plex = self.users.get_all_plex_users() or []
+        except Exception as e:
+            logger.error(f"Não foi possível obter a lista de utilizadores do Plex: {e}", exc_info=True)
+            return {"success": False, "message": str(e), **resumo}
+
+        for utilizador in utilizadores_plex:
+            resumo["verificados"] += 1
+            try:
+                plex_user_id = int(utilizador.get('id'))
+                email = (utilizador.get('email') or '').strip()
+                username = (utilizador.get('username') or '').strip()
+
+                if not email:
+                    # Nem todos os amigos do Plex expõem o email (depende das
+                    # definições de privacidade da conta deles).
+                    resumo["sem_email_no_plex"] += 1
+                    continue
+
+                perfil = self.data_manager.get_user_profile(plex_user_id)
+                if not perfil:
+                    continue
+
+                email_atual = (perfil.get('email') or '').strip()
+                if only_missing and email_atual:
+                    continue
+                if email_atual.lower() == email.lower() and perfil.get('username') == username:
+                    continue
+
+                perfil['email'] = email
+                if username:
+                    perfil['username'] = username
+                self.data_manager.set_user_profile(plex_user_id, perfil)
+                resumo["atualizados"] += 1
+                logger.info(f"Perfil de '{username}' sincronizado a partir do Plex (email preenchido).")
+            except Exception as e:
+                resumo["erros"] += 1
+                logger.error(f"Falha ao sincronizar o perfil do utilizador {utilizador.get('username')}: {e}")
+
+        logger.info(
+            f"Sincronização de perfis concluída: {resumo['atualizados']} atualizado(s) "
+            f"de {resumo['verificados']} verificado(s); {resumo['sem_email_no_plex']} sem email no Plex."
+        )
+        return {"success": True, **resumo}
+
     def get_all_plex_users(self, force_refresh=False): 
         from app.extensions import cache
         

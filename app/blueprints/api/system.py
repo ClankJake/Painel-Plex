@@ -821,6 +821,36 @@ def overseerr_webhook():
         return jsonify({"success": False, "message": str(e)}), 200
 
 
+@system_api_bp.route('/sync-profiles', methods=['POST'])
+@login_required
+@admin_required
+@limiter.limit("5 per minute")
+def sync_profiles_route():
+    """
+    Preenche os emails em falta nos perfis, a partir dos dados do Plex.
+
+    Permite ao administrador importar os emails de imediato, sem esperar pela
+    sincronização diária e sem que cada utilizador tenha de iniciar sessão.
+    """
+    data = request.get_json() or {}
+    # 'force=true' reescreve também os emails já preenchidos.
+    only_missing = not bool(data.get('force'))
+    try:
+        resultado = plex_manager.sync_profiles_from_plex(only_missing=only_missing)
+        if resultado.get('success'):
+            resultado['message'] = _(
+                "%(atualizados)d perfil(s) atualizado(s) de %(verificados)d verificado(s). "
+                "%(sem_email)d utilizador(es) não expõem o email no Plex.",
+                atualizados=resultado.get('atualizados', 0),
+                verificados=resultado.get('verificados', 0),
+                sem_email=resultado.get('sem_email_no_plex', 0),
+            )
+        return jsonify(resultado), (200 if resultado.get('success') else 500)
+    except Exception as e:
+        logger.error(f"Erro ao sincronizar perfis: {e}", exc_info=True)
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 @system_api_bp.route('/api-key', methods=['GET'])
 @login_required
 @admin_required

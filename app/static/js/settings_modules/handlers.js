@@ -50,6 +50,28 @@ async function handleTestGates2b() {
     }
 }
 
+
+async function handleSyncProfiles() {
+    const btn = document.getElementById('syncProfilesButton');
+    const resultado = document.getElementById('sync-profiles-result');
+    setButtonLoading(btn, i18n.importing || 'A importar...');
+    if (resultado) resultado.textContent = '';
+    try {
+        const r = await api.syncProfiles({});
+        showToast(r.message, r.success ? 'success' : 'error');
+        if (resultado) {
+            resultado.textContent = r.message;
+            resultado.className = `text-xs ${r.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`;
+        }
+    } catch (error) {
+        const msg = error.message || i18n.unknownError;
+        showToast(msg, 'error');
+        if (resultado) { resultado.textContent = msg; resultado.className = 'text-xs text-red-600 dark:text-red-400'; }
+    } finally {
+        restoreButtonState(btn);
+    }
+}
+
 // --- WHATSAPP ---
 
 /**
@@ -536,6 +558,7 @@ export function initializeEventListeners() {
     }
 
     document.getElementById('testGates2b')?.addEventListener('click', handleTestGates2b);
+    document.getElementById('syncProfilesButton')?.addEventListener('click', handleSyncProfiles);
 
     // --- WhatsApp ---
     document.getElementById('testWhatsapp')?.addEventListener('click', handleTestWhatsapp);

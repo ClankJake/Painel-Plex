@@ -122,7 +122,16 @@
                     </div>
                 </div>
             </div>
-            <div class="mt-5 flex justify-end disablable-input">
+            <div class="mt-5 flex flex-wrap gap-3 justify-between items-center">
+                <!-- Importa os emails que o Plex já conhece, sem esperar que cada
+                     utilizador inicie sessão. O email é o que liga o utilizador ao Seerr. -->
+                <div class="flex items-center gap-3">
+                    <button type="button" id="syncProfilesButton" class="btn bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 py-2 px-4 rounded-xl text-sm font-semibold transition-all flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        {{ _('Importar E-mails do Plex') }}
+                    </button>
+                    <span id="sync-profiles-result" class="text-xs"></span>
+                </div>
                 <button type="button" id="testOverseerrButton" class="btn bg-purple-600 hover:bg-purple-500 text-white py-2 px-5 rounded-xl shadow-sm text-sm font-bold transition-all flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     {{ _('Testar Conexão') }}

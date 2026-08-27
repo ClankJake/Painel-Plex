@@ -241,6 +241,16 @@ def cleanup_job():
             days_links = config.get("SHORT_LINK_MAX_AGE_DAYS", 30)
             extensions.data_manager.delete_old_short_links(days_links)
 
+        # 📧 Preenche os emails em falta a partir do Plex. Necessário para ligar
+        # utilizadores ao Seerr e para notificações — sem isto, quem já estava no
+        # servidor antes de existir o painel (ou foi adicionado como amigo
+        # diretamente no Plex) ficava sem email na base de dados, mesmo nunca
+        # tendo iniciado sessão.
+        try:
+            extensions.plex_manager.sync_profiles_from_plex(only_missing=True)
+        except Exception as e:
+            logger.error(f"Falha ao sincronizar perfis a partir do Plex: {e}", exc_info=True)
+
 @single_instance_job('cleanup_image_cache_job')
 def cleanup_image_cache_job():
     if not _app: return
