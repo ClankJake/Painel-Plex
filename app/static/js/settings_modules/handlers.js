@@ -72,6 +72,34 @@ async function handleSyncProfiles() {
     }
 }
 
+
+/**
+ * Sub-abas internas das mensagens (Assinatura / Pedidos).
+ *
+ * Usa delegação num único listener no documento em vez de um listener por
+ * botão: os painéis das notificações são construídos pelo servidor, mas assim
+ * a lógica continua a funcionar se algum bloco vier a ser gerado por JS.
+ */
+function initMessageSubtabs() {
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.msg-subtab-button');
+        if (!btn) return;
+
+        const nav = btn.closest('[data-msg-group]');
+        const grupo = nav?.dataset.msgGroup;
+        const alvo = btn.dataset.msgTab;
+        if (!grupo || !alvo) return;
+
+        // Só mexe nos botões e painéis DESTE canal — cada canal tem o seu par.
+        nav.querySelectorAll('.msg-subtab-button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        document.querySelectorAll(`.msg-subtab-panel[data-msg-group="${grupo}"]`).forEach(panel => {
+            panel.classList.toggle('hidden', panel.dataset.msgPanel !== alvo);
+        });
+    });
+}
+
 // --- WHATSAPP ---
 
 /**
@@ -559,6 +587,9 @@ export function initializeEventListeners() {
 
     document.getElementById('testGates2b')?.addEventListener('click', handleTestGates2b);
     document.getElementById('syncProfilesButton')?.addEventListener('click', handleSyncProfiles);
+
+    // Sub-abas Assinatura / Pedidos dentro de cada canal de notificação
+    initMessageSubtabs();
 
     // --- WhatsApp ---
     document.getElementById('testWhatsapp')?.addEventListener('click', handleTestWhatsapp);

@@ -41,6 +41,14 @@
                 
                 <!-- ================= ABA TELEGRAM ================= -->
                 <div id="subtab-telegram" class="sub-tab-content active space-y-6 input-group animate-fade-in">
+                    <!-- Sub-abas internas: separa as mensagens de assinatura das de pedidos.
+                         Com 9 campos numa única vista, encontrar o certo obrigava a muita rolagem. -->
+                    <nav class="flex gap-2 overflow-x-auto pb-2 msg-subtabs-scroll" data-msg-group="telegram" style="scrollbar-width:none;-webkit-overflow-scrolling:touch;">
+                        <button type="button" class="msg-subtab-button tab-button active whitespace-nowrap flex-shrink-0" data-msg-tab="sub">{{ _('Assinatura') }}</button>
+                        <button type="button" class="msg-subtab-button tab-button whitespace-nowrap flex-shrink-0" data-msg-tab="req">{{ _('Pedidos (Seerr)') }}</button>
+                    </nav>
+                    <div class="msg-subtab-panel" data-msg-group="telegram" data-msg-panel="sub">
+
                     
                     <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700/50 shadow-sm">
                         <div class="flex flex-col">
@@ -121,7 +129,10 @@
                         </div>
                     </div>
                 
-                    <div class="space-y-4 pt-4 mt-2 border-t border-gray-200 dark:border-gray-700/50">
+                    
+                                    </div>
+                    <div class="msg-subtab-panel hidden" data-msg-group="telegram" data-msg-panel="req">
+<div class="space-y-4 pt-4 mt-2 border-t border-gray-200 dark:border-gray-700/50">
                         <div>
                             <h4 class="font-bold text-gray-900 dark:text-white text-sm">{{ _('Pedidos (Seerr)') }}</h4>
                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Mensagens enviadas ao utilizador quando o estado do pedido dele muda. Variáveis: {title}, {overview}, {status}, {username}, {media_url}. Deixe em branco para usar a mensagem genérica.') }}</p>
@@ -147,10 +158,19 @@
                             <textarea id="TELEGRAM_MEDIA_FAILED_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
                         </div>
                     </div>
+                    </div>
                 </div>
 
                 <!-- ================= ABA DISCORD ================= -->
                 <div id="subtab-discord" class="sub-tab-content hidden space-y-6 input-group animate-fade-in">
+                    <!-- Sub-abas internas: separa as mensagens de assinatura das de pedidos.
+                         Com 9 campos numa única vista, encontrar o certo obrigava a muita rolagem. -->
+                    <nav class="flex gap-2 overflow-x-auto pb-2 msg-subtabs-scroll" data-msg-group="discord" style="scrollbar-width:none;-webkit-overflow-scrolling:touch;">
+                        <button type="button" class="msg-subtab-button tab-button active whitespace-nowrap flex-shrink-0" data-msg-tab="sub">{{ _('Assinatura') }}</button>
+                        <button type="button" class="msg-subtab-button tab-button whitespace-nowrap flex-shrink-0" data-msg-tab="req">{{ _('Pedidos (Seerr)') }}</button>
+                    </nav>
+                    <div class="msg-subtab-panel" data-msg-group="discord" data-msg-panel="sub">
+
                     
                     <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700/50 shadow-sm">
                         <div class="flex flex-col">
@@ -216,7 +236,10 @@
                         </div>
                     </div>
                 
-                    <div class="space-y-4 pt-4 mt-2 border-t border-gray-200 dark:border-gray-700/50">
+                    
+                                    </div>
+                    <div class="msg-subtab-panel hidden" data-msg-group="discord" data-msg-panel="req">
+<div class="space-y-4 pt-4 mt-2 border-t border-gray-200 dark:border-gray-700/50">
                         <div>
                             <h4 class="font-bold text-gray-900 dark:text-white text-sm">{{ _('Pedidos (Seerr)') }}</h4>
                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Mensagens enviadas ao utilizador quando o estado do pedido dele muda. Variáveis: {title}, {overview}, {status}, {username}, {media_url}. Deixe em branco para usar a mensagem genérica.') }}</p>
@@ -241,6 +264,7 @@
                             <label for="DISCORD_MEDIA_FAILED_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Falha no Pedido') }}</label>
                             <textarea id="DISCORD_MEDIA_FAILED_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
                         </div>
+                    </div>
                     </div>
                 </div>
 
@@ -324,6 +348,14 @@
 
                 <!-- ================= ABA WHATSAPP ================= -->
                 <div id="subtab-whatsapp" class="sub-tab-content hidden space-y-6 input-group animate-fade-in">
+                    <!-- Sub-abas internas: separa as mensagens de assinatura das de pedidos.
+                         Com 9 campos numa única vista, encontrar o certo obrigava a muita rolagem. -->
+                    <nav class="flex gap-2 overflow-x-auto pb-2 msg-subtabs-scroll" data-msg-group="whatsapp" style="scrollbar-width:none;-webkit-overflow-scrolling:touch;">
+                        <button type="button" class="msg-subtab-button tab-button active whitespace-nowrap flex-shrink-0" data-msg-tab="sub">{{ _('Assinatura') }}</button>
+                        <button type="button" class="msg-subtab-button tab-button whitespace-nowrap flex-shrink-0" data-msg-tab="req">{{ _('Pedidos (Seerr)') }}</button>
+                    </nav>
+                    <div class="msg-subtab-panel" data-msg-group="whatsapp" data-msg-panel="sub">
+
 
                     <div class="flex items-center justify-between p-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/40">
                         <div>
@@ -431,7 +463,10 @@
                         </div>
                     </div>
                 
-                    <div class="space-y-4 pt-4 mt-2 border-t border-gray-200 dark:border-gray-700/50">
+                    
+                                    </div>
+                    <div class="msg-subtab-panel hidden" data-msg-group="whatsapp" data-msg-panel="req">
+<div class="space-y-4 pt-4 mt-2 border-t border-gray-200 dark:border-gray-700/50">
                         <div>
                             <h4 class="font-bold text-gray-900 dark:text-white text-sm">{{ _('Pedidos (Seerr)') }}</h4>
                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Mensagens enviadas ao utilizador quando o estado do pedido dele muda. Variáveis: {title}, {overview}, {status}, {username}, {media_url}. Deixe em branco para usar a mensagem genérica.') }}</p>
@@ -456,6 +491,7 @@
                             <label for="WHATSAPP_MEDIA_FAILED_MESSAGE_TEMPLATE" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Falha no Pedido') }}</label>
                             <textarea id="WHATSAPP_MEDIA_FAILED_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
                         </div>
+                    </div>
                     </div>
                 </div>
 
