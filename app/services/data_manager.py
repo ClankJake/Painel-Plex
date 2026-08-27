@@ -370,6 +370,21 @@ class DataManager:
         profiles = UserProfile.query.all()
         return [self._row_to_dict(p) for p in profiles]
 
+    def get_user_profile_by_email(self, email):
+        """
+        Localiza um utilizador pelo email (comparação sem distinção de maiúsculas).
+        Usado para ligar notificações vindas do Overseerr ao utilizador do painel.
+        """
+        if not email:
+            return None
+        try:
+            profile = UserProfile.query.filter(
+                func.lower(UserProfile.email) == str(email).strip().lower()
+            ).first()
+            return self._row_to_dict(profile) if profile else None
+        except Exception:
+            return None
+
     def get_user_profile_by_referral_code(self, code):
         """Localiza o dono de um código de indicação (case-insensitive)."""
         if not code:
