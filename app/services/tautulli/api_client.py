@@ -7,6 +7,7 @@ from requests.exceptions import RequestException, ConnectionError, Timeout
 
 from flask_babel import gettext as _
 from app.config import load_or_create_config
+from app.utils.log_formatting import describe
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ class TautulliApiClient:
             return api_response.get("data")
 
         except (ConnectionError, Timeout) as e:
-            logger.error(f"Falha de rede ao contactar Tautulli ({params.get('cmd')}): {e}")
+            logger.warning(f"Falha de rede ao contactar Tautulli ({params.get('cmd')}): {describe(e)}")
             raise RequestException(_("Falha de comunicação com o servidor Tautulli.")) from e
 
     # --- MÉTODOS DA API PÚBLICA ---

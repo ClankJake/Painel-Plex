@@ -12,6 +12,7 @@ from requests.exceptions import ConnectTimeout, ReadTimeout, ConnectionError, Re
 
 from app.config import load_or_create_config
 from ...extensions import cache
+from ...utils.log_formatting import describe
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,7 @@ class PlexConnectionManager:
             return False, error_message
         
         except Exception as e:
-            logger.error(f"Erro ao autenticar no Plex: {e}")
+            logger.error(f"Erro ao autenticar no Plex: {describe(e)}")
             self.plex = None
             self.account = None
             return False, _("Falha de autenticação ou configuração inválida: %(error)s", error=str(e))
