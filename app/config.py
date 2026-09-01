@@ -34,6 +34,9 @@ def load_or_create_config():
             "LOG_FILE": os.path.join(CONFIG_DIR, "app.log"),
             "LOG_MAX_BYTES": 1024 * 1024, # 1 MB
             "LOG_BACKUP_COUNT": 5,
+            # Janela (segundos) durante a qual mensagens de log idênticas são
+            # agrupadas em vez de repetidas linha a linha. 0 desativa.
+            "LOG_DEDUP_SECONDS": 60,
             "LAST_NOTIFICATION_CHECK": "1970-01-01T00:00:00",
             "ADMIN_USER": "",
             "ADMIN_USER_ID": "",
@@ -197,6 +200,7 @@ def load_or_create_config():
             _set_default("LOG_FILE", os.path.join(CONFIG_DIR, "app.log"))
             _set_default("LOG_MAX_BYTES", 1024 * 1024)
             _set_default("LOG_BACKUP_COUNT", 5)
+            _set_default("LOG_DEDUP_SECONDS", 60)
             _set_default("STREAM_CHECK_INTERVAL_SECONDS", 15)
             _set_default("SCREEN_LIMIT_TERMINATION_STRATEGY", "oldest")
             _set_default("TERMINATION_MSG_BLOCKED_MANUAL", "O seu acesso ao servidor foi bloqueado pelo administrador.")

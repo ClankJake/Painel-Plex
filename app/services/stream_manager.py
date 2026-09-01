@@ -15,8 +15,15 @@ from flask_babel import gettext as _, ngettext
 from plexapi.exceptions import NotFound
 
 from ..config import load_or_create_config
+from ..utils.log_formatting import NETWORK_ERRORS, ThrottledReporter, describe
 
 logger = logging.getLogger(__name__)
+
+# Estas rotinas correm em ciclo (a cada poucos segundos, e a cada evento SSE).
+# Quando o Plex fica indisponível, TODAS falham em cadeia: sem moderação, uma
+# indisponibilidade de 2 minutos escrevia centenas de linhas idênticas no log.
+# O reporter regista a primeira falha, resume as seguintes e assinala o retorno.
+network_reporter = ThrottledReporter(logger, interval=300)
 
 # Silenciar o spam de INFO das bibliotecas do Plex e Websocket
 logging.getLogger('plexapi').setLevel(logging.WARNING)
@@ -125,7 +132,7 @@ class StreamManager:
             except Exception as e:
                 self._listener = None
                 self._listener_plex_ref = None
-                logger.error(f"Falha ao iniciar o Plex Listener SSE: {e}")
+                logger.error(f"Falha ao iniciar o Plex Listener SSE: {describe(e)}")
 
     def stop_listener(self):
         with self._listener_lock:
@@ -159,7 +166,7 @@ class StreamManager:
                 with self._app.app_context():
                     self.check_and_enforce_streams(from_event=True)
             except Exception as e:
-                logger.error(f"Falha na verificação de streams por evento SSE: {e}")
+                logger.error(f"Falha na verificação de streams por evento SSE: {describe(e)}")
 
     def _on_plex_event(self, data):
         # 🛡️ Este callback corre dentro da thread do websocket do plexapi. O plexapi
@@ -201,7 +208,7 @@ class StreamManager:
                 self._sse_debounce_timer.daemon = True
                 self._sse_debounce_timer.start()
         except Exception as e:
-            logger.error(f"Erro ao processar evento SSE do Plex: {e}", exc_info=True)
+            logger.error(f"Erro ao processar evento SSE do Plex: {describe(e)}", exc_info=True)
 
     # --- MÉTODOS PÚBLICOS ---
 
@@ -214,8 +221,10 @@ class StreamManager:
                 session_user_id = self._get_session_user_id(session)
                 if session_user_id and str(session_user_id) == str(plex_user_id):
                     self._terminate_session(session, reason)
+        except NETWORK_ERRORS as e:
+            logger.warning(f"Não foi possível bloquear as sessões do utilizador ID {plex_user_id}: {describe(e)}")
         except Exception as e:
-            logger.error(f"Erro ao bloquear as sessões do utilizador ID {plex_user_id}: {e}", exc_info=True)
+            logger.error(f"Erro ao bloquear as sessões do utilizador ID {plex_user_id}: {describe(e)}", exc_info=True)
 
     def check_and_enforce_streams(self, from_event=False):
         # Reinicia o listener SSE se ele morreu OU se ficou agarrado a uma ligação
@@ -236,6 +245,7 @@ class StreamManager:
         
         try:
             sessions = self.conn.plex.sessions()
+            network_reporter.recovered('streams', "Verificação de streams: o Plex voltou a responder.")
             if not sessions:
                 return
 
@@ -265,10 +275,12 @@ class StreamManager:
                     unique_sessions = self._filter_duplicate_cast_sessions(user_session_list)
                     self._enforce_screen_limits(user_id, username, unique_sessions, profile, config)
 
-        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout):
-            pass
+        except NETWORK_ERRORS as e:
+            # Servidor Plex offline, sobrecarregado (503) ou inacessível: é uma
+            # condição de ambiente, não um defeito. Uma linha resumida basta.
+            network_reporter.failure('streams', e, prefix="Verificação de streams adiada, o Plex não respondeu")
         except Exception as e:
-            logger.error(f"Erro inesperado ao verificar e impor streams: {e}", exc_info=True)
+            logger.error(f"Erro inesperado ao verificar e impor streams: {describe(e)}", exc_info=True)
 
     # --- EXTRAÇÃO DE DADOS EM TEMPO REAL ("REPRODUZINDO AGORA") ---
 
@@ -279,7 +291,8 @@ class StreamManager:
             
         try:
             sessions = self.conn.plex.sessions()
-            
+            network_reporter.recovered('now_playing', "'Reproduzindo Agora': o Plex voltou a responder.")
+
             # Limpa sessões fantasma visualmente para não aparecerem duplicadas na Dashboard
             clean_sessions_list = []
             user_session_groups = self._group_sessions_by_user(sessions)
@@ -471,8 +484,11 @@ class StreamManager:
                 "sessions": now_playing_sessions
             }
 
+        except NETWORK_ERRORS as e:
+            network_reporter.failure('now_playing', e, prefix="'Reproduzindo Agora' indisponível, o Plex não respondeu")
+            return {"success": False, "stream_count": 0, "sessions": []}
         except Exception as e:
-            logger.error(f"Falha ao obter estado 'Reproduzindo Agora': {e}", exc_info=True)
+            logger.error(f"Falha ao obter estado 'Reproduzindo Agora': {describe(e)}", exc_info=True)
             return {"success": False, "stream_count": 0, "sessions": []}
 
     # --- MÉTODOS AUXILIARES E DE LÓGICA DE NEGÓCIO ---

@@ -14,6 +14,7 @@ from requests.exceptions import RequestException
 from apscheduler.jobstores.base import JobLookupError
 
 from ...extensions import cache
+from ...utils.log_formatting import describe
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ class PlexUserManager:
             
         # Tratamento otimizado: falhas de rede registam log limpo, bugs mantêm traceback
         except RequestException as e:
-            logger.error(_("A API do Plex.tv está temporariamente inacessível (Timeout/Rede). Detalhes: %(error)s", error=e))
+            logger.warning(_("A API do Plex.tv está temporariamente inacessível. Detalhes: %(error)s", error=describe(e)))
             self.invalidate_user_cache()
             return None
         except Exception as e:
@@ -308,7 +309,7 @@ class PlexUserManager:
             if req_e.response is not None:
                 err_msg = f" (Código: {req_e.response.status_code}) {req_e.response.text}"
             # Aqui também removemos o exc_info=True para não cuspir traceback de erros de rede
-            logger.error(f"Erro HTTP ao atualizar Plex API: {req_e}{err_msg}")
+            logger.warning(f"Erro HTTP ao atualizar Plex API: {describe(req_e)}{err_msg}")
             return {"success": False, "message": f"Erro de comunicação com a Plex: Falha de Rede ou Servidor Ocupado."}
         except Exception as e:
             logger.error(f"Erro inesperado ao atualizar bibliotecas e downloads: {e}", exc_info=True)

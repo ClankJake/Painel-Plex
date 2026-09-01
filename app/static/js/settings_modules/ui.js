@@ -147,45 +147,59 @@ export async function fetchAndDisplayPlexServers() {
     }
 }
 
+// Formato atual dos logs: "2026-09-01 19:18:47 | ERROR   | services.stream_manager | mensagem"
+const LOG_LINE_REGEX = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d{3})?) \| (\w+)\s*\| ([^|]+?) \| ([\s\S]*)$/;
+
+const LOG_LEVEL_STYLES = {
+    CRITICAL: { line: 'text-red-400', badge: 'bg-red-900/50 text-red-200 px-1.5 py-0.5 rounded-md font-bold text-xs' },
+    ERROR:    { line: 'text-red-400/90', badge: 'text-red-500 font-bold' },
+    WARNING:  { line: 'text-yellow-200/80', badge: 'text-yellow-400 font-bold' },
+    INFO:     { line: 'text-gray-300', badge: 'text-blue-400 font-bold' },
+    DEBUG:    { line: 'text-gray-500', badge: 'text-gray-400 font-semibold' }
+};
+
+const escapeLogHtml = (text) => text.replace(/[&<>"']/g, m => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+})[m]);
+
 /**
  * Formata uma linha de log para adicionar cores baseadas no nível de severidade e syntax highlighting.
  */
 function formatLogLine(line) {
     if (!line) return '';
-    
-    // Sanitização rápida contra XSS
-    let escapedLine = line.replace(/[&<>"']/g, m => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
-    })[m]);
 
-    let wrapperClass = 'text-gray-300'; 
-    let badgeClass = '';
-
-    // Syntax Highlighting Avançado
-    if (escapedLine.includes('CRITICAL')) {
-        wrapperClass = 'text-red-400';
-        badgeClass = 'bg-red-900/50 text-red-200 px-1.5 py-0.5 rounded-md font-bold text-xs mr-2';
-        escapedLine = escapedLine.replace('CRITICAL', `<span class="${badgeClass}">CRITICAL</span>`);
-    } else if (escapedLine.includes('ERROR')) {
-        wrapperClass = 'text-red-400/90';
-        badgeClass = 'text-red-500 font-bold';
-        escapedLine = escapedLine.replace('ERROR', `<span class="${badgeClass}">ERROR</span>`);
-    } else if (escapedLine.includes('WARNING')) {
-        wrapperClass = 'text-yellow-200/80';
-        badgeClass = 'text-yellow-400 font-bold';
-        escapedLine = escapedLine.replace('WARNING', `<span class="${badgeClass}">WARNING</span>`);
-    } else if (escapedLine.includes('INFO')) {
-        wrapperClass = 'text-gray-300';
-        badgeClass = 'text-blue-400 font-bold';
-        escapedLine = escapedLine.replace('INFO', `<span class="${badgeClass}">INFO</span>`);
-    } else if (escapedLine.includes('DEBUG')) {
-        wrapperClass = 'text-gray-500';
-        badgeClass = 'text-gray-400 font-semibold';
-        escapedLine = escapedLine.replace('DEBUG', `<span class="${badgeClass}">DEBUG</span>`);
+    // Linhas de continuação ("  ↳ ficheiro.py:281 (funcao)") — o detalhe técnico
+    // de um erro. Ficam recuadas e discretas para não competir com a mensagem.
+    if (/^\s+↳/.test(line)) {
+        return `<div class="text-gray-500 font-mono text-xs leading-relaxed pl-10 mb-0.5 break-words">${escapeLogHtml(line.trim())}</div>`;
     }
 
-    // Realça os timestamps (ex: 2026-02-26 13:09:00,135)
-    escapedLine = escapedLine.replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/, 
+    const parsed = line.match(LOG_LINE_REGEX);
+
+    if (parsed) {
+        const [, timestamp, level, source, message] = parsed;
+        const style = LOG_LEVEL_STYLES[level] || LOG_LEVEL_STYLES.INFO;
+
+        return `<div class="${style.line} font-mono text-sm leading-relaxed mb-0.5 break-words">` +
+            `<span class="text-gray-500/80 mr-2 border-r border-gray-700/50 pr-2">${escapeLogHtml(timestamp)}</span>` +
+            `<span class="${style.badge} mr-2">${escapeLogHtml(level)}</span>` +
+            `<span class="text-gray-500 mr-2">${escapeLogHtml(source.trim())}</span>` +
+            `${escapeLogHtml(message)}</div>`;
+    }
+
+    // Fallback para linhas noutro formato (logs antigos, saída de bibliotecas).
+    let escapedLine = escapeLogHtml(line);
+    let wrapperClass = 'text-gray-300';
+
+    for (const [level, style] of Object.entries(LOG_LEVEL_STYLES)) {
+        if (escapedLine.includes(level)) {
+            wrapperClass = style.line;
+            escapedLine = escapedLine.replace(level, `<span class="${style.badge}">${level}</span>`);
+            break;
+        }
+    }
+
+    escapedLine = escapedLine.replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d{3})?)/,
         '<span class="text-gray-500/80 mr-2 border-r border-gray-700/50 pr-2">$1</span>');
 
     return `<div class="${wrapperClass} font-mono text-sm leading-relaxed mb-0.5 break-words">${escapedLine}</div>`;
