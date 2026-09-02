@@ -135,6 +135,15 @@ def load_or_create_config():
             "XP_PER_MINUTE_WATCHED": 1.0,
             "XP_BONUS_PER_COMPLETED_ITEM": 20,
             "XP_COMPLETION_THRESHOLD_PERCENT": 90,
+            # 🎯 Recomendações ("Porque assistiu X, pode gostar de Y").
+            "RECOMMENDATIONS_ENABLED": True,
+            "RECOMMENDATIONS_HISTORY_DAYS": 180,
+            "RECOMMENDATIONS_MIN_PERCENT_WATCHED": 25,
+            "RECOMMENDATIONS_MIN_CO_OCCURRENCE": 2,
+            "RECOMMENDATIONS_MAX_SECTIONS": 4,
+            "RECOMMENDATIONS_ITEMS_PER_SECTION": 8,
+            "RECOMMENDATIONS_RESPECT_PRIVACY": True,
+            "RECOMMENDATIONS_GENRE_LOOKUP_LIMIT": 40,
             "WHATSAPP_ENABLED": False,
             "WHATSAPP_PROVIDER": "evolution",
             "WHATSAPP_API_URL": "",
@@ -284,6 +293,14 @@ def load_or_create_config():
             _set_default("XP_PER_MINUTE_WATCHED", 1.0)
             _set_default("XP_BONUS_PER_COMPLETED_ITEM", 20)
             _set_default("XP_COMPLETION_THRESHOLD_PERCENT", 90)
+            _set_default("RECOMMENDATIONS_ENABLED", True)
+            _set_default("RECOMMENDATIONS_HISTORY_DAYS", 180)
+            _set_default("RECOMMENDATIONS_MIN_PERCENT_WATCHED", 25)
+            _set_default("RECOMMENDATIONS_MIN_CO_OCCURRENCE", 2)
+            _set_default("RECOMMENDATIONS_MAX_SECTIONS", 4)
+            _set_default("RECOMMENDATIONS_ITEMS_PER_SECTION", 8)
+            _set_default("RECOMMENDATIONS_RESPECT_PRIVACY", True)
+            _set_default("RECOMMENDATIONS_GENRE_LOOKUP_LIMIT", 40)
             # Tabela de níveis personalizável. Lista vazia = usa a tabela padrão do código.
             _set_default("WHATSAPP_ENABLED", False)
             _set_default("WHATSAPP_PROVIDER", "evolution")

@@ -158,6 +158,8 @@ class PlexManager:
 
     # --- BIBLIOTECAS E ACESSOS ---
     def get_libraries(self): return self.conn.get_libraries()
+
+    def get_machine_identifier(self): return self.conn.get_machine_identifier()
     
     def sync_profiles_from_plex(self, only_missing=True):
         """

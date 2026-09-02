@@ -29,6 +29,7 @@ O Painel de Gestão Plex é uma aplicação web completa projetada para simplifi
 -   **Gamificação**: Sistema de XP e níveis totalmente personalizáveis (adicione, remova ou renomeie níveis), com conquistas e reset periódico por temporada.
 -   **Plex Wrapped**: Retrospectiva anual em modo história, com os destaques do ano do usuário e cartão compartilhável.
 -   **Estatísticas Detalhadas**: Integração com o Tautulli para gráficos e rankings de conteúdo mais assistido, atividade por dia da semana e gêneros favoritos.
+-   **Recomendações "Porque assistiu X, pode gostar de Y"**: O painel cruza o histórico de todos os usuários e encontra os títulos que costumam ser vistos pelas mesmas pessoas (filtro colaborativo item-item, com semelhança de cosseno para que "o filme que todo mundo viu" não seja recomendado a todo mundo). Em servidores pequenos, um plano B por gênero entra em ação. Cada sugestão explica o motivo e leva direto ao título no Plex — e quem ativou "esconder do ranking" deixa de influenciar as recomendações dos outros.
 
 ### Notificações
 -   **Quatro canais**: **Telegram**, **WhatsApp** (via Evolution API, GOWA ou WAHA), **Discord** e **Webhook genérico**.

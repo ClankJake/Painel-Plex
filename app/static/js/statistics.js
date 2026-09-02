@@ -1,4 +1,4 @@
-import { fetchAPI, showToast, createModal } from './utils.js';
+import { fetchAPI, showToast, createModal, escapeHTML } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
@@ -41,6 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
         mainBarChartCanvas: document.getElementById('mainBarChart'),
         otherUsersSection: document.getElementById('otherUsersSection'),
         personalAnalysis: document.getElementById('personal-analysis'),
+        recommendationsSection: document.getElementById('recommendations-section'),
+        recommendationsContainer: document.getElementById('recommendations-container'),
         leaderboardList: document.getElementById('leaderboard-list'),
         userDetailsModal: document.getElementById('userDetailsModal')
     };
@@ -174,6 +176,112 @@ document.addEventListener('DOMContentLoaded', () => {
         
         dom.newlyAddedSection.classList.remove('hidden');
         setupHorizontalScroll(dom.newlyAddedContainer, dom.scrollLeftBtn, dom.scrollRightBtn);
+    };
+
+    // ------------------------------------------
+    // RECOMENDAÇÕES ("Porque assistiu X, pode gostar de Y")
+    // ------------------------------------------
+
+    /**
+     * Explica, em linguagem humana, PORQUE é que o item foi recomendado.
+     * Recomendação sem motivo visível é adivinhação: o utilizador tem de
+     * conseguir perceber (e discordar) do que o sistema achou.
+     *
+     * Devolve texto CRU: quem o injeta no HTML é que escapa, para o mesmo
+     * género não acabar escapado duas vezes (e aparecer como "&amp;") quando
+     * também é usado no atributo 'title'.
+     */
+    const buildMatchReason = (item) => {
+        if (item.match_type === 'genre') {
+            const genres = (item.shared_genres || []).join(', ');
+            return genres ? `${i18n.matchGenre} ${genres}` : '';
+        }
+        if (item.shared_viewers === 1) return i18n.matchViewersOne;
+        return (i18n.matchViewers || '{count}').replace('{count}', item.shared_viewers);
+    };
+
+    const renderRecommendationCard = (item) => {
+        const title = escapeHTML(item.title || '');
+        const typeLabel = item.media_type === 'movie' ? i18n.movie : i18n.series;
+        const subtitle = item.media_type === 'movie' && item.year ? `${typeLabel} · ${item.year}` : typeLabel;
+        const reason = buildMatchReason(item);
+        const poster = item.poster_url
+            ? `<img src="${escapeHTML(item.poster_url)}" alt="${title}" loading="lazy" class="w-36 h-52 object-cover rounded-lg" onerror="this.onerror=null;this.src='https://placehold.co/144x208/1F2937/E5E7EB?text=${encodeURIComponent(i18n.noArt || '?')}'">`
+            : `<div class="w-36 h-52 rounded-lg bg-gray-100 dark:bg-gray-700/50 flex items-center justify-center text-3xl">🎬</div>`;
+
+        const openTag = item.plex_url
+            ? `<a href="${escapeHTML(item.plex_url)}" target="_blank" rel="noopener noreferrer" title="${escapeHTML(i18n.watchOnPlex || '')}" class="block flex-shrink-0 w-36 group snap-start focus:outline-none focus:ring-2 focus:ring-yellow-500 rounded-lg">`
+            : `<div class="flex-shrink-0 w-36 group snap-start">`;
+        const closeTag = item.plex_url ? '</a>' : '</div>';
+
+        return `
+            ${openTag}
+                <div class="relative group-hover:scale-105 group-hover:drop-shadow-[0_5px_15px_rgba(168,85,247,0.35)] transition-transform duration-300">
+                    ${poster}
+                    ${item.plex_url ? `<div class="absolute inset-0 rounded-lg bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span class="text-white text-xs font-bold px-2 py-1 rounded bg-yellow-500/90">${escapeHTML(i18n.watchOnPlex || '')}</span>
+                    </div>` : ''}
+                </div>
+                <p class="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-2 truncate" title="${title}">${title}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 truncate">${escapeHTML(subtitle || '')}</p>
+                ${reason ? `<p class="text-[11px] text-purple-600 dark:text-purple-400 mt-1 line-clamp-2" title="${escapeHTML(reason)}">${escapeHTML(reason)}</p>` : ''}
+            ${closeTag}
+        `;
+    };
+
+    const renderRecommendations = (sections, reason) => {
+        if (!dom.recommendationsSection || !dom.recommendationsContainer) return;
+
+        if (!sections || sections.length === 0) {
+            // Quem já assistiu alguma coisa merece saber PORQUE não há sugestões
+            // (o servidor ainda não tem cruzamentos suficientes). Sem histórico
+            // — ou com a funcionalidade desligada — a secção não faz sentido de
+            // todo e desaparece.
+            if (reason === 'not_enough_data') {
+                dom.recommendationsContainer.innerHTML = `<p class="text-sm text-gray-500 dark:text-gray-400">${escapeHTML(i18n.recommendationsEmpty || '')}</p>`;
+                dom.recommendationsSection.classList.remove('hidden');
+            } else {
+                dom.recommendationsSection.classList.add('hidden');
+            }
+            return;
+        }
+
+        dom.recommendationsContainer.innerHTML = sections.map((section, index) => {
+            const seedTitle = escapeHTML(section.seed?.title || '');
+            const rowId = `recommendation-row-${index}`;
+
+            return `
+                <div>
+                    <div class="flex items-center justify-between gap-3 mb-3 group/container">
+                        <h4 class="text-base font-bold text-gray-800 dark:text-gray-100 min-w-0">
+                            <span class="text-gray-500 dark:text-gray-400 font-medium">${escapeHTML(i18n.becauseYouWatched || '')}</span>
+                            <span class="text-yellow-600 dark:text-yellow-400">${seedTitle}</span><span class="text-gray-500 dark:text-gray-400 font-medium">, ${escapeHTML(i18n.youMightLike || '')}:</span>
+                        </h4>
+                        <div class="flex items-center space-x-2 flex-shrink-0">
+                            <button type="button" class="scroll-button" data-scroll="left" data-target="${rowId}" aria-label="${escapeHTML(i18n.previous || '')}">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                            </button>
+                            <button type="button" class="scroll-button" data-scroll="right" data-target="${rowId}" aria-label="${escapeHTML(i18n.next || '')}">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="${rowId}" class="flex space-x-4 overflow-x-auto pb-2 horizontal-scroll scroll-smooth snap-x">
+                        ${section.items.map(renderRecommendationCard).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // As setas só existem depois de o HTML ser injetado: ligamos aqui.
+        sections.forEach((_section, index) => {
+            const row = document.getElementById(`recommendation-row-${index}`);
+            const leftBtn = dom.recommendationsContainer.querySelector(`[data-scroll="left"][data-target="recommendation-row-${index}"]`);
+            const rightBtn = dom.recommendationsContainer.querySelector(`[data-scroll="right"][data-target="recommendation-row-${index}"]`);
+            setupHorizontalScroll(row, leftBtn, rightBtn);
+        });
+
+        dom.recommendationsSection.classList.remove('hidden');
     };
 
     const renderAdminSummary = (stats) => {
@@ -551,9 +659,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (currentUser.role !== 'admin') {
                 const newlyAddedPromise = fetchAPI(`${urls.recentlyAdded}?days=${days}`);
-                const [data, newlyAddedData] = await Promise.all([dataPromise, newlyAddedPromise]);
+                // 🎯 As recomendações não dependem do filtro de dias (usam a janela
+                // longa configurada pelo admin) e falham em silêncio: uma falha aqui
+                // nunca deve impedir as estatísticas de aparecerem.
+                const recommendationsPromise = fetchAPI(urls.recommendations).catch(() => null);
+
+                const [data, newlyAddedData, recommendationsData] = await Promise.all([
+                    dataPromise, newlyAddedPromise, recommendationsPromise
+                ]);
+
                 state.allUsersData = data.stats;
                 if (newlyAddedData.success) renderNewlyAdded(newlyAddedData.media);
+                if (recommendationsData?.success) renderRecommendations(recommendationsData.sections, recommendationsData.reason);
             } else {
                 const data = await dataPromise;
                 state.allUsersData = data.stats;
