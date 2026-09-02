@@ -6,7 +6,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 # --- Constantes ---
-CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config')
+# O diretório de configuração pode ser redirecionado através da variável de
+# ambiente PAINEL_PLEX_CONFIG_DIR. Isto é usado pelos testes automatizados (para
+# não tocarem no config.json real) e permite, em instalações personalizadas,
+# manter os dados fora da pasta do código.
+CONFIG_DIR = os.environ.get('PAINEL_PLEX_CONFIG_DIR') or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), '..', 'config'
+)
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
 
 def load_or_create_config():

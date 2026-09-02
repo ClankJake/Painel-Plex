@@ -1,0 +1,45 @@
+# .github/workflows/tests.yml
+#
+# Executa a suíte de testes (pytest) a cada push e pull request nas branches
+# principais, para que uma alteração que quebre a aplicação seja detetada antes
+# de a imagem Docker ser publicada.
+
+name: Testes
+
+on:
+  push:
+    branches: [ "main", "stable" ]
+  pull_request:
+    branches: [ "main", "stable" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.11", "3.12" ]
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar o Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Instalar as dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Executar os testes
+        run: pytest --cov=app --cov-report=term-missing

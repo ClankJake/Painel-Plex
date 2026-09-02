@@ -1,0 +1,22 @@
+# Cache do Python
+__pycache__/
+*.py[cod]
+
+# Ambientes virtuais
+.venv/
+venv/
+.env
+
+# Dados da instalação (config.json, bases de dados, logs, backups, cache)
+config/
+certs/
+
+# Testes e cobertura
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Frontend
+node_modules/
+app/static/dist/

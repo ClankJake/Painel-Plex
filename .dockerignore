@@ -19,6 +19,15 @@ venv/
 .git/
 .gitignore
 
+# Testes e ferramentas de desenvolvimento (não são necessários na imagem)
+tests/
+pytest.ini
+.pytest_cache/
+.coveragerc
+.coverage
+htmlcov/
+requirements-dev.txt
+
 # Ficheiros do Docker (não precisam de estar dentro da imagem)
 Dockerfile
 docker-compose.yml
