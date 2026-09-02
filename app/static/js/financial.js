@@ -445,7 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                 <td class="px-5 py-3 whitespace-nowrap text-sm font-bold font-mono text-gray-900 dark:text-white">${safeCode}</td>
                                 <td class="px-5 py-3 whitespace-nowrap text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-transparent">${discountDisplay}</td>
-                                <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${c.use_count} / ${c.max_uses || '∞'}</td>
+                                <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${c.use_count} / ${c.max_uses > 0 ? c.max_uses : '∞'}</td>
                                 <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${expireDate}</td>
                                 <td class="px-5 py-3 whitespace-nowrap text-sm flex items-center justify-end gap-3">
                                     <label class="relative inline-flex items-center cursor-pointer" title="Ativar/Desativar">
@@ -534,7 +534,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 code: document.getElementById('couponCode').value.trim().toUpperCase(),
                 discount_type: document.getElementById('discountType').value,
                 value: document.getElementById('discountValue').value,
-                max_uses: document.getElementById('maxUses').value || 0,
+                // Vazio significa "sem limite", que o backend representa como 0.
+                max_uses: document.getElementById('maxUses').value === '' ? 0 : Number(document.getElementById('maxUses').value),
                 expires_at: document.getElementById('expiresAt').value || null
             };
 
@@ -606,6 +607,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const exportCsvBtn = document.getElementById('exportCsvBtn');
+    // Tem de acompanhar CSV_MAX_INTERVALO_DIAS no servidor.
+    const MAX_DIAS_EXPORTACAO = 366;
     if (exportCsvBtn) {
         exportCsvBtn.addEventListener('click', () => {
             const startDate = document.getElementById('startDate').value;
@@ -614,7 +617,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('Por favor, selecione as datas de início e fim.', 'error');
                 return;
             }
-            const exportUrl = `${urls.exportCsvUrl}?start_date=${startDate}&end_date=${endDate}`;
+
+            // A exportação abre numa aba nova: sem estas verificações, um período
+            // inválido só se manifestava como um JSON de erro em ecrã inteiro.
+            const inicio = new Date(`${startDate}T00:00:00`);
+            const fim = new Date(`${endDate}T00:00:00`);
+            if (fim < inicio) {
+                showToast('A data de fim não pode ser anterior à data de início.', 'error');
+                return;
+            }
+            const dias = Math.round((fim - inicio) / 86400000);
+            if (dias > MAX_DIAS_EXPORTACAO) {
+                showToast(`O período não pode exceder ${MAX_DIAS_EXPORTACAO} dias. Exporte por partes.`, 'error');
+                return;
+            }
+
+            const exportUrl = `${urls.exportCsvUrl}?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
             window.open(exportUrl, '_blank');
         });
     }

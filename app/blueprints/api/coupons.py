@@ -1,16 +1,35 @@
 # app/blueprints/api/coupons.py
 
 import logging
-from datetime import datetime
-from flask import Blueprint, jsonify, request
+from datetime import datetime, timezone
+from flask import Blueprint, jsonify
 from flask_login import login_required
 from flask_babel import gettext as _
 
 from ...extensions import data_manager
+from ...services.data_manager import get_app_timezone
 from ..auth import admin_required
+from .decorators import validate_json
+from .schemas import CreateCouponSchema
 
 logger = logging.getLogger(__name__)
 coupons_api_bp = Blueprint('coupons_api', __name__)
+
+
+def _fim_do_dia_em_utc(data_str):
+    """
+    Converte 'YYYY-MM-DD' no instante em que esse dia ACABA, no fuso do painel,
+    devolvido em UTC (sem fuso, que é como a coluna é lida).
+
+    Antes guardava-se a meia-noite "nua" da data escolhida, que a validação
+    interpretava como meia-noite UTC: um cupão marcado como válido "até 30/09"
+    morria às 21h de 29/09 no horário de Brasília — um dia inteiro a menos do que
+    o administrador tinha configurado.
+    """
+    dia = datetime.strptime(data_str, '%Y-%m-%d')
+    local_tz = get_app_timezone()
+    fim_do_dia_local = local_tz.localize(dia.replace(hour=23, minute=59, second=59))
+    return fim_do_dia_local.astimezone(timezone.utc).replace(tzinfo=None)
 
 @coupons_api_bp.route('/list')
 @login_required
@@ -26,28 +45,26 @@ def list_coupons():
 @coupons_api_bp.route('/create', methods=['POST'])
 @login_required
 @admin_required
-def create_coupon():
-    data = request.json
-    required_fields = ['code', 'discount_type', 'value', 'max_uses']
-    if not all(field in data for field in required_fields):
-        return jsonify({"success": False, "message": "Campos em falta."}), 400
-    
-    if data_manager.get_coupon_by_code(data['code']):
-        return jsonify({"success": False, "message": "Este código de cupão já existe."}), 409
+@validate_json(CreateCouponSchema)
+def create_coupon(validated_data):
+    # A procura é agora indiferente a maiúsculas/minúsculas, por isso 'promo25'
+    # deixa de poder coexistir com 'PROMO25' como se fossem cupões diferentes.
+    if data_manager.get_coupon_by_code(validated_data.code):
+        return jsonify({"success": False, "message": _("Este código de cupão já existe.")}), 409
 
     try:
         coupon_details = {
-            "code": data['code'],
-            "discount_type": data['discount_type'],
-            "value": float(data['value']),
-            "max_uses": int(data['max_uses']),
-            "is_active": data.get('is_active', True)
+            "code": validated_data.code,
+            "discount_type": validated_data.discount_type,
+            "value": validated_data.value,
+            "max_uses": validated_data.max_uses,
+            "is_active": validated_data.is_active
         }
-        if data.get('expires_at'):
-            coupon_details['expires_at'] = datetime.fromisoformat(data['expires_at'])
-        
+        if validated_data.expires_at:
+            coupon_details['expires_at'] = _fim_do_dia_em_utc(validated_data.expires_at)
+
         new_coupon = data_manager.create_coupon(coupon_details)
-        return jsonify({"success": True, "coupon": new_coupon, "message": "Cupão criado com sucesso."})
+        return jsonify({"success": True, "coupon": new_coupon, "message": _("Cupão criado com sucesso.")})
     except (ValueError, TypeError) as e:
         return jsonify({"success": False, "message": f"Dados inválidos: {e}"}), 400
     except Exception as e:
