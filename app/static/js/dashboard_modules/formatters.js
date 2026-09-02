@@ -70,6 +70,35 @@ export function formatTimeAgo(date) {
 }
 
 /**
+ * Formata uma data como "dd/mm/aaaa hh:mm" no idioma da interface.
+ * Usada na Auditoria de Cortes: o "há X minutos" diz há quanto tempo foi, mas
+ * não diz QUANDO — e era essa a informação que se perdia quando o título do
+ * filme/série era longo e empurrava a hora para fora do ecrã.
+ * @param {Date} date - O objeto Date.
+ * @returns {string} - Data e hora formatadas.
+ */
+export function formatDateTime(date) {
+    if (!(date instanceof Date) || isNaN(date.getTime())) return '';
+    const locale = document.documentElement.lang || navigator.language || 'pt-BR';
+    const day = date.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+    return `${day} ${time}`;
+}
+
+/**
+ * Escapa texto vindo do Plex (nomes de utilizador, títulos, plataformas) antes
+ * de o injetar via innerHTML.
+ * @param {string} text - O texto a escapar.
+ * @returns {string} - Texto seguro para HTML.
+ */
+export function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    return String(text).replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+    })[m]);
+}
+
+/**
  * Mapeia códigos de razão de terminação para texto legível.
  * @param {string} reason - O código da razão.
  * @returns {string} - O texto legível.
