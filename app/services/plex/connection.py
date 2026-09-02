@@ -112,6 +112,22 @@ class PlexConnectionManager:
             self.account = None
             return False, _("Falha de autenticação ou configuração inválida: %(error)s", error=str(e))
 
+    def get_machine_identifier(self) -> Optional[str]:
+        """
+        Identificador único do servidor, necessário para montar links profundos
+        do tipo ``https://app.plex.tv/desktop#!/server/<id>/details?key=...``.
+
+        Devolve ``None`` quando não há ligação — quem chama deve simplesmente
+        omitir o link em vez de falhar.
+        """
+        if not self.plex:
+            return None
+        try:
+            return self.plex.machineIdentifier
+        except Exception as e:
+            logger.debug(f"Não foi possível obter o machineIdentifier do Plex: {describe(e)}")
+            return None
+
     @cache.memoize(timeout=3600)  # Cache de 1 hora para evitar chamadas API lentas
     def get_libraries(self) -> List[Dict[str, str]]:
         """

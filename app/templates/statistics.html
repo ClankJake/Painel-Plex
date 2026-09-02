@@ -200,6 +200,23 @@
             </div>
         </div>
         
+        <!-- Secção Recomendações: "Porque assistiu X, pode gostar de Y" -->
+        <div id="recommendations-section" class="hidden bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50">
+            <div class="flex items-start justify-between gap-4 mb-2">
+                <div>
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <span class="text-purple-500">🎯</span> {{ _('Feito a Pensar em Si') }}
+                    </h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        {{ _('Cruzamos o seu histórico com o de quem assiste coisas parecidas para encontrar o próximo título.') }}
+                    </p>
+                </div>
+            </div>
+            <div id="recommendations-container" class="space-y-8 mt-6">
+                <!-- Faixas injetadas via JS -->
+            </div>
+        </div>
+
         <!-- Análise Pessoal do Utilizador (Gráficos e Conquistas) -->
         <div id="personal-analysis"></div>
 
@@ -293,6 +310,16 @@
         data-i18n-hours-ago="{{ _('{count} horas') }}"
         data-i18n-minutes-ago="{{ _('{count} min') }}"
         data-i18n-just-now="{{ _('agora mesmo') }}"
+        data-recommendations-url="{{ url_for('stats_api.get_recommendations_route') }}"
+        data-i18n-because-you-watched="{{ _('Porque assistiu') }}"
+        data-i18n-you-might-like="{{ _('pode gostar de') }}"
+        data-i18n-match-viewers="{{ _('{count} pessoas que viram este título também viram') }}"
+        data-i18n-match-viewers-one="{{ _('Uma pessoa que viu este título também viu') }}"
+        data-i18n-match-genre="{{ _('Género parecido:') }}"
+        data-i18n-watch-on-plex="{{ _('Ver no Plex') }}"
+        data-i18n-movie="{{ _('Filme') }}"
+        data-i18n-series="{{ _('Série') }}"
+        data-i18n-recommendations-empty="{{ _('Ainda não há dados suficientes no servidor para gerar recomendações. Assista a mais alguns títulos e volte aqui!') }}"
         >
 </script>
 {% endblock %}

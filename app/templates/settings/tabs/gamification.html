@@ -29,6 +29,7 @@
                 <button type="button" data-subtab="achievements" class="gam-subtab-button tab-button active whitespace-nowrap flex-shrink-0">{{ _('Conquistas') }}</button>
                 <button type="button" data-subtab="xp" class="gam-subtab-button tab-button whitespace-nowrap flex-shrink-0">{{ _('Sistema de XP e Níveis') }}</button>
                 <button type="button" data-subtab="referral" class="gam-subtab-button tab-button whitespace-nowrap flex-shrink-0">{{ _('Indique e Ganhe') }}</button>
+                <button type="button" data-subtab="recommendations" class="gam-subtab-button tab-button whitespace-nowrap flex-shrink-0">{{ _('Recomendações') }}</button>
             </nav>
         </div>
         <style>
@@ -368,6 +369,78 @@
         </div>
         </div>
         <!-- Fim da Sub-aba: Indique e Ganhe -->
+
+        <!-- Sub-aba: Recomendações ("Porque assistiu X, pode gostar de Y") -->
+        <div id="gam-subtab-content-recommendations" class="gam-subtab-content hidden">
+        <div class="p-6 space-y-6">
+
+            <div class="bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-900/10 dark:to-indigo-900/10 rounded-xl p-5 border border-purple-200 dark:border-purple-800/40">
+                <div class="flex items-start justify-between gap-4 mb-4">
+                    <div class="flex items-start gap-3">
+                        <div class="p-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg">
+                            <span class="text-lg leading-5">🎯</span>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-gray-900 dark:text-white">{{ _('Recomendações Personalizadas') }}</h4>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ _('Cruza o histórico de todos os usuários para descobrir quais títulos costumam ser vistos pelas mesmas pessoas e monta a seção "Porque assistiu X, pode gostar de Y" nas Estatísticas. Requer o Tautulli configurado.') }}</p>
+                        </div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+                        <input id="RECOMMENDATIONS_ENABLED" type="checkbox" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
+                    </label>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label for="RECOMMENDATIONS_HISTORY_DAYS" class="block text-xs font-semibold text-purple-700 dark:text-purple-400 mb-1 pl-1">{{ _('Janela de histórico analisada (dias)') }}</label>
+                        <input type="number" id="RECOMMENDATIONS_HISTORY_DAYS" min="7" class="block w-full p-2.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Quanto maior, mais dados para cruzar — e mais pesada a consulta ao Tautulli.') }}</p>
+                    </div>
+                    <div>
+                        <label for="RECOMMENDATIONS_MIN_PERCENT_WATCHED" class="block text-xs font-semibold text-purple-700 dark:text-purple-400 mb-1 pl-1">{{ _('% mínima assistida para contar') }}</label>
+                        <input type="number" id="RECOMMENDATIONS_MIN_PERCENT_WATCHED" min="0" max="100" class="block w-full p-2.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Ignora quem abriu, viu dois minutos e desistiu — isso não é sinal de gosto.') }}</p>
+                    </div>
+                    <div>
+                        <label for="RECOMMENDATIONS_MIN_CO_OCCURRENCE" class="block text-xs font-semibold text-purple-700 dark:text-purple-400 mb-1 pl-1">{{ _('Mínimo de usuários em comum') }}</label>
+                        <input type="number" id="RECOMMENDATIONS_MIN_CO_OCCURRENCE" min="1" class="block w-full p-2.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Quantas pessoas precisam ter visto os dois títulos para virar recomendação. Em servidores pequenos, use 1.') }}</p>
+                    </div>
+                    <div>
+                        <label for="RECOMMENDATIONS_GENRE_LOOKUP_LIMIT" class="block text-xs font-semibold text-purple-700 dark:text-purple-400 mb-1 pl-1">{{ _('Títulos com gêneros consultados') }}</label>
+                        <input type="number" id="RECOMMENDATIONS_GENRE_LOOKUP_LIMIT" min="0" class="block w-full p-2.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Plano B por gênero, usado quando o cruzamento entre usuários não encontra nada. Cada título custa uma consulta de metadados; 0 desativa.') }}</p>
+                    </div>
+                    <div>
+                        <label for="RECOMMENDATIONS_MAX_SECTIONS" class="block text-xs font-semibold text-purple-700 dark:text-purple-400 mb-1 pl-1">{{ _('Faixas exibidas ao usuário') }}</label>
+                        <input type="number" id="RECOMMENDATIONS_MAX_SECTIONS" min="1" max="10" class="block w-full p-2.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Uma faixa por título assistido ("Porque assistiu X...").') }}</p>
+                    </div>
+                    <div>
+                        <label for="RECOMMENDATIONS_ITEMS_PER_SECTION" class="block text-xs font-semibold text-purple-700 dark:text-purple-400 mb-1 pl-1">{{ _('Sugestões por faixa') }}</label>
+                        <input type="number" id="RECOMMENDATIONS_ITEMS_PER_SECTION" min="1" max="20" class="block w-full p-2.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Quantos pôsteres cada faixa mostra na horizontal.') }}</p>
+                    </div>
+                </div>
+
+                <div class="mt-4 flex items-start justify-between gap-4 bg-white/60 dark:bg-black/20 rounded-lg p-3 border border-purple-200/60 dark:border-purple-800/30">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ _('Respeitar a privacidade no cruzamento') }}</p>
+                        <p class="text-xs text-purple-800 dark:text-purple-300 mt-0.5">
+                            {{ _('Quem ativou "esconder do ranking" deixa de influenciar as recomendações dos outros, mas continua recebendo as suas próprias. As recomendações nunca revelam QUEM assistiu o quê — apenas quantas pessoas.') }}
+                        </p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+                        <input id="RECOMMENDATIONS_RESPECT_PRIVACY" type="checkbox" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
+                    </label>
+                </div>
+            </div>
+
+        </div>
+        </div>
+        <!-- Fim da Sub-aba: Recomendações -->
 
         <!-- Sub-aba: Sistema de XP e Níveis -->
         <div id="gam-subtab-content-xp" class="gam-subtab-content hidden">

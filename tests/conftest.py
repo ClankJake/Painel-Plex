@@ -156,6 +156,13 @@ class FakeDataManager:
         profile.update(profile_data)
         return profile
 
+    def get_user_profiles_by_id(self, plex_user_ids):
+        return {
+            int(user_id): self.profiles[int(user_id)]
+            for user_id in plex_user_ids
+            if int(user_id) in self.profiles
+        }
+
     def get_user_profile_by_email(self, email):
         if not email:
             return None

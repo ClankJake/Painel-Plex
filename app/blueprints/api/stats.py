@@ -95,6 +95,58 @@ def get_recently_added_route():
     days = request.args.get('days', 7, type=int)
     return jsonify(tautulli_manager.get_recently_added(days=days))
 
+def _plex_deep_link(machine_identifier, rating_key):
+    """
+    Link profundo para a página do item no Plex Web.
+
+    Sem 'machine_identifier' (Plex offline ou por configurar) devolve None — a
+    interface mostra o cartão à mesma, apenas sem o botão de "Ver no Plex".
+    """
+    if not machine_identifier or not rating_key:
+        return None
+    return (
+        f"https://app.plex.tv/desktop#!/server/{machine_identifier}"
+        f"/details?key=%2Flibrary%2Fmetadata%2F{rating_key}"
+    )
+
+
+@stats_api_bp.route('/recommendations')
+@login_required
+def get_recommendations_route():
+    """
+    Secções "Porque assistiu X, pode gostar de Y" do utilizador autenticado.
+
+    As recomendações são sempre as do próprio: cruzar o histórico de terceiros
+    para MOSTRAR a terceiros seria uma fuga de privacidade. O administrador pode
+    pedir as de outro utilizador (para diagnosticar a funcionalidade) através do
+    parâmetro 'user_id'.
+    """
+    target_user_id = current_user.id
+    requested_id = request.args.get('user_id', type=int)
+    if requested_id and current_user.is_admin():
+        target_user_id = requested_id
+
+    # Normalizado para texto: sem isto, o ID do utilizador autenticado (string)
+    # e o pedido pelo administrador (int) criariam duas entradas de cache
+    # distintas para exactamente o mesmo resultado.
+    result = tautulli_manager.get_recommendations(str(target_user_id))
+    if not result.get("success"):
+        return jsonify(result), 502
+
+    machine_identifier = None
+    try:
+        machine_identifier = plex_manager.get_machine_identifier()
+    except Exception:
+        logger.debug("Plex indisponível: as recomendações seguem sem links profundos.")
+
+    for section in result.get("sections", []):
+        section["seed"]["plex_url"] = _plex_deep_link(machine_identifier, section["seed"].get("rating_key"))
+        for item in section.get("items", []):
+            item["plex_url"] = _plex_deep_link(machine_identifier, item.get("rating_key"))
+
+    return jsonify(result)
+
+
 @stats_api_bp.route('/wrapped/<int:plex_user_id>')
 @login_required
 def get_wrapped_data_route(plex_user_id):
