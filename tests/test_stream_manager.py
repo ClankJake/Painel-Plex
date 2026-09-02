@@ -135,6 +135,7 @@ class TestGetPlatformInfo:
         ("Samsung Tizen", "samsung"),
         ("webOS", "lg"),
         ("Kodi", "kodi"),
+        ("Chromecast", "chromecast"),
         ("Plexamp", "plexamp"),
         ("Windows", "windows"),
         ("Linux", "linux"),
@@ -143,15 +144,18 @@ class TestGetPlatformInfo:
     def test_reconhece_as_plataformas(self, manager, texto, esperado):
         assert manager._get_platform_info(SessaoFalsa(plataforma=texto)) == esperado
 
-    @pytest.mark.xfail(
-        reason="BUG: '_get_platform_info' testa 'chrome' antes de 'chromecast', e "
-               "'chrome' está contido em 'chromecast' — um Chromecast é sempre "
-               "identificado como browser Chrome. Isto também impede o filtro de "
-               "sessões duplicadas de Cast de alguma vez atuar.",
-        strict=False,
-    )
-    def test_reconhece_um_chromecast(self, manager):
-        assert manager._get_platform_info(SessaoFalsa(plataforma="Chromecast")) == "chromecast"
+    @pytest.mark.parametrize("texto", [
+        "Chromecast",
+        "Chromecast Ultra",
+        "Android Chromecast built-in",  # Chromecast com Google TV
+    ])
+    def test_um_chromecast_nao_e_confundido_com_o_browser_chrome(self, manager, texto):
+        # 'chrome' está contido em 'chromecast': a verificação do Chromecast tem
+        # de vir primeiro, senão o filtro de sessões duplicadas de Cast nunca atua.
+        assert manager._get_platform_info(SessaoFalsa(plataforma=texto)) == "chromecast"
+
+    def test_o_browser_chrome_continua_a_ser_reconhecido(self, manager):
+        assert manager._get_platform_info(SessaoFalsa(plataforma="Chrome")) == "chrome"
 
     def test_plataforma_desconhecida(self, manager):
         assert manager._get_platform_info(SessaoFalsa(plataforma="AparelhoEstranho")) == "default"
@@ -221,39 +225,24 @@ class TestSessionHelpers:
 
 
 class TestFilterDuplicateCastSessions:
-    @pytest.fixture()
-    def manager(self, manager, monkeypatch):
-        """
-        A deteção de plataforma é forçada aqui para testar o filtro em si.
-
-        É necessário porque '_get_platform_info' nunca devolve 'chromecast' na
-        prática (ver o xfail em TestGetPlatformInfo): sem isto, o teste estaria a
-        validar o bug em vez do filtro.
-        """
-        monkeypatch.setattr(
-            type(manager), "_get_platform_info",
-            lambda self, sessao: sessao.plataforma_real,
-        )
-        return manager
-
     def test_remove_o_telemovel_que_comanda_o_chromecast(self, manager):
-        chromecast = SessaoFalsa(session_key="1", titulo="Duna", plataforma_real="chromecast")
-        telemovel = SessaoFalsa(session_key="2", titulo="Duna", plataforma_real="android")
+        chromecast = SessaoFalsa(session_key="1", titulo="Duna", plataforma="Chromecast")
+        telemovel = SessaoFalsa(session_key="2", titulo="Duna", plataforma="Android")
 
         restantes = manager._filter_duplicate_cast_sessions([chromecast, telemovel])
 
         assert restantes == [chromecast]
 
     def test_conteudos_diferentes_contam_as_duas(self, manager):
-        chromecast = SessaoFalsa(session_key="1", titulo="Duna", plataforma_real="chromecast")
-        telemovel = SessaoFalsa(session_key="2", titulo="Matrix", plataforma_real="android")
+        chromecast = SessaoFalsa(session_key="1", titulo="Duna", plataforma="Chromecast")
+        telemovel = SessaoFalsa(session_key="2", titulo="Matrix", plataforma="Android")
 
         assert len(manager._filter_duplicate_cast_sessions([chromecast, telemovel])) == 2
 
     def test_sem_chromecast_nada_e_removido(self, manager):
         sessoes = [
-            SessaoFalsa(session_key="1", titulo="Duna", plataforma_real="android"),
-            SessaoFalsa(session_key="2", titulo="Duna", plataforma_real="chrome"),
+            SessaoFalsa(session_key="1", titulo="Duna", plataforma="Android"),
+            SessaoFalsa(session_key="2", titulo="Duna", plataforma="Chrome"),
         ]
 
         assert len(manager._filter_duplicate_cast_sessions(sessoes)) == 2
@@ -357,6 +346,28 @@ class TestEnforceScreenLimits:
         manager._enforce_screen_limits(1, "ana", sessoes, {"screen_limit": 1}, self._config())
 
         assert all(s.parou_com is None for s in sessoes)
+
+    def test_cast_a_partir_do_telemovel_conta_como_uma_tela(self, manager, cache_limpa):
+        """
+        Regressão do bug do Chromecast: o telemóvel que apenas comanda o Cast
+        aparece como uma segunda sessão no Plex. Se não for filtrado, um
+        utilizador com limite de 1 tela era cortado ao usar o Chromecast.
+        """
+        chromecast = SessaoFalsa(
+            session_key="1", titulo="Duna", plataforma="Chromecast",
+            view_offset=100, session=type("S", (), {"id": "a"})(),
+        )
+        telemovel = SessaoFalsa(
+            session_key="2", titulo="Duna", plataforma="Android",
+            view_offset=100, session=type("S", (), {"id": "b"})(),
+        )
+
+        # Mesma sequência usada em 'check_and_enforce_streams'.
+        unicas = manager._filter_duplicate_cast_sessions([chromecast, telemovel])
+        manager._enforce_screen_limits(1, "ana", unicas, {"screen_limit": 1}, self._config())
+
+        assert chromecast.parou_com is None
+        assert telemovel.parou_com is None
 
     def test_corta_varias_sessoes_de_uma_vez(self, manager, cache_limpa):
         sessoes = [

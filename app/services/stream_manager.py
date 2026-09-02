@@ -823,6 +823,20 @@ class StreamManager:
         # Junta todas as strings para procurar de forma mais abrangente
         full_string = f"{platform} {product} {title}".lower()
 
+        # ⚠️ A ORDEM IMPORTA: as verificações são por SUBSTRING, por isso um termo
+        # que esteja contido noutro tem de ser testado primeiro.
+        #
+        # 🐛 CORREÇÃO: 'chromecast' contém 'chrome', e a verificação do Chrome vinha
+        # antes — um Chromecast era SEMPRE identificado como browser Chrome e o
+        # ramo do 'chromecast' nunca era alcançado. Além do ícone errado, isso
+        # desativava na prática o filtro de sessões duplicadas de Cast
+        # (_filter_duplicate_cast_sessions), que depende deste valor: o telemóvel
+        # que apenas comanda o Chromecast contava como uma segunda tela e podia
+        # fazer o utilizador ser cortado por um limite que não estava a exceder.
+        # Pela mesma razão vem também antes do 'android' (o Chromecast com Google
+        # TV identifica-se como Android).
+        if 'chromecast' in full_string: return 'chromecast'
+
         if 'chrome' in full_string: return 'chrome'
         if 'safari' in full_string: return 'safari'
         if 'firefox' in full_string: return 'firefox'
@@ -841,7 +855,6 @@ class StreamManager:
         if 'kodi' in full_string or 'xbmc' in full_string: return 'kodi'
         if 'plexamp' in full_string: return 'plexamp'
         if 'dlna' in full_string: return 'dlna'
-        if 'chromecast' in full_string: return 'chromecast'
         if 'tivo' in full_string: return 'tivo'
         if 'alexa' in full_string: return 'alexa'
         
