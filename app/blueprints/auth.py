@@ -1,6 +1,7 @@
 # app/blueprints/auth.py
 
 import uuid
+import hmac
 import secrets
 import logging
 import requests
@@ -23,6 +24,15 @@ auth_bp = Blueprint('auth', __name__)
 
 PLEX_API_BASE_URL = "https://plex.tv/api/v2"
 REQUEST_TIMEOUT = 10  # Segundos
+
+# 🔒 Chaves usadas para amarrar o PIN do Plex à sessão que o pediu.
+# O 'client_id' é gerado pelo servidor em /plex/auth-context e guardado aqui; as
+# rotas de verificação só aceitam PINs cujo client_id corresponda ao da sessão.
+PLEX_CLIENT_ID_SESSION_KEY = 'plex_auth_client_id'
+PLEX_CLIENT_ID_ISSUED_AT_KEY = 'plex_auth_client_id_issued_at'
+# Um PIN do Plex vive ~15 minutos; passado esse tempo a ligação é descartada para
+# que um client_id antigo não continue indefinidamente válido na sessão.
+PLEX_AUTH_CONTEXT_MAX_AGE = 15 * 60
 
 # -------------------------------------------------------------------------
 # CACHE PARA DEBOUNCING DE LOGS (Evita spam em polling/redirecionamentos)
@@ -65,6 +75,56 @@ def safe_log_request_info(force=False, identifier=None):
     except Exception:
         pass
 
+def _remember_auth_client_id(client_id):
+    """Guarda na sessão o client_id que o servidor acabou de emitir."""
+    session[PLEX_CLIENT_ID_SESSION_KEY] = str(client_id)
+    session[PLEX_CLIENT_ID_ISSUED_AT_KEY] = time.time()
+
+
+def _client_id_belongs_to_session(client_id):
+    """
+    Confirma que este PIN pertence ao fluxo de autenticação iniciado NESTA sessão.
+
+    🔒 Sem esta verificação, as rotas de verificação de PIN aceitavam qualquer par
+    (client_id, pin_id) vindo do URL. Isso permitia dois abusos:
+
+    1. **Login CSRF**: um atacante criava um PIN, autorizava-o com a SUA conta Plex
+       e depois levava a vítima a abrir `/auth/plex/check-pin/<atacante>/<pin>`
+       (basta um `<img>` ou um redirecionamento). A vítima ficava autenticada na
+       conta do atacante e podia, por exemplo, pagar uma renovação para ela.
+    2. **Proxy aberto para o plex.tv**: `/auth/plex/check-pin-for-token` devolvia o
+       token Plex de qualquer PIN a quem o pedisse, sem qualquer relação com a sessão.
+
+    Amarrar o client_id à sessão fecha ambos: só quem pediu o contexto de
+    autenticação consegue trocar o PIN correspondente.
+    """
+    expected = session.get(PLEX_CLIENT_ID_SESSION_KEY)
+    if not expected or not client_id:
+        return False
+
+    issued_at = session.get(PLEX_CLIENT_ID_ISSUED_AT_KEY) or 0
+    try:
+        if (time.time() - float(issued_at)) > PLEX_AUTH_CONTEXT_MAX_AGE:
+            return False
+    except (TypeError, ValueError):
+        return False
+
+    return hmac.compare_digest(str(expected), str(client_id))
+
+
+def _reject_foreign_client_id():
+    """Resposta padrão para um PIN que não pertence a esta sessão."""
+    logger.warning(
+        "Pedido de verificação de PIN rejeitado: o client_id não corresponde ao "
+        f"da sessão (endpoint: {request.endpoint})."
+    )
+    return jsonify({
+        "success": False,
+        "message": "auth_denied",
+        "error": _("Pedido de autenticação inválido. Recomece o processo de login.")
+    }), 403
+
+
 def _get_pin_status(pin_id, client_id):
     """
     Função auxiliar para verificar o status de um PIN do Plex.
@@ -91,6 +151,20 @@ def _get_pin_status(pin_id, client_id):
 
 def _login_user_session(account, role, redirect_endpoint, from_settings=False, plex_token=None):
     """Helper para DRY na lógica de login e inicialização da sessão Flask."""
+    # 🔒 RENOVAÇÃO DA SESSÃO: tudo o que existia na sessão ANTES da autenticação é
+    # deitado fora (só o idioma escolhido e o código de indicação pendente
+    # sobrevivem, por serem preferências sem valor de segurança). Sem isto, o
+    # 'client_id' já usado, o sinalizador 'from_settings' e um eventual token Plex
+    # de um fluxo anterior transitavam para a sessão autenticada — e uma sessão
+    # preparada por terceiros continuava válida depois do login (fixação de sessão).
+    preserved_language = session.get('language')
+    pending_referral = session.get('pending_referral_code')
+    session.clear()
+    if preserved_language:
+        session['language'] = preserved_language
+    if pending_referral:
+        session['pending_referral_code'] = pending_referral
+
     user_details = {
         'id': str(account.id), 'username': account.username, 'email': account.email,
         'thumb': account.thumb, 'role': role
@@ -117,13 +191,49 @@ def _login_user_session(account, role, redirect_endpoint, from_settings=False, p
         )
 
     if from_settings:
+        # Nota: 'from_settings' chega como argumento, lido da sessão ANTES da
+        # renovação acima — a limpeza da sessão já removeu o sinalizador.
         session['plex_token'] = plex_token
-        session.pop('from_settings', None)
         redirect_url = url_for('main.settings_page', _external=False)
     else:
         redirect_url = url_for(redirect_endpoint, _external=False)
     
     return jsonify({"success": True, "action": "login", "redirect_url": redirect_url})
+
+def _session_matches_configured_admin():
+    """
+    Confirma que a sessão marcada como 'admin' continua a ser a do administrador
+    definido no config.json.
+
+    A comparação usa o ADMIN_USER_ID (o ID Plex, imutável) quando ele já foi
+    registado; caso contrário recorre ao ADMIN_USER (username ou email), com a
+    mesma normalização usada no login. Se a configuração ainda não tem
+    administrador definido — instalação por concluir — não revogamos nada, para
+    não trancar o assistente de instalação.
+    """
+    try:
+        config = load_or_create_config()
+    except Exception as e:
+        # Falha a ler a configuração não deve deslogar toda a gente.
+        logger.debug(f"Não foi possível validar o administrador da sessão: {e}")
+        return True
+
+    admin_user_id = str(config.get('ADMIN_USER_ID', '') or '').strip()
+    admin_user = str(config.get('ADMIN_USER', '') or '').strip().lower()
+
+    if not admin_user_id and not admin_user:
+        return True
+
+    if admin_user_id:
+        return str(current_user.id or '').strip() == admin_user_id
+
+    identifiers = {
+        str(getattr(current_user, 'username', '') or '').strip().lower(),
+        str(getattr(current_user, 'email', '') or '').strip().lower(),
+    }
+    identifiers.discard('')
+    return admin_user in identifiers
+
 
 # --- MIDDLEWARE: Verificação Global de Status ---
 @auth_bp.before_app_request
@@ -136,9 +246,6 @@ def check_user_active_status():
     if not current_user.is_authenticated:
         return
 
-    if current_user.is_admin():
-        return
-
     # Ignorar rotas de autenticação, estáticos e pagamentos para evitar loops de redirecionamento
     if request.endpoint and (
         'static' in request.endpoint or 
@@ -146,6 +253,28 @@ def check_user_active_status():
         request.endpoint in ['main.payment_page'] or
         request.endpoint.startswith('payments_api.')
     ):
+        return
+
+    if current_user.is_admin():
+        # 🔒 O papel 'admin' fica gravado na sessão no momento do login e a sessão
+        # dura 30 dias. Sem esta revalidação, quem deixasse de ser o administrador
+        # (porque o ADMIN_USER foi alterado nas definições, ou porque o painel foi
+        # reconfigurado para outra conta Plex) mantinha acesso total ao painel até
+        # a sessão expirar. Aqui confirmamos, a cada pedido, que a sessão continua
+        # a corresponder ao administrador definido na configuração.
+        if not _session_matches_configured_admin():
+            logger.warning(
+                f"Sessão de administrador revogada: '{current_user.username}' já não corresponde "
+                f"ao administrador configurado."
+            )
+            logout_user()
+            session.clear()
+
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/api/'):
+                return jsonify({"success": False, "message": "unauthorized", "redirect_url": url_for('auth.login')}), 401
+
+            flash(_("As permissões de administrador desta conta foram alteradas. Faça login novamente."), "warning")
+            return redirect(url_for('auth.login'))
         return
 
     try:
@@ -235,7 +364,11 @@ def get_plex_auth_context():
         config = load_or_create_config()
         product_name = config.get("APP_TITLE", _(current_app.config.get("DEFAULT_APP_TITLE", "Painel de Gestão Plex")))
         client_id = str(uuid.uuid4())
-        
+
+        # 🔒 Amarra este client_id à sessão. Só o PIN criado com ele poderá ser
+        # trocado nas rotas de verificação abaixo.
+        _remember_auth_client_id(client_id)
+
         return jsonify({
             "success": True,
             "product_name": product_name,
@@ -250,6 +383,9 @@ def get_plex_auth_context():
 @limiter.limit("60 per minute")
 def check_plex_pin(client_id, pin_id):
     safe_log_request_info(identifier=f"check_pin_{pin_id}")
+
+    if not _client_id_belongs_to_session(client_id):
+        return _reject_foreign_client_id()
 
     try:
         data = _get_pin_status(pin_id, client_id)
@@ -317,12 +453,31 @@ def check_plex_pin(client_id, pin_id):
                 data_manager.set_user_profile(int(account.id), updates)
                 user_profile.update(updates)
         else:
-            user_profile = data_manager.get_user_profile_by_username(account.username)
+            # 🔒 O email é um identificador muito mais estável do que o username: o
+            # Plex permite libertar e reutilizar usernames, por isso procurar
+            # primeiro pelo email evita entregar o perfil (e a subscrição) de um
+            # antigo utilizador a quem simplesmente adotou o username dele.
+            user_profile = data_manager.get_user_profile_by_email(account.email)
+            if not user_profile:
+                user_profile = data_manager.get_user_profile_by_username(account.username)
 
         has_plex_access = False
         if plex_users:
+            account_id = str(account.id)
             for u in plex_users:
-                if str(u.get('id')) == str(account.id) or u.get('username') == account.username:
+                plex_entry_id = u.get('id')
+                if plex_entry_id is not None and str(plex_entry_id) != '':
+                    # O ID do Plex é imutável: quando existe, é o único critério.
+                    if str(plex_entry_id) == account_id:
+                        has_plex_access = True
+                        break
+                    continue
+
+                # Só entradas SEM ID recorrem ao username (comparado sem distinção
+                # de maiúsculas). Antes, o username era aceite mesmo quando o ID
+                # existia e era diferente — o que permitia a quem registasse um
+                # username libertado por outro utilizador entrar no lugar dele.
+                if str(u.get('username') or '').strip().lower() == str(account.username or '').strip().lower():
                     has_plex_access = True
                     break
 
@@ -403,6 +558,10 @@ def check_plex_pin(client_id, pin_id):
 @limiter.limit("60 per minute")
 def check_plex_pin_for_token(client_id, pin_id):
     safe_log_request_info(identifier=f"check_pin_token_{pin_id}")
+
+    if not _client_id_belongs_to_session(client_id):
+        return _reject_foreign_client_id()
+
     try:
         data = _get_pin_status(pin_id, client_id)
 

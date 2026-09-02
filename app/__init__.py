@@ -88,9 +88,21 @@ def create_app() -> Flask:
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}?timeout=30'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-    
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+
     base_url_for_cookie = app.config.get('APP_BASE_URL', '')
-    app.config['SESSION_COOKIE_SECURE'] = base_url_for_cookie.startswith('https://')
+    is_https_deployment = base_url_for_cookie.startswith('https://')
+    app.config['SESSION_COOKIE_SECURE'] = is_https_deployment
+
+    # 🔒 O cookie "remember me" do Flask-Login é INDEPENDENTE do cookie de sessão e
+    # não herda nenhuma das definições acima. Como `login_user(..., remember=True)`
+    # é usado no login, sem estas linhas ele era emitido com os valores por omissão
+    # da biblioteca — sem SameSite e sem a marca Secure mesmo em instalações HTTPS.
+    # Alinhamo-lo agora com o cookie de sessão.
+    app.config['REMEMBER_COOKIE_SECURE'] = is_https_deployment
+    app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+    app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
+    app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=30)
     
     # Otimização do SQLAlchemy
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
