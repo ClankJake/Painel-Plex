@@ -52,6 +52,22 @@ class StreamManager:
     Potenciado por SSE (Websockets) para tempo real, com sistema Anti-Spam,
     Prevenção Proativa e Controlo de Sobrecarga (Thundering Herd).
     """
+    # Janela de agregação dos eventos SSE: espera-se SSE_DEBOUNCE por um evento
+    # seguinte, mas nunca mais do que SSE_MAX_DEBOUNCE desde o primeiro evento
+    # pendente (evita que uma rajada contínua adie a verificação indefinidamente).
+    SSE_DEBOUNCE_SECONDS = 2.0
+    SSE_MAX_DEBOUNCE_SECONDS = 6.0
+
+    # Estados que interessam ao controlo de streams.
+    RELEVANT_SSE_STATES = ('playing', 'buffering', 'paused', 'stopped')
+    # Uma sessão sem notificações há mais do que isto é dada como terminada e
+    # esquecida (nem todos os clientes enviam 'stopped' ao desligar).
+    SESSION_STATE_TTL_SECONDS = 600
+
+    # Backoff entre tentativas de arranque do listener (Plex offline).
+    LISTENER_RETRY_BASE_SECONDS = 15
+    LISTENER_RETRY_MAX_SECONDS = 300
+
     def __init__(self, plex_connection, data_manager, user_manager):
         self.conn = plex_connection
         self.data_manager = data_manager
@@ -72,6 +88,20 @@ class StreamManager:
         # Guarda a instância de PlexServer a que o listener atual está ligado, para
         # detetar quando a ligação foi recarregada e o listener ficou órfão.
         self._listener_plex_ref = None
+        # Instante-limite do debounce em curso (ver SSE_MAX_DEBOUNCE_SECONDS).
+        self._sse_debounce_deadline = None
+        # Último estado conhecido de cada sessão do Plex. É isto que distingue
+        # uma MUDANÇA real (play/pause/stop/nova sessão) de um simples "ping" de
+        # progresso — o Plex reenvia o estado 'playing' de cada sessão de poucos
+        # em poucos segundos, e cada um desses pings disparava antes uma
+        # verificação completa (chamada à API + consultas à base de dados).
+        self._session_states_lock = threading.Lock()
+        self._last_session_states = {}
+        # Backoff do arranque do listener: com o Plex offline, a verificação
+        # periódica tentava reabrir o websocket a cada ciclo (15s), falhando
+        # sempre e enchendo o log.
+        self._listener_retry_at = 0.0
+        self._listener_failures = 0
 
     # --- LÓGICA DE TEMPO REAL (SSE) ---
 
@@ -109,6 +139,11 @@ class StreamManager:
             if self._is_listener_healthy():
                 return
 
+            # Enquanto o Plex não estiver contactável, espaça-se as tentativas
+            # em vez de tentar (e falhar) a cada verificação periódica.
+            if time.monotonic() < self._listener_retry_at:
+                return
+
             # Se existe um listener antigo (morto ou agarrado a uma ligação obsoleta),
             # é preciso pará-lo explicitamente para não deixar threads e sockets órfãos.
             if getattr(self, '_listener', None):
@@ -128,11 +163,24 @@ class StreamManager:
                     self._on_listener_error
                 )
                 self._listener_plex_ref = self.conn.plex
+                if self._listener_failures:
+                    logger.info(f"📡 Plex Real-Time Listener (SSE) restabelecido após {self._listener_failures} tentativa(s) falhada(s).")
+                self._listener_retry_at = 0.0
+                self._listener_failures = 0
                 logger.debug("📡 Plex Real-Time Listener (SSE) iniciado com sucesso! Controlo de streams instantâneo ativado.")
             except Exception as e:
                 self._listener = None
                 self._listener_plex_ref = None
-                logger.error(f"Falha ao iniciar o Plex Listener SSE: {describe(e)}")
+                self._listener_failures += 1
+                delay = min(
+                    self.LISTENER_RETRY_MAX_SECONDS,
+                    self.LISTENER_RETRY_BASE_SECONDS * (2 ** (self._listener_failures - 1))
+                )
+                self._listener_retry_at = time.monotonic() + delay
+                # Só a primeira falha é ERROR: as seguintes, enquanto o Plex não
+                # volta, ficam em WARNING para não dominarem o log.
+                level = logger.error if self._listener_failures == 1 else logger.warning
+                level(f"Falha ao iniciar o Plex Listener SSE: {describe(e)}. Nova tentativa em {delay}s.")
 
     def stop_listener(self):
         with self._listener_lock:
@@ -155,18 +203,100 @@ class StreamManager:
                 except Exception:
                     pass
                 self._sse_debounce_timer = None
+            self._sse_debounce_deadline = None
+
+        # Sem listener, os estados memorizados ficam obsoletos: ao reconectar, o
+        # primeiro evento de cada sessão tem de valer como mudança.
+        with self._session_states_lock:
+            self._last_session_states.clear()
 
     def _execute_debounced_check(self):
         """Executa a verificação após o tempo do debounce expirar."""
         with self._sse_debounce_lock:
             self._sse_debounce_timer = None
-            
+            self._sse_debounce_deadline = None
+
         if self._app:
             try:
                 with self._app.app_context():
                     self.check_and_enforce_streams(from_event=True)
             except Exception as e:
                 logger.error(f"Falha na verificação de streams por evento SSE: {describe(e)}")
+
+    def _has_state_changed(self, notifications):
+        """
+        Filtra os "pings" de progresso, devolvendo True só quando algo mudou
+        mesmo: uma sessão nova, uma transição play/pause/buffering ou o fim de
+        uma sessão.
+
+        Porque isto importa: enquanto alguém assiste, o Plex reenvia o estado
+        'playing' dessa sessão de poucos em poucos segundos. Cada um desses
+        eventos disparava uma verificação completa — chamada à API do Plex,
+        consultas à base de dados e um refrescamento em todos os dashboards
+        abertos — sem que nada tivesse mudado. Com quatro streams a decorrer,
+        eram dezenas de verificações por minuto para nada, além da verificação
+        periódica que já existe como rede de segurança.
+        """
+        changed = False
+        now = time.monotonic()
+
+        with self._session_states_lock:
+            # Esquece sessões que já não dão sinal de vida. Sem isto, um cliente
+            # que se desliga sem enviar 'stopped' ficaria memorizado para sempre.
+            for key in [k for k, v in self._last_session_states.items()
+                        if now - v[1] > self.SESSION_STATE_TTL_SECONDS]:
+                del self._last_session_states[key]
+
+            for notification in notifications:
+                if not isinstance(notification, dict):
+                    continue
+
+                state = notification.get('state')
+                if state not in self.RELEVANT_SSE_STATES:
+                    continue
+
+                session_key = notification.get('sessionKey')
+                if session_key in (None, ''):
+                    # Sem identificador não há como comparar: trata-se como
+                    # mudança, para nunca perder um evento relevante.
+                    changed = True
+                    continue
+
+                session_key = str(session_key)
+                known = self._last_session_states.get(session_key)
+
+                if known and known[0] == state:
+                    # Ping de progresso: mesmo estado da última vez. Só se
+                    # renova a marca temporal, para a sessão não expirar.
+                    self._last_session_states[session_key] = (state, now)
+                    continue
+
+                if state == 'stopped':
+                    self._last_session_states.pop(session_key, None)
+                else:
+                    self._last_session_states[session_key] = (state, now)
+                changed = True
+
+        return changed
+
+    def _schedule_sse_check(self):
+        """
+        Agrega eventos próximos numa única verificação (debounce), mas com um
+        teto: numa rajada contínua, a verificação corre à mesma ao fim de
+        SSE_MAX_DEBOUNCE_SECONDS em vez de ser sucessivamente adiada.
+        """
+        now = time.monotonic()
+        with self._sse_debounce_lock:
+            if self._sse_debounce_deadline is None:
+                self._sse_debounce_deadline = now + self.SSE_MAX_DEBOUNCE_SECONDS
+
+            delay = min(self.SSE_DEBOUNCE_SECONDS, max(0.0, self._sse_debounce_deadline - now))
+
+            if self._sse_debounce_timer:
+                self._sse_debounce_timer.cancel()
+            self._sse_debounce_timer = threading.Timer(delay, self._execute_debounced_check)
+            self._sse_debounce_timer.daemon = True
+            self._sse_debounce_timer.start()
 
     def _on_plex_event(self, data):
         # 🛡️ Este callback corre dentro da thread do websocket do plexapi. O plexapi
@@ -182,17 +312,12 @@ class StreamManager:
             if not isinstance(state_notifications, list):
                 return
 
-            should_check = any(
-                isinstance(n, dict) and n.get('state') in ('playing', 'buffering', 'paused', 'stopped')
-                for n in state_notifications
-            )
-
-            if not should_check or not self._app:
+            if not self._has_state_changed(state_notifications) or not self._app:
                 return
 
+            # 1. ATUALIZAÇÃO VISUAL IMEDIATA (Sem Lock/Debounce)
+            # Garante que os botões de Pausa/Play reagem instantaneamente no Frontend
             with self._app.app_context():
-                # 1. ATUALIZAÇÃO VISUAL IMEDIATA (Sem Lock/Debounce)
-                # Garante que os botões de Pausa/Play reagem instantaneamente no Frontend
                 try:
                     from app.extensions import socketio
                     socketio.emit('dashboard_update_streams', namespace='/dashboard')
@@ -200,13 +325,7 @@ class StreamManager:
                     logger.debug(f"Não foi possível emitir a atualização de streams via WebSocket: {e}")
 
             # 2. VERIFICAÇÃO PESADA COM DEBOUNCE OTIMIZADO (Proteção do Servidor)
-            # Usa threading Timer ao invés da Cache para maior performance e isolamento
-            with self._sse_debounce_lock:
-                if self._sse_debounce_timer:
-                    self._sse_debounce_timer.cancel()
-                self._sse_debounce_timer = threading.Timer(2.0, self._execute_debounced_check)
-                self._sse_debounce_timer.daemon = True
-                self._sse_debounce_timer.start()
+            self._schedule_sse_check()
         except Exception as e:
             logger.error(f"Erro ao processar evento SSE do Plex: {describe(e)}", exc_info=True)
 

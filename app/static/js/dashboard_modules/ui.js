@@ -1,6 +1,6 @@
 // Funções para renderizar e atualizar elementos do DOM
 import { dom, state } from './config.js';
-import { getChartColors, formatCurrency, formatTime, formatTimeAgo, getReasonText } from './formatters.js';
+import { getChartColors, formatCurrency, formatTime, formatTimeAgo, formatDateTime, escapeHtml, getReasonText } from './formatters.js';
 import { getUsersForSelection } from './api.js';
 import { updateSendButtonText } from './handlers.js';
 
@@ -392,26 +392,41 @@ function updateLogTimestamps() {
 }
 
 function _createTerminationLogRow(log) {
-    const timeAgo = formatTimeAgo(new Date(log.timestamp + 'Z'));
+    const endedAt = new Date(log.timestamp + 'Z');
     const isBlocked = log.reason.startsWith('blocked');
     const icon = isBlocked 
         ? `<svg class="w-5 h-5 text-red-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm-2.5 8V5.5a2.5 2.5 0 115 0V9h-5z" clip-rule="evenodd" /></svg>`
         : `<svg class="w-5 h-5 text-orange-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v11.5A2.25 2.25 0 004.25 18h11.5A2.25 2.25 0 0018 15.75V4.25A2.25 2.25 0 0015.75 2H4.25zM6.5 6a.75.75 0 000 1.5h7a.75.75 0 000-1.5h-7zM6 10.25a.75.75 0 01.75-.75h7a.75.75 0 010 1.5h-7A.75.75 0 016 10.25zM7.25 14a.75.75 0 000 1.5h3a.75.75 0 000-1.5h-3z" clip-rule="evenodd" /></svg>`;
-    
+
+    const clockIcon = `<svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2"></path></svg>`;
+
+    // O que estava a assistir é truncado (títulos de séries/filmes são longos e,
+    // no telemóvel, empurravam a hora para fora do cartão); a data e a hora do
+    // encerramento passam para uma linha própria, que nunca é cortada.
+    const media = [log.media_title, log.platform].filter(Boolean).map(escapeHtml);
+    const mediaLine = media.length === 2 ? `${media[0]} <span class="text-gray-400 dark:text-gray-500">·</span> ${media[1]}` : (media[0] || '');
+    const mediaTooltip = escapeHtml([log.media_title, log.platform].filter(Boolean).join(' · '));
+
     return `
-    <div class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 animate-fade-in group" data-log-id="${log.id}">
-        <div class="flex items-center gap-3 min-w-0">
+    <div class="flex items-start justify-between gap-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 animate-fade-in group" data-log-id="${log.id}">
+        <div class="flex items-start gap-3 min-w-0 flex-1">
             <span class="p-2 ${isBlocked ? 'bg-red-100 dark:bg-red-900/50' : 'bg-orange-100 dark:bg-orange-900/50'} rounded-full flex-shrink-0">${icon}</span>
-            <div class="min-w-0">
-                <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                    <strong>${log.username}</strong> - ${getReasonText(log.reason)}
+            <div class="min-w-0 flex-1">
+                <p class="text-sm font-semibold text-gray-800 dark:text-gray-200 break-words">
+                    <strong>${escapeHtml(log.username)}</strong> <span class="text-gray-400 dark:text-gray-500">—</span> ${escapeHtml(getReasonText(log.reason))}
                 </p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
-                   ${log.media_title} em ${log.platform} - <span class="log-time-ago" data-timestamp="${log.timestamp}">${timeAgo}</span>
+                <p class="text-xs text-gray-500 dark:text-gray-400 truncate" title="${mediaTooltip}">
+                   ${mediaLine}
+                </p>
+                <p class="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                   ${clockIcon}
+                   <span class="whitespace-nowrap">${escapeHtml(formatDateTime(endedAt))}</span>
+                   <span class="text-gray-400 dark:text-gray-500">·</span>
+                   <span class="log-time-ago whitespace-nowrap" data-timestamp="${log.timestamp}">${escapeHtml(formatTimeAgo(endedAt))}</span>
                 </p>
             </div>
         </div>
-        <button data-action="delete" title="Apagar Log" class="delete-log-btn p-1 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+        <button data-action="delete" title="Apagar Log" class="delete-log-btn p-1 text-gray-400 hover:text-red-500 transition flex-shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100">
             ${ICONS.delete}
         </button>
     </div>`;
