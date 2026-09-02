@@ -138,11 +138,14 @@ class FakeDataManager:
     serviços (preços, indicações) sem tocar na base de dados.
     """
 
-    def __init__(self, profiles=None, coupons=None, used_coupons=None):
+    def __init__(self, profiles=None, coupons=None, used_coupons=None, blocked=None):
         self.profiles = profiles or {}
         self.coupons = coupons or {}
         self.used_coupons = set(used_coupons or [])
+        self.blocked = blocked or {}
+        self.achievements = {}
         self.notifications = []
+        self.terminations = []
 
     # --- Perfis ---
     def get_user_profile(self, plex_user_id):
@@ -153,6 +156,15 @@ class FakeDataManager:
         profile.update(profile_data)
         return profile
 
+    def get_user_profile_by_email(self, email):
+        if not email:
+            return None
+        alvo = str(email).strip().lower()
+        for profile in self.profiles.values():
+            if (profile.get("email") or "").lower() == alvo:
+                return profile
+        return None
+
     def get_user_profile_by_referral_code(self, code):
         for profile in self.profiles.values():
             if (profile.get("referral_code") or "").upper() == str(code).strip().upper():
@@ -162,12 +174,38 @@ class FakeDataManager:
     def get_users_referred_by(self, plex_user_id):
         return [p for p in self.profiles.values() if p.get("referred_by") == int(plex_user_id)]
 
+    def reset_all_users_xp(self):
+        for profile in self.profiles.values():
+            profile["xp"] = 0
+        return len(self.profiles)
+
+    # --- Bloqueios ---
+    def get_blocked_user(self, plex_user_id):
+        return self.blocked.get(int(plex_user_id))
+
+    # --- Conquistas ---
+    def get_unlocked_achievements(self, plex_user_id):
+        return set(self.achievements.get(int(plex_user_id), set()))
+
+    def add_unlocked_achievements(self, plex_user_id, username, achievements_to_add):
+        atuais = self.achievements.setdefault(int(plex_user_id), set())
+        atuais.update(ach["id"] for ach in achievements_to_add)
+
     # --- Cupões ---
     def get_coupon_by_code(self, code):
         return self.coupons.get(code)
 
     def has_user_used_coupon(self, plex_user_id, code):
         return (int(plex_user_id), code) in self.used_coupons
+
+    # --- Auditoria ---
+    def log_stream_termination(self, plex_user_id, username, media_title, platform, reason):
+        registo = {
+            "plex_user_id": plex_user_id, "username": username, "media_title": media_title,
+            "platform": platform, "reason": reason,
+        }
+        self.terminations.append(registo)
+        return registo
 
     # --- Notificações ---
     def create_notification(self, message, category="info", link=None, user_plex_id=None):
