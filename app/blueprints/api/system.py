@@ -579,9 +579,36 @@ def setup_restore_backup():
 
 
 @system_api_bp.route('/setup/save', methods=['POST'])
+@limiter.limit("10 per hour")
 def save_setup():
+    """
+    Grava a configuração do assistente de instalação e autentica o administrador.
+
+    🔒 SEGURANÇA: esta rota não pode exigir login, porque durante a instalação
+    inicial ainda não existe administrador nenhum — e por isso está também isenta
+    do redirecionamento para o assistente (ver `exempt_from_setup` em __init__.py).
+    Faltava-lhe, no entanto, a segunda metade dessa proteção (a que a rota irmã
+    `/setup/restore-backup` já tinha): recusar o acesso DEPOIS de o sistema estar
+    configurado. Sem isso, num painel já em produção qualquer visitante anónimo
+    podia enviar um POST para aqui e, de uma só vez, reescrever o config.json
+    (incluindo ADMIN_USER, PLEX_URL e PLEX_TOKEN) e receber de volta uma sessão de
+    administrador — ver o `login_user()` no fim desta função. A partir daqui, com o
+    sistema configurado, só um administrador autenticado pode reconfigurar.
+    """
+    if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
+        logger.warning(
+            "Tentativa de reconfiguração bloqueada: /setup/save foi chamado num sistema "
+            "já configurado sem sessão de administrador."
+        )
+        return jsonify({
+            "success": False,
+            "message": _("O sistema já está configurado. Apenas um administrador autenticado pode reconfigurá-lo.")
+        }), 403
+
     data = request.json
     config = load_or_create_config()
+    previous_admin = str(config.get('ADMIN_USER', '') or '').strip().lower()
+
     normalized_data = {}
     for key, value in data.items():
         upper_key = key.upper()
@@ -591,6 +618,16 @@ def save_setup():
         normalized_data[upper_key] = value
     config.update(normalized_data)
     config['IS_CONFIGURED'] = True
+
+    # Se o administrador passou a ser outra conta Plex, o ADMIN_USER_ID gravado
+    # aponta para a pessoa ERRADA (é o ID do administrador anterior). Limpamo-lo
+    # para que seja repreenchido no primeiro login do novo administrador — ver
+    # auth.check_plex_pin. Sem isto, tarefas automáticas continuariam a tratar o
+    # antigo dono como administrador.
+    new_admin = str(config.get('ADMIN_USER', '') or '').strip().lower()
+    if new_admin != previous_admin:
+        config['ADMIN_USER_ID'] = ''
+
     save_app_config(config)
     
     tautulli_manager.reload_credentials()
