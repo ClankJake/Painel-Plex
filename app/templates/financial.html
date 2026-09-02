@@ -268,12 +268,12 @@
                         </div>
                     </div>
                     <div>
-                        <label for="maxUses" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Limite de Utilizações') }}</label>
+                        <label for="maxUses" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Limite de Utilizações') }} <span class="font-normal text-gray-400">{{ _('(0 = ilimitado)') }}</span></label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                 <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                             </div>
-                            <input type="number" id="maxUses" required min="1" value="1" class="block w-full pl-9 p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow shadow-sm">
+                            <input type="number" id="maxUses" required min="0" step="1" value="1" class="block w-full pl-9 p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow shadow-sm">
                         </div>
                     </div>
                     <div>

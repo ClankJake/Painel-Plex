@@ -149,7 +149,11 @@ class PixPayment(db.Model):
     screens = db.Column(db.Integer, nullable=True)
     external_reference = db.Column(db.String, unique=True, nullable=True)
     description = db.Column(db.String(100), nullable=True)
-    coupon_code = db.Column(db.String, db.ForeignKey('coupons.code'), nullable=True)
+    # 📌 REGISTO HISTÓRICO, não uma referência viva: guarda o código do cupão tal
+    # como foi usado nesta cobrança. Deixou de ser uma chave estrangeira para
+    # 'coupons.code' porque apagar um cupão antigo não pode apagar nem invalidar o
+    # histórico financeiro que já o citou (e o relatório CSV precisa do código).
+    coupon_code = db.Column(db.String, nullable=True, index=True)
     # Crédito de indicações RESERVADO nesta cobrança. Fica apenas registado aqui até
     # o pagamento ser confirmado — só nessa altura é debitado do saldo do utilizador.
     # Assim, um PIX gerado e abandonado nunca consome o crédito de ninguém.

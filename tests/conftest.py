@@ -139,7 +139,8 @@ class FakeDataManager:
     """
 
     def __init__(self, profiles=None, coupons=None, used_coupons=None, blocked=None,
-                 paid_users=None, reserved_credit=None):
+                 paid_users=None, reserved_credit=None, reserved_coupons=None,
+                 pending_coupon_charges=None):
         self.profiles = profiles or {}
         self.coupons = coupons or {}
         self.used_coupons = set(used_coupons or [])
@@ -148,6 +149,10 @@ class FakeDataManager:
         # abertas — ambos entram nas regras do programa de indicações.
         self.paid_users = set(paid_users or [])
         self.reserved_credit = reserved_credit or {}
+        # Cupões "presos" em cobranças geradas e ainda por pagar: {codigo: nº} e
+        # os pares (utilizador, codigo) com uma cobrança aberta.
+        self.reserved_coupons = reserved_coupons or {}
+        self.pending_coupon_charges = set(pending_coupon_charges or [])
         self.achievements = {}
         self.notifications = []
         self.terminations = []
@@ -260,6 +265,12 @@ class FakeDataManager:
 
     def has_user_used_coupon(self, plex_user_id, code):
         return (int(plex_user_id), code) in self.used_coupons
+
+    def get_reserved_coupon_uses(self, code):
+        return int(self.reserved_coupons.get(code, 0))
+
+    def has_user_pending_coupon_charge(self, plex_user_id, code):
+        return (int(plex_user_id), code) in self.pending_coupon_charges
 
     # --- Auditoria ---
     def log_stream_termination(self, plex_user_id, username, media_title, platform, reason):

@@ -14,6 +14,10 @@ class PricingManager:
     Serviço centralizado para toda a lógica de preços, planos e cupões.
     """
 
+    # Tipos de desconto que o sistema sabe calcular. Qualquer outro valor é um
+    # cupão corrompido (ou criado por uma versão anterior sem validação).
+    VALID_DISCOUNT_TYPES = ('percentage', 'fixed')
+
     def __init__(self, data_manager):
         self.data_manager = data_manager
 
@@ -299,7 +303,32 @@ class PricingManager:
             
         if not coupon.get('is_active'):
             return False, _("Este cupão não está mais ativo.")
-            
+
+        # 🛡️ O registo do uso só acontece quando o pagamento é confirmado. Sem
+        # olhar também para as cobranças ABERTAS, a mesma pessoa gerava duas
+        # cobranças com o mesmo cupão e pagava as duas com desconto.
+        if plex_user_id and self._tem_cobranca_aberta_com_cupao(plex_user_id, coupon_code):
+            return False, _("Já existe um pagamento pendente com este cupão. Conclua-o ou aguarde que expire.")
+
+        # Um tipo de desconto desconhecido não pode ser tratado como válido: antes,
+        # '_apply_discount' não encontrava ramo nenhum, devolvia o preço cheio e o
+        # utilizador via "Cupão aplicado com sucesso!" sem qualquer desconto.
+        if coupon.get('discount_type') not in self.VALID_DISCOUNT_TYPES:
+            logger.error(
+                f"Cupão '{coupon.get('code')}' tem um tipo de desconto inválido "
+                f"('{coupon.get('discount_type')}') e foi recusado."
+            )
+            return False, _("Cupão inválido ou não encontrado.")
+
+        # Um valor não positivo nunca desconta nada — e, em percentagem negativa,
+        # chegava a AUMENTAR o preço a pagar.
+        try:
+            if float(coupon.get('value')) <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            logger.error(f"Cupão '{coupon.get('code')}' tem um valor inválido ({coupon.get('value')}) e foi recusado.")
+            return False, _("Cupão inválido ou não encontrado.")
+
         # CORREÇÃO: Utilizar timezone.utc para comparar corretamente com a data ISO guardada na BD
         expires_at_str = coupon.get('expires_at')
         if expires_at_str:
@@ -319,22 +348,60 @@ class PricingManager:
             except (ValueError, TypeError):
                 logger.warning(f"Erro ao analisar a data de expiração do cupão '{coupon_code}'.")
 
-        if coupon.get('use_count', 0) >= coupon.get('max_uses', 1):
-            return False, _("Este cupão já atingiu o seu limite de utilizações.")
-            
+        # 'max_uses' igual ou inferior a zero significa SEM LIMITE — é o que a
+        # lista de cupões sempre mostrou ('∞') e o que o formulário envia quando o
+        # campo fica vazio. Antes, o backend lia 0 como "limite zero" e o cupão
+        # nascia esgotado.
+        max_uses = self._max_uses(coupon)
+        if max_uses is not None:
+            usos = int(coupon.get('use_count', 0) or 0) + self._usos_reservados(coupon_code)
+            if usos >= max_uses:
+                return False, _("Este cupão já atingiu o seu limite de utilizações.")
+
         return True, coupon
+
+    @staticmethod
+    def _max_uses(coupon):
+        """Limite de utilizações do cupão, ou None quando é ilimitado."""
+        try:
+            max_uses = int(coupon.get('max_uses', 1) or 0)
+        except (TypeError, ValueError):
+            return None
+        return max_uses if max_uses > 0 else None
+
+    def _usos_reservados(self, coupon_code):
+        """Cobranças abertas que já reservaram este cupão (ver DataManager)."""
+        try:
+            return int(self.data_manager.get_reserved_coupon_uses(coupon_code) or 0)
+        except AttributeError:
+            # DataManagers mais simples (ex: testes) podem não implementar o método.
+            return 0
+        except Exception:
+            return 0
+
+    def _tem_cobranca_aberta_com_cupao(self, plex_user_id, coupon_code):
+        try:
+            return bool(self.data_manager.has_user_pending_coupon_charge(plex_user_id, coupon_code))
+        except AttributeError:
+            return False
+        except Exception:
+            return False
 
     def _apply_discount(self, original_price, coupon):
         """Calcula a matemática do desconto."""
         discounted_price = original_price
-        
-        if coupon['discount_type'] == 'percentage':
-            discounted_price = original_price * (1 - coupon['value'] / 100)
-        elif coupon['discount_type'] == 'fixed':
-            discounted_price = original_price - coupon['value']
+        valor = float(coupon['value'])
 
-        # O preço nunca pode ser negativo
-        return max(0.0, discounted_price)
+        if coupon['discount_type'] == 'percentage':
+            # Barreira dupla: a API já recusa percentagens fora de 0-100, mas um
+            # cupão antigo gravado antes desta validação não pode aumentar o preço.
+            percentagem = min(max(valor, 0.0), 100.0)
+            discounted_price = original_price * (1 - percentagem / 100)
+        elif coupon['discount_type'] == 'fixed':
+            discounted_price = original_price - max(valor, 0.0)
+
+        # O preço nunca pode ser negativo nem superior ao preço de tabela
+        return max(0.0, min(discounted_price, original_price))
 
     def _get_public_plans(self, current_screens, screen_prices, renewal_price):
         """Filtra os planos para requisições de links públicos (apenas renovação exata ou fallback inteligente)."""

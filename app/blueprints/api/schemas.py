@@ -97,3 +97,50 @@ class UpdateAccountProfileSchema(BaseModel):
     telegram_user: Optional[str] = None
     discord_user_id: Optional[str] = None
     phone_number: Optional[str] = None
+
+
+class CreateCouponSchema(BaseModel):
+    """
+    Validação da criação de cupões.
+
+    Antes, a rota aceitava qualquer coisa que passasse por 'float()': um cupão
+    de -50% multiplicava o preço por 1,5 e um 'discount_type' desconhecido era
+    aceite, anunciado como "aplicado com sucesso" e não descontava nada.
+    """
+    code: str = Field(..., min_length=1, max_length=64)
+    discount_type: Literal['percentage', 'fixed']
+    # 'gt=0': um desconto de zero (ou negativo) não é um desconto.
+    value: float = Field(..., gt=0)
+    # 0 = sem limite de utilizações, que é o que a lista de cupões sempre mostrou
+    # ('∞') e o que o formulário envia quando o campo fica vazio.
+    max_uses: int = Field(1, ge=0)
+    is_active: bool = True
+    # Apenas a data (YYYY-MM-DD): a hora é fixada no fim do dia, no fuso do painel.
+    expires_at: Optional[str] = None
+
+    @validator('code')
+    def validate_code(cls, v):
+        codigo = (v or '').strip().upper()
+        if not codigo:
+            raise ValueError("O código do cupão não pode estar vazio.")
+        # Um código com espaços ou ';' seria impossível de escrever no formulário
+        # de pagamento e sujaria o relatório CSV.
+        if any(c.isspace() for c in codigo) or ';' in codigo:
+            raise ValueError("O código do cupão não pode conter espaços nem ';'.")
+        return codigo
+
+    @validator('value')
+    def validate_value(cls, v, values):
+        if values.get('discount_type') == 'percentage' and v > 100:
+            raise ValueError("Um desconto em percentagem não pode ser superior a 100.")
+        return round(float(v), 2)
+
+    @validator('expires_at')
+    def validate_expires_at(cls, v):
+        if v is None or v == '':
+            return None
+        try:
+            datetime.strptime(v, '%Y-%m-%d')
+            return v
+        except (ValueError, TypeError):
+            raise ValueError("O formato da data de expiração deve ser YYYY-MM-DD")

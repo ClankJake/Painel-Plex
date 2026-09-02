@@ -8,7 +8,7 @@ import json
 from datetime import datetime, date, timezone
 from sqlalchemy.exc import OperationalError
 
-from flask import Blueprint, jsonify, request, url_for, current_app, Response
+from flask import Blueprint, jsonify, request, url_for, current_app, Response, stream_with_context
 from flask_login import current_user, login_required
 from flask_babel import gettext as _
 
@@ -17,10 +17,60 @@ from ...config import load_or_create_config
 from ..auth import admin_required
 from ...models import UserProfile, PixPayment
 from ...extensions import limiter
+from ...services.data_manager import get_app_timezone, normalize_coupon_code
 from ...utils.log_sanitizer import mask_token
 
 logger = logging.getLogger(__name__)
 payments_api_bp = Blueprint('payments_api', __name__)
+
+# Período máximo de uma exportação. Não é um limite arbitrário: é o que impede
+# que um pedido de "desde sempre" leia a tabela inteira num só relatório.
+CSV_MAX_INTERVALO_DIAS = 366
+
+# Caracteres que transformam uma célula em fórmula ao abrir o ficheiro no Excel
+# ou no Google Sheets.
+CSV_PREFIXOS_PERIGOSOS = ('=', '+', '-', '@', '\t', '\r')
+
+
+def _csv_seguro(valor):
+    """
+    Neutraliza texto que o Excel interpretaria como fórmula.
+
+    ⚠️ Isto protege contra CSV injection: o nome de utilizador vem do Plex, não
+    do administrador. Alguém chamado '=cmd|...' conseguia que a fórmula corresse
+    na máquina de quem abrisse o relatório de contabilidade. Prefixar com uma
+    plica força a célula a ser tratada como texto.
+    """
+    if valor is None:
+        return ''
+    texto = str(valor)
+    if texto[:1] in CSV_PREFIXOS_PERIGOSOS:
+        return "'" + texto
+    return texto
+
+
+def _dinheiro_csv(valor):
+    """Formata um valor monetário no formato português/brasileiro (vírgula decimal)."""
+    try:
+        return f"{float(valor or 0):.2f}".replace('.', ',')
+    except (TypeError, ValueError):
+        return "0,00"
+
+
+def _data_local_csv(created_at_iso, local_tz):
+    """
+    Converte a data guardada (UTC) para o fuso do painel.
+
+    Sem isto, o relatório mostrava horas em UTC enquanto o dashboard mostrava as
+    mesmas transações na hora local — três horas de diferença no Brasil.
+    """
+    try:
+        dt = datetime.fromisoformat(created_at_iso)
+    except (TypeError, ValueError):
+        return _csv_seguro(created_at_iso)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(local_tz).strftime('%Y-%m-%d %H:%M:%S')
 
 # ==========================================
 # PROCESSAMENTO DE PAGAMENTOS EM BACKGROUND
@@ -137,8 +187,19 @@ def _run_payment_processing_in_thread(app, txid):
                     except Exception as e:
                         logger.error(f"Erro ao enviar notificação final para '{profile['username']}': {e}")
 
+                    # 🛡️ O registo do cupão NUNCA pode derrubar a confirmação de um
+                    # pagamento. Uma exceção aqui (ex: uso já registado) subia até ao
+                    # tratamento de erros abaixo e marcava como 'FALHOU' um pagamento
+                    # cuja assinatura já tinha sido renovada — o cliente pagava, era
+                    # renovado, e a transação sumia do relatório financeiro.
                     if payment.get('coupon_code'):
-                        extensions.data_manager.record_coupon_usage(payment['coupon_code'], plex_user_id)
+                        try:
+                            extensions.data_manager.record_coupon_usage(payment['coupon_code'], plex_user_id)
+                        except Exception as e:
+                            logger.error(
+                                f"Erro ao registar o uso do cupão no pagamento {mask_token(txid)}: {e}",
+                                exc_info=True
+                            )
 
                     # 💳 CONSUMO DO CRÉDITO DE INDICAÇÕES: só agora, com o pagamento
                     # confirmado, o crédito reservado sai do saldo. Fazê-lo antes
@@ -316,7 +377,9 @@ def create_charge_route():
     data = request.json or {}
     provider = data.get('provider')
     screens_str = data.get('screens')
-    coupon_code = data.get('coupon_code')
+    # Forma canónica (maiúsculas, sem espaços) para que o código guardado na
+    # cobrança seja o mesmo que a validação e o relatório vêem.
+    coupon_code = normalize_coupon_code(data.get('coupon_code')) or None
     
     token = data.get('token') or request.args.get('token')
     if not token and request.referrer and '/pay/' in request.referrer:
@@ -448,8 +511,13 @@ def create_charge_route():
             profile_up['screen_limit'] = screens
             extensions.data_manager.set_user_profile(plex_user_id, profile_up)
 
+            # O plano JÁ foi alterado acima: uma falha a registar o cupão não pode
+            # transformar isto num erro para o utilizador.
             if coupon_code:
-                extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id)
+                try:
+                    extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id)
+                except Exception as e:
+                    logger.error(f"Erro ao registar o uso do cupão '{coupon_code}' no upgrade sem custo: {e}", exc_info=True)
 
             logger.info(
                 f"Upgrade pro-rata sem custo para '{username}': {anterior} -> {screens} telas. "
@@ -520,7 +588,12 @@ def create_charge_route():
                         extensions.data_manager.set_user_profile(plex_user_id, post_renewal_profile)
                         logger.info(f"Utilizador '{username}' ainda não está na lista de amigos (convite pendente). Status local mantido como 'inactive'.")
 
-            if coupon_code: extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id)
+            # Idem: a assinatura já foi renovada acima.
+            if coupon_code:
+                try:
+                    extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id)
+                except Exception as e:
+                    logger.error(f"Erro ao registar o uso do cupão '{coupon_code}' na renovação gratuita: {e}", exc_info=True)
 
             # 💳 Se o crédito de indicações foi (parte do) responsável por zerar o
             # valor, é AQUI que ele sai do saldo — este fluxo conclui na hora, sem
@@ -896,45 +969,113 @@ def delete_payment_route(txid):
 def export_financial_csv():
     start_str, end_str = request.args.get('start_date'), request.args.get('end_date')
     if not start_str or not end_str:
-        return jsonify({"success": False, "message": "Datas são obrigatórias."}), 400
+        return jsonify({"success": False, "message": _("Datas são obrigatórias.")}), 400
+
+    # As datas eram coladas diretamente no filtro e no nome do ficheiro. Como o
+    # filtro compara TEXTO, uma data malformada não dava erro: devolvia em
+    # silêncio um relatório vazio ou errado.
+    try:
+        dia_inicio = datetime.strptime(start_str, '%Y-%m-%d').date()
+        dia_fim = datetime.strptime(end_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": _("Datas inválidas. Use o formato AAAA-MM-DD.")}), 400
+
+    if dia_fim < dia_inicio:
+        return jsonify({"success": False, "message": _("A data de fim não pode ser anterior à data de início.")}), 400
+
+    if (dia_fim - dia_inicio).days > CSV_MAX_INTERVALO_DIAS:
+        return jsonify({
+            "success": False,
+            "message": _("O período não pode exceder %(dias)d dias. Exporte por partes.", dias=CSV_MAX_INTERVALO_DIAS)
+        }), 400
 
     try:
-        start_date = f"{start_str}T00:00:00+00:00"
-        end_date = f"{end_str}T23:59:59+00:00"
-        payments = extensions.data_manager.get_payments_for_export(start_date, end_date)
+        # 🕓 O mesmo fuso horário usado pelo dashboard. Antes, o CSV assumia UTC:
+        # num fuso como o do Brasil, o total do relatório de um mês não batia
+        # certo com o cartão "Receita do Mês" do próprio painel.
+        local_tz = get_app_timezone()
+        inicio_utc = local_tz.localize(
+            datetime.combine(dia_inicio, datetime.min.time())
+        ).astimezone(timezone.utc).isoformat()
+        fim_utc = local_tz.localize(
+            datetime.combine(dia_fim, datetime.max.time())
+        ).astimezone(timezone.utc).isoformat()
 
+        # 'stream_with_context' é essencial: sem ele o gerador só é consumido
+        # DEPOIS de o Flask desmontar o contexto do pedido, o que deixava as
+        # traduções inertes e tornava impossível ler seja o que for da base de
+        # dados enquanto o ficheiro é escrito.
+        @stream_with_context
         def generate():
             si = StringIO()
             si.write('\ufeff')
             cw = csv.writer(si, delimiter=';')
 
-            cw.writerow(['Data', 'Utilizador', 'Descricao', 'Valor (R$)', 'Provedor', 'Cupao', 'TXID'])
-            yield si.getvalue()
-            si.seek(0)
-            si.truncate(0)
-
-            total_value = 0
-            
-            for p in payments:
-                total_value += p['value']
-                cw.writerow([
-                    datetime.fromisoformat(p['created_at']).strftime('%Y-%m-%d %H:%M:%S'),
-                    p['username'], p['description'] or f"{p.get('screens', 'N/A')} Telas",
-                    f"{p['value']:.2f}".replace('.', ','), p['provider'], p.get('coupon_code', ''), p['txid']
-                ])
-                yield si.getvalue()
+            def despejar():
+                valor = si.getvalue()
                 si.seek(0)
                 si.truncate(0)
+                return valor
+
+            cw.writerow([
+                'Data', 'Utilizador', 'Descricao', 'Valor (R$)',
+                'Credito Indicacoes (R$)', 'Tipo', 'Provedor', 'Cupao', 'TXID'
+            ])
+            yield despejar()
+
+            total_value = 0.0
+            total_credito = 0.0
+            total_transacoes = 0
+
+            # ⚠️ A resposta já começou a ser enviada, por isso um erro aqui não
+            # pode virar um 500: sem esta marca, o ficheiro terminava a meio e
+            # parecia completo a quem o abrisse na contabilidade.
+            try:
+                # Iterador por lotes: o relatório começa a ser enviado sem ter de
+                # carregar o período inteiro para memória.
+                for p in extensions.data_manager.iter_payments_for_export(inicio_utc, fim_utc):
+                    valor = float(p.get('value') or 0)
+                    credito = float(p.get('referral_credit_used') or 0)
+                    total_value += valor
+                    total_credito += credito
+                    total_transacoes += 1
+
+                    cw.writerow([
+                        _data_local_csv(p.get('created_at'), local_tz),
+                        _csv_seguro(p.get('username')),
+                        _csv_seguro(p.get('description') or f"{p.get('screens', 'N/A')} Telas"),
+                        _dinheiro_csv(valor),
+                        _dinheiro_csv(credito),
+                        _('Upgrade pro-rata') if p.get('is_proration') else _('Renovação'),
+                        _csv_seguro(p.get('provider')),
+                        _csv_seguro(p.get('coupon_code') or ''),
+                        _csv_seguro(p.get('txid')),
+                    ])
+                    yield despejar()
+            except Exception as e:
+                logger.error(f"Erro a meio da geração do CSV: {e}", exc_info=True)
+                cw.writerow([])
+                cw.writerow(['', '', _('RELATÓRIO INCOMPLETO: ocorreu um erro. Repita a exportação.')])
+                yield despejar()
+                return
 
             cw.writerow([])
             cw.writerow(['', '', _('RESUMO DO PERÍODO')])
-            cw.writerow(['', '', _('Total Arrecadado'), f"{total_value:.2f}".replace('.', ',')])
-            cw.writerow(['', '', _('Total de Transações'), len(payments)])
-            yield si.getvalue()
+            cw.writerow(['', '', _('Total Arrecadado'), _dinheiro_csv(total_value)])
+            cw.writerow(['', '', _('Crédito de Indicações Usado'), _dinheiro_csv(total_credito)])
+            cw.writerow(['', '', _('Total de Transações'), total_transacoes])
+            yield despejar()
 
+        # O nome do ficheiro usa as datas já validadas, e nunca o texto cru que
+        # veio no pedido.
+        nome_ficheiro = f"relatorio_{dia_inicio.isoformat()}_a_{dia_fim.isoformat()}.csv"
         return Response(
-            generate(), mimetype="text/csv",
-            headers={ "Content-disposition": f"attachment; filename=relatorio_{start_str}_a_{end_str}.csv", "Content-Type": "text/csv; charset=utf-8-sig" }
+            generate(),
+            mimetype="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename={nome_ficheiro}",
+                "Content-Type": "text/csv; charset=utf-8",
+            }
         )
     except Exception as e:
         logger.error(f"Erro ao gerar CSV: {e}", exc_info=True)

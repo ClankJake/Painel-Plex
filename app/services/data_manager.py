@@ -27,6 +27,34 @@ logger = logging.getLogger(__name__)
 # Codes expiram muito antes) e o saldo volta a ficar disponível.
 RESERVED_CREDIT_MAX_AGE_HOURS = 24
 
+# Mesma ideia para os cupões: uma cobrança gerada e ainda por pagar "segura" o
+# uso do cupão que reservou. Sem isto, o limite de utilizações só era verificado
+# na criação da cobrança e só descontado na confirmação — pelo meio, dezenas de
+# pessoas podiam gerar cobranças com o mesmo cupão de uso único e pagá-las todas.
+#
+# A janela é curta de propósito: todos os provedores geram PIX com 20 minutos de
+# validade, por isso uma cobrança mais antiga já não é pagável e não faz sentido
+# continuar a segurar o cupão. Assim o limite fica protegido sem que um QR Code
+# abandonado bloqueie o cupão (ou o próprio utilizador) durante horas.
+RESERVED_COUPON_MAX_AGE_MINUTES = 30
+
+# Quantas transações são trazidas de cada vez ao exportar o relatório CSV.
+EXPORT_BATCH_SIZE = 500
+
+
+def normalize_coupon_code(code):
+    """
+    Forma canónica de um código de cupão: sem espaços à volta e em maiúsculas.
+
+    A interface já enviava tudo em maiúsculas, mas só no JavaScript — quem
+    chamasse a API diretamente conseguia criar 'promo25' e 'PROMO25' como cupões
+    distintos, e um código guardado em maiúsculas nunca era encontrado quando o
+    utilizador o escrevia em minúsculas.
+    """
+    if code is None:
+        return None
+    return str(code).strip().upper()
+
 # --- HELPERS ---
 def get_app_timezone():
     """Obtém o fuso horário real do sistema (respeita a variável TZ do Docker)."""
@@ -91,13 +119,21 @@ class DataManager:
     # --- MÉTODOS DE CUPÕES ---
     @db_transaction
     def create_coupon(self, details):
-        new_coupon = Coupon(**details)
+        detalhes = dict(details)
+        # Guarda sempre na forma canónica, para que a procura por código continue
+        # a funcionar independentemente de como o cupão foi criado.
+        detalhes['code'] = normalize_coupon_code(detalhes.get('code'))
+        new_coupon = Coupon(**detalhes)
         db.session.add(new_coupon)
         db.session.flush()
         return self._row_to_dict(new_coupon)
 
     def get_coupon_by_code(self, code):
-        coupon = Coupon.query.filter_by(code=code).first()
+        """Procura um cupão ignorando maiúsculas/minúsculas e espaços à volta."""
+        normalizado = normalize_coupon_code(code)
+        if not normalizado:
+            return None
+        coupon = Coupon.query.filter(func.upper(Coupon.code) == normalizado).first()
         return self._row_to_dict(coupon) if coupon else None
 
     def get_all_coupons(self):
@@ -122,24 +158,104 @@ class DataManager:
 
     @db_transaction
     def record_coupon_usage(self, code, plex_user_id):
-        coupon = Coupon.query.filter_by(code=code).first()
+        """
+        Regista o uso de um cupão. É IDEMPOTENTE: registar duas vezes o mesmo par
+        (utilizador, cupão) não faz nada e não levanta erro.
+
+        ⚠️ Isto não é um detalhe: 'coupon_usages' tem uma restrição de unicidade
+        em (user_plex_id, coupon_id) e este método é chamado ao confirmar um
+        pagamento. Uma segunda inserção levantava IntegrityError, que subia até ao
+        processamento do pagamento e o marcava como 'FALHOU' — DEPOIS de a
+        assinatura já ter sido renovada. O cliente pagava, era renovado, e a
+        transação desaparecia do relatório financeiro e do CSV.
+        """
+        normalizado = normalize_coupon_code(code)
+        coupon = Coupon.query.filter(func.upper(Coupon.code) == normalizado).first() if normalizado else None
         if not coupon or not plex_user_id:
             logger.warning(f"Tentativa de registar o uso de um cupão inválido ('{code}') ou para um utilizador inválido.")
             return False
-        
+
+        ja_registado = db.session.query(CouponUsage.id).filter(
+            CouponUsage.coupon_id == coupon.id,
+            CouponUsage.user_plex_id == int(plex_user_id)
+        ).first()
+        if ja_registado:
+            logger.info(
+                f"Uso do cupão '{coupon.code}' pelo utilizador ID {plex_user_id} já estava registado. "
+                "Nada a fazer (registo idempotente)."
+            )
+            return False
+
         coupon.use_count += 1
-        new_usage = CouponUsage(user_plex_id=plex_user_id, coupon_id=coupon.id)
+        new_usage = CouponUsage(user_plex_id=int(plex_user_id), coupon_id=coupon.id)
         db.session.add(new_usage)
-        logger.info(f"Uso do cupão '{code}' registado para o utilizador ID {plex_user_id}. Contagem: {coupon.use_count}.")
+        logger.info(f"Uso do cupão '{coupon.code}' registado para o utilizador ID {plex_user_id}. Contagem: {coupon.use_count}.")
         return True
 
     def has_user_used_coupon(self, plex_user_id, code):
         # 🚀 OTIMIZAÇÃO: Busca apenas o ID para ser instantâneo, em vez de carregar a linha toda
+        normalizado = normalize_coupon_code(code)
+        if not normalizado:
+            return False
         usage_exists = db.session.query(CouponUsage.id).join(Coupon).filter(
-            Coupon.code == code,
+            func.upper(Coupon.code) == normalizado,
             CouponUsage.user_plex_id == plex_user_id
         ).first()
         return usage_exists is not None
+
+    def get_reserved_coupon_uses(self, code,
+                                 max_age_minutes=RESERVED_COUPON_MAX_AGE_MINUTES):
+        """
+        Quantas cobranças ainda por pagar já reservaram este cupão.
+
+        O 'use_count' só sobe quando o pagamento é confirmado. Entre gerar a
+        cobrança e pagá-la existe uma janela em que o cupão continua a parecer
+        disponível: com um cupão de uso único, dez pessoas geravam dez cobranças e
+        pagavam as dez com desconto. Contar aqui as cobranças abertas fecha essa
+        janela — o mesmo padrão já usado para o crédito de indicações.
+
+        Só contam as cobranças RECENTES: um PIX abandonado fica 'ATIVA' até à
+        limpeza automática (dias depois) e, sem esta janela, um cupão de uso único
+        ficaria bloqueado todo esse tempo por causa de quem desistiu de pagar.
+        """
+        normalizado = normalize_coupon_code(code)
+        if not normalizado:
+            return 0
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=int(max_age_minutes))).isoformat()
+            query = db.session.query(func.count(PixPayment.txid)).filter(
+                func.upper(PixPayment.coupon_code) == normalizado,
+                PixPayment.status.in_(('ATIVA', 'PROCESSANDO')),
+                PixPayment.created_at >= cutoff
+            )
+            return int(query.scalar() or 0)
+        except Exception:
+            return 0
+
+    def has_user_pending_coupon_charge(self, plex_user_id, code,
+                                       max_age_minutes=RESERVED_COUPON_MAX_AGE_MINUTES):
+        """
+        Indica se o utilizador já tem uma cobrança aberta com este cupão.
+
+        Sem esta verificação, a mesma pessoa gerava duas cobranças com o mesmo
+        cupão (o 'já usou' só é registado na confirmação) e pagava ambas com
+        desconto. O PIX que ela já tem continua válido e pagável — só não pode
+        gerar um segundo em paralelo enquanto o primeiro não expira.
+        """
+        normalizado = normalize_coupon_code(code)
+        if not normalizado or not plex_user_id:
+            return False
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=int(max_age_minutes))).isoformat()
+            existe = db.session.query(PixPayment.txid).filter(
+                PixPayment.user_plex_id == int(plex_user_id),
+                func.upper(PixPayment.coupon_code) == normalizado,
+                PixPayment.status.in_(('ATIVA', 'PROCESSANDO')),
+                PixPayment.created_at >= cutoff
+            ).first()
+            return existe is not None
+        except Exception:
+            return False
 
     # --- MÉTODOS DE GAMIFICAÇÃO ---
     def get_unlocked_achievements(self, plex_user_id):
@@ -322,12 +438,33 @@ class DataManager:
             "upcoming_expirations": upcoming_expirations
         }
 
+    def _payments_for_export_query(self, start_date_iso, end_date_iso):
+        return PixPayment.query.filter(
+            PixPayment.status == 'CONCLUIDA',
+            PixPayment.created_at >= start_date_iso,
+            PixPayment.created_at <= end_date_iso
+        ).order_by(PixPayment.created_at.asc())
+
     def get_payments_for_export(self, start_date_iso, end_date_iso):
         try:
-            payments = PixPayment.query.filter(PixPayment.status == 'CONCLUIDA', PixPayment.created_at >= start_date_iso, PixPayment.created_at <= end_date_iso).order_by(PixPayment.created_at.asc()).all()
+            payments = self._payments_for_export_query(start_date_iso, end_date_iso).all()
             return [self._row_to_dict(p) for p in payments]
-        except Exception: 
+        except Exception:
             return []
+
+    def iter_payments_for_export(self, start_date_iso, end_date_iso, batch_size=EXPORT_BATCH_SIZE):
+        """
+        Igual a 'get_payments_for_export', mas devolve um ITERADOR que só traz da
+        base de dados um lote de cada vez.
+
+        A exportação é servida em streaming, mas isso não servia de nada enquanto
+        o primeiro passo era carregar o período inteiro para memória: num
+        relatório de vários anos, o painel construía a lista toda (e um dicionário
+        por transação) antes de enviar um único byte.
+        """
+        query = self._payments_for_export_query(start_date_iso, end_date_iso)
+        for payment in query.yield_per(int(batch_size)):
+            yield self._row_to_dict(payment)
 
     def get_latest_completed_payment(self, plex_user_id):
         payment = PixPayment.query.filter_by(

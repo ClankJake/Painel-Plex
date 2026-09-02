@@ -56,9 +56,13 @@ def validate_json(schema):
             except ValidationError as e:
                 errors = {err['loc'][0]: err['msg'] for err in e.errors()}
                 logger.warning(f"Falha na validação da API para o endpoint '{request.path}': {errors}")
+                # O detalhe entra também na 'message' porque é isso que a interface
+                # mostra no toast — sem ele, o utilizador via apenas "dados
+                # inválidos" e não ficava a saber qual campo corrigir.
+                detalhe = "; ".join(f"{campo}: {msg}" for campo, msg in errors.items())
                 return jsonify({
                     "success": False,
-                    "message": "Dados de entrada inválidos.",
+                    "message": f"Dados de entrada inválidos. {detalhe}".strip(),
                     "errors": errors
                 }), 400
         return wrapper
