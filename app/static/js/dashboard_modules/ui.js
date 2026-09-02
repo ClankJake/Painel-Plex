@@ -2,6 +2,12 @@
 import { dom, state } from './config.js';
 import { getChartColors, formatCurrency, formatTime, formatTimeAgo, formatDateTime, escapeHtml, getReasonText } from './formatters.js';
 import { getUsersForSelection } from './api.js';
+import {
+    syncStreamTimers,
+    removeStreamTimer,
+    clearStreamTimers,
+    streamMediaSignature
+} from './stream_timers.js';
 import { updateSendButtonText } from './handlers.js';
 
 // ==========================================
@@ -162,222 +168,166 @@ function _getStreamStateConfig(streamState) {
     return { color: 'text-green-500', icon: '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>' };
 }
 
+/**
+ * Constrói os textos técnicos do stream (transcode, vídeo, áudio) a partir dos
+ * detalhes devolvidos pela API. É usado tanto ao criar o cartão como ao
+ * atualizá-lo, para que os dois caminhos nunca fiquem com formatos diferentes.
+ */
+function _getStreamDetailTexts(streamDetails) {
+    const sd = streamDetails || {};
+
+    let streamText = sd.is_transcoding ? 'Transcode' : 'Direct Play';
+    if (sd.is_transcoding && typeof sd.transcode_progress === 'number') {
+        streamText += ` (${parseFloat(sd.transcode_progress).toFixed(1)}%)`;
+    }
+
+    return {
+        stream: `${streamText} (${sd.container})`,
+        video: `${sd.video_decision} (${sd.video_codec} ${sd.video_resolution})`,
+        audio: `${sd.audio_decision} (${sd.audio_codec})`
+    };
+}
+
+/**
+ * Linha de detalhe do cartão. O `truncate` fica no `<p>` (elemento de bloco)
+ * porque num `<span>` em linha o corte com reticências não tem qualquer efeito
+ * — era assim que nomes de dispositivos e codecs longos transbordavam o cartão.
+ */
+function _streamDetailLine(sessionKey, field, label, text) {
+    return `<p id="${field}-tooltip-${sessionKey}" class="truncate" title="${escapeHtml(text)}"><strong>${label}:</strong> <span id="${field}-text-${sessionKey}">${escapeHtml(text)}</span></p>`;
+}
+
+function _updateStreamDetailLine(sessionKey, field, text) {
+    const textEl = document.getElementById(`${field}-text-${sessionKey}`);
+    if (!textEl || textEl.textContent === text) return;
+
+    textEl.textContent = text;
+    const tooltipEl = document.getElementById(`${field}-tooltip-${sessionKey}`);
+    if (tooltipEl) tooltipEl.title = text;
+}
+
 function _getStreamCardInnerHtml(s) {
     const stConfig = _getStreamStateConfig(s.state);
-    
+
     // Força o ícone do chromecast se a palavra existir na plataforma ou no nome do player
-    let platformClass = (s.platform || 'default').toLowerCase().replace(/\s+/g, '');
+    let platformClass = (s.platform || 'default').toLowerCase().replace(/[^a-z0-9-]/g, '');
     const rawPlatform = (s.platform || '').toLowerCase();
     const rawPlayer = (s.player || '').toLowerCase();
     if (rawPlatform.includes('chromecast') || rawPlayer.includes('chromecast')) {
         platformClass = 'chromecast';
     }
-    
-    const sd = s.stream_details;
-    
-    let streamText = sd.is_transcoding ? `Transcode` : 'Direct Play';
-    if (sd.is_transcoding && typeof sd.transcode_progress === 'number') {
-        streamText += ` (${parseFloat(sd.transcode_progress).toFixed(1)}%)`;
-    }
-    
+
+    const texts = _getStreamDetailTexts(s.stream_details);
+
     const placeholderImg = "https://placehold.co/150x225/1F2937/E5E7EB?text=Sem+Capa";
     const avatarPlaceholder = "https://placehold.co/24x24/1F2937/E5E7EB?text=U";
 
     return `
         <div class="w-24 sm:w-28 flex-shrink-0">
-            <img src="${s.thumb_url || placeholderImg}" onerror="this.src='${placeholderImg}'" class="w-full h-auto aspect-[2/3] object-cover rounded-md shadow-sm" alt="Poster">
+            <img src="${escapeHtml(s.thumb_url || placeholderImg)}" onerror="this.src='${placeholderImg}'" class="w-full h-auto aspect-[2/3] object-cover rounded-md shadow-sm" alt="Poster">
         </div>
-        <div class="flex-1 min-w-0 w-full space-y-2">
+        <div class="flex-1 min-w-0 space-y-2">
             <div class="flex justify-between items-start gap-2">
                 <div class="flex-1 min-w-0">
-                    <h4 class="font-bold text-base sm:text-lg text-gray-900 dark:text-white truncate" title="${s.title}">${s.title}</h4>
-                    <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate" title="${s.subtitle}">${s.subtitle}</p>
+                    <h4 class="font-bold text-base sm:text-lg text-gray-900 dark:text-white truncate" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</h4>
+                    <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate" title="${escapeHtml(s.subtitle)}">${escapeHtml(s.subtitle)}</p>
                 </div>
-                <div class="platform-icon platform-${platformClass} flex-shrink-0" title="${s.platform}"></div>
+                <div class="platform-icon platform-${platformClass} flex-shrink-0" title="${escapeHtml(s.platform)}"></div>
             </div>
-            
+
             <div class="space-y-1 text-xs text-gray-500 dark:text-gray-400">
-                <p title="${s.player}"><strong>Dispositivo:</strong> <span class="truncate">${s.player}</span></p>
-                <p id="stream-tooltip-${s.session_key}" title="${streamText} (${sd.container})"><strong>Stream:</strong> <span id="stream-text-${s.session_key}" class="truncate">${streamText} (${sd.container})</span></p>
-                <p id="video-tooltip-${s.session_key}" title="${sd.video_decision} (${sd.video_codec} ${sd.video_resolution})"><strong>Video:</strong> <span id="video-text-${s.session_key}" class="truncate">${sd.video_decision} (${sd.video_codec} ${sd.video_resolution})</span></p>
-                <p id="audio-tooltip-${s.session_key}" title="${sd.audio_decision} (${sd.audio_codec})"><strong>Audio:</strong> <span id="audio-text-${s.session_key}" class="truncate">${sd.audio_decision} (${sd.audio_codec})</span></p>
+                ${_streamDetailLine(s.session_key, 'player', 'Dispositivo', s.player)}
+                ${_streamDetailLine(s.session_key, 'stream', 'Stream', texts.stream)}
+                ${_streamDetailLine(s.session_key, 'video', 'Video', texts.video)}
+                ${_streamDetailLine(s.session_key, 'audio', 'Audio', texts.audio)}
             </div>
-            
+
             <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 pt-1">
-                <img src="${s.user_thumb || avatarPlaceholder}" onerror="this.src='${avatarPlaceholder}'" class="w-6 h-6 rounded-full shadow-sm">
-                <span class="font-semibold truncate">${s.user}</span>
-                <div class="ml-auto flex items-center gap-1">
+                <img src="${escapeHtml(s.user_thumb || avatarPlaceholder)}" onerror="this.src='${avatarPlaceholder}'" class="w-6 h-6 rounded-full shadow-sm flex-shrink-0">
+                <span class="font-semibold truncate min-w-0" title="${escapeHtml(s.user)}">${escapeHtml(s.user)}</span>
+                <div class="ml-auto flex items-center gap-1 flex-shrink-0">
                     <span id="time-${s.session_key}" class="text-xs font-mono whitespace-nowrap">${formatTime(s.view_offset)}/${formatTime(s.duration)}</span>
                     <span id="state-icon-${s.session_key}" class="${stConfig.color}">${stConfig.icon}</span>
                 </div>
             </div>
             <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
-                <div id="progress-${s.session_key}" class="bg-yellow-400 h-1.5 rounded-full transition-[width] duration-1000 ease-linear" style="width: ${s.progress || 0}%"></div>
+                <div id="progress-${s.session_key}" class="bg-yellow-400 h-1.5 rounded-full transition-[width] duration-200 ease-linear" style="width: ${s.progress || 0}%"></div>
             </div>
         </div>
     `;
 }
 
-function _createTimerInterval(sessionKey) {
-    const intervalId = setInterval(() => {
-        const timer = state.activeTimers[sessionKey];
-        if (!timer) {
-            clearInterval(intervalId);
-            return;
-        }
-        
-        // Relógio nativo do cliente flui independentemente do servidor
-        const elapsedSinceUpdate = Date.now() - timer.last_updated;
-        const current_offset = timer.view_offset + elapsedSinceUpdate;
-        
-        const timeEl = document.getElementById(`time-${sessionKey}`);
-        const progressEl = document.getElementById(`progress-${sessionKey}`);
-        
-        if (timeEl) timeEl.textContent = `${formatTime(current_offset)}/${formatTime(timer.duration)}`;
-        if (progressEl && timer.duration > 0) {
-            progressEl.style.width = `${Math.min(100, (current_offset / timer.duration) * 100)}%`;
-        }
-    }, 1000);
-    
-    return intervalId;
+/**
+ * Atualiza um cartão já existente sem refazer o HTML todo: só o estado visual
+ * (play/pausa), a percentagem do transcoder e os detalhes de vídeo/áudio, que
+ * são os únicos campos que mudam a meio de uma reprodução.
+ */
+function _updateStreamCardDetails(s) {
+    const stConfig = _getStreamStateConfig(s.state);
+    const iconSpan = document.getElementById(`state-icon-${s.session_key}`);
+    if (iconSpan) {
+        iconSpan.className = stConfig.color;
+        iconSpan.innerHTML = stConfig.icon;
+    }
+
+    const texts = _getStreamDetailTexts(s.stream_details);
+    _updateStreamDetailLine(s.session_key, 'player', s.player);
+    _updateStreamDetailLine(s.session_key, 'stream', texts.stream);
+    _updateStreamDetailLine(s.session_key, 'video', texts.video);
+    _updateStreamDetailLine(s.session_key, 'audio', texts.audio);
 }
 
 export function renderActiveStreamsDashboard(sessions) {
     if (!dom.activeStreamsSection || !dom.activeStreamsContainer) return;
-    const newSessionKeys = new Set(sessions.map(s => s.session_key));
+
+    const activeSessions = Array.isArray(sessions) ? sessions : [];
+    const newSessionKeys = new Set(activeSessions.map(s => s.session_key));
 
     // Limpa streams que já pararam
     dom.activeStreamsContainer.querySelectorAll('.stream-card').forEach(card => {
         const key = card.dataset.sessionKey;
         if (!newSessionKeys.has(key)) {
             card.remove();
-            if (state.activeTimers[key]?.interval) {
-                clearInterval(state.activeTimers[key].interval);
-            }
-            delete state.activeTimers[key];
+            removeStreamTimer(key);
         }
     });
 
-    if (sessions && sessions.length > 0) {
-        dom.activeStreamsSection.classList.remove('hidden');
-        sessions.forEach(s => {
-            let card = dom.activeStreamsContainer.querySelector(`[data-session-key="${s.session_key}"]`);
-            if (!card) {
-                card = document.createElement('div');
-                card.dataset.sessionKey = s.session_key;
-                card.className = 'stream-card bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-xl shadow-md flex items-start gap-3 sm:gap-4 overflow-hidden';
-                dom.activeStreamsContainer.appendChild(card);
-                card.innerHTML = _getStreamCardInnerHtml(s);
-            } else {
-                // Se o cartão já existe, atualizamos apenas os metadados (estado, transcoder, áudio, vídeo) sem refazer o HTML inteiro
-                
-                // 1. Atualizamos o ícone de estado visual
-                const stConfig = _getStreamStateConfig(s.state);
-                const iconSpan = document.getElementById(`state-icon-${s.session_key}`);
-                if (iconSpan) {
-                    iconSpan.className = stConfig.color;
-                    iconSpan.innerHTML = stConfig.icon;
-                }
-
-                // 2. Atualizamos a percentagem do Transcoder
-                const streamTextSpan = document.getElementById(`stream-text-${s.session_key}`);
-                const streamTooltip = document.getElementById(`stream-tooltip-${s.session_key}`);
-                const sd = s.stream_details;
-                
-                if (streamTextSpan && sd) {
-                    let streamText = sd.is_transcoding ? 'Transcode' : 'Direct Play';
-                    if (sd.is_transcoding && typeof sd.transcode_progress === 'number') {
-                        streamText += ` (${parseFloat(sd.transcode_progress).toFixed(1)}%)`;
-                    }
-                    const fullText = `${streamText} (${sd.container})`;
-                    
-                    if (streamTextSpan.textContent !== fullText) {
-                        streamTextSpan.textContent = fullText;
-                        if (streamTooltip) streamTooltip.title = fullText;
-                    }
-                }
-
-                // 3. Atualizamos detalhes de Vídeo e Áudio (caso o utilizador altere a qualidade a meio)
-                const videoTextSpan = document.getElementById(`video-text-${s.session_key}`);
-                const videoTooltip = document.getElementById(`video-tooltip-${s.session_key}`);
-                if (videoTextSpan && sd) {
-                    const videoText = `${sd.video_decision} (${sd.video_codec} ${sd.video_resolution})`;
-                    if (videoTextSpan.textContent !== videoText) {
-                        videoTextSpan.textContent = videoText;
-                        if (videoTooltip) videoTooltip.title = videoText;
-                    }
-                }
-
-                const audioTextSpan = document.getElementById(`audio-text-${s.session_key}`);
-                const audioTooltip = document.getElementById(`audio-tooltip-${s.session_key}`);
-                if (audioTextSpan && sd) {
-                    const audioText = `${sd.audio_decision} (${sd.audio_codec})`;
-                    if (audioTextSpan.textContent !== audioText) {
-                        audioTextSpan.textContent = audioText;
-                        if (audioTooltip) audioTooltip.title = audioText;
-                    }
-                }
-            }
-        });
-    } else {
+    if (activeSessions.length === 0) {
         dom.activeStreamsSection.classList.add('hidden');
         dom.activeStreamsContainer.innerHTML = '';
+        clearStreamTimers();
+        return;
     }
 
-    // Gere o estado dos timers (Com Interpolação Suave - Smart Sync)
-    const now = Date.now();
-    sessions.forEach(s => {
-        const timer = state.activeTimers[s.session_key];
-        
-        if (timer) {
-            // Calcula qual é o tempo que o cliente acha que está a passar na TV agora
-            let clientCurrentOffset = timer.view_offset;
-            if (timer.state === 'playing') {
-                clientCurrentOffset += (now - timer.last_updated);
-            }
+    dom.activeStreamsSection.classList.remove('hidden');
 
-            const stateChanged = timer.state !== s.state;
-            timer.duration = s.duration;
-            timer.state = s.state;
+    activeSessions.forEach(s => {
+        let card = dom.activeStreamsContainer.querySelector(`[data-session-key="${s.session_key}"]`);
+        const signature = streamMediaSignature(s);
 
-            // SMART SYNC: A Magia acontece aqui!
-            // Se a diferença for MAIOR que 5 segundos (ex: o cliente puxou o filme à frente com o comando)
-            // OU se ele meteu no Pause/Play, nós forçamos o tempo do servidor.
-            // Se for menor, ignoramos a latência da rede e deixamos o relógio do painel andar sem solavancos.
-            if (stateChanged || Math.abs(s.view_offset - clientCurrentOffset) > 5000) {
-                timer.view_offset = s.view_offset;
-                timer.last_updated = now;
-            }
+        if (!card) {
+            card = document.createElement('div');
+            card.dataset.sessionKey = s.session_key;
+            // `min-w-0` é essencial: sem ele o cartão é uma célula de grelha com
+            // largura mínima automática e um título sem espaços esticava a coluna
+            // para fora do ecrã em vez de ser cortado.
+            card.className = 'stream-card bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-xl shadow-md flex items-start gap-3 sm:gap-4 min-w-0 overflow-hidden';
+            dom.activeStreamsContainer.appendChild(card);
+        }
 
-            if (s.state !== 'playing' && timer.interval) {
-                // Pausado ou em Buffering: Para o relógio local
-                clearInterval(timer.interval);
-                timer.interval = null;
-                
-                // Atualiza a tela para mostrar o tempo exato em que pausou
-                const timeEl = document.getElementById(`time-${s.session_key}`);
-                const progressEl = document.getElementById(`progress-${s.session_key}`);
-                if (timeEl) timeEl.textContent = `${formatTime(timer.view_offset)}/${formatTime(timer.duration)}`;
-                if (progressEl && timer.duration > 0) {
-                    progressEl.style.width = `${Math.min(100, (timer.view_offset / timer.duration) * 100)}%`;
-                }
-                
-            } else if (s.state === 'playing' && !timer.interval) {
-                // Voltou a dar Play
-                timer.last_updated = now;
-                timer.interval = _createTimerInterval(s.session_key);
-            }
+        if (card.dataset.mediaSignature !== signature) {
+            // Cartão novo, ou a mesma sessão passou a reproduzir outro conteúdo
+            // (o episódio seguinte): reconstrói para não ficar com dados antigos.
+            card.dataset.mediaSignature = signature;
+            card.innerHTML = _getStreamCardInnerHtml(s);
         } else {
-            // Novo filme a iniciar
-            state.activeTimers[s.session_key] = {
-                view_offset: s.view_offset,
-                duration: s.duration,
-                state: s.state,
-                last_updated: now,
-                interval: s.state === 'playing' ? _createTimerInterval(s.session_key) : null
-            };
+            _updateStreamCardDetails(s);
         }
     });
+
+    // O relógio de reprodução corre no seu próprio módulo, com sincronização
+    // suave em relação ao Plex (ver stream_timers.js).
+    syncStreamTimers(activeSessions);
 }
 
 // ==========================================
