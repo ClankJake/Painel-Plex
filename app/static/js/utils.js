@@ -6,15 +6,21 @@
 /**
  * Sanitiza entradas de texto para prevenir ataques XSS (Cross-Site Scripting).
  * Centralizado aqui para evitar repetição (DRY).
+ *
+ * 🛡️ CORREÇÃO: a implementação anterior usava `textContent` + `innerHTML`, que
+ * escapa `&`, `<` e `>` mas NÃO as aspas. Isso é suficiente no corpo do HTML,
+ * mas não dentro de um atributo — e o resultado desta função é interpolado em
+ * `value="..."`, `title="..."` e `data-*="..."` por toda a aplicação. Um valor
+ * com aspas fechava o atributo mais cedo: no melhor caso truncava o conteúdo
+ * (uma biblioteca com aspas no nome deixava de ser partilhada corretamente), no
+ * pior permitia injetar novos atributos. Delega agora em `escapeHTML`, que
+ * também escapa `"` e `'`. Em contexto de texto o resultado é idêntico — o
+ * navegador volta a mostrar as aspas normalmente.
+ *
  * @param {string} str Texto a ser sanitizado.
- * @returns {string} Texto sanitizado.
+ * @returns {string} Texto sanitizado, seguro em corpo E em atributos.
  */
-export const sanitizeHTML = (str) => {
-    if (!str) return '';
-    const temp = document.createElement('div');
-    temp.textContent = str;
-    return temp.innerHTML;
-};
+export const sanitizeHTML = (str) => escapeHTML(str);
 
 /**
  * Copia um texto para a área de transferência usando a API moderna com fallback.
@@ -141,12 +147,27 @@ export function createModal(id, title, body, footer) {
         </div>
     `;
     modal.classList.remove('hidden');
-    // Adiciona evento para fechar o modal ao clicar no fundo
-    modal.addEventListener('click', (e) => {
-        if (e.target.id === id) {
-            modal.classList.add('hidden');
-        }
-    });
+
+    // 🐛 CORREÇÃO: o listener do fundo era adicionado a CADA abertura do modal.
+    // Como o elemento é reutilizado (só o conteúdo é substituído), abrir o mesmo
+    // modal dez vezes deixava dez listeners ligados ao mesmo nó. Marcar o
+    // elemento garante que a ligação é feita uma única vez.
+    if (!modal.dataset.closeHandlersBound) {
+        modal.dataset.closeHandlersBound = 'true';
+
+        // Fecha ao clicar no fundo (fora do conteúdo).
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.classList.add('hidden');
+        });
+
+        // Fecha com Escape — comportamento esperado em qualquer diálogo.
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+                modal.classList.add('hidden');
+            }
+        });
+    }
+
     return modal;
 }
 
@@ -251,6 +272,9 @@ export function restoreButton(button) {
  * Escapa texto para inclusão segura dentro de uma string de HTML.
  * Usar sempre que um valor de origem externa (API, utilizador, nome de ficheiro,
  * mensagem de erro) tiver de ser interpolado num template literal com HTML.
+ *
+ * É uma declaração de função (e não uma const) de propósito: o hoisting permite
+ * que `sanitizeHTML`, definida no topo deste ficheiro, a utilize.
  */
 export function escapeHTML(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({

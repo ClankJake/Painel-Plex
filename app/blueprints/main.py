@@ -32,8 +32,17 @@ def index():
 @login_required
 @admin_required
 def users_page():
-    """Página de gestão de utilizadores (Exclusivo Admin)."""
-    return render_template('users.html')
+    """Página de gestão de utilizadores (Exclusivo Admin).
+
+    🐛 CORREÇÃO: o JavaScript da página já procurava `data-app-base-url` para
+    montar os links de convite e de pagamento, mas o atributo nunca era
+    renderizado. O resultado era que o administrador copiava sempre links com o
+    endereço por onde estava a navegar (por exemplo `http://192.168.1.10:5000`),
+    inutilizáveis fora da rede local. A `APP_BASE_URL` é lida da configuração em
+    cada pedido porque pode ser alterada nas Definições sem reiniciar a app.
+    """
+    app_base_url = (load_or_create_config().get("APP_BASE_URL") or "").strip()
+    return render_template('users.html', app_base_url=app_base_url)
 
 def get_pending_referrer_name():
     """

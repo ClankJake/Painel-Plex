@@ -27,6 +27,20 @@ function toggleSelectAll(container, button) {
 // Estilo padrão para o botão de Cancelar para manter a consistência em todos os modais
 const btnCancelClass = "btn bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors w-full sm:w-auto";
 
+/**
+ * Idioma ativo da página (de `<html lang="...">`). As datas estavam presas a
+ * 'pt-BR' numa aplicação que é traduzida — quem usava o painel noutro idioma
+ * continuava a ver datas em formato brasileiro.
+ */
+const pageLocale = document.documentElement.lang || undefined;
+
+/** Formata uma data/hora no idioma ativo, tolerando valores em falta. */
+const formatDateTime = (value) => {
+    if (!value) return i18n.notAvailable || 'Não disponível';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? (i18n.notAvailable || 'Não disponível') : date.toLocaleString(pageLocale);
+};
+
 // ==========================================
 // MODAIS GENÉRICOS
 // ==========================================
@@ -63,20 +77,22 @@ export function showInviteDetailsModal(details) {
         historyHtml = `<p class="text-sm text-gray-500 italic">${i18n.noUsesYet || 'Nenhum uso registado.'}</p>`;
     }
 
-    const dateCreated = new Date(created_at).toLocaleString();
-    const libList = libraries && libraries.length > 0 ? sanitizeHTML(libraries.join(', ')) : 'Todas';
+    const dateCreated = formatDateTime(created_at);
+    const libList = libraries && libraries.length > 0
+        ? sanitizeHTML(libraries.join(', '))
+        : sanitizeHTML(i18n.allLibraries || 'Todas');
 
     const body = `
         <div class="space-y-4">
             <div class="grid grid-cols-2 gap-3 text-sm bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                <div><span class="font-bold block text-gray-500 dark:text-gray-400">Criado em:</span> <span class="text-gray-900 dark:text-white">${dateCreated}</span></div>
-                <div><span class="font-bold block text-gray-500 dark:text-gray-400">Uso:</span> <span class="text-gray-900 dark:text-white">${use_count} / ${max_uses}</span></div>
-                <div><span class="font-bold block text-gray-500 dark:text-gray-400">Limite Telas:</span> <span class="text-gray-900 dark:text-white">${screen_limit || 'Padrão'}</span></div>
-                <div><span class="font-bold block text-gray-500 dark:text-gray-400">Bibliotecas:</span> <span class="truncate block text-gray-900 dark:text-white" title="${libList}">${libList}</span></div>
-                ${telegram_id ? `<div class="col-span-2"><span class="font-bold block text-gray-500 dark:text-gray-400">Telegram ID Pré-Atribuído:</span> <span class="font-mono text-gray-900 dark:text-white">${sanitizeHTML(telegram_id)}</span></div>` : ''}
+                <div><span class="font-bold block text-gray-500 dark:text-gray-400">${i18n.createdAt || 'Criado em:'}</span> <span class="text-gray-900 dark:text-white">${dateCreated}</span></div>
+                <div><span class="font-bold block text-gray-500 dark:text-gray-400">${i18n.usage || 'Uso'}:</span> <span class="text-gray-900 dark:text-white">${use_count} / ${max_uses}</span></div>
+                <div><span class="font-bold block text-gray-500 dark:text-gray-400">${i18n.screenLimitShort || 'Limite Telas'}:</span> <span class="text-gray-900 dark:text-white">${sanitizeHTML(screen_limit || i18n.default || 'Padrão')}</span></div>
+                <div><span class="font-bold block text-gray-500 dark:text-gray-400">${i18n.libraries}:</span> <span class="truncate block text-gray-900 dark:text-white" title="${libList}">${libList}</span></div>
+                ${telegram_id ? `<div class="col-span-2"><span class="font-bold block text-gray-500 dark:text-gray-400">${i18n.preassignedTelegramId || 'ID do Telegram pré-atribuído'}:</span> <span class="font-mono text-gray-900 dark:text-white">${sanitizeHTML(telegram_id)}</span></div>` : ''}
             </div>
             <div class="pt-2">
-                <h4 class="text-sm font-bold text-gray-900 dark:text-white mb-2">Histórico de Utilização:</h4>
+                <h4 class="text-sm font-bold text-gray-900 dark:text-white mb-2">${i18n.usageHistory || 'Histórico de Utilização'}:</h4>
                 ${historyHtml}
             </div>
         </div>
@@ -100,7 +116,7 @@ export function showInviteDetailsModal(details) {
         </div>
     `;
 
-    const modal = createModal('inviteDetailsModal', `Detalhes: <span class="font-mono text-yellow-600 dark:text-yellow-500">${safeCode}</span>`, body, footer);
+    const modal = createModal('inviteDetailsModal', `${sanitizeHTML(i18n.details || 'Detalhes')}: <span class="font-mono text-yellow-600 dark:text-yellow-500">${safeCode}</span>`, body, footer);
     
     modal.querySelector('#btnCloseDetails').onclick = () => modal.classList.add('hidden');
     
@@ -139,9 +155,9 @@ export function showInviteDetailsModal(details) {
 export function showCreateInviteModal() {
     const telegramIdField = state.telegramEnabled ? `
         <div>
-            <label for="inviteTelegramId" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">Telegram ID (Opcional)</label>
+            <label for="inviteTelegramId" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.telegramIdOptional || 'Telegram ID (Opcional)'}</label>
             <input type="text" id="inviteTelegramId" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" placeholder="Ex: 123456789">
-            <p class="text-xs text-gray-500 mt-1">Se preenchido, a conta ficará logo vinculada a este ID.</p>
+            <p class="text-xs text-gray-500 mt-1">${i18n.telegramIdHint || 'Se preenchido, a conta ficará logo vinculada a este ID.'}</p>
         </div>
     ` : '';
 
@@ -267,13 +283,14 @@ export function showInviteLinkModal(inviteUrl) {
     modal.querySelector('#inviteLinkInput').value = inviteUrl;
 
     modal.querySelector('#modalClose').onclick = () => modal.classList.add('hidden');
+    // 🐛 CORREÇÃO: `copyToClipboard` devolve false quando falha (não lança), pelo
+    // que o `catch` nunca corria e a mensagem de sucesso aparecia à mesma.
     modal.querySelector('#copyInviteLink').onclick = async () => {
-        try {
-            await copyToClipboard(inviteUrl);
-            showToast(i18n.linkCopied, 'success');
-        } catch(e) {
-            showToast('Erro ao copiar', 'error');
-        }
+        const copied = await copyToClipboard(inviteUrl).catch(() => false);
+        showToast(
+            copied ? i18n.linkCopied : (i18n.copyFailed || 'Falha ao copiar. Por favor, copie manualmente.'),
+            copied ? 'success' : 'error'
+        );
     };
 }
 
@@ -377,7 +394,7 @@ export async function showLibraryManagementModal(user = null) {
         <div id="lib-modal-dynamic-body">
             <div class="flex flex-col justify-center items-center py-10">
                 <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-                <span class="text-gray-500 dark:text-gray-400 font-medium">Acessando a biblioteca...</span>
+                <span class="text-gray-500 dark:text-gray-400 font-medium">${i18n.loadingLibraries || i18n.loadingLibs || 'Carregando bibliotecas...'}</span>
             </div>
         </div>`;
         
@@ -386,21 +403,20 @@ export async function showLibraryManagementModal(user = null) {
     const modal = createModal('libraryManagementModal', title, body, footer);
 
     try {
-        // Se for atualização global, não há ID. Caso contrário, pede a lista real via backend
-        const fetchUrl = isBulkUpdate ? null : `/api/users/libraries/${user.id}?t=${new Date().getTime()}`;
-        
         let userLibraries = [];
         let allowSync = false;
-        
+
+        // 🐛 CORREÇÃO: este bloco chamava `fetch('/api/users/libraries/...')` com o
+        // caminho escrito à mão, ignorando os URLs gerados por `url_for` e o
+        // helper `fetchAPI` — logo, sem redirecionamento para o login quando a
+        // sessão expira e sem tratamento de respostas que não sejam JSON.
         if (!isBulkUpdate) {
-            const response = await fetch(fetchUrl);
-            const responseData = await response.json();
-            if (responseData.success) {
-                userLibraries = responseData.libraries || [];
-                allowSync = responseData.allow_sync || false;
-            } else {
-                throw new Error(responseData.message || "Erro na sincronização com o Plex.");
+            const responseData = await api.fetchUserLibraries(user.id);
+            if (!responseData || !responseData.success) {
+                throw new Error((responseData && responseData.message) || i18n.errorLoadingLibs || 'Erro ao carregar bibliotecas.');
             }
+            userLibraries = responseData.libraries || [];
+            allowSync = responseData.allow_sync || false;
         }
 
         const allLibraries = state.allLibraries || [];
@@ -416,7 +432,7 @@ export async function showLibraryManagementModal(user = null) {
         }).join('');
 
         if (allLibraries.length === 0) {
-            checkboxesHtml = `<p class="text-yellow-600 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-xl text-center">Nenhuma biblioteca disponível para partilhar no seu Servidor Plex.</p>`;
+            checkboxesHtml = `<p class="text-yellow-600 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-xl text-center">${i18n.noLibrariesAvailable || 'Nenhuma biblioteca disponível para partilhar no seu Servidor Plex.'}</p>`;
         }
 
         // 🛡️ CORREÇÃO: Toggle Switch Padronizado TailwindCSS
@@ -424,8 +440,8 @@ export async function showLibraryManagementModal(user = null) {
             <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <label class="flex items-center justify-between w-full p-3 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors group">
                     <div class="pr-4">
-                        <span class="text-sm font-bold text-gray-900 dark:text-white block group-hover:text-blue-600 transition-colors">Permitir Downloads</span>
-                        <span class="text-xs text-gray-500 dark:text-gray-400 block">Permite que o utilizador descarregue filmes e séries (Offline)</span>
+                        <span class="text-sm font-bold text-gray-900 dark:text-white block group-hover:text-blue-600 transition-colors">${i18n.allowDownloadsShort || 'Permitir Downloads'}</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400 block">${i18n.allowDownloadsHint || 'Permite que o utilizador descarregue filmes e séries (Offline)'}</span>
                     </div>
                     <div class="relative inline-flex items-center cursor-pointer flex-shrink-0">
                         <input type="checkbox" id="modalAllowSync" class="sr-only peer" ${allowSync ? 'checked' : ''}>
@@ -440,7 +456,7 @@ export async function showLibraryManagementModal(user = null) {
         
         modalBody.innerHTML = `
             <div class="flex justify-between items-center mb-4">
-                <p class="text-sm text-gray-500 dark:text-gray-400">Selecione o acesso permitido:</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">${i18n.selectAllowedAccess || 'Selecione o acesso permitido:'}</p>
                 <button type="button" id="modalSelectAllLibs" class="text-xs bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 px-3 py-1.5 rounded-md transition-colors font-bold">${i18n.selectAll}</button>
             </div>
             <div class="space-y-2 max-h-[40vh] overflow-y-auto custom-scrollbar pr-2">
@@ -451,7 +467,7 @@ export async function showLibraryManagementModal(user = null) {
 
         modalFooter.className = "flex flex-col sm:flex-row justify-end gap-3 w-full";
         modalFooter.innerHTML = `
-            <button id="saveLibraryBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30 w-full sm:w-auto transition-transform transform hover:-translate-y-0.5">Guardar Alterações</button>
+            <button id="saveLibraryBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30 w-full sm:w-auto transition-transform transform hover:-translate-y-0.5">${i18n.saveChanges || 'Guardar Alterações'}</button>
             <button id="libMgmtCancel" class="${btnCancelClass}">${i18n.cancel}</button>
         `;
 
@@ -471,25 +487,16 @@ export async function showLibraryManagementModal(user = null) {
                 return;
             }
 
-            saveButton.disabled = true; 
-            saveButton.innerHTML = 'A Guardar...';
+            saveButton.disabled = true;
+            saveButton.textContent = i18n.saving || 'A guardar...';
             
             const allowSyncToggle = modal.querySelector('#modalAllowSync');
             const allowSyncChecked = allowSyncToggle ? allowSyncToggle.checked : null;
             
             try {
-                let result;
-                if (isBulkUpdate) {
-                    result = await api.updateAllLibraries(selectedLibs);
-                } else {
-                    const payload = { plex_user_id: user.id, libraries: selectedLibs, allow_sync: allowSyncChecked };
-                    const response = await fetch('/api/users/update-libraries', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    result = await response.json();
-                }
+                const result = isBulkUpdate
+                    ? await api.updateAllLibraries(selectedLibs)
+                    : await api.updateUserLibraries(user.id, selectedLibs, allowSyncChecked);
 
                 if (result.success) {
                     showToast(result.message, 'success');
@@ -500,8 +507,8 @@ export async function showLibraryManagementModal(user = null) {
                 }
             } catch (err) {
                 showToast(err.message, 'error');
-                saveButton.disabled = false; 
-                saveButton.innerHTML = 'Guardar Alterações';
+                saveButton.disabled = false;
+                saveButton.textContent = i18n.saveChanges || 'Guardar Alterações';
             }
         };
 
@@ -512,7 +519,7 @@ export async function showLibraryManagementModal(user = null) {
         modalBody.innerHTML = `
             <div class="text-center">
                 <div class="inline-flex p-4 bg-red-100 dark:bg-red-900/30 text-red-500 rounded-full mb-4"><svg class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
-                <p class="text-red-500 dark:text-red-400 font-medium">Erro ao sincronizar: ${e.message}</p>
+                <p class="text-red-500 dark:text-red-400 font-medium">${sanitizeHTML(i18n.syncError || 'Erro ao sincronizar')}: ${sanitizeHTML(e.message)}</p>
             </div>`;
             
         modalFooter.className = "w-full flex justify-end";
@@ -548,7 +555,14 @@ export async function showUserProfileModal(user) {
                 const month = String(expDate.getMonth() + 1).padStart(2, '0');
                 const day = String(expDate.getDate()).padStart(2, '0');
                 expirationDateValue = `${year}-${month}-${day}`;
-                expirationTimeValue = expDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                // 🐛 CORREÇÃO: a hora vinha de `toLocaleTimeString('pt-BR', ...)`, mas
+                // <input type="time"> exige sempre "HH:MM" em 24 horas. Noutro idioma
+                // o resultado seria "11:30 PM" e o campo ficaria vazio. Construir a
+                // partir dos getters locais (como a data, acima) é inequívoco em
+                // qualquer idioma e evita as diferenças entre os ciclos h23/h24.
+                const hours = String(expDate.getHours()).padStart(2, '0');
+                const minutes = String(expDate.getMinutes()).padStart(2, '0');
+                expirationTimeValue = `${hours}:${minutes}`;
             } catch (e) {}
         }
 
@@ -668,7 +682,7 @@ export async function showUserProfileModal(user) {
             sendNotificationButton.onclick = async () => {
                 sendNotificationButton.disabled = true;
                 const origText = sendNotificationButton.textContent;
-                sendNotificationButton.textContent = 'Enviando...';
+                sendNotificationButton.textContent = i18n.sending || 'Enviando...';
                 try {
                     const result = await api.notifyUser(user.id);
                     showToast(result.message, result.success ? 'success' : 'error');
@@ -722,11 +736,11 @@ export async function showUserProfileModal(user) {
 
 export function showExtendTrialModal(user) {
     const safeUsername = sanitizeHTML(user.username);
-    let currentTrialEndDateFormatted = 'N/A';
+    let currentTrialEndDateFormatted = i18n.notAvailable || 'Não disponível';
     
     if (user.trial_end_date) {
         try {
-            currentTrialEndDateFormatted = new Date(user.trial_end_date).toLocaleString('pt-BR');
+            currentTrialEndDateFormatted = formatDateTime(user.trial_end_date);
         } catch (e) {}
     }
 
@@ -816,13 +830,14 @@ export async function showPaymentHistoryModal(user) {
                     </thead>
                     <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                         ${result.payments.map(p => {
-                            const desc = p.description || `${p.provider} - ${p.screens > 0 ? `${p.screens} Telas` : 'Padrão'}`;
+                            const screensLabel = p.screens > 1 ? i18n.screenPlural : i18n.screenSingular;
+                            const desc = p.description || `${p.provider} - ${p.screens > 0 ? `${p.screens} ${screensLabel}` : (i18n.default || 'Padrão')}`;
                             const isOk = p.status === 'CONCLUIDA';
                             const badgeClass = isOk ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300';
                             
                             return `
                                 <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">${new Date(p.created_at).toLocaleString('pt-BR')}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">${formatDateTime(p.created_at)}</td>
                                     <td class="px-4 py-3 text-sm text-gray-800 dark:text-gray-200">${sanitizeHTML(desc)}</td>
                                     <td class="px-4 py-3 text-sm font-mono font-bold text-gray-900 dark:text-white">${p.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                                     <td class="px-4 py-3 text-sm"><span class="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${badgeClass}">${sanitizeHTML(p.status)}</span></td>

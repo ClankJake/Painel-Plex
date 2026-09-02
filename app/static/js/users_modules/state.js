@@ -22,24 +22,36 @@ export let telegramEnabled = false;
 // PREFERÊNCIAS DO UTILIZADOR (PERSISTENTES)
 // ==========================================
 
+const DEFAULT_VIEW_STATE = Object.freeze({
+    filter: 'all',
+    searchTerm: '',
+    sortBy: 'name_asc'
+});
+
 // Recuperação segura do LocalStorage (Previne crashes da página se o JSON estiver corrompido)
 let savedViewState = null;
 try {
     const rawData = localStorage.getItem('userListViewState');
     if (rawData) {
-        savedViewState = JSON.parse(rawData);
+        const parsed = JSON.parse(rawData);
+        // Só aceitamos um objeto simples: um array ou um valor primitivo guardado
+        // por engano não pode passar a fazer de estado.
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            savedViewState = parsed;
+        }
     }
 } catch (error) {
     console.warn('Erro ao ler viewState do localStorage. A restaurar definições padrão.', error);
     localStorage.removeItem('userListViewState');
 }
 
-// Estado padrão caso seja o primeiro acesso ou ficheiro corrompido
-export let viewState = savedViewState || {
-    filter: 'all',
-    searchTerm: '',
-    sortBy: 'name_asc'
-};
+// 🐛 CORREÇÃO: antes era `savedViewState || <padrão>`. Um objeto guardado de forma
+// incompleta (por exemplo `{}`, de uma versão anterior ou de uma escrita
+// interrompida) é na mesma "verdadeiro", pelo que substituía o padrão INTEIRO e
+// deixava `sortBy` a undefined — o comparador de ordenação chamava então
+// `order.startsWith(...)` sobre undefined e a grelha nunca chegava a desenhar-se.
+// Fundir sobre o padrão garante que todas as chaves existem sempre.
+export let viewState = { ...DEFAULT_VIEW_STATE, ...(savedViewState || {}) };
 
 // ==========================================
 // SETTERS (FUNÇÕES DE ATUALIZAÇÃO BÁSICA)

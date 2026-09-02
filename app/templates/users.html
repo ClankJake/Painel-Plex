@@ -75,9 +75,12 @@
             {{ _('Gestão de Convites') }}
         </h3>
 
-        <div class="flex space-x-1 bg-gray-100 dark:bg-gray-700/50 rounded-lg p-1">
-            <button id="tab-invites-active" class="px-3 py-1 text-sm font-medium rounded-md shadow-sm bg-white dark:bg-gray-600 text-gray-900 dark:text-white transition-all focus:outline-none">{{ _('Ativos') }}</button>
-            <button id="tab-invites-history" class="px-3 py-1 text-sm font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600/50 transition-all focus:outline-none">{{ _('Histórico') }}</button>
+        <div class="flex space-x-1 bg-gray-100 dark:bg-gray-700/50 rounded-lg p-1" role="tablist" aria-label="{{ _('Gestão de Convites') }}">
+            <!-- As classes iniciais têm de ser exatamente as que `toggleTabStyles` (ui.js)
+                 aplica e remove. Antes o estado ativo usava `shadow-sm`, que o JS nunca
+                 retirava: ao mudar para o Histórico, a aba "Ativos" ficava com sombra. -->
+            <button id="tab-invites-active" role="tab" aria-selected="true" class="px-3 py-1 text-sm font-medium rounded-md transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/50 bg-white dark:bg-gray-600 shadow text-gray-900 dark:text-white">{{ _('Ativos') }}</button>
+            <button id="tab-invites-history" role="tab" aria-selected="false" class="px-3 py-1 text-sm font-medium rounded-md transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">{{ _('Histórico') }}</button>
         </div>
     </div>
 
@@ -99,10 +102,10 @@
             <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                 <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" /></svg>
             </div>
-            <input type="search" id="searchInput" placeholder="{{ _('Pesquisar por nome ou email...') }}" class="w-full py-2.5 pl-11 pr-4 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-all shadow-sm">
+            <input type="search" id="searchInput" aria-label="{{ _('Pesquisar por nome ou email...') }}" placeholder="{{ _('Pesquisar por nome ou email...') }}" class="w-full py-2.5 pl-11 pr-4 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-all shadow-sm">
         </div>
         <div class="relative flex-shrink-0">
-            <select id="sortSelect" class="w-full sm:w-48 py-2.5 pl-3 pr-10 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-all shadow-sm appearance-none cursor-pointer">
+            <select id="sortSelect" aria-label="{{ _('Ordenar por') }}" class="w-full sm:w-48 py-2.5 pl-3 pr-10 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-all shadow-sm appearance-none cursor-pointer">
                 <option value="name_asc">{{ _('Nome (A-Z)') }}</option>
                 <option value="name_desc">{{ _('Nome (Z-A)') }}</option>
                 <option value="exp_asc">{{ _('Vencimento (Mais Próximo)') }}</option>
@@ -116,33 +119,33 @@
 
     <!-- Abas de Filtro de Utilizadores -->
     <div class="border-b border-gray-200 dark:border-gray-700 overflow-hidden">
-        <nav id="userTabs" class="-mb-px flex space-x-1 sm:space-x-2 overflow-x-auto no-scrollbar" aria-label="Tabs">
+        <nav id="userTabs" role="tablist" class="-mb-px flex space-x-1 sm:space-x-2 overflow-x-auto no-scrollbar" aria-label="{{ _('Filtrar usuários') }}">
             <!-- Aba Todos -->
-            <button data-filter="all" class="user-tab active">
+            <button data-filter="all" role="tab" aria-selected="true" class="user-tab active">
                 <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-blue-500" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" /></svg>
                 <span class="tab-text">{{ _('Todos') }}</span>
                 <span id="count-all" class="tab-count bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-300">0</span>
             </button>
             <!-- Aba Ativos -->
-            <button data-filter="active" class="user-tab">
+            <button data-filter="active" role="tab" aria-selected="false" class="user-tab">
                 <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-green-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
                 <span class="tab-text">{{ _('Ativos') }}</span>
                 <span id="count-active" class="tab-count bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">0</span>
             </button>
             <!-- Aba Em Teste -->
-            <button data-filter="trial" class="user-tab">
+            <button data-filter="trial" role="tab" aria-selected="false" class="user-tab">
                 <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-purple-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.414L11 10.586V6z" clip-rule="evenodd" /></svg>
                 <span class="tab-text">{{ _('Em Teste') }}</span>
                 <span id="count-trial" class="tab-count bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">0</span>
             </button>
             <!-- Aba Bloqueados -->
-            <button data-filter="blocked" class="user-tab">
+            <button data-filter="blocked" role="tab" aria-selected="false" class="user-tab">
                 <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-red-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm-2.5 8V5.5a2.5 2.5 0 115 0V9h-5z" clip-rule="evenodd" /></svg>
                 <span class="tab-text">{{ _('Bloqueados') }}</span>
                 <span id="count-blocked" class="tab-count bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">0</span>
             </button>
             <!-- Aba Inativos -->
-            <button data-filter="inactive" class="user-tab">
+            <button data-filter="inactive" role="tab" aria-selected="false" class="user-tab">
                 <svg xmlns="http://www.w3.org/2000/svg" class="tab-icon text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>
                 <span class="tab-text">{{ _('Inativos') }}</span>
                 <span id="count-inactive" class="tab-count bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300">0</span>
@@ -151,7 +154,7 @@
     </div>
     
     <!-- Grelha onde os cartões de utilizador serão inseridos -->
-     <div id="userGrid" class="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-5 min-h-[250px]">
+     <div id="userGrid" role="tabpanel" aria-live="polite" aria-busy="true" class="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-5 min-h-[250px]">
         <!-- Indicador de carregamento inicial -->
         <div class="col-span-full flex flex-col items-center justify-center py-16">
             <div class="relative w-12 h-12 mb-4">
@@ -207,6 +210,7 @@
         data-url-api-users-update-all-libraries="{{ url_for('users_api.update_all_libraries_route') }}"
         data-url-api-users-payments-base="{{ url_for('users_api.get_user_payments_history', plex_user_id=0) }}"
         data-url-base-invite-page="/invite/"
+        data-app-base-url="{{ app_base_url }}"
         data-i18n-error="{{ _('Erro') }}"
         data-i18n-loading-invites="{{ _('Carregando convites...') }}"
         data-i18n-no-pending-invites='{{ _('Nenhum convite encontrado nesta aba.') }}'
@@ -340,6 +344,29 @@
         data-i18n-extending="{{ _('Estendendo...') }}"
         data-i18n-invalid-extension-duration="{{ _('Por favor, insira uma duração válida (pelo menos 1 minuto).') }}"
         data-i18n-no-uses-yet="{{ _('Nenhum uso registado.') }}"
+        data-i18n-exhausted="{{ _('Esgotado') }}"
+        data-i18n-expired-on="{{ _('Vencido em:') }}"
+        data-i18n-created-at="{{ _('Criado em:') }}"
+        data-i18n-usage="{{ _('Uso') }}"
+        data-i18n-screen-limit-short="{{ _('Limite Telas') }}"
+        data-i18n-all-libraries="{{ _('Todas') }}"
+        data-i18n-default="{{ _('Padrão') }}"
+        data-i18n-usage-history="{{ _('Histórico de Utilização') }}"
+        data-i18n-preassigned-telegram-id="{{ _('ID do Telegram pré-atribuído') }}"
+        data-i18n-details="{{ _('Detalhes') }}"
+        data-i18n-telegram-id-optional="{{ _('Telegram ID (Opcional)') }}"
+        data-i18n-telegram-id-hint="{{ _('Se preenchido, a conta ficará logo vinculada a este ID.') }}"
+        data-i18n-no-payment-token="{{ _('Este usuário ainda não tem um link de pagamento gerado.') }}"
+        data-i18n-loading-libraries="{{ _('Acessando a biblioteca...') }}"
+        data-i18n-no-libraries-available="{{ _('Nenhuma biblioteca disponível para partilhar no seu Servidor Plex.') }}"
+        data-i18n-allow-downloads-short="{{ _('Permitir Downloads') }}"
+        data-i18n-saving="{{ _('A guardar...') }}"
+        data-i18n-save-changes="{{ _('Guardar Alterações') }}"
+        data-i18n-sending="{{ _('Enviando...') }}"
+        data-i18n-sync-error="{{ _('Erro ao sincronizar') }}"
+        data-i18n-not-available="{{ _('Não disponível') }}"
+        data-i18n-allow-downloads-hint="{{ _('Permite que o utilizador descarregue filmes e séries (Offline)') }}"
+        data-i18n-select-allowed-access="{{ _('Selecione o acesso permitido:') }}"
 >
 </script>
 {% endblock %}
