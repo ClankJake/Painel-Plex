@@ -14,7 +14,7 @@ from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from sqlalchemy import event
 
 from . import extensions
-from .config import load_or_create_config, is_configured
+from .config import load_or_create_config, is_configured, CONFIG_DIR
 from .scheduler import setup_scheduler, set_app_for_jobs
 from . import models
 from . import sockets
@@ -76,7 +76,10 @@ def create_app() -> Flask:
     app.config.update(app_config)
 
     # Definição de Caminhos
-    config_dir_path = os.path.join(app.root_path, '..', 'config')
+    # Mesmo diretório usado pelo módulo de configuração (respeita a variável
+    # de ambiente PAINEL_PLEX_CONFIG_DIR), para que config.json, base de dados
+    # e cache vivam sempre no mesmo sítio.
+    config_dir_path = CONFIG_DIR
     db_path = os.path.join(config_dir_path, 'app_data.db')
     scheduler_db_path = os.path.join(config_dir_path, 'scheduler_jobs.db')
     cache_dir_path = os.path.join(config_dir_path, 'cache', 'web_cache')

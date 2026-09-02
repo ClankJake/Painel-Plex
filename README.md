@@ -150,6 +150,35 @@ Recomendada apenas para quem pretende contribuir com o desenvolvimento.
     python run.py
     ```
 
+### Testes
+
+A suíte de testes usa **pytest** e corre sem depender de um servidor Plex, do
+Tautulli ou de qualquer gateway de pagamento — as integrações externas são
+substituídas por duplos de teste.
+
+```bash
+# instala as dependências de desenvolvimento (inclui as de produção)
+pip install -r requirements-dev.txt
+
+# executa todos os testes
+pytest
+
+# apenas um ficheiro, ou um teste específico
+pytest tests/test_pricing_manager.py
+pytest -k proration
+
+# com relatório de cobertura
+pytest --cov=app --cov-report=term-missing
+```
+
+Os testes nunca tocam na sua instalação: a variável de ambiente
+`PAINEL_PLEX_CONFIG_DIR` é apontada para uma pasta temporária, por isso o
+`config/config.json` e a base de dados reais ficam intactos. Essa mesma variável
+pode ser usada em produção para guardar os dados noutro diretório.
+
+Os testes correm automaticamente no GitHub Actions em cada push e pull request
+para as branches `main` e `stable` (ver `.github/workflows/tests.yml`).
+
 ### Notas para desenvolvedores
 
 -   O painel roda com **1 worker Gunicorn** de propósito. O Flask-SocketIO é usado sem `message_queue`, então múltiplos workers fariam os eventos de tempo real se perderem entre processos.
@@ -163,6 +192,7 @@ Painel-Plex/
 ├── config/          # config.json e bancos de dados (criado automaticamente)
 ├── certs/           # certificado da Efí, se usado
 ├── docs/            # guias de configuração das integrações
+├── tests/           # suíte de testes (pytest)
 └── app/
     ├── blueprints/  # rotas (páginas e API)
     ├── services/    # integrações: Plex, Tautulli, gateways, notificações

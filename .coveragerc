@@ -1,0 +1,12 @@
+[run]
+source = app
+omit =
+    tests/*
+    app/static/*
+    app/templates/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
