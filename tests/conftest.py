@@ -138,11 +138,16 @@ class FakeDataManager:
     serviços (preços, indicações) sem tocar na base de dados.
     """
 
-    def __init__(self, profiles=None, coupons=None, used_coupons=None, blocked=None):
+    def __init__(self, profiles=None, coupons=None, used_coupons=None, blocked=None,
+                 paid_users=None, reserved_credit=None):
         self.profiles = profiles or {}
         self.coupons = coupons or {}
         self.used_coupons = set(used_coupons or [])
         self.blocked = blocked or {}
+        # Utilizadores com pagamentos já confirmados e crédito preso em cobranças
+        # abertas — ambos entram nas regras do programa de indicações.
+        self.paid_users = set(paid_users or [])
+        self.reserved_credit = reserved_credit or {}
         self.achievements = {}
         self.notifications = []
         self.terminations = []
@@ -180,6 +185,57 @@ class FakeDataManager:
 
     def get_users_referred_by(self, plex_user_id):
         return [p for p in self.profiles.values() if p.get("referred_by") == int(plex_user_id)]
+
+    # --- Indicações (equivalentes em memória das operações atómicas) ---
+    def set_user_referral_code(self, plex_user_id, code):
+        profile = self.profiles.setdefault(int(plex_user_id), {"plex_user_id": int(plex_user_id)})
+        if not profile.get("referral_code"):
+            profile["referral_code"] = code
+        return profile["referral_code"]
+
+    def add_referral_credit(self, plex_user_id, amount):
+        valor = round(float(amount or 0), 2)
+        if valor <= 0:
+            return 0.0
+        profile = self.profiles.setdefault(int(plex_user_id), {"plex_user_id": int(plex_user_id)})
+        profile["referral_credit"] = round(float(profile.get("referral_credit") or 0) + valor, 2)
+        return valor
+
+    def consume_referral_credit(self, plex_user_id, amount):
+        profile = self.profiles.get(int(plex_user_id))
+        if not profile:
+            return 0.0
+        disponivel = float(profile.get("referral_credit") or 0)
+        usado = min(disponivel, max(0.0, float(amount or 0)))
+        if usado > 0:
+            profile["referral_credit"] = round(disponivel - usado, 2)
+        return usado
+
+    def get_reserved_referral_credit(self, plex_user_id, exclude_txid=None):
+        return float(self.reserved_credit.get(int(plex_user_id), 0.0))
+
+    def claim_referral_reward(self, plex_user_id):
+        profile = self.profiles.get(int(plex_user_id))
+        if not profile or not profile.get("referred_by") or profile.get("referral_rewarded"):
+            return False
+        profile["referral_rewarded"] = True
+        return True
+
+    def release_referral_reward(self, plex_user_id):
+        profile = self.profiles.get(int(plex_user_id))
+        if not profile:
+            return False
+        profile["referral_rewarded"] = False
+        return True
+
+    def count_rewarded_referrals(self, plex_user_id):
+        return len([
+            p for p in self.profiles.values()
+            if p.get("referred_by") == int(plex_user_id) and p.get("referral_rewarded")
+        ])
+
+    def user_has_completed_payment(self, plex_user_id):
+        return int(plex_user_id) in self.paid_users
 
     def reset_all_users_xp(self):
         for profile in self.profiles.values():

@@ -160,6 +160,7 @@ def load_or_create_config():
             "REFERRAL_REWARD_DAYS": 7,
             "REFERRAL_REWARD_CREDIT": 5.0,
             "REFERRAL_DEFAULT_INVITE_CODE": "",
+            "REFERRAL_MAX_REWARDS_PER_USER": 0,
             "XP_LEVEL_TABLE": [],
             "XP_RESET_ENABLED": False,
             "XP_RESET_MONTHS": [],
@@ -318,6 +319,7 @@ def load_or_create_config():
             _set_default("REFERRAL_REWARD_DAYS", 7)
             _set_default("REFERRAL_REWARD_CREDIT", 5.0)
             _set_default("REFERRAL_DEFAULT_INVITE_CODE", "")
+            _set_default("REFERRAL_MAX_REWARDS_PER_USER", 0)
             _set_default("XP_LEVEL_TABLE", [])
             _set_default("XP_RESET_ENABLED", False)
             _set_default("XP_RESET_MONTHS", [])

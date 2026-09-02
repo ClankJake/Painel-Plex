@@ -185,12 +185,34 @@ class TestCreditoDeIndicacoes:
         # 25.00 -50% = 12.50, menos 5.00 de crédito = 7.50
         assert resultado["discounted_price"] == 7.5
 
-    def test_ignorado_quando_a_recompensa_e_em_dias(self, app_context, configurar):
+    def test_saldo_continua_a_ser_gasto_se_a_recompensa_passar_a_dias(self, app_context, configurar):
+        """
+        O crédito só se acumula no modo 'credit', mas o que já foi ganho não pode
+        ficar preso quando o administrador muda a recompensa para dias grátis.
+        """
         configurar(REFERRAL_ENABLED=True, REFERRAL_REWARD_TYPE="days")
 
         resultado = self._gestor(5.0).calculate_price("2", plex_user_id=1, apply_referral_credit=True)
 
-        assert resultado["referral_credit_applied"] == 0.0
+        assert resultado["referral_credit_applied"] == 5.0
+        assert resultado["discounted_price"] == 13.0
+
+    def test_credito_preso_noutra_cobranca_nao_e_oferecido_de_novo(self, app_context, configurar):
+        """
+        Duas cobranças abertas ao mesmo tempo não podem descontar o mesmo saldo:
+        o que já está reservado numa deixa de estar disponível para a seguinte.
+        """
+        configurar(REFERRAL_ENABLED=True, REFERRAL_REWARD_TYPE="credit")
+        gestor = PricingManager(FakeDataManager(
+            profiles={1: {"plex_user_id": 1, "referral_credit": 5.0}},
+            reserved_credit={1: 4.0},
+        ))
+
+        resultado = gestor.calculate_price("2", plex_user_id=1, apply_referral_credit=True)
+
+        assert resultado["referral_credit_available"] == 1.0
+        assert resultado["referral_credit_applied"] == 1.0
+        assert resultado["discounted_price"] == 17.0
 
     def test_ignorado_com_o_sistema_desativado(self, app_context, configurar):
         configurar(REFERRAL_ENABLED=False, REFERRAL_REWARD_TYPE="credit")

@@ -114,6 +114,33 @@ class TestRegisterReferral:
         assert resultado["success"] is False
         assert dm.profiles[2]["referred_by"] == 99
 
+    def test_indicacao_circular_e_bloqueada(self, cenario):
+        """Dois amigos a trocarem códigos entre si não podem premiar-se um ao outro."""
+        gestor, dm, _subs = cenario
+        dm.profiles[1]["referred_by"] = 2
+        dm.profiles[2]["referral_code"] = "WXYZ6789"
+
+        resultado = gestor.register_referral(2, "ABCD2345")
+
+        assert resultado["success"] is False
+        assert dm.profiles[2].get("referred_by") is None
+
+    def test_quem_ja_pagou_nao_pode_usar_um_codigo(self, app_context, configurar):
+        """O programa premeia assinaturas NOVAS, não a renovação de um cliente antigo."""
+        configurar()
+        dm = FakeDataManager(
+            profiles={
+                1: {"plex_user_id": 1, "username": "ana", "referral_code": "ABCD2345"},
+                2: {"plex_user_id": 2, "username": "bruno"},
+            },
+            paid_users=[2],
+        )
+
+        resultado = ReferralManager(dm).register_referral(2, "ABCD2345")
+
+        assert resultado["success"] is False
+        assert dm.profiles[2].get("referred_by") is None
+
     def test_sistema_desativado(self, app_context, configurar):
         configurar(REFERRAL_ENABLED=False)
         gestor = ReferralManager(FakeDataManager(profiles={1: {"plex_user_id": 1, "referral_code": "ABCD2345"}}))
@@ -196,6 +223,44 @@ class TestRecompensa:
 
         assert ReferralManager(dm, subs).reward_referrer_on_payment(2)["rewarded"] is False
         assert subs.chamadas == []
+
+    def test_limite_de_recompensas_por_utilizador(self, app_context, configurar):
+        """Com o teto atingido, quem indica deixa de acumular novas recompensas."""
+        configurar(REFERRAL_MAX_REWARDS_PER_USER=1)
+        dm = FakeDataManager(profiles={
+            1: {"plex_user_id": 1, "username": "ana"},
+            2: {"plex_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": True},
+            3: {"plex_user_id": 3, "username": "carla", "referred_by": 1, "referral_rewarded": False},
+        })
+        subs = SubscriptionManagerEspiao()
+
+        resultado = ReferralManager(dm, subs).reward_referrer_on_payment(3)
+
+        assert resultado["rewarded"] is False
+        assert subs.chamadas == []
+        # A oportunidade fica intacta: se o limite subir, a recompensa ainda pode ser paga.
+        assert dm.profiles[3]["referral_rewarded"] is False
+
+    def test_uma_entrega_falhada_nao_queima_a_recompensa(self, app_context, configurar):
+        """
+        Se a entrega rebentar a meio, o indicado não pode ficar marcado como
+        'já recompensado' — senão quem o indicou nunca chegaria a receber nada.
+        """
+        configurar()
+
+        class SubscriptionManagerQueRebenta:
+            def add_days_to_subscription(self, plex_user_id, days):
+                raise RuntimeError("Plex indisponível")
+
+        dm = FakeDataManager(profiles={
+            1: {"plex_user_id": 1, "username": "ana"},
+            2: {"plex_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
+        })
+
+        resultado = ReferralManager(dm, SubscriptionManagerQueRebenta()).reward_referrer_on_payment(2)
+
+        assert resultado == {"success": False, "rewarded": False}
+        assert dm.profiles[2]["referral_rewarded"] is False
 
     def test_falha_no_indicador_nunca_quebra_o_pagamento(self, app_context, configurar):
         configurar()

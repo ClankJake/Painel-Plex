@@ -81,6 +81,62 @@ class TestPerfis:
         assert len(data_manager.get_users_referred_by(1)) == 2
         assert data_manager.get_users_referred_by(2) == []
 
+    def test_codigo_de_indicacao_so_e_atribuido_uma_vez(self, data_manager):
+        data_manager.set_user_profile(1, {"username": "ana"})
+
+        assert data_manager.set_user_referral_code(1, "ABCD2345") == "ABCD2345"
+        # Um segundo pedido (ex: dois separadores abertos) mantém o código original.
+        assert data_manager.set_user_referral_code(1, "WXYZ6789") == "ABCD2345"
+
+    def test_credito_de_indicacoes_soma_e_abate(self, data_manager):
+        data_manager.set_user_profile(1, {"username": "ana"})
+
+        assert data_manager.add_referral_credit(1, 5.0) == 5.0
+        assert data_manager.add_referral_credit(1, 2.5) == 2.5
+        assert data_manager.get_user_profile(1)["referral_credit"] == 7.5
+
+        assert data_manager.consume_referral_credit(1, 3.0) == 3.0
+        assert data_manager.get_user_profile(1)["referral_credit"] == 4.5
+
+    def test_credito_nunca_fica_negativo(self, data_manager):
+        data_manager.set_user_profile(1, {"username": "ana", "referral_credit": 2.0})
+
+        assert data_manager.consume_referral_credit(1, 10.0) == 2.0
+        assert data_manager.get_user_profile(1)["referral_credit"] == 0.0
+        assert data_manager.consume_referral_credit(1, 1.0) == 0.0
+
+    @pytest.mark.parametrize("valor", [0, -5, None])
+    def test_valores_nao_positivos_sao_ignorados(self, data_manager, valor):
+        data_manager.set_user_profile(1, {"username": "ana", "referral_credit": 3.0})
+
+        assert data_manager.add_referral_credit(1, valor) == 0.0
+        assert data_manager.consume_referral_credit(1, valor) == 0.0
+        assert data_manager.get_user_profile(1)["referral_credit"] == 3.0
+
+    def test_recompensa_de_indicacao_e_reservada_uma_so_vez(self, data_manager):
+        data_manager.set_user_profile(1, {"username": "ana"})
+        data_manager.set_user_profile(2, {"username": "bruno", "referred_by": 1})
+
+        # É esta condição que impede o mesmo pagamento, processado duas vezes em
+        # paralelo, de pagar a recompensa a dobrar.
+        assert data_manager.claim_referral_reward(2) is True
+        assert data_manager.claim_referral_reward(2) is False
+
+        assert data_manager.release_referral_reward(2) is True
+        assert data_manager.claim_referral_reward(2) is True
+
+    def test_recompensa_sem_indicacao_nao_e_reservada(self, data_manager):
+        data_manager.set_user_profile(3, {"username": "carla"})
+
+        assert data_manager.claim_referral_reward(3) is False
+
+    def test_contagem_de_indicacoes_recompensadas(self, data_manager):
+        data_manager.set_user_profile(1, {"username": "ana"})
+        data_manager.set_user_profile(2, {"username": "bruno", "referred_by": 1, "referral_rewarded": True})
+        data_manager.set_user_profile(3, {"username": "carla", "referred_by": 1, "referral_rewarded": False})
+
+        assert data_manager.count_rewarded_referrals(1) == 1
+
     def test_apagar_perfil(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana"})
 
@@ -278,6 +334,47 @@ class TestPagamentos:
 
         assert data_manager.set_payment_referral_credit("tx1", 5.0) is True
         assert data_manager.get_pix_payment("tx1")["referral_credit_used"] == 5.0
+
+    def test_credito_reservado_em_cobrancas_abertas(self, data_manager):
+        data_manager.set_user_profile(1, {"username": "ana"})
+        data_manager.create_pix_payment("tx1", 1, "ana", 25.0, "efi", 2, "ref-1")
+        data_manager.create_pix_payment("tx2", 1, "ana", 25.0, "efi", 2, "ref-2")
+        data_manager.set_payment_referral_credit("tx1", 5.0)
+        data_manager.set_payment_referral_credit("tx2", 3.0)
+
+        assert data_manager.get_reserved_referral_credit(1) == 8.0
+        assert data_manager.get_reserved_referral_credit(1, exclude_txid="tx2") == 5.0
+
+        # Depois de paga, a cobrança deixa de reter crédito (já foi debitado).
+        data_manager.update_pix_payment_status("tx1", "CONCLUIDA")
+        assert data_manager.get_reserved_referral_credit(1) == 3.0
+
+    def test_cobranca_abandonada_liberta_o_credito(self, data_manager):
+        """Um PIX gerado e nunca pago não pode prender o saldo indefinidamente."""
+        from datetime import datetime, timedelta, timezone
+
+        data_manager.set_user_profile(1, {"username": "ana"})
+        data_manager.create_pix_payment("tx-velha", 1, "ana", 25.0, "efi", 2, "ref-1")
+        data_manager.set_payment_referral_credit("tx-velha", 5.0)
+
+        from app.extensions import db
+        from app.models import PixPayment
+
+        PixPayment.query.get("tx-velha").created_at = (
+            datetime.now(timezone.utc) - timedelta(days=3)
+        ).isoformat()
+        db.session.commit()
+
+        assert data_manager.get_reserved_referral_credit(1) == 0.0
+
+    def test_historico_de_pagamentos_confirmados(self, data_manager):
+        data_manager.set_user_profile(1, {"username": "ana"})
+        data_manager.create_pix_payment("tx1", 1, "ana", 25.0, "efi", 2, "ref-1")
+
+        assert data_manager.user_has_completed_payment(1) is False
+
+        data_manager.update_pix_payment_status("tx1", "CONCLUIDA")
+        assert data_manager.user_has_completed_payment(1) is True
 
     def test_marcar_como_pro_rata(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana"})

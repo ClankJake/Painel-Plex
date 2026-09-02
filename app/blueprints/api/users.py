@@ -19,6 +19,7 @@ from ..auth import admin_required, login_required
 from .decorators import user_lookup_by_id, validate_json
 from .schemas import RenewSubscriptionSchema, UpdateProfileSchema, UpdateAccountProfileSchema
 from ...models import UserProfile
+from ...extensions import limiter
 
 logger = logging.getLogger(__name__)
 users_api_bp = Blueprint('users_api', __name__)
@@ -859,6 +860,7 @@ def get_my_referral_info():
 
 @users_api_bp.route('/referral/claim', methods=['POST'])
 @login_required
+@limiter.limit("10 per hour")
 def claim_referral_code():
     """
     Regista que o utilizador autenticado foi indicado por alguém. Só tem efeito
