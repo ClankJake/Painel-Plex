@@ -131,6 +131,7 @@ export const fieldMap = {
     'REFERRAL_REWARD_DAYS': { type: 'number', default: 7 },
     'REFERRAL_REWARD_CREDIT': { type: 'decimal', default: 5 },
     'REFERRAL_DEFAULT_INVITE_CODE': { type: 'text', default: '' },
+    'REFERRAL_MAX_REWARDS_PER_USER': { type: 'number', default: 0 },
     'XP_BONUS_PER_COMPLETED_ITEM': { type: 'number', default: 20 },
     'XP_COMPLETION_THRESHOLD_PERCENT': { type: 'number', default: 90 },
     'XP_RESET_ENABLED': { type: 'checkbox', default: false },

@@ -22,6 +22,11 @@ from tzlocal import get_localzone_name
 
 logger = logging.getLogger(__name__)
 
+# Janela em que uma cobrança por pagar ainda "segura" o crédito de indicações
+# que reservou. Passado este tempo o PIX está, na prática, abandonado (os QR
+# Codes expiram muito antes) e o saldo volta a ficar disponível.
+RESERVED_CREDIT_MAX_AGE_HOURS = 24
+
 # --- HELPERS ---
 def get_app_timezone():
     """Obtém o fuso horário real do sistema (respeita a variável TZ do Docker)."""
@@ -404,6 +409,171 @@ class DataManager:
             return [self._row_to_dict(p) for p in profiles]
         except Exception:
             return []
+
+    # ------------------------------------------------------------------
+    # OPERAÇÕES ATÓMICAS DO PROGRAMA DE INDICAÇÕES
+    # ------------------------------------------------------------------
+    # Estes métodos escrevem APENAS a coluna em causa, com um UPDATE ... WHERE,
+    # em vez de ler o perfil inteiro, alterá-lo em memória e voltar a gravá-lo.
+    # Duas razões, ambas com consequências reais:
+    #   • dinheiro: o mesmo webhook entregue duas vezes (ou duas cobranças a
+    #     serem confirmadas ao mesmo tempo) não pode somar nem abater crédito a
+    #     dobrar — o que acontecia com o padrão ler-alterar-gravar;
+    #   • gravar o perfil completo a partir de uma leitura antiga sobrepõe
+    #     campos que outro fluxo (renovação, sincronização com o Plex) acabou de
+    #     mudar entre a leitura e a escrita.
+
+    @db_transaction
+    def set_user_referral_code(self, plex_user_id, code):
+        """
+        Atribui um código de indicação, mas só se o utilizador ainda não tiver um.
+        Devolve o código que ficou efetivamente em vigor — o novo, ou o que já lá
+        estava caso outro pedido em paralelo se tenha antecipado.
+
+        Propaga IntegrityError se o código colidir com o de outro utilizador
+        (há um índice único na coluna); quem chama deve gerar outro e tentar de novo.
+        """
+        uid = int(plex_user_id)
+        updated = UserProfile.query.filter(
+            UserProfile.plex_user_id == uid,
+            (UserProfile.referral_code.is_(None)) | (UserProfile.referral_code == '')
+        ).update({UserProfile.referral_code: code}, synchronize_session=False)
+
+        if updated:
+            return code
+
+        # Já tinha código (ou o perfil não existe): devolve o que está gravado.
+        row = db.session.query(UserProfile.referral_code).filter(
+            UserProfile.plex_user_id == uid
+        ).first()
+        return row[0] if row else None
+
+    @db_transaction
+    def add_referral_credit(self, plex_user_id, amount):
+        """Soma crédito de indicações ao saldo. Devolve o valor somado."""
+        value = round(float(amount or 0), 2)
+        if value <= 0:
+            return 0.0
+        updated = UserProfile.query.filter(
+            UserProfile.plex_user_id == int(plex_user_id)
+        ).update(
+            {UserProfile.referral_credit: func.coalesce(UserProfile.referral_credit, 0.0) + value},
+            synchronize_session=False
+        )
+        return value if updated else 0.0
+
+    @db_transaction
+    def consume_referral_credit(self, plex_user_id, amount):
+        """
+        Abate crédito do saldo e devolve o valor efetivamente consumido. O saldo
+        nunca fica negativo: se o pedido exceder o disponível, consome só o resto.
+        """
+        uid = int(plex_user_id)
+        wanted = round(max(0.0, float(amount or 0)), 2)
+        if wanted <= 0:
+            return 0.0
+
+        # Caso normal: há saldo suficiente. O WHERE garante que dois abatimentos
+        # simultâneos nunca gastam o mesmo crédito duas vezes.
+        if UserProfile.query.filter(
+            UserProfile.plex_user_id == uid,
+            UserProfile.referral_credit >= wanted
+        ).update(
+            {UserProfile.referral_credit: UserProfile.referral_credit - wanted},
+            synchronize_session=False
+        ):
+            return wanted
+
+        # Saldo insuficiente: leva o que restar e deixa o saldo a zero.
+        row = db.session.query(UserProfile.referral_credit).filter(
+            UserProfile.plex_user_id == uid
+        ).first()
+        available = round(float(row[0] or 0), 2) if row else 0.0
+        if available <= 0:
+            return 0.0
+
+        if UserProfile.query.filter(
+            UserProfile.plex_user_id == uid,
+            UserProfile.referral_credit > 0,
+            UserProfile.referral_credit <= wanted
+        ).update({UserProfile.referral_credit: 0.0}, synchronize_session=False):
+            return available
+        return 0.0
+
+    def get_reserved_referral_credit(self, plex_user_id, exclude_txid=None,
+                                     max_age_hours=RESERVED_CREDIT_MAX_AGE_HOURS):
+        """
+        Crédito já comprometido em cobranças geradas e ainda por pagar.
+
+        Sem isto, um utilizador com R$ 20 de saldo podia abrir duas cobranças ao
+        mesmo tempo, cada uma com os R$ 20 descontados, e pagar as duas: recebia
+        R$ 40 de desconto com R$ 20 de crédito.
+
+        Só contam as cobranças RECENTES: um QR Code PIX abandonado fica 'ATIVA'
+        até à limpeza automática (dias depois) e, sem esta janela, o crédito de
+        quem desistiu de um pagamento ficaria retido todo esse tempo.
+        """
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=int(max_age_hours))).isoformat()
+            query = db.session.query(
+                func.coalesce(func.sum(PixPayment.referral_credit_used), 0.0)
+            ).filter(
+                PixPayment.user_plex_id == int(plex_user_id),
+                PixPayment.status.in_(('ATIVA', 'PROCESSANDO')),
+                PixPayment.referral_credit_used > 0,
+                PixPayment.created_at >= cutoff
+            )
+            if exclude_txid:
+                query = query.filter(PixPayment.txid != exclude_txid)
+            return round(float(query.scalar() or 0.0), 2)
+        except Exception:
+            return 0.0
+
+    @db_transaction
+    def claim_referral_reward(self, plex_user_id):
+        """
+        Marca — de forma atómica — que a recompensa pela indicação DESTE utilizador
+        já foi paga, e devolve True apenas a quem 'ganhou a corrida'.
+
+        É esta condição no UPDATE (e não uma leitura prévia do campo) que garante
+        que a recompensa é entregue exatamente uma vez, mesmo que o pagamento seja
+        processado duas vezes em simultâneo.
+        """
+        return bool(UserProfile.query.filter(
+            UserProfile.plex_user_id == int(plex_user_id),
+            UserProfile.referred_by.isnot(None),
+            UserProfile.referral_rewarded.is_(False)
+        ).update({UserProfile.referral_rewarded: True}, synchronize_session=False))
+
+    @db_transaction
+    def release_referral_reward(self, plex_user_id):
+        """
+        Desfaz a marca de recompensa paga. Usado quando a entrega falha a meio:
+        sem isto, o indicado ficava marcado como 'já recompensado' e quem o
+        indicou nunca receberia nada.
+        """
+        return bool(UserProfile.query.filter(
+            UserProfile.plex_user_id == int(plex_user_id)
+        ).update({UserProfile.referral_rewarded: False}, synchronize_session=False))
+
+    def count_rewarded_referrals(self, plex_user_id):
+        """Quantas indicações deste utilizador já foram efetivamente recompensadas."""
+        try:
+            return UserProfile.query.filter(
+                UserProfile.referred_by == int(plex_user_id),
+                UserProfile.referral_rewarded.is_(True)
+            ).count()
+        except Exception:
+            return 0
+
+    def user_has_completed_payment(self, plex_user_id):
+        """Indica se o utilizador já tem algum pagamento confirmado no histórico."""
+        try:
+            return bool(PixPayment.query.filter_by(
+                user_plex_id=int(plex_user_id), status='CONCLUIDA'
+            ).first())
+        except Exception:
+            return False
 
     @db_transaction
     def reset_all_users_xp(self):

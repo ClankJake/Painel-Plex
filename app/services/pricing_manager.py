@@ -71,13 +71,17 @@ class PricingManager:
         Nunca debita — só calcula. O crédito aplicado está sempre limitado tanto
         pelo saldo disponível como pelo próprio preço (nunca gera valor negativo
         nem "troco").
+
+        Nota: o saldo é abatido independentemente do tipo de recompensa que
+        estiver configurado NESTE momento. O crédito só se acumula no modo
+        'credit', mas se o administrador mudar depois para 'dias grátis' o
+        dinheiro que os utilizadores já ganharam continua a ser deles — antes
+        ficava invisível e impossível de gastar.
         """
         empty = {"available": 0.0, "applied": 0.0, "final_price": current_price}
 
         config = load_or_create_config()
         if not config.get("REFERRAL_ENABLED", False):
-            return empty
-        if config.get("REFERRAL_REWARD_TYPE", "days") != "credit":
             return empty
 
         try:
@@ -88,7 +92,19 @@ class PricingManager:
         if not profile:
             return empty
 
-        available = round(float(profile.get('referral_credit') or 0), 2)
+        balance = round(float(profile.get('referral_credit') or 0), 2)
+        if balance <= 0:
+            return empty
+
+        # 🛡️ Desconta o crédito já comprometido em cobranças abertas: sem isto,
+        # gerar duas cobranças ao mesmo tempo dava o desconto completo nas duas e
+        # o utilizador gastava o mesmo saldo a dobrar.
+        try:
+            reserved = round(float(self.data_manager.get_reserved_referral_credit(plex_user_id) or 0), 2)
+        except Exception:
+            reserved = 0.0
+
+        available = round(max(0.0, balance - reserved), 2)
         if available <= 0:
             return empty
 

@@ -143,15 +143,36 @@ async function loadReferralCard() {
         if (data.reward_type === 'credit') {
             rewardEl.textContent = (state.i18n.referralRewardCredit || 'Ganhe R$ {credit} de crédito por cada amigo que assinar pelo seu link.')
                 .replace('{credit}', Number(data.reward_credit || 0).toFixed(2));
-            document.getElementById('referral-credit-box')?.classList.remove('hidden');
-            document.getElementById('referral-credit').textContent = `R$ ${Number(data.current_credit || 0).toFixed(2)}`;
-            // Com 4 caixas a grid de 3 colunas fica desequilibrada: escondemos a de
-            // pendentes, cuja informação já está implícita (indicados - confirmados).
-            document.getElementById('referral-pending-box')?.classList.add('hidden');
         } else {
             rewardEl.textContent = (state.i18n.referralRewardDays || 'Ganhe {days} dia(s) grátis por cada amigo que assinar pelo seu link.')
                 .replace('{days}', data.reward_days || 0);
             document.getElementById('referral-pending').textContent = data.pending || 0;
+        }
+
+        // O saldo é mostrado sempre que exista, mesmo que a recompensa atual já
+        // seja em dias: quem ganhou crédito continua a poder gastá-lo, e escondê-lo
+        // dava a impressão de que o dinheiro tinha desaparecido.
+        const saldo = Number(data.current_credit || 0);
+        const reservado = Number(data.reserved_credit || 0);
+        if (data.reward_type === 'credit' || saldo > 0) {
+            document.getElementById('referral-credit-box')?.classList.remove('hidden');
+            document.getElementById('referral-credit').textContent = `R$ ${saldo.toFixed(2)}`;
+            // Com 4 caixas a grid de 3 colunas fica desequilibrada: escondemos a de
+            // pendentes, cuja informação já está implícita (indicados - confirmados).
+            document.getElementById('referral-pending-box')?.classList.add('hidden');
+
+            // Parte do saldo pode estar presa numa cobrança ainda por pagar: dizê-lo
+            // evita a surpresa de ver um desconto menor do que o saldo mostrado.
+            const reservadoEl = document.getElementById('referral-credit-reserved');
+            if (reservadoEl) {
+                if (reservado > 0) {
+                    reservadoEl.textContent = (state.i18n.referralCreditReserved || 'R$ {value} reservado numa cobrança em aberto')
+                        .replace('{value}', reservado.toFixed(2));
+                    reservadoEl.classList.remove('hidden');
+                } else {
+                    reservadoEl.classList.add('hidden');
+                }
+            }
         }
 
         document.getElementById('referral-total').textContent = data.total_referred || 0;
