@@ -4,7 +4,7 @@ import * as dom from './dom.js';
 import * as state from './state.js';
 import * as api from './api.js';
 import { i18n, urls } from './config.js';
-import { showToast } from '../utils.js';
+import { showToast, escapeHTML } from '../utils.js';
 import { handleInviteAction, handleUserAction } from './handlers.js';
 import * as modals from './modals.js';
 
@@ -35,13 +35,33 @@ export const {
 
 /**
  * Sanitiza entradas de texto para prevenir ataques XSS ao injetar no HTML.
+ *
+ * 🛡️ NOTA: usa `escapeHTML`, que escapa TAMBÉM as aspas. A versão anterior
+ * baseava-se em `textContent`/`innerHTML`, que deixa `"` e `'` intactos — o que
+ * é seguro no corpo do HTML, mas não dentro de um atributo. Como estes valores
+ * acabam em `value="..."`, `title="..."` e `data-code="..."`, o título de uma
+ * biblioteca com aspas truncava silenciosamente o `value` da checkbox e o
+ * administrador partilhava bibliotecas diferentes das que escolheu.
  */
-const sanitizeHTML = (str) => {
-    if (!str) return '';
-    const temp = document.createElement('div');
-    temp.textContent = str;
-    return temp.innerHTML;
-};
+const sanitizeHTML = (str) => escapeHTML(str);
+
+/**
+ * Idioma ativo da página (definido em `<html lang="...">`), para que datas e
+ * números sigam a tradução escolhida em vez de estarem presos a pt-BR.
+ */
+const pageLocale = document.documentElement.lang || undefined;
+
+const formatDate = (date) => date.toLocaleDateString(pageLocale);
+const formatDateTime = (date) => date.toLocaleString(pageLocale);
+
+/**
+ * Normaliza texto para pesquisa: minúsculas e sem acentos, para que "jose"
+ * encontre "José" e vice-versa.
+ */
+const normalizeForSearch = (str) => String(str ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 
 /**
  * Alterna as classes do Tailwind para o estado de Abas (Tabs) ativas/inativas.
@@ -103,6 +123,8 @@ export function renderInvites() {
     // Atualiza visualmente os botões das abas
     toggleTabStyles(dom.inviteTabActive, currentTab === 'active');
     toggleTabStyles(dom.inviteTabHistory, currentTab === 'history');
+    if (dom.inviteTabActive) dom.inviteTabActive.setAttribute('aria-selected', String(currentTab === 'active'));
+    if (dom.inviteTabHistory) dom.inviteTabHistory.setAttribute('aria-selected', String(currentTab === 'history'));
 
     // Filtra convites
     const filteredInvites = allInvites.filter(inv => {
@@ -173,7 +195,7 @@ function renderInviteCard(details) {
             
             expirationHtml = `<span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>${expiresInText}</span>`;
         } else {
-            expirationHtml = `<span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1" title="Expirou em ${expDate.toLocaleString()}"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> ${expDate.toLocaleDateString()}</span>`;
+            expirationHtml = `<span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1" title="${sanitizeHTML(`${i18n.expiredOn || 'Vencido em:'} ${formatDateTime(expDate)}`)}"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> ${formatDate(expDate)}</span>`;
         }
     }
 
@@ -218,21 +240,22 @@ export function renderUserGrid() {
         usersToRender = usersToRender.filter(u => u.status === 'inactive');
     }
 
-    // 2. Pesquisa de Texto
-    if (state.viewState.searchTerm) {
-        const term = state.viewState.searchTerm.toLowerCase();
+    // 2. Pesquisa de Texto (insensível a maiúsculas E a acentos)
+    const rawTerm = (state.viewState.searchTerm || '').trim();
+    if (rawTerm) {
+        const term = normalizeForSearch(rawTerm);
         usersToRender = usersToRender.filter(u =>
-            (u.username && u.username.toLowerCase().includes(term)) ||
-            (u.email && u.email.toLowerCase().includes(term)) ||
-            (u.name && u.name.toLowerCase().includes(term))
+            normalizeForSearch(u.username).includes(term) ||
+            normalizeForSearch(u.email).includes(term) ||
+            normalizeForSearch(u.name).includes(term)
         );
     }
 
     // 3. Ordenação Otimizada
     usersToRender.sort((a, b) => {
         const order = state.viewState.sortBy;
-        if (order === 'name_asc') return (a.username || '').localeCompare(b.username || '');
-        if (order === 'name_desc') return (b.username || '').localeCompare(a.username || '');
+        if (order === 'name_asc') return (a.username || '').localeCompare(b.username || '', pageLocale, { sensitivity: 'base' });
+        if (order === 'name_desc') return (b.username || '').localeCompare(a.username || '', pageLocale, { sensitivity: 'base' });
         
         if (order.startsWith('exp_')) {
             const timeA = a.expiration_date ? new Date(a.expiration_date).getTime() : 0;
@@ -273,9 +296,12 @@ function renderUserCard(user) {
     const sName = sanitizeHTML(user.name);
     const sEmail = sanitizeHTML(user.email);
     
-    // Gerar Avatar Seguro
-    const initial = sUsername ? sUsername.charAt(0).toUpperCase() : 'U';
-    const safeAvatar = user.thumb || `https://placehold.co/80x80/1F2937/E5E7EB?text=${initial}`;
+    // Gerar Avatar Seguro.
+    // A inicial é retirada do nome ORIGINAL: `sUsername` já está escapado, e um
+    // nome começado por "&" daria "&" (o primeiro caráter de "&amp;").
+    const initial = encodeURIComponent((user.username || 'U').trim().charAt(0).toUpperCase() || 'U');
+    const fallbackAvatar = `https://placehold.co/80x80/1F2937/E5E7EB?text=${initial}`;
+    const safeAvatar = sanitizeHTML(user.thumb || fallbackAvatar);
 
     // Avaliação de Status (Expiração vs Teste)
     let statusHtml = ''; 
@@ -293,9 +319,9 @@ function renderUserCard(user) {
             
             // Cores: Vermelho se expirado (isExpired = true ou daysLeft < 0), Amarelo se faltarem <= 7 dias.
             const dateColor = isExpired ? 'text-red-600 dark:text-red-500 font-bold' : (daysLeft <= 7 ? 'text-yellow-600 dark:text-yellow-500 font-bold' : 'text-gray-500 dark:text-gray-400');
-            const labelText = isExpired ? 'Vencido em:' : i18n.expiresOn;
+            const labelText = isExpired ? (i18n.expiredOn || 'Vencido em:') : i18n.expiresOn;
 
-            statusHtml = `<div class="mt-1 text-xs flex items-center ${dateColor}"><span>${labelText} ${expDate.toLocaleDateString('pt-BR')}</span></div>`;
+            statusHtml = `<div class="mt-1 text-xs flex items-center ${dateColor}"><span>${sanitizeHTML(labelText)} ${formatDate(expDate)}</span></div>`;
         } catch(e) { }
     } else if (user.trial_end_date) {
         try {
@@ -342,7 +368,7 @@ function renderUserCard(user) {
 
     card.innerHTML = `
         <div class="flex items-start flex-1">
-            <img src="${safeAvatar}" onerror="this.src='https://placehold.co/80x80/1F2937/E5E7EB?text=${initial}'" alt="Avatar" class="w-16 h-16 rounded-full mr-4 border border-gray-200 dark:border-gray-700 object-cover bg-gray-100 dark:bg-gray-900">
+            <img src="${safeAvatar}" alt="" loading="lazy" class="user-avatar w-16 h-16 rounded-full mr-4 border border-gray-200 dark:border-gray-700 object-cover bg-gray-100 dark:bg-gray-900">
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
                     <div class="w-3 h-3 rounded-full ${statusIndicatorColor} shadow-sm flex-shrink-0" title="${statusIndicatorTitle}"></div>
@@ -358,6 +384,18 @@ function renderUserCard(user) {
             ${isInactive ? inactiveButtons : activeButtons}
         </div>
     `;
+
+    // 🐛 CORREÇÃO: o fallback do avatar estava num atributo `onerror` inline que
+    // voltava a apontar para o mesmo endereço externo. Se esse endereço também
+    // falhasse (rede fechada, servidor em baixo), o `onerror` disparava sem fim.
+    // Agora é ligado por JS e desliga-se após a primeira tentativa.
+    const avatarImg = card.querySelector('.user-avatar');
+    if (avatarImg) {
+        avatarImg.onerror = () => {
+            avatarImg.onerror = null;
+            if (avatarImg.src !== fallbackAvatar) avatarImg.src = fallbackAvatar;
+        };
+    }
 
     // Vincula a ação de clique nos botões recém-criados
     card.querySelectorAll('button').forEach(button => {
@@ -380,6 +418,7 @@ export async function loadStatus(force = false) {
         const icon = dom.refreshButton.querySelector('svg');
         if (icon) icon.classList.add('animate-spin');
     }
+    if (dom.userGrid) dom.userGrid.setAttribute('aria-busy', 'true');
 
     try {
         const data = await api.fetchStatus(force);
@@ -400,6 +439,7 @@ export async function loadStatus(force = false) {
             const icon = dom.refreshButton.querySelector('svg');
             if (icon) icon.classList.remove('animate-spin');
         }
+        if (dom.userGrid) dom.userGrid.setAttribute('aria-busy', 'false');
     }
 }
 

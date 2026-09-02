@@ -22,7 +22,12 @@ export const updateUserProfile = (plexUserId, payload) => fetchAPI(urls.apiUsers
 export const extendTrial = (plexUserId, payload) => fetchAPI(urls.apiUsersExtendTrialBase.replace('0', plexUserId), 'POST', payload);
 export const notifyUser = (plexUserId) => fetchAPI(urls.apiUsersNotifyBase.replace('0', plexUserId), 'POST');
 export const fetchUserLibraries = (plexUserId) => fetchAPI(urls.apiUsersLibrariesBase.replace('0', plexUserId));
-export const updateUserLibraries = (plexUserId, libraries) => fetchAPI(urls.apiUsersUpdateLibraries, 'POST', { plex_user_id: plexUserId, libraries });
+// `allowSync` só é enviado quando definido: o backend distingue "não mexer" (undefined)
+// de "ativar/desativar downloads" (true/false).
+export const updateUserLibraries = (plexUserId, libraries, allowSync = null) => fetchAPI(
+    urls.apiUsersUpdateLibraries, 'POST',
+    { plex_user_id: plexUserId, libraries, allow_sync: allowSync }
+);
 export const removeUser = (plexUserId) => fetchAPI(urls.apiUsersRemove, 'POST', { plex_user_id: plexUserId });
 export const blockUser = (plexUserId) => fetchAPI(urls.apiUsersBlock, 'POST', { plex_user_id: plexUserId });
 export const unblockUser = (plexUserId) => fetchAPI(urls.apiUsersUnblock, 'POST', { plex_user_id: plexUserId });

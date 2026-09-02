@@ -258,7 +258,7 @@ def get_status():
     all_users_to_return = _sync_plex_and_local_profiles(all_plex_users_list, config.get('ADMIN_USER'))
 
     return jsonify({
-        'users': sorted(all_users_to_return, key=lambda u: u['username'].lower()),
+        'users': sorted(all_users_to_return, key=lambda u: (u.get('username') or '').lower()),
         'libraries': extensions.plex_manager.conn.get_libraries(),
         'telegram_enabled': config.get("TELEGRAM_ENABLED", False)
     })
@@ -651,7 +651,11 @@ def toggle_overseerr_access_route(user):
 @users_api_bp.route('/payments/<int:plex_user_id>')
 @login_required
 def get_user_payments_history(plex_user_id):
-    if not current_user.is_admin and int(current_user.id) != plex_user_id:
+    # 🐛 CORREÇÃO DE SEGURANÇA: a verificação anterior era `not current_user.is_admin`.
+    # Como `is_admin` é um MÉTODO, a expressão avaliava o objeto do método — sempre
+    # verdadeiro — e a condição nunca era satisfeita. Na prática, qualquer utilizador
+    # autenticado conseguia ler o histórico de pagamentos de qualquer outra pessoa.
+    if not current_user.is_admin() and str(current_user.id) != str(plex_user_id):
         return jsonify({"success": False, "message": _("Acesso não autorizado.")}), 403
     return jsonify({"success": True, "payments": extensions.data_manager.get_payments_by_user(plex_user_id)})
 

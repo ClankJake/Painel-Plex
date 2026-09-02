@@ -57,7 +57,7 @@ const _determineRenewalBase = (expirationDateStr) => {
 export function handleInviteAction(action, code, details = null) {
     if (action === 'copy-invite') {
         // Corrigido para respeitar o domínio público configurado
-        const inviteUrl = `${getBaseUrl()}${urls.baseInvitePage}${code}`;
+        const inviteUrl = `${getBaseUrl()}${urls.baseInvitePage}${encodeURIComponent(code)}`;
         modals.showInviteLinkModal(inviteUrl);
         return;
     } 
@@ -130,18 +130,21 @@ export function handleUserAction(action, user) {
         'renew-month':       () => handleQuickRenewal(user),
         'extend-trial':      () => modals.showExtendTrialModal(user),
         'copy-payment-link': async () => {
-            if (user.payment_token) {
-                // Corrigido para respeitar o domínio público configurado
-                const paymentUrl = `${getBaseUrl()}/pay/${user.payment_token}`;
-                try {
-                    await copyToClipboard(paymentUrl);
-                    showToast(i18n.paymentLinkCopied || 'Link de pagamento copiado!', 'success');
-                } catch (err) {
-                    showToast(i18n.copyFailed || 'Falha ao copiar o link.', 'error');
-                }
-            } else {
-                showToast('Token de pagamento não gerado para este utilizador.', 'error');
+            if (!user.payment_token) {
+                showToast(i18n.noPaymentToken || 'Este usuário ainda não tem um link de pagamento gerado.', 'error');
+                return;
             }
+            // Corrigido para respeitar o domínio público configurado
+            const paymentUrl = `${getBaseUrl()}/pay/${encodeURIComponent(user.payment_token)}`;
+            // 🐛 CORREÇÃO: `copyToClipboard` DEVOLVE false quando falha (não lança),
+            // por isso o `catch` nunca corria e a página anunciava "copiado!" mesmo
+            // quando nada tinha ido para a área de transferência.
+            const copied = await copyToClipboard(paymentUrl).catch(() => false);
+            showToast(
+                copied ? (i18n.paymentLinkCopied || 'Link de pagamento copiado!')
+                       : (i18n.copyFailed || 'Falha ao copiar o link.'),
+                copied ? 'success' : 'error'
+            );
         }
     };
 
