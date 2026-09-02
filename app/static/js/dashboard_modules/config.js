@@ -6,7 +6,7 @@ export const state = {
     i18n: {},
     monthlyRevenueChart: null,
     userStatusChart: null,
-    activeTimers: {}, // Para controlar os temporizadores de progresso
+    activeTimers: {}, // Relógios de reprodução das sessões ativas (ver stream_timers.js)
     timeAgoInterval: null,
     allUsersForSelection: [], // Cache para lista de usuários
     selectedUserIds: new Set(), // Estado para armazenar IDs selecionados
