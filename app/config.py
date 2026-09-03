@@ -151,6 +151,11 @@ def load_or_create_config():
             "WHATSAPP_INSTANCE": "",
             "WHATSAPP_DEFAULT_COUNTRY_CODE": "55",
             "WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE": "",
+            # Pausa (segundos) entre cada envio no disparo em massa. A proteção
+            # real contra o limite de ritmo é feita pelo tratamento do 429 e do
+            # Retry-After; isto é apenas uma folga extra, ajustável para quem
+            # tem bases grandes (0 desativa).
+            "BULK_SEND_INTERVAL_SECONDS": 0.2,
             "PRORATION_ENABLED": False,
             "PRORATION_MIN_CHARGE": 2.0,
             "PRORATION_MIN_DAYS": 3,
@@ -310,6 +315,7 @@ def load_or_create_config():
             _set_default("WHATSAPP_INSTANCE", "")
             _set_default("WHATSAPP_DEFAULT_COUNTRY_CODE", "55")
             _set_default("WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE", "")
+            _set_default("BULK_SEND_INTERVAL_SECONDS", 0.2)
             _set_default("PRORATION_ENABLED", False)
             _set_default("PRORATION_MIN_CHARGE", 2.0)
             _set_default("PRORATION_MIN_DAYS", 3)

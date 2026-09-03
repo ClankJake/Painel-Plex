@@ -96,6 +96,16 @@
                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ _('Ao contrário do Discord e do Webhook, o WhatsApp recebe texto simples — não use JSON aqui.') }}</p>
                         </div>
 
+                        <!-- Ritmo do disparo -->
+                        <div class="bg-cyan-50/50 dark:bg-cyan-900/10 p-4 rounded-xl border border-cyan-100 dark:border-cyan-800/30">
+                            <label for="BULK_SEND_INTERVAL_SECONDS" class="block text-sm font-semibold text-cyan-800 dark:text-cyan-400 mb-1 flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                {{ _('Pausa entre envios (segundos)') }}
+                            </label>
+                            <input type="number" step="0.1" min="0" id="BULK_SEND_INTERVAL_SECONDS" class="block w-full px-3 py-2 text-sm rounded-lg border border-cyan-200 bg-white text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-800 dark:border-cyan-700/50 dark:text-white mt-2">
+                            <p class="text-xs text-cyan-600/70 dark:text-cyan-500/70 mt-2">{{ _('Folga extra entre cada mensagem do disparo global. A proteção contra o limite de ritmo das APIs já é automática, por isso 0,2 chega na maioria dos casos — aumente apenas se o seu provedor for restritivo. Este campo grava-se com o botão principal de configurações.') }}</p>
+                        </div>
+
                         <!-- Botão de Salvar Fixo Embaixo -->
                         <div class="pt-2 flex justify-end">
                             <button type="button" id="saveBulkTemplatesButton" class="btn bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-500/30 flex items-center gap-2">

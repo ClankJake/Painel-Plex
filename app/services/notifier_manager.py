@@ -12,13 +12,107 @@ from tzlocal import get_localzone
 
 import requests
 import telebot
+from http.cookiejar import DefaultCookiePolicy
+from requests.adapters import HTTPAdapter
 from telebot import types
+from urllib3.util.retry import Retry
 from flask_babel import gettext as _
 
 from ..config import load_or_create_config
-from ..utils.log_sanitizer import mask_phone, mask_token, mask_url_credentials
+from ..utils.log_sanitizer import mask_phone, mask_url_credentials
 
 logger = logging.getLogger(__name__)
+
+# --- LIMITES DAS APIS EXTERNAS ---
+# Ultrapassar qualquer um destes limites faz a API rejeitar a mensagem INTEIRA,
+# por isso preferimos dividir/cortar do nosso lado a perder a notificação.
+TELEGRAM_MAX_MESSAGE_LEN = 4096
+TELEGRAM_MAX_CAPTION_LEN = 1024
+DISCORD_MAX_CONTENT_LEN = 2000
+DISCORD_MAX_EMBED_DESCRIPTION_LEN = 4096
+
+# (ligação, leitura). O timeout de ligação é curto porque um servidor fora do ar
+# não deve segurar um envio em massa; o de leitura é generoso porque as APIs
+# não-oficiais de WhatsApp costumam demorar a responder.
+HTTP_TIMEOUT = (10, 30)
+
+# Estados que valem a pena repetir: 429 (limite de ritmo) e erros de gateway,
+# em que o pedido comprovadamente NÃO chegou a ser processado. O 500 fica de
+# fora de propósito — pode ter sido processado, e repetir duplicaria a mensagem.
+_RETRY_STATUS = (429, 502, 503, 504)
+
+# Marcadores no formato {nome_do_campo}. Deliberadamente exige que o primeiro
+# caractere seja uma letra/underscore, para nunca casar com a abertura de um
+# objeto JSON (`{"content": ...}`) nos templates de Discord/Webhook.
+_PLACEHOLDER_RE = re.compile(r'\{([A-Za-z_][A-Za-z0-9_]*)\}')
+
+# URLs completos, para os proteger da conversão de markdown (ver _convert_md_to_html).
+_URL_RE = re.compile(r'https?://[^\s<>"\')]+')
+
+
+def _build_http_session():
+    """
+    Cria a sessão HTTP partilhada por todos os canais baseados em HTTP
+    (Webhook, Discord e WhatsApp).
+
+    Porque isto importa: sem sessão, cada `requests.post` abre uma ligação TCP e
+    faz um handshake TLS novo. Num envio em massa para mil utilizadores isso são
+    mil handshakes — dezenas de segundos desperdiçados e uma carga desnecessária
+    no servidor remoto. Com a sessão, as ligações são reutilizadas (keep-alive).
+
+    A política de repetição respeita o cabeçalho `Retry-After`, que é como o
+    Discord e a Evolution API pedem que abrandemos.
+    """
+    session = requests.Session()
+    # A sessão é partilhada por todos os envios: sem isto, um servidor remoto que
+    # devolvesse Set-Cookie escrevia num frasco de cookies comum a todas as
+    # greenlets — estado partilhado que não traz qualquer benefício a webhooks.
+    session.cookies.set_policy(DefaultCookiePolicy(allowed_domains=[]))
+    retry = Retry(
+        total=2,
+        backoff_factor=0.5,
+        status_forcelist=_RETRY_STATUS,
+        allowed_methods=frozenset(['POST']),
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=20)
+    session.mount('https://', adapter)
+    session.mount('http://', adapter)
+    return session
+
+
+def substitute_placeholders(template_str, values, transform=None):
+    """
+    Substitui os marcadores {chave} numa única passagem sobre o template.
+
+    Fazer isto numa passagem (em vez de um `str.replace` por chave) é uma questão
+    de correção, não de desempenho: com substituições sucessivas, um valor
+    introduzido por um utilizador que contivesse o texto '{name}' seria ele
+    próprio substituído na passagem seguinte — uma injeção de template a partir
+    do conteúdo da mensagem.
+
+    Marcadores desconhecidos ficam intactos, para que uma chave escrita com um
+    erro de digitação não destrua o resto da mensagem.
+    """
+    def _replace(match):
+        key = match.group(1)
+        if key not in values:
+            return match.group(0)
+        return transform(values[key]) if transform else values[key]
+
+    return _PLACEHOLDER_RE.sub(_replace, template_str)
+
+
+def truncate(text, limit, suffix='…'):
+    """Corta um texto ao limite da API, sinalizando visivelmente o corte."""
+    if not text or len(text) <= limit:
+        return text
+    return text[:max(0, limit - len(suffix))] + suffix
+
+
+class NotificationError(Exception):
+    """Falha na entrega de uma notificação por um canal específico."""
 
 # --- CONSTANTES DE TEMPLATES PADRÃO ---
 DEFAULT_TEMPLATES = {
@@ -109,9 +203,11 @@ class NotifierManager:
         self.link_shortener = link_shortener_service
         self.socketio = socketio_instance
         self._bot = None
+        # Uma única sessão HTTP para todo o processo: ver _build_http_session().
+        self._http = _build_http_session()
 
-    def _get_bot(self):
-        config = load_or_create_config()
+    def _get_bot(self, config=None):
+        config = config if config is not None else load_or_create_config()
         token = config.get("TELEGRAM_BOT_TOKEN")
         if not token: 
             return None
@@ -120,12 +216,37 @@ class NotifierManager:
         return self._bot
 
     def _convert_md_to_html(self, text):
+        """
+        Converte o markdown simples dos templates para o HTML que o Telegram
+        aceita.
+
+        🐛 Os URLs são postos de lado antes da conversão e repostos no fim. Sem
+        isso, um link legítimo com underscores — muito comum em capas do TMDb ou
+        em links de pagamento — era destruído:
+        'https://x.com/a_b_c' virava 'https://x.com/a<i>b</i>c', e o utilizador
+        recebia um link partido (ou o Telegram recusava a mensagem inteira por
+        HTML inválido).
+        """
         if not text: return ""
+
+        urls = []
+
+        def _stash(match):
+            urls.append(match.group(0))
+            return f"\x00U{len(urls) - 1}\x00"
+
+        text = _URL_RE.sub(_stash, text)
+
         # Uso do modificador flag in-line (?s) = re.DOTALL para que o .* cubra quebras de linha de forma contida
         text = re.sub(r'\*(.*?)\*', r'<b>\1</b>', text, flags=re.DOTALL)
         text = re.sub(r'_(.*?)_', r'<i>\1</i>', text, flags=re.DOTALL)
         text = re.sub(r'`(.*?)`', r'<code>\1</code>', text, flags=re.DOTALL)
-        return text
+
+        def _restore(match):
+            indice = int(match.group(1))
+            return urls[indice] if indice < len(urls) else match.group(0)
+
+        return re.sub(r'\x00U(\d+)\x00', _restore, text)
 
     def _format_template(self, template_str, placeholders, is_json=False, use_html_escape=False):
         if not template_str: return None
@@ -138,69 +259,153 @@ class NotifierManager:
             safe_placeholders[k] = val
             
         if not is_json:
-            try: 
-                return template_str.format(**safe_placeholders)
-            except KeyError as e:
-                logger.error(f"Placeholder {e} ausente na string de template.")
-                return template_str
-        else:
-            output = template_str
-            for key, value in safe_placeholders.items():
-                json_escaped_value = json.dumps(value)[1:-1]
-                output = output.replace(f"{{{key}}}", json_escaped_value)
-            try: 
-                return json.loads(output)
-            except Exception as e: 
-                logger.error(f"Falha ao processar template JSON: {e}")
-                return None
+            return substitute_placeholders(template_str, safe_placeholders)
 
-    def _send_telegram_notification(self, message, chat_id, request_id, reply_markup=None, plex_user_id=None, photo_url=None):
-        bot = self._get_bot()
-        if not bot: return
-        
-        html_message = self._convert_md_to_html(message)
-        max_retries = 3
-        
-        # 🚀 OTIMIZAÇÃO: Substituição de Recursão por Loop Iterativo Seguro
+        # Nos templates JSON o valor tem de ser escapado como conteúdo de string
+        # JSON (aspas, barras, quebras de linha), senão um nome com aspas parte
+        # o payload enviado ao Discord.
+        output = substitute_placeholders(
+            template_str, safe_placeholders, transform=lambda v: json.dumps(v)[1:-1]
+        )
+        try:
+            return json.loads(output)
+        except Exception as e:
+            logger.error(f"Falha ao processar template JSON: {e}")
+            return None
+
+    @staticmethod
+    def _split_message(text, limit):
+        """
+        Parte uma mensagem longa em pedaços dentro do limite da API, cortando de
+        preferência numa quebra de linha para não partir palavras a meio.
+
+        O Telegram recusa (erro 400) qualquer mensagem acima do limite — sem esta
+        divisão, uma mensagem em massa um pouco mais longa simplesmente não era
+        entregue a ninguém.
+        """
+        if not text:
+            return []
+        if len(text) <= limit:
+            return [text]
+
+        pedacos = []
+        restante = text
+        while len(restante) > limit:
+            corte = restante.rfind('\n', 0, limit)
+            if corte <= limit // 2:  # sem quebra de linha útil: corta no limite
+                corte = limit
+            pedacos.append(restante[:corte].rstrip())
+            restante = restante[corte:].lstrip('\n')
+        if restante:
+            pedacos.append(restante)
+        # Um pedaco vazio (bloco so com espacos) seria recusado pela API.
+        return [p for p in pedacos if p.strip()]
+
+    def _telegram_call(self, action, request_id, plex_user_id=None, max_retries=3):
+        """
+        Executa uma chamada à API do Telegram tratando o limite de ritmo (429) e
+        o bloqueio do bot pelo utilizador (403).
+
+        Levanta NotificationError quando a mensagem NÃO foi entregue — incluindo
+        o caso de as tentativas por 429 se esgotarem, que antes terminava em
+        silêncio e era contabilizado como sucesso.
+        """
         for attempt in range(max_retries):
             try:
-                if photo_url:
-                    bot.send_photo(
-                        chat_id=chat_id, photo=photo_url, caption=html_message,
-                        parse_mode='HTML', reply_markup=reply_markup
-                    )
-                else:
-                    bot.send_message(
-                        chat_id=chat_id, text=html_message, parse_mode='HTML',
-                        reply_markup=reply_markup, disable_web_page_preview=True
-                    )
-                return  # Sucesso! Sai do loop.
-                
+                action()
+                return
             except telebot.apihelper.ApiTelegramException as e:
                 if e.error_code == 429:
-                    retry_after = e.result_json.get('parameters', {}).get('retry_after', 5)
-                    logger.warning(f"Telegram Rate Limit atingido. A aguardar {retry_after}s... (Tentativa {attempt + 1}/{max_retries})")
-                    time.sleep(retry_after + 1)
-                    continue  # Tenta de novo na próxima iteração do loop
-                    
-                if e.error_code == 403 and plex_user_id:
-                    logger.warning(f"[ID: {request_id}] Bot bloqueado pelo utilizador {plex_user_id}. A remover contacto.")
-                    from .. import extensions
-                    extensions.data_manager.update_user_profile(plex_user_id, {'telegram_id': None, 'telegram_user': None})
-                    return
-                else:
-                    logger.error(f"[ID: {request_id}] Erro Telegram: {e.description}")
-                    raise e
+                    retry_after = (e.result_json or {}).get('parameters', {}).get('retry_after', 5)
+                    logger.warning(
+                        f"[ID: {request_id}] Limite de ritmo do Telegram atingido. A aguardar {retry_after}s... "
+                        f"(Tentativa {attempt + 1}/{max_retries})"
+                    )
+                    self._sleep(retry_after + 1)
+                    continue
+
+                if e.error_code == 403:
+                    if plex_user_id:
+                        logger.warning(f"[ID: {request_id}] Bot bloqueado pelo utilizador {plex_user_id}. A remover contacto.")
+                        from .. import extensions
+                        extensions.data_manager.update_user_profile(plex_user_id, {'telegram_id': None, 'telegram_user': None})
+                    raise NotificationError(_("O utilizador bloqueou o bot no Telegram."))
+
+                logger.error(f"[ID: {request_id}] Erro Telegram: {e.description}")
+                raise NotificationError(f"Telegram: {e.description}")
+            except NotificationError:
+                raise
             except Exception as e:
                 logger.error(f"[ID: {request_id}] Erro inesperado ao enviar Telegram: {e}")
-                raise e
+                raise NotificationError(f"Telegram: {e}")
+
+        raise NotificationError(
+            _("O limite de ritmo do Telegram não permitiu a entrega após %(n)d tentativas.", n=max_retries)
+        )
+
+    def _send_telegram_notification(self, message, chat_id, request_id, reply_markup=None,
+                                    plex_user_id=None, photo_url=None, config=None):
+        bot = self._get_bot(config)
+        if not bot:
+            # O canal está ligado mas sem token: comunicar isto como falha evita
+            # que o envio em massa contabilize entregas que nunca aconteceram.
+            raise NotificationError(_("O token do bot do Telegram não está configurado."))
+        
+        html_message = self._convert_md_to_html(message)
+
+        # A legenda de uma foto tem um limite MUITO mais curto (1024) do que uma
+        # mensagem de texto (4096). Em vez de deixar a API recusar tudo, enviamos
+        # a imagem sozinha e o texto completo logo a seguir.
+        if photo_url and len(html_message) > TELEGRAM_MAX_CAPTION_LEN:
+            try:
+                self._telegram_call(
+                    lambda: bot.send_photo(chat_id=chat_id, photo=photo_url),
+                    request_id, plex_user_id
+                )
+            except NotificationError as e:
+                # A capa é acessória: se falhar, a mensagem ainda tem de sair.
+                logger.warning(f"[ID: {request_id}] Não foi possível enviar a imagem do Telegram: {e}")
+            photo_url = None
+
+        if photo_url:
+            self._telegram_call(
+                lambda: bot.send_photo(
+                    chat_id=chat_id, photo=photo_url, caption=html_message,
+                    parse_mode='HTML', reply_markup=reply_markup
+                ),
+                request_id, plex_user_id
+            )
+            return
+
+        pedacos = self._split_message(html_message, TELEGRAM_MAX_MESSAGE_LEN)
+        for indice, pedaco in enumerate(pedacos):
+            # O teclado (botão de pagamento) vai só no último pedaço, onde a
+            # chamada para a ação faz sentido.
+            markup = reply_markup if indice == len(pedacos) - 1 else None
+            self._telegram_call(
+                lambda p=pedaco, m=markup: bot.send_message(
+                    chat_id=chat_id, text=p, parse_mode='HTML',
+                    reply_markup=m, disable_web_page_preview=True
+                ),
+                request_id, plex_user_id
+            )
+
+    def _sleep(self, seconds):
+        """
+        Pausa cooperativa: sob gevent/SocketIO um `time.sleep` bloquearia todo o
+        worker (e com ele os eventos em tempo real da consola de envio).
+        """
+        if self.socketio:
+            self.socketio.sleep(seconds)
+        else:
+            time.sleep(seconds)
 
     # ==========================================================================
     # WHATSAPP (APIs NÃO-OFICIAIS: Evolution API, GOWA, Baileys, etc.)
     # ==========================================================================
 
     @staticmethod
-    def normalize_phone(phone):
+    def normalize_phone(phone, config=None):
         """
         Normaliza um número para o formato esperado pelas APIs de WhatsApp:
         apenas dígitos, com código de país.
@@ -231,7 +436,9 @@ class NotifierManager:
         # Só acrescentamos o código do país quando o número tem MESMO o formato
         # nacional esperado. Para o Brasil (DDI 55): 10 dígitos (fixo com DDD) ou
         # 11 (telemóvel com DDD e o 9 inicial), e o DDD tem de ser válido (11-99).
-        config = load_or_create_config()
+        # O config é recebido já carregado nos envios em massa: reler o
+        # config.json uma vez por número seria um acesso a disco por utilizador.
+        config = config if config is not None else load_or_create_config()
         default_cc = str(config.get("WHATSAPP_DEFAULT_COUNTRY_CODE", "55") or "").strip()
 
         if default_cc and len(digits) in (10, 11):
@@ -373,15 +580,15 @@ class NotifierManager:
         para texto simples, porque é preferível o utilizador receber a mensagem
         sem capa do que não receber nada.
         """
-        normalized = self.normalize_phone(phone)
+        normalized = self.normalize_phone(phone, config)
         if not normalized:
             logger.warning(f"[ID: {request_id}] Número de WhatsApp inválido, envio ignorado: {mask_phone(phone)}")
-            return
+            raise NotificationError(_("Número de WhatsApp inválido."))
 
         if image_url:
             try:
                 url, headers, payload = self._build_whatsapp_media_request(config, normalized, message, image_url)
-                response = requests.post(url, json=payload, headers=headers, timeout=30)
+                response = self._http.post(url, json=payload, headers=headers, timeout=HTTP_TIMEOUT)
                 response.raise_for_status()
                 logger.info(f"[ID: {request_id}] Mensagem de WhatsApp COM IMAGEM enviada para {mask_phone(normalized)}.")
                 return
@@ -395,7 +602,7 @@ class NotifierManager:
         url, headers, payload = self._build_whatsapp_request(config, normalized, message)
 
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response = self._http.post(url, json=payload, headers=headers, timeout=HTTP_TIMEOUT)
             response.raise_for_status()
             logger.info(f"[ID: {request_id}] Mensagem de WhatsApp enviada para {mask_phone(normalized)}.")
         except requests.exceptions.RequestException as e:
@@ -414,7 +621,7 @@ class NotifierManager:
             else:
                 detail = "Sem resposta do servidor (falha de conexão/timeout)"
             logger.error(f"[ID: {request_id}] Falha no envio de WhatsApp para {mask_phone(normalized)}: {detail}")
-            raise Exception(f"Falha de WhatsApp: {detail}")
+            raise NotificationError(f"WhatsApp: {detail}")
 
     def test_whatsapp_connection(self, phone=None):
         """
@@ -442,13 +649,27 @@ class NotifierManager:
         except Exception as e:
             return {"success": False, "message": str(e)}
 
-    def _send_webhook_notification(self, payload, request_id, config):
-        webhook_url = config.get("WEBHOOK_URL")
-        if not webhook_url: return
-        
+    @staticmethod
+    def _describe_http_error(e):
+        """
+        Resume um erro de requests numa linha legível.
+
+        `bool(response)` do requests é False para qualquer status de erro
+        (4xx/5xx), por isso comparamos explicitamente com None — de outro modo
+        escondíamos o corpo da resposta justamente quando ele é mais necessário,
+        que é onde as APIs explicam o motivo real da recusa.
+        """
+        response = getattr(e, 'response', None)
+        if response is None:
+            return _("Sem resposta do servidor (falha de ligação/timeout).")
+        body = response.text.strip() if response.text else "(corpo de resposta vazio)"
+        return f"HTTP {response.status_code} - {truncate(body, 300)}"
+
+    @staticmethod
+    def _webhook_headers(config):
         headers = {'Content-Type': 'application/json'}
         auth_header = config.get("WEBHOOK_AUTHORIZATION_HEADER")
-        
+
         if auth_header:
             if ":" in auth_header:
                 try:
@@ -458,33 +679,67 @@ class NotifierManager:
                     headers['Authorization'] = auth_header.strip()
             else:
                 headers['Authorization'] = auth_header.strip()
-                
+
+        return headers
+
+    def _send_webhook_notification(self, payload, request_id, config):
+        webhook_url = config.get("WEBHOOK_URL")
+        if not webhook_url: return
+
         try:
-            response = requests.post(webhook_url, json=payload, headers=headers, timeout=30)
+            response = self._http.post(
+                webhook_url, json=payload, headers=self._webhook_headers(config), timeout=HTTP_TIMEOUT
+            )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            # 🐛 CORREÇÃO: `bool(response)` do requests retorna False para qualquer status de erro
-            # (4xx/5xx), então checar "e.response" diretamente escondia o corpo real do erro
-            # justamente quando ele é mais necessário. Usamos "is not None" para pegar sempre
-            # a resposta de verdade, quando ela existir.
-            if hasattr(e, 'response') and e.response is not None:
-                status_code = e.response.status_code
-                body = e.response.text.strip() if e.response.text else "(corpo de resposta vazio)"
-                error_response = f"HTTP {status_code} - {body}"
-            else:
-                error_response = "Sem resposta do servidor (falha de conexão/timeout)"
-            logger.error(f"[ID: {request_id}] Falha no Webhook: {e} | Resposta: {error_response}")
-            raise Exception(f"Falha de Webhook: {error_response}")
+            detalhe = self._describe_http_error(e)
+            # 🔒 O URL pode trazer credenciais embutidas (http://user:senha@host):
+            # sem mascarar, ficavam em claro no ficheiro de log.
+            logger.error(
+                f"[ID: {request_id}] Falha no Webhook ({mask_url_credentials(webhook_url)}): {detalhe}"
+            )
+            raise NotificationError(f"Webhook: {detalhe}")
 
     def _send_discord_notification(self, payload, request_id, config):
         webhook_url = config.get("DISCORD_WEBHOOK_URL")
         if not webhook_url: return
-        
+
+        payload = self._enforce_discord_limits(payload)
+
         try:
-            requests.post(webhook_url, json=payload, headers={'Content-Type': 'application/json'}, timeout=30).raise_for_status()
+            response = self._http.post(
+                webhook_url, json=payload, headers={'Content-Type': 'application/json'}, timeout=HTTP_TIMEOUT
+            )
+            response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            logger.error(f"[ID: {request_id}] Falha no Discord: {e}")
-            raise e
+            # 🔒 O URL de um webhook do Discord CONTÉM o token que autoriza a
+            # publicar no canal. A mensagem de erro do requests inclui o URL
+            # completo, por isso registamos apenas o detalhe da resposta — quem
+            # tiver acesso ao log não fica com a chave do canal.
+            detalhe = self._describe_http_error(e)
+            logger.error(f"[ID: {request_id}] Falha no Discord: {detalhe}")
+            raise NotificationError(f"Discord: {detalhe}")
+
+    @staticmethod
+    def _enforce_discord_limits(payload):
+        """
+        Corta os campos que excedem os limites do Discord.
+
+        O Discord recusa o pedido inteiro (400) se o `content` passar de 2000
+        caracteres ou a descrição de um embed de 4096 — uma mensagem em massa um
+        pouco mais longa deixava de ser entregue a toda a gente, sem aviso útil.
+        """
+        if not isinstance(payload, dict):
+            return payload
+
+        if isinstance(payload.get('content'), str):
+            payload['content'] = truncate(payload['content'], DISCORD_MAX_CONTENT_LEN)
+
+        for embed in payload.get('embeds') or []:
+            if isinstance(embed, dict) and isinstance(embed.get('description'), str):
+                embed['description'] = truncate(embed['description'], DISCORD_MAX_EMBED_DESCRIPTION_LEN)
+
+        return payload
 
     def _get_price_and_plan(self, config, user_screen_limit):
         from flask_babel import ngettext, gettext as _
@@ -525,14 +780,34 @@ class NotifierManager:
             logger.warning(f"Erro ao gerar link de pagamento: {e}")
             return long_url if 'long_url' in locals() else None
 
-    def _prepare_and_send(self, event_type, user, user_profile, context):
-        config = load_or_create_config()
+    def _resolve_template(self, config, canal, event_type):
+        """Template configurado pelo administrador, com recurso ao padrão do sistema."""
+        chave = f"{canal}_{event_type.upper()}_MESSAGE_TEMPLATE"
+        return config.get(chave) or DEFAULT_TEMPLATES.get(chave, "")
+
+    def _prepare_and_send(self, event_type, user, user_profile, context, config=None):
+        """
+        Monta e envia a notificação de um evento por todos os canais ativos.
+
+        Devolve um resumo da entrega — {'sent': [...], 'failed': [(canal, erro)]}
+        — para que quem chama (em especial o envio em massa) saiba o que
+        aconteceu de facto. Antes, todas as falhas eram engolidas aqui dentro e
+        a consola de envio anunciava "✅ Sucesso" mesmo quando nenhum canal tinha
+        conseguido entregar a mensagem.
+        """
+        # O config é passado já carregado nos envios em massa: cada
+        # load_or_create_config() lê e valida o config.json inteiro do disco.
+        config = config if config is not None else load_or_create_config()
         request_id = str(uuid.uuid4())
-        
+        resultado = {'sent': [], 'failed': []}
+
         telegram_chat_id = user_profile.get('telegram_id') or user_profile.get('telegram_user')
-        can_notify_telegram = config.get("TELEGRAM_ENABLED") and telegram_chat_id
-        can_notify_discord = config.get("DISCORD_ENABLED") and user_profile.get('discord_user_id')
-        can_notify_whatsapp = config.get("WHATSAPP_ENABLED") and user_profile.get('phone_number')
+        can_notify_telegram = bool(config.get("TELEGRAM_ENABLED") and telegram_chat_id)
+        can_notify_discord = bool(
+            config.get("DISCORD_ENABLED") and config.get("DISCORD_WEBHOOK_URL")
+            and user_profile.get('discord_user_id')
+        )
+        can_notify_whatsapp = bool(config.get("WHATSAPP_ENABLED") and user_profile.get('phone_number'))
 
         # 🐛 CORREÇÃO: o Webhook Genérico exigia que o utilizador tivesse um número de
         # telefone. Isso fazia sentido quando ele servia sobretudo de ponte para o
@@ -546,14 +821,15 @@ class NotifierManager:
         can_notify_webhook = bool(config.get("WEBHOOK_ENABLED") and config.get("WEBHOOK_URL"))
         
         if not (can_notify_telegram or can_notify_webhook or can_notify_discord or can_notify_whatsapp): 
-            return
+            return resultado
 
-        t_tpl = config.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE", "")
-        w_tpl = config.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE", "")
-        d_tpl = config.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE", "")
+        templates = {
+            canal: self._resolve_template(config, canal, event_type)
+            for canal in ("TELEGRAM", "WEBHOOK", "DISCORD", "WHATSAPP")
+        }
         bulk_msg = context.get('message', '')
-        
-        all_text = f"{t_tpl} {w_tpl} {d_tpl} {bulk_msg}"
+
+        all_text = " ".join(list(templates.values()) + [bulk_msg])
         
         # Inteligência: Só gera link se a mensagem realmente pedir
         needs_payment_link = (
@@ -582,69 +858,59 @@ class NotifierManager:
             'invite_link': context.get('invite_link', '')
         }
 
+        def _entregar(canal, envio):
+            """Isola a falha de um canal: um erro aqui não trava os restantes."""
+            try:
+                envio()
+                resultado['sent'].append(canal)
+            except Exception as e:
+                resultado['failed'].append((canal, str(e)))
+                logger.error(
+                    f"[ID: {request_id}] Notificação via {canal} falhou para "
+                    f"'{user.get('username')}': {e}"
+                )
+
         if can_notify_telegram:
-            template = config.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"TELEGRAM_{event_type.upper()}_MESSAGE_TEMPLATE")
-            message = self._format_template(template, placeholders, use_html_escape=True)
+            message = self._format_template(templates["TELEGRAM"], placeholders, use_html_escape=True)
             photo_url = config.get(f"TELEGRAM_{event_type.upper()}_BANNER_URL")
             
             markup = None
             if payment_link and event_type in ['expiration', 'trial_end']:
                 markup = types.InlineKeyboardMarkup()
-                markup.add(types.InlineKeyboardButton(text="💳 Pagar Agora / Renovar", url=payment_link))
+                markup.add(types.InlineKeyboardButton(text=_("💳 Pagar Agora / Renovar"), url=payment_link))
                 
             if message:
-                try:
-                    self._send_telegram_notification(
-                        message, telegram_chat_id, request_id, 
-                        reply_markup=markup, plex_user_id=user_profile.get('plex_user_id'), photo_url=photo_url
-                    )
-                except Exception as e:
-                    # Isola a falha: não deixa o erro do Telegram impedir o envio pelo
-                    # Webhook/Discord logo abaixo (ou interromper outros usuários no lote).
-                    logger.error(f"[ID: {request_id}] Notificação via Telegram falhou para '{user.get('username')}': {e}")
+                _entregar('Telegram', lambda: self._send_telegram_notification(
+                    message, telegram_chat_id, request_id,
+                    reply_markup=markup, plex_user_id=user_profile.get('plex_user_id'),
+                    photo_url=photo_url, config=config
+                ))
 
         if can_notify_webhook:
-            template_str = config.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"WEBHOOK_{event_type.upper()}_MESSAGE_TEMPLATE")
-            payload = self._format_template(template_str, placeholders, is_json=True)
+            payload = self._format_template(templates["WEBHOOK"], placeholders, is_json=True)
             if payload:
-                try:
-                    self._send_webhook_notification(payload, request_id, config)
-                except Exception as e:
-                    # Isola a falha: não deixa o erro do Webhook impedir o envio pelo Discord
-                    # logo abaixo (ou interromper a notificação de outros usuários no lote).
-                    logger.error(f"[ID: {request_id}] Notificação via Webhook falhou para '{user.get('username')}': {e}")
+                _entregar('Webhook', lambda: self._send_webhook_notification(payload, request_id, config))
 
         if can_notify_discord:
-            template_str = config.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"DISCORD_{event_type.upper()}_MESSAGE_TEMPLATE")
-            payload = self._format_template(template_str, placeholders, is_json=True)
+            payload = self._format_template(templates["DISCORD"], placeholders, is_json=True)
             if payload:
-                try:
-                    self._send_discord_notification(payload, request_id, config)
-                except Exception as e:
-                    logger.error(f"[ID: {request_id}] Notificação via Discord falhou para '{user.get('username')}': {e}")
+                _entregar('Discord', lambda: self._send_discord_notification(payload, request_id, config))
 
         if can_notify_whatsapp:
-            # 🐛 Este bloco estava EM FALTA: o 'can_notify_whatsapp' era calculado e
-            # usado na verificação de saída, mas nenhum envio era feito. Resultado:
-            # o botão de teste funcionava (chama _send_whatsapp_notification
-            # diretamente), mas notificações manuais, em massa e agendadas passavam
-            # por aqui e saíam sem enviar nada — em silêncio, sem erro no log.
-            template_str = config.get(f"WHATSAPP_{event_type.upper()}_MESSAGE_TEMPLATE") or DEFAULT_TEMPLATES.get(f"WHATSAPP_{event_type.upper()}_MESSAGE_TEMPLATE")
             # O WhatsApp recebe TEXTO SIMPLES: sem JSON e sem escape de HTML
             # (ao contrário do Telegram, que usa markup).
-            message = self._format_template(template_str, placeholders, is_json=False)
+            message = self._format_template(templates["WHATSAPP"], placeholders, is_json=False)
             if message:
-                try:
-                    self._send_whatsapp_notification(user_profile.get('phone_number'), message, request_id, config)
-                except Exception as e:
-                    # Isolado como os restantes canais: uma falha no WhatsApp não
-                    # impede o envio pelos outros.
-                    logger.error(f"[ID: {request_id}] Notificação via WhatsApp falhou para '{user.get('username')}': {e}")
+                _entregar('WhatsApp', lambda: self._send_whatsapp_notification(
+                    user_profile.get('phone_number'), message, request_id, config
+                ))
             else:
                 logger.warning(
                     f"[ID: {request_id}] Template de WhatsApp para o evento '{event_type}' está vazio ou inválido. "
                     f"Nada foi enviado para '{user.get('username')}'."
                 )
+
+        return resultado
 
     def send_expiration_notification(self, user, days_left, user_profile):
         expiration_date_str = user_profile.get('expiration_date')
@@ -680,6 +946,7 @@ class NotifierManager:
             "media_url": dados.get("media_url") or "",
             "event": dados.get("event") or "",
             "name": user_profile.get("name") or user_profile.get("username") or "",
+            "discord_user_id": user_profile.get("discord_user_id") or "",
         }
         image_url = dados.get("image_url")
 
@@ -705,7 +972,7 @@ class NotifierManager:
                     self._send_telegram_notification(
                         msg, chat_id, request_id,
                         plex_user_id=user_profile.get('plex_user_id'),
-                        photo_url=image_url
+                        photo_url=image_url, config=config
                     )
             except Exception as e:
                 logger.error(f"[ID: {request_id}] Notificação de pedido via Telegram falhou: {e}")
@@ -801,6 +1068,12 @@ class NotifierManager:
             'telegram_user': user_profile.get('telegram_user', ''), 
             'telegram_id': user_profile.get('telegram_id', ''),
             'phone_number': user_profile.get('phone_number', ''),
+            # 🐛 Estava EM FALTA: todos os templates padrão do Discord começam por
+            # "<@{discord_user_id}>" para mencionar o utilizador. Sem este
+            # marcador, a menção era publicada tal e qual — literalmente
+            # "<@{discord_user_id}>" — em vez de notificar quem devia.
+            'discord_user_id': user_profile.get('discord_user_id', ''),
+            'plex_user_id': user_profile.get('plex_user_id') or user.get('id') or '',
             **context
         }
 
@@ -829,91 +1102,25 @@ class NotifierManager:
             
             message = payload.get('message')
             if not message: 
-                raise ValueError("Mensagem vazia.")
+                raise ValueError(_("Mensagem vazia."))
 
-            users_to_notify = self._get_bulk_target_users(payload, extensions)
-            total_users = len(users_to_notify)
-            
+            # 🚀 O config é lido UMA vez para todo o lote. Antes, cada utilizador
+            # provocava várias leituras do config.json do disco (uma por canal,
+            # mais uma no bot do Telegram): num envio para mil pessoas eram
+            # milhares de acessos a disco sem qualquer alteração entre eles.
+            config = load_or_create_config()
+
+            alvos = self._get_bulk_target_users(payload, extensions)
+            all_profiles = {p['plex_user_id']: p for p in extensions.data_manager.get_all_user_profiles()}
+
+            elegiveis, ignorados = self._split_by_reachability(alvos, all_profiles, config)
+            total_users = len(elegiveis)
+
             extensions.data_manager.update_task(task_id, {'status': 'running', 'progress_total': total_users})
-            
-            # O worker empacotado para o SocketIO
-            def bulk_worker():
-                if app_obj:
-                    ctx = app_obj.test_request_context('/')
-                    ctx.push()
 
-                try:
-                    def emit_ws(event, data):
-                        try:
-                            if extensions.socketio:
-                                extensions.socketio.emit(event, data, namespace='/dashboard')
-                                extensions.socketio.emit(event, data, namespace='/users')
-                        except Exception as e:
-                            logger.debug(f"Aviso ao tentar emitir evento WS: {e}")
-
-                    if extensions.socketio: extensions.socketio.sleep(1)
-
-                    emit_ws('bulk_notification_start', {'total': total_users})
-                    emit_ws('bulk_console_log', {'msg': "========================================================="})
-                    emit_ws('bulk_console_log', {'msg': f"🚀 INÍCIO DO ENVIO EM MASSA ({total_users} utilizadores elegíveis)"})
-                    emit_ws('bulk_console_log', {'msg': "========================================================="})
-                    
-                    all_profiles = {p['plex_user_id']: p for p in extensions.data_manager.get_all_user_profiles()}
-                    processed_count = 0
-                    
-                    for index, user in enumerate(users_to_notify, 1):
-                        username = user.get('username', f'ID {user.get("id")}')
-                        profile = all_profiles.get(user['id'], {})
-                        
-                        emit_ws('bulk_notification_progress', {'current': index, 'total': total_users})
-                        
-                        # Atualiza a base de dados a cada 10 envios para poupar conexões
-                        if index % 10 == 0 or index == total_users:
-                            extensions.data_manager.update_task(task_id, {'progress_current': index})
-
-                        has_contact = profile.get('telegram_id') or profile.get('telegram_user') or profile.get('phone_number') or profile.get('discord_user_id')
-                        if not has_contact: 
-                            emit_ws('bulk_console_log', {'msg': f"[{index}/{total_users}] ⏭️ Ignorado: {username} (Sem dados de contacto)"})
-                            if extensions.socketio: extensions.socketio.sleep(0.1)
-                            continue
-                        
-                        try:
-                            emit_ws('bulk_console_log', {'msg': f"[{index}/{total_users}] ⏳ A processar envio para {username}..."})
-                            self._prepare_and_send('bulk', user, profile, {'message': message})
-                            processed_count += 1
-                            emit_ws('bulk_console_log', {'msg': f"[{index}/{total_users}] ✅ Sucesso: Entregue a {username}."})
-                            
-                        except Exception as user_err:
-                            logger.error(f"Erro no envio em massa para {username}: {user_err}")
-                            emit_ws('bulk_console_log', {'msg': f"[{index}/{total_users}] ❌ Erro ({username}): {str(user_err)}"})
-                        
-                        # ⏱️ OTIMIZAÇÃO: Reduzido de 0.5s para 0.2s. A proteção real contra
-                        # rate-limit do Telegram já é feita via tratamento do erro 429
-                        # (com retry_after) em _send_telegram_notification — esta pausa aqui
-                        # é apenas uma cautela extra, e 0.5s por usuário tornava envios em
-                        # massa desnecessariamente lentos em bases grandes.
-                        if extensions.socketio:
-                            extensions.socketio.sleep(0.2)
-                        else:
-                            time.sleep(0.2)
-                        
-                    extensions.data_manager.update_task(task_id, {
-                        'status': 'completed', 
-                        'completed_at': datetime.now(timezone.utc), 
-                        'result': f'{processed_count} notificações enviadas.'
-                    })
-                    
-                    emit_ws('bulk_console_log', {'msg': f"🎉 Concluído! Mensagens entregues com sucesso: {processed_count}"})
-                    emit_ws('bulk_notification_end', {'message': f'{processed_count} mensagens enviadas com sucesso.'})
-                    
-                finally:
-                    if app_obj:
-                        ctx.pop()
-
-            if extensions.socketio:
-                extensions.socketio.start_background_task(bulk_worker)
-            else:
-                bulk_worker()
+            self._run_bulk_worker(
+                app_obj, extensions, task_id, message, config, elegiveis, all_profiles, ignorados
+            )
             
         except Exception as e:
             logger.error(f"Erro crítico no processamento Bulk: {e}", exc_info=True)
@@ -929,16 +1136,162 @@ class NotifierManager:
             except Exception:
                 pass
 
+    @staticmethod
+    def _split_by_reachability(users, all_profiles, config):
+        """
+        Separa quem tem por onde ser notificado de quem não tem.
+
+        A verificação é feita ANTES do envio para que o total anunciado na
+        consola e a barra de progresso correspondam a envios reais — antes,
+        utilizadores sem contacto entravam no total e a barra parecia saltar.
+
+        A elegibilidade tem de olhar aos canais ATIVOS: o webhook genérico
+        (n8n, Slack, sistemas internos) dispara para qualquer utilizador, mesmo
+        sem telefone ou Telegram, por isso com ele ligado ninguém é ignorado.
+        """
+        webhook_ativo = bool(config.get("WEBHOOK_ENABLED") and config.get("WEBHOOK_URL"))
+        telegram_ativo = bool(config.get("TELEGRAM_ENABLED"))
+        discord_ativo = bool(config.get("DISCORD_ENABLED") and config.get("DISCORD_WEBHOOK_URL"))
+        whatsapp_ativo = bool(config.get("WHATSAPP_ENABLED"))
+
+        elegiveis, ignorados = [], []
+        for user in users:
+            profile = all_profiles.get(user['id'], {})
+            tem_contacto = webhook_ativo or (
+                (telegram_ativo and (profile.get('telegram_id') or profile.get('telegram_user')))
+                or (whatsapp_ativo and profile.get('phone_number'))
+                or (discord_ativo and profile.get('discord_user_id'))
+            )
+            (elegiveis if tem_contacto else ignorados).append(user)
+
+        return elegiveis, ignorados
+
+    def _run_bulk_worker(self, app_obj, extensions, task_id, message, config,
+                         elegiveis, all_profiles, ignorados):
+        """Corre o lote em segundo plano, transmitindo o progresso em tempo real."""
+        total_users = len(elegiveis)
+
+        # Pausa entre envios. A proteção real contra o limite de ritmo já é feita
+        # pelo tratamento do 429 (Telegram) e pelo Retry-After (Discord/WhatsApp);
+        # esta pausa é cautela extra e é configurável para quem tem bases grandes.
+        try:
+            intervalo = max(0.0, float(config.get("BULK_SEND_INTERVAL_SECONDS", 0.2)))
+        except (TypeError, ValueError):
+            intervalo = 0.2
+
+        def bulk_worker():
+            ctx = None
+            if app_obj:
+                ctx = app_obj.test_request_context('/')
+                ctx.push()
+
+            def emit_ws(event, data):
+                try:
+                    if extensions.socketio:
+                        extensions.socketio.emit(event, data, namespace='/dashboard')
+                        extensions.socketio.emit(event, data, namespace='/users')
+                except Exception as e:
+                    logger.debug(f"Aviso ao tentar emitir evento WS: {e}")
+
+            def log(msg):
+                emit_ws('bulk_console_log', {'msg': msg})
+
+            try:
+                if extensions.socketio: extensions.socketio.sleep(1)
+
+                emit_ws('bulk_notification_start', {'total': total_users})
+                log("=========================================================")
+                log(_("🚀 INÍCIO DO ENVIO EM MASSA (%(n)d utilizadores elegíveis)", n=total_users))
+                if ignorados:
+                    log(_("⏭️ %(n)d ignorados por não terem contacto nos canais ativos.", n=len(ignorados)))
+                log("=========================================================")
+
+                entregues = 0
+                falhados = 0
+
+                for index, user in enumerate(elegiveis, 1):
+                    username = user.get('username', f'ID {user.get("id")}')
+                    profile = all_profiles.get(user['id'], {})
+
+                    emit_ws('bulk_notification_progress', {'current': index, 'total': total_users})
+
+                    # Atualiza a base de dados a cada 10 envios para poupar conexões
+                    if index % 10 == 0 or index == total_users:
+                        extensions.data_manager.update_task(task_id, {'progress_current': index})
+
+                    try:
+                        resultado = self._prepare_and_send(
+                            'bulk', user, profile, {'message': message}, config=config
+                        )
+                    except Exception as user_err:
+                        logger.error(f"Erro no envio em massa para {username}: {user_err}", exc_info=True)
+                        resultado = {'sent': [], 'failed': [('geral', str(user_err))]}
+
+                    # 🐛 O relatório era fictício: como _prepare_and_send engolia as
+                    # falhas de cada canal, a consola escrevia "✅ Sucesso" para
+                    # toda a gente — mesmo quando nada tinha sido entregue. Agora o
+                    # resultado real de cada canal é que decide a linha e a contagem.
+                    if resultado['sent']:
+                        entregues += 1
+                        canais = ", ".join(resultado['sent'])
+                        aviso = ""
+                        if resultado['failed']:
+                            aviso = " | " + _("falhou em: %(canais)s", canais=", ".join(c for c, _erro in resultado['failed']))
+                        log(f"[{index}/{total_users}] ✅ {username} — {canais}{aviso}")
+                    elif resultado['failed']:
+                        falhados += 1
+                        motivos = "; ".join(f"{canal}: {erro}" for canal, erro in resultado['failed'])
+                        log(f"[{index}/{total_users}] ❌ {username} — {motivos}")
+                    else:
+                        log(f"[{index}/{total_users}] ⏭️ {username} — " + _("nenhum canal aplicável."))
+
+                    if intervalo and index < total_users:
+                        self._sleep(intervalo)
+
+                resumo = _("%(ok)d entregues, %(erro)d com falha, %(skip)d sem contacto.",
+                           ok=entregues, erro=falhados, skip=len(ignorados))
+
+                extensions.data_manager.update_task(task_id, {
+                    'status': 'completed',
+                    'completed_at': datetime.now(timezone.utc),
+                    'progress_current': total_users,
+                    'result': resumo,
+                })
+
+                log(f"🎉 {resumo}")
+                emit_ws('bulk_notification_end', {'message': resumo})
+
+            except Exception as e:
+                # 🐛 Sem este bloco, um erro dentro do worker deixava a tarefa
+                # presa em 'running' para sempre: o try/except de quem chamou já
+                # tinha terminado, porque o worker corre noutra greenlet.
+                logger.error(f"Erro no worker de envio em massa: {e}", exc_info=True)
+                try:
+                    extensions.data_manager.update_task(task_id, {'status': 'failed', 'result': str(e)})
+                except Exception:
+                    logger.error("Não foi possível marcar a tarefa de envio em massa como falhada.", exc_info=True)
+                log(f"💥 ERRO NO ENVIO EM MASSA: {e}")
+                emit_ws('bulk_notification_error', {'message': str(e)})
+            finally:
+                if ctx is not None:
+                    ctx.pop()
+
+        if extensions.socketio:
+            extensions.socketio.start_background_task(bulk_worker)
+        else:
+            bulk_worker()
+
     def _get_bulk_target_users(self, payload, extensions):
         target_audience = payload.get('target_audience', 'active')
         target_user_ids = payload.get('user_ids', [])
         
         all_plex_users = extensions.plex_manager.get_all_plex_users()
         if not all_plex_users: 
-            raise ValueError("Não foi possível obter a lista de utilizadores do Plex.")
+            raise ValueError(_("Não foi possível obter a lista de utilizadores do Plex."))
 
         if target_audience == 'specific': 
-            return [u for u in all_plex_users if str(u['id']) in map(str, target_user_ids)]
+            alvos = set(map(str, target_user_ids or []))
+            return [u for u in all_plex_users if str(u['id']) in alvos]
         elif target_audience == 'all': 
             return all_plex_users
         else:

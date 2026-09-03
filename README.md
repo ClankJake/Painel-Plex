@@ -34,6 +34,7 @@ O Painel de Gestão Plex é uma aplicação web completa projetada para simplifi
 ### Notificações
 -   **Quatro canais**: **Telegram**, **WhatsApp** (via Evolution API, GOWA ou WAHA), **Discord** e **Webhook genérico**.
 -   **Mensagens personalizáveis** por evento: vencimento, renovação, reativação, fim de teste e avisos em massa.
+-   **Disparo em massa com relatório real**: O console de envio mostra, por usuário, quais canais entregaram e quais falharam (com o motivo) — e o ritmo do disparo é ajustável em Comunicações > Avisos em Massa.
 -   **Pedidos do Seerr**: O usuário é avisado no canal pessoal dele — com a capa do filme/série — sempre que o pedido muda de estado (pendente, aprovado, disponível, recusado).
 
 ### Operação
