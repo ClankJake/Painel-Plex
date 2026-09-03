@@ -137,9 +137,19 @@ class TestFindUserByEmail:
         })
 
     def test_encontra_na_primeira_pagina(self, manager, monkeypatch):
-        responder(monkeypatch, [self._pagina([{"id": 7, "email": "ana@exemplo.com"}])])
+        chamadas = responder(monkeypatch, [self._pagina([{"id": 7, "email": "ana@exemplo.com"}])])
 
         assert manager.find_user_by_email("ana@exemplo.com")["id"] == 7
+        # Uma única chamada, com a pesquisa nativa do Seerr.
+        assert len(chamadas) == 1
+        assert chamadas[0]["params"]["q"] == "ana@exemplo.com"
+
+    def test_pesquisa_parcial_do_seerr_nao_engana(self, manager, monkeypatch):
+        # O 'q' do Seerr faz correspondência parcial: 'ana@exemplo.com' também
+        # traz 'joana@exemplo.com'. Só o email exato conta.
+        responder(monkeypatch, [self._pagina([{"id": 3, "email": "joana@exemplo.com"}])])
+
+        assert manager.find_user_by_email("ana@exemplo.com") is None
 
     def test_ignora_maiusculas_e_espacos(self, manager, monkeypatch):
         responder(monkeypatch, [self._pagina([{"id": 7, "email": "Ana@Exemplo.com"}])])
@@ -195,13 +205,25 @@ class TestFindUserByEmail:
 
         assert manager._user_cache == {}
 
-    def test_pagina_ate_encontrar(self, manager, monkeypatch):
-        primeira = self._pagina([{"id": i, "email": f"u{i}@x.com"} for i in range(100)], total=200)
+    def test_pagina_ate_encontrar_quando_a_pesquisa_e_ignorada(self, manager, monkeypatch):
+        # Servidores antigos ignoram o 'q' e devolvem a listagem completa. Como a
+        # primeira resposta veio cheia, há mais para ver: percorremos as páginas.
+        cheia = self._pagina([{"id": i, "email": f"u{i}@x.com"} for i in range(100)], total=200)
         segunda = self._pagina([{"id": 150, "email": "ana@exemplo.com"}], total=200)
-        chamadas = responder(monkeypatch, [primeira, segunda])
+        chamadas = responder(monkeypatch, [cheia, cheia, segunda])
 
         assert manager.find_user_by_email("ana@exemplo.com")["id"] == 150
-        assert chamadas[1]["params"]["skip"] == 100
+        assert chamadas[0]["params"]["q"] == "ana@exemplo.com"
+        assert "q" not in chamadas[1]["params"]
+        assert chamadas[-1]["params"]["skip"] == 100
+
+    def test_pagina_incompleta_encerra_a_procura(self, manager, monkeypatch):
+        # Resposta mais curta do que uma página = já vimos tudo. Não vale a pena
+        # percorrer a listagem inteira só para confirmar.
+        chamadas = responder(monkeypatch, [self._pagina([{"id": 1, "email": "outro@x.com"}], total=1)])
+
+        assert manager.find_user_by_email("ana@exemplo.com") is None
+        assert len(chamadas) == 1
 
     def test_falha_na_api_devolve_none(self, manager, monkeypatch):
         responder(monkeypatch, [RespostaFalsa({"message": "erro"}, status_code=500)])
@@ -303,6 +325,65 @@ class TestStatusInfo:
     def test_codigos_desconhecidos(self, manager):
         assert manager._get_status_info(99, 99)["text"] == "Desconhecido"
 
+    @pytest.mark.parametrize("media", [1, 2, 3])
+    def test_pedido_falhado_nao_aparece_como_pendente(self, manager, media):
+        # Um pedido que falhou no Radarr/Sonarr tem de o dizer, seja qual for o
+        # estado em que a média ficou.
+        resultado = manager._get_status_info(4, media)
+
+        assert resultado["text"] == "Falhou"
+        assert resultado["color"] == "red"
+
+    def test_pedido_concluido(self, manager):
+        assert manager._get_status_info(5, 1)["text"] == "Concluído"
+
+    def test_media_bloqueada(self, manager):
+        assert manager._get_status_info(2, 6)["text"] == "Bloqueado"
+
+    def test_media_removida(self, manager):
+        assert manager._get_status_info(2, 7)["text"] == "Removido"
+
+
+class TestReloadCredentials:
+    def test_esvazia_as_caches(self, manager, monkeypatch):
+        pagina = RespostaFalsa({"results": [{"id": 7, "email": "ana@exemplo.com"}], "pageInfo": {"results": 1}})
+        chamadas = responder(monkeypatch, [pagina])
+        manager.find_user_by_email("ana@exemplo.com")
+        manager._media_cache["movie:1"] = (overseerr_module.time.time(), {"title": "Duna"})
+
+        # Trocar de servidor não pode deixar para trás IDs do servidor anterior.
+        manager.reload_credentials()
+
+        assert manager._user_cache == {}
+        assert manager._media_cache == {}
+        manager.find_user_by_email("ana@exemplo.com")
+        assert len(chamadas) == 2
+
+
+class TestCacheDeMedias:
+    def test_a_cache_nao_cresce_sem_limite(self, manager, monkeypatch):
+        responder(monkeypatch, [RespostaFalsa({"title": "Duna", "releaseDate": "2021-09-15"})])
+        manager.MEDIA_CACHE_MAX = 3
+        for i in range(10):
+            manager._get_media_details("movie", i)
+
+        assert len(manager._media_cache) <= manager.MEDIA_CACHE_MAX
+
+    def test_entradas_expiradas_sao_descartadas_primeiro(self, manager, monkeypatch):
+        agora = overseerr_module.time.time()
+        manager.MEDIA_CACHE_MAX = 2
+        manager._media_cache = {
+            "movie:1": (agora - manager.MEDIA_CACHE_TTL - 1, {"title": "velho"}),
+            "movie:2": (agora, {"title": "recente"}),
+        }
+        responder(monkeypatch, [RespostaFalsa({"title": "Duna", "releaseDate": "2021-09-15"})])
+
+        manager._get_media_details("movie", 3)
+
+        # A entrada expirada saiu; a recente sobreviveu.
+        assert "movie:1" not in manager._media_cache
+        assert "movie:2" in manager._media_cache
+
 
 class TestWebhook:
     @pytest.fixture()
@@ -360,6 +441,21 @@ class TestWebhook:
         payload = self._payload(request={"requestedBy_username": "ana"})
 
         assert manager.handle_notification_webhook(payload)["success"] is False
+
+    def test_evento_de_issue_e_ignorado_sem_erro(self, manager, extensoes):
+        _dados, notifier = extensoes
+        # ISSUE_CREATED e afins não trazem bloco 'request': não são pedidos.
+        payload = {
+            "notification_type": "ISSUE_CREATED",
+            "subject": "Duna (2021)",
+            "request": None,
+            "issue": {"issue_id": 3, "reportedBy_email": "ana@exemplo.com"},
+        }
+
+        resultado = manager.handle_notification_webhook(payload)
+
+        assert resultado["success"] is True
+        assert notifier.enviadas == []
 
     def test_email_desconhecido_e_ignorado_com_sucesso(self, manager, extensoes):
         _dados, notifier = extensoes
