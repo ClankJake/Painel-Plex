@@ -43,6 +43,43 @@
             </div>
         </div>
 
+        <!-- Cartão: Fontes de Mídia Online do Plex -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                    <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 9.75l4.5 2.25-4.5 2.25V9.75z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6.75A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v10.5A2.25 2.25 0 0118.75 19.5H5.25A2.25 2.25 0 013 17.25V6.75z"></path></svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">{{ _('Fontes de Mídia Online do Plex') }}</h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Deixe o seu conteúdo em primeiro plano no aplicativo do usuário.') }}</p>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <div class="bg-white dark:bg-gray-900/30 rounded-xl p-4 border border-gray-200 dark:border-gray-700/60">
+                    <label class="relative inline-flex items-center cursor-pointer w-full group">
+                        <input type="checkbox" id="DISABLE_ONLINE_MEDIA_SOURCES_ON_CLAIM" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300/50 dark:peer-focus:ring-purple-800/50 rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600 group-hover:bg-gray-400 dark:group-hover:bg-gray-500"></div>
+                        <span class="ml-3 text-sm font-semibold text-gray-900 dark:text-gray-200 flex-1">{{ _('Desativar ao aceitar o convite') }}</span>
+                    </label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 pl-14">
+                        {{ _('No momento em que o usuário aceita o convite no painel, as fontes marcadas abaixo são desligadas na conta Plex dele — o aplicativo passa a mostrar apenas o conteúdo do seu servidor.') }}
+                    </p>
+                </div>
+
+                <div id="online-media-sources-container" class="space-y-3">
+                    <p class="text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Fontes a desativar') }}</p>
+                    <div id="online-media-sources-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 col-span-full">{{ _('Carregando fontes...') }}</p>
+                    </div>
+                    <div class="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-lg p-3">
+                        <svg class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span>{{ _('Esta é uma preferência da conta Plex do usuário, não uma restrição do servidor: ele continua livre para reativar as fontes em plex.tv. O painel apenas escolhe como o aplicativo dele começa.') }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Cartão: Tautulli -->
         <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
             <div class="flex items-center gap-3 mb-4">

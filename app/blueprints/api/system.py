@@ -214,6 +214,7 @@ def api_settings():
             'GATES2B_ENABLED', 'GATES2B_AUTH_TOKEN', 'GATES2B_MIN_AMOUNT',
             'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE', 'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE',
             'OVERSEERR_ENABLED', 'OVERSEERR_URL', 'OVERSEERR_API_KEY',
+            'DISABLE_ONLINE_MEDIA_SOURCES_ON_CLAIM', 'ONLINE_MEDIA_SOURCES_TO_DISABLE',
             'CLEANUP_PENDING_PAYMENTS_ENABLED', 'CLEANUP_PENDING_PAYMENTS_DAYS', 'CLEANUP_TIME',
             'IMAGE_CACHE_CLEANUP_ENABLED', 'IMAGE_CACHE_MAX_AGE_DAYS', 'IMAGE_CACHE_CLEANUP_TIME',
             'ENABLE_LINK_SHORTENER', 'PAYMENT_LINK_GRACE_PERIOD_DAYS',
@@ -315,6 +316,11 @@ def api_settings():
                     else:
                         normalized = normalize_level_table(value)
                         config_to_update[field] = [] if normalized == get_default_level_table() else normalized
+                elif field == 'ONLINE_MEDIA_SOURCES_TO_DISABLE':
+                    # Lista de chaves da Plex: filtrada no servidor para que uma
+                    # interface adulterada não consiga guardar lixo no config.json.
+                    from ...services.plex.online_media import sanitize_source_keys
+                    config_to_update[field] = sanitize_source_keys(value)
                 elif field == 'SCREEN_LIMIT_TERMINATION_STRATEGY':
                     # Defesa extra: só aceita os dois valores válidos, mesmo que a UI já restrinja isso.
                     config_to_update[field] = value if value in ('oldest', 'newest') else old_config.get(field, 'oldest')
@@ -704,6 +710,21 @@ def test_overseerr_connection():
         return jsonify({'success': False, 'message': _('Chave da API é obrigatória.')}), 400
 
     return jsonify(overseerr_manager.test_connection(url, api_key))
+
+@system_api_bp.route('/plex/online-media-sources', methods=['GET'])
+@login_required
+@admin_required
+def get_online_media_sources():
+    """
+    Lista as Fontes de Mídia Online que o admin pode desligar nas contas de
+    quem aceita um convite. As chaves vêm da própria conta Plex ligada ao
+    painel, para acompanhar o que a Plex oferece em cada momento.
+    """
+    try:
+        return jsonify({"success": True, "sources": plex_manager.online_media.get_catalog()})
+    except Exception as e:
+        logger.error(f"Falha ao listar as fontes de mídia online: {e}", exc_info=True)
+        return jsonify({"success": False, "message": _("Não foi possível obter as fontes de mídia online."), "sources": []}), 500
 
 @system_api_bp.route('/bulk-notify', methods=['POST'])
 @login_required
