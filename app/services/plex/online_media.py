@@ -101,25 +101,31 @@ class PlexOnlineMediaManager:
     def get_catalog(self):
         """
         Devolve as fontes que o admin pode escolher desativar, no formato
-        ``[{"key": ..., "label": ..., "selected": bool}]``.
+        ``[{"key": ..., "label": ..., "selected": bool, "available": bool}]``.
 
         As chaves vêm da própria conta Plex do administrador quando há ligação,
         de modo a acompanhar automaticamente qualquer fonte que a Plex adicione
         ou renomeie. Sem ligação, cai para o catálogo conhecido para que a
         página de configurações continue utilizável.
+
+        `available` é False quando a chave está escolhida na configuração mas a
+        conta Plex não a reconhece — tipicamente uma chave que a Plex renomeou.
+        A interface marca-a como tal, para que uma escolha que não faz nada
+        salte à vista em vez de falhar em silêncio.
         """
         config = load_or_create_config()
         selected = sanitize_source_keys(config.get("ONLINE_MEDIA_SOURCES_TO_DISABLE"))
 
-        keys = []
+        account_keys = []
         if self.conn and self.conn.account:
             try:
-                keys = [s.key for s in self.conn.account.onlineMediaSources() if s.key]
+                account_keys = [s.key for s in self.conn.account.onlineMediaSources() if s.key]
             except Exception as e:
                 logger.debug(f"Não foi possível listar as fontes de mídia online do Plex: {e}")
 
-        if not keys:
-            keys = list(KNOWN_SOURCE_KEYS)
+        # Sem resposta da conta não sabemos o que existe: nada é marcado como
+        # indisponível, para não acusar falsamente uma chave perfeitamente boa.
+        keys = list(account_keys) if account_keys else list(KNOWN_SOURCE_KEYS)
 
         # Uma fonte já escolhida pelo admin nunca desaparece da lista, mesmo que
         # a Plex deixe de a devolver — caso contrário sumia da interface e o
@@ -131,7 +137,12 @@ class PlexOnlineMediaManager:
         keys.sort(key=lambda k: KNOWN_SOURCE_KEYS.index(k) if k in KNOWN_SOURCE_KEYS else len(KNOWN_SOURCE_KEYS))
 
         return [
-            {"key": key, "label": source_label(key), "selected": key in selected}
+            {
+                "key": key,
+                "label": source_label(key),
+                "selected": key in selected,
+                "available": (key in account_keys) if account_keys else True,
+            }
             for key in keys
         ]
 
@@ -196,8 +207,11 @@ class PlexOnlineMediaManager:
 
         missing = [k for k in wanted if k not in found]
         if missing:
-            logger.debug(
-                f"Fontes de mídia online desconhecidas para a conta de '{username}': {missing}"
+            # Uma chave configurada que a conta não reconhece não desativa nada.
+            # Merece aviso: é assim que uma chave renomeada pela Plex se denuncia.
+            logger.warning(
+                f"Fontes de mídia online configuradas mas inexistentes na conta de "
+                f"'{username}': {missing}. Reveja a seleção em Configurações > Conexões."
             )
 
         if disabled:

@@ -44,13 +44,19 @@ export function renderOnlineMediaSources(sources) {
 
     lastRenderedKeys = sources.map(s => s.key);
 
+    // `available: false` = a conta Plex não conhece esta chave, por isso marcá-la
+    // não desativaria nada. Sinalizamos em vez de a esconder: o admin vê logo
+    // qual é a escolha morta e qual é a fonte verdadeira, listada ao lado.
+    const unavailableBadge = i18n.onlineMediaUnavailable || 'não existe nesta conta Plex';
+
     list.innerHTML = sources.map(source => `
-        <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-700/60 bg-white dark:bg-gray-900/30 cursor-pointer hover:border-purple-400 dark:hover:border-purple-500 transition-colors">
+        <label class="flex items-center gap-3 p-3 rounded-xl border ${source.available === false ? 'border-amber-300 dark:border-amber-700/60' : 'border-gray-200 dark:border-gray-700/60'} bg-white dark:bg-gray-900/30 cursor-pointer hover:border-purple-400 dark:hover:border-purple-500 transition-colors">
             <input type="checkbox" data-role="online-media-source" value="${escapeHtml(source.key)}" ${source.selected ? 'checked' : ''}
                 class="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500 dark:bg-gray-800 dark:border-gray-600 flex-shrink-0">
             <span class="min-w-0">
                 <span class="block text-sm font-medium text-gray-800 dark:text-gray-200 truncate">${escapeHtml(source.label)}</span>
                 <span class="block text-[11px] font-mono text-gray-400 dark:text-gray-500 truncate">${escapeHtml(source.key)}</span>
+                ${source.available === false ? `<span class="inline-block mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 rounded px-1.5 py-0.5">${escapeHtml(unavailableBadge)}</span>` : ''}
             </span>
         </label>
     `).join('');

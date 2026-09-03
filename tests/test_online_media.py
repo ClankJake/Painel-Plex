@@ -101,6 +101,23 @@ class TestCatalogo:
     def test_chave_desconhecida_usa_a_propria_chave_como_nome(self, app_context):
         assert online_media.source_label("tv.plex.provider.novidade") == "tv.plex.provider.novidade"
 
+    def test_marca_como_indisponivel_a_chave_que_a_conta_nao_reconhece(self, app_context, config_file):
+        config_file(ONLINE_MEDIA_SOURCES_TO_DISABLE=["tv.plex.provider.renomeada"])
+        conta = FakeAccount([FakeSource("tv.plex.provider.vod")])
+        gestor = PlexOnlineMediaManager(FakeConnection(conta))
+
+        catalogo = {item["key"]: item for item in gestor.get_catalog()}
+
+        assert catalogo["tv.plex.provider.vod"]["available"] is True
+        assert catalogo["tv.plex.provider.renomeada"]["available"] is False
+
+    def test_sem_ligacao_ao_plex_nada_e_acusado_de_indisponivel(self, manager, config_file):
+        # Sem resposta da conta não sabemos o que existe: acusar aqui seria
+        # apontar o dedo a chaves perfeitamente válidas.
+        config_file(ONLINE_MEDIA_SOURCES_TO_DISABLE=["tv.plex.provider.renomeada"])
+
+        assert all(item["available"] for item in manager.get_catalog())
+
 
 class TestAplicacaoNoAceite:
     def test_desativa_apenas_as_fontes_configuradas(self, manager, config_file):
