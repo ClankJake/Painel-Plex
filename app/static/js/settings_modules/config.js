@@ -95,6 +95,7 @@ export const fieldMap = {
     'ACHIEVEMENT_PIONEER_GOLD': { type: 'number', default: 15 },
     'ACHIEVEMENT_PIONEER_WINDOW_HOURS': { type: 'number', default: 48 },
     'XP_PER_MINUTE_WATCHED': { type: 'decimal', default: 1 },
+    'BULK_SEND_INTERVAL_SECONDS': { type: 'decimal', default: 0.2 },
     'WHATSAPP_ENABLED': { type: 'checkbox', default: false },
     'WHATSAPP_PROVIDER': { type: 'text', default: 'evolution' },
     'WHATSAPP_API_URL': { type: 'text', default: '' },

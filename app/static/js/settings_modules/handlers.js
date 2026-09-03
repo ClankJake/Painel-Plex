@@ -407,6 +407,10 @@ async function handleSaveBulkTemplates() {
         'TELEGRAM_BULK_MESSAGE_TEMPLATE': document.getElementById('TELEGRAM_BULK_MESSAGE_TEMPLATE')?.value || '',
         'DISCORD_BULK_MESSAGE_TEMPLATE': document.getElementById('DISCORD_BULK_MESSAGE_TEMPLATE')?.value || '',
         'WEBHOOK_BULK_MESSAGE_TEMPLATE': document.getElementById('WEBHOOK_BULK_MESSAGE_TEMPLATE')?.value || '',
+        // 🐛 O template de WhatsApp estava EM FALTA aqui. Como a gravação geral
+        // também salta tudo o que contém '_BULK_MESSAGE_TEMPLATE', o campo era
+        // apresentado, aceitava edição... e nunca era gravado por caminho nenhum.
+        'WHATSAPP_BULK_MESSAGE_TEMPLATE': document.getElementById('WHATSAPP_BULK_MESSAGE_TEMPLATE')?.value || '',
     };
 
     try {
