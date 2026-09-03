@@ -70,6 +70,9 @@ No Seerr: **Settings → Notifications → Webhook**
 
 Em **Notification Types**, selecione os eventos que quer notificar (ver secção 4).
 
+> Os eventos de **Issues** (problemas reportados pelos usuários) chegam pelo mesmo
+> webhook, mas não são pedidos: o painel ignora-os sem gerar erro.
+
 Clique em **Test** para confirmar. Deve aparecer sucesso no Seerr.
 
 > **Porquê `/webhook/overseerr` e não `/webhook/seerr`?** O caminho foi mantido
@@ -192,6 +195,13 @@ painel. Copie-a novamente em Configurações → Geral.
 A procura é feita pelo e-mail. Confirme que o e-mail do usuário no Seerr
 coincide com o do Plex.
 
+**Um pedido aparece com um estado que parece errado**
+A etiqueta combina o estado do *pedido* (Pendente, Aprovado, Recusado, Falhou,
+Concluído) com o estado da *média* no servidor (Pendente, Processando,
+Parcialmente Disponível, Disponível, Bloqueado, Removido). Quando o conteúdo já
+está disponível, é isso que aparece — mesmo que o pedido tenha ficado noutro
+estado.
+
 **Um pedido aparece como "Título indisponível"**
 A consulta de detalhes ao TMDB falhou para aquele item. O pedido continua visível
 com o estado correto — é um comportamento intencional, para que nenhum pedido
@@ -203,10 +213,15 @@ desapareça da lista por causa de uma falha momentânea.
 
 - **API usada:** `/api/v1` do Seerr (compatível com Overseerr e Jellyseerr).
 - **Autenticação:** cabeçalho `X-API-Key`.
+- **Procura do usuário:** feita com `GET /user?q=<email>` — uma única chamada.
+  Em versões antigas que não conheçam o parâmetro, o painel recai em percorrer a
+  listagem página a página.
 - **Caches em memória:** os detalhes de cada filme/série (título, ano, capa) são
   guardados 24 h e o ID do usuário 10 min. Isto reduz o número de chamadas à
   API por carregamento da página de pedidos de 12 para 1 nos acessos seguintes.
   O **estado** dos pedidos nunca é guardado em cache — é sempre lido em tempo real.
+  Gravar a configuração do Seerr esvazia as duas caches, para que a mudança de
+  servidor tenha efeito imediato.
 - **Paginação:** a lista de pedidos é paginada, com botão para carregar mais.
 - **Webhook:** protegido por chave de API e isento de rate limit (o Seerr pode
   enviar rajadas de notificações). Responde sempre HTTP 200 em caso de erro

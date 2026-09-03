@@ -20,6 +20,13 @@ class OverseerrManager:
     USER_CACHE_TTL = 600      # 10 min — o ID de um utilizador quase nunca muda
     MEDIA_CACHE_TTL = 86400   # 24 h  — título e ano de um filme NUNCA mudam
 
+    # Utilizadores pedidos por chamada à listagem do Seerr.
+    PAGE_SIZE = 100
+    # Teto da cache de médias. Sem isto, um painel que corre durante meses
+    # acumula uma entrada por cada filme/série alguma vez pedido e nunca liberta
+    # nada — as entradas expiram, mas ficam lá.
+    MEDIA_CACHE_MAX = 1000
+
     def __init__(self):
         self._enabled = False
         self.api_url = None
@@ -151,55 +158,114 @@ class OverseerrManager:
         email_norm = email.lower().strip()
 
         # 1. Cache em memória — evita repetir a procura em cada F5 da página.
-        cached = self._user_cache.get(email_norm)
+        with self._cache_lock:
+            cached = self._user_cache.get(email_norm)
         if cached and (time.time() - cached[0]) < self.USER_CACHE_TTL:
             return cached[1]
 
         user = self._search_user(email_norm)
         if user:
-            self._user_cache[email_norm] = (time.time(), user)
+            with self._cache_lock:
+                self._user_cache[email_norm] = (time.time(), user)
         return user
 
     def _search_user(self, email_norm: str) -> Optional[Dict[str, Any]]:
         """
-        Procura o utilizador percorrendo a listagem por páginas.
+        Procura o utilizador na listagem do Seerr.
 
-        ⚠️ NOTA: a API do Seerr/Overseerr **não** oferece pesquisa de utilizadores
-        por email — o endpoint `/user` aceita apenas 'take', 'skip', 'sort' e
-        'sortDirection' (confirmado na especificação oficial do Seerr). Parâmetros
-        desconhecidos são simplesmente ignorados, o que tornaria uma tentativa de
-        pesquisa uma chamada desperdiçada.
-        Por isso paginamos — mas paramos assim que encontramos, em vez de pedir os
-        1000 utilizadores de uma vez como acontecia antes.
+        ⚡ O endpoint `/user` aceita `q`, e a pesquisa cobre username, email,
+        plexUsername e jellyfinUsername (ver 'server/routes/user/index.ts' no
+        Seerr). Uma única chamada resolve o caso normal.
+
+        Versões antigas do Overseerr que não conheçam o parâmetro limitam-se a
+        ignorá-lo e devolvem a primeira página sem filtro — que percorremos na
+        mesma. Se de lá não vier nada e a resposta tiver vindo cheia (ou seja,
+        havia mais utilizadores para ver), caímos na paginação completa.
+        """
+        resultados, _total = self._listar_utilizadores({"take": self.PAGE_SIZE, "q": email_norm})
+        if resultados is None:
+            return None
+
+        encontrado = self._encontrar_email(resultados, email_norm)
+        if encontrado:
+            return encontrado
+
+        # Página incompleta = já vimos tudo o que estes parâmetros dão. Isso vale
+        # tanto quando o 'q' foi aplicado (não há ninguém com este email) como
+        # quando foi ignorado num servidor com poucos utilizadores.
+        if len(resultados) < self.PAGE_SIZE:
+            return None
+
+        return self._search_user_paginando(email_norm)
+
+    def _search_user_paginando(self, email_norm: str) -> Optional[Dict[str, Any]]:
+        """
+        Recurso de último caso: percorre a listagem página a página.
+
+        Usado apenas quando o servidor ignora o parâmetro de pesquisa. Paramos
+        assim que encontramos, em vez de pedir os 1000 utilizadores de uma vez
+        como acontecia antes.
         """
         skip = 0
-        page_size = 100
         while skip < 5000:  # limite de segurança para não iterar indefinidamente
-            result = self._make_request("GET", "/user", params={"take": page_size, "skip": skip})
-            if not result.get("success"):
+            resultados, total = self._listar_utilizadores({"take": self.PAGE_SIZE, "skip": skip})
+            if resultados is None:
                 return None
 
-            dados = result.get("data", {}) or {}
-            resultados = dados.get("results", []) or []
-
-            for user in resultados:
-                if (user.get("email") or "").lower() == email_norm:
-                    return user
+            encontrado = self._encontrar_email(resultados, email_norm)
+            if encontrado:
+                return encontrado
 
             # Última página: ou veio menos do que pedimos, ou já cobrimos o total.
-            total = (dados.get("pageInfo") or {}).get("results")
-            if len(resultados) < page_size or (total is not None and skip + page_size >= total):
+            if len(resultados) < self.PAGE_SIZE or (total is not None and skip + self.PAGE_SIZE >= total):
                 break
-            skip += page_size
+            skip += self.PAGE_SIZE
 
+        return None
+
+    def _listar_utilizadores(self, params: Dict[str, Any]):
+        """
+        Lê uma página de '/user'. Devolve (resultados, total) ou (None, None) se
+        a chamada falhar — 'None' distingue "erro" de "não há ninguém".
+        """
+        result = self._make_request("GET", "/user", params=params)
+        if not result.get("success"):
+            return None, None
+
+        dados = result.get("data", {}) or {}
+        return (dados.get("results", []) or []), (dados.get("pageInfo") or {}).get("results")
+
+    @staticmethod
+    def _encontrar_email(utilizadores: List[Dict[str, Any]], email_norm: str) -> Optional[Dict[str, Any]]:
+        """O 'q' do Seerr faz correspondência parcial: o email tem de bater certo."""
+        for user in utilizadores:
+            if (user.get("email") or "").lower() == email_norm:
+                return user
         return None
 
     def invalidate_user_cache(self, email: str = None):
         """Limpa a cache de utilizadores (usada ao importar ou remover alguém)."""
-        if email:
-            self._user_cache.pop(email.lower().strip(), None)
-        else:
+        with self._cache_lock:
+            if email:
+                self._user_cache.pop(email.lower().strip(), None)
+            else:
+                self._user_cache.clear()
+
+    def reload_credentials(self):
+        """
+        Relê a configuração e esvazia as caches.
+
+        🐛 Chamado pelas rotas de definições sempre que o URL, a chave ou o
+        estado do Seerr mudam (ver 'app/blueprints/api/system.py'). Até aqui o
+        método não existia e a chamada era simplesmente ignorada: ao apontar o
+        painel para OUTRO servidor Seerr, os IDs de utilizador ficavam em cache
+        até 10 min e os detalhes das médias até 24 h — a apontar para registos
+        do servidor antigo.
+        """
+        with self._cache_lock:
             self._user_cache.clear()
+            self._media_cache.clear()
+        self._get_config()
 
     def remove_user(self, email: str) -> Dict[str, Any]:
         """Remove o utilizador do sistema de pedidos Overseerr."""
@@ -326,9 +392,27 @@ class OverseerrManager:
             # aparecer sem título durante 24 h por causa de um erro momentâneo.
             if detalhes["title"]:
                 with self._cache_lock:
+                    if len(self._media_cache) >= self.MEDIA_CACHE_MAX:
+                        self._descartar_medias_expiradas()
                     self._media_cache[chave] = (time.time(), detalhes)
 
         return detalhes
+
+    def _descartar_medias_expiradas(self):
+        """
+        Liberta espaço na cache de médias. Deve ser chamado com o lock tomado.
+
+        Remove primeiro o que já expirou; se mesmo assim continuar cheia (muitos
+        títulos diferentes dentro das 24 h), esvazia tudo — perder a cache custa
+        algumas chamadas à API, deixá-la crescer sem limite custa memória.
+        """
+        agora = time.time()
+        for chave in [k for k, (ts, _v) in self._media_cache.items()
+                      if (agora - ts) >= self.MEDIA_CACHE_TTL]:
+            self._media_cache.pop(chave, None)
+
+        if len(self._media_cache) >= self.MEDIA_CACHE_MAX:
+            self._media_cache.clear()
 
     def _process_single_request(self, req: Dict[str, Any]) -> Dict[str, Any]:
         """Processa um pedido individual, buscando os detalhes no TMDB via Overseerr."""
@@ -391,6 +475,15 @@ class OverseerrManager:
         email = (pedido.get('requestedBy_email') or '').strip()
         username_seerr = pedido.get('requestedBy_username') or ''
 
+        # Os eventos de problemas reportados (ISSUE_CREATED, ISSUE_COMMENT,
+        # ISSUE_RESOLVED, ISSUE_REOPENED) chegam pelo mesmo webhook mas não
+        # trazem bloco 'request' — trazem 'issue' e/ou 'comment'. Não são
+        # pedidos, por isso são ignorados em silêncio, em vez de ficarem
+        # registados como falha "sem email do requerente".
+        if not email and (data.get('issue') or data.get('comment')):
+            logger.info("Webhook do Seerr: evento de 'issue'/comentário sem pedido associado. Ignorado.")
+            return {"success": True, "message": "Evento sem pedido associado."}
+
         if not email:
             logger.warning("Webhook do Overseerr sem email de quem pediu; não é possível identificar o utilizador.")
             return {"success": False, "message": "Pedido sem email do requerente."}
@@ -452,20 +545,37 @@ class OverseerrManager:
 
     def _get_status_info(self, request_status_code: Optional[int], media_availability_code: Optional[int]) -> Dict[str, str]:
         """Calcula o estado final baseando-se na hierarquia do Pedido vs Média."""
-        # 1 = Pending, 2 = Approved, 3 = Declined
+        # Estados do PEDIDO — enum 'MediaRequestStatus' do Seerr
+        # (server/constants/media.ts): 1 Pending, 2 Approved, 3 Declined,
+        # 4 Failed, 5 Completed.
+        #
+        # 🐛 CORREÇÃO: faltavam aqui o 4 (Failed) e o 5 (Completed). Um pedido que
+        # falhou no Radarr/Sonarr não encontrava correspondência e acabava a
+        # mostrar o estado da média — ou seja, o utilizador via "Pendente" ou
+        # "Processando" para sempre, num pedido que na verdade tinha falhado.
         request_status_map = {
             1: {"text": _("Pendente"), "color": "yellow"},
             2: {"text": _("Aprovado"), "color": "blue"},
             3: {"text": _("Recusado"), "color": "red"},
+            4: {"text": _("Falhou"), "color": "red"},
+            5: {"text": _("Concluído"), "color": "green"},
         }
-        
-        # 1 = Unknown, 2 = Pending, 3 = Processing, 4 = Partially Available, 5 = Available
+
+        # Estados da MÉDIA — enum 'MediaStatus' do Seerr: 1 Unknown, 2 Pending,
+        # 3 Processing, 4 Partially Available, 5 Available, 6 Blocklisted,
+        # 7 Deleted.
+        #
+        # 🐛 CORREÇÃO: 6 e 7 não estavam mapeados. Um item bloqueado ou removido
+        # do servidor continuava a aparecer com o estado do pedido ("Aprovado"),
+        # como se ainda estivesse a caminho.
         media_availability_map = {
             1: {"text": _("Desconhecido"), "color": "gray"},
             2: {"text": _("Pendente"), "color": "yellow"},
             3: {"text": _("Processando"), "color": "blue"},
             4: {"text": _("Parcialmente Disponível"), "color": "teal"},
             5: {"text": _("Disponível"), "color": "green"},
+            6: {"text": _("Bloqueado"), "color": "gray"},
+            7: {"text": _("Removido"), "color": "red"},
         }
 
         # 🐛 Os códigos podem chegar como STRING (ex: "2") em vez de inteiro,
@@ -493,7 +603,8 @@ class OverseerrManager:
         # Estado base vem do pedido.
         status_info = request_status_map.get(req_code)
 
-        # Pedido aprovado: o que importa a seguir é o progresso do download.
+        # Pedido aprovado: o que importa a seguir é o progresso do download
+        # (a descarregar, bloqueado, removido...).
         if req_code == 2 and media_code in media_availability_map:
             return media_availability_map[media_code]
 
