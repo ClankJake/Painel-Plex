@@ -14,6 +14,7 @@ from tzlocal import get_localzone_name
 from .plex.connection import PlexConnectionManager
 from .plex.user_manager import PlexUserManager
 from .plex.invite_manager import PlexInviteManager
+from .plex.online_media import PlexOnlineMediaManager
 from .plex.subscription_manager import PlexSubscriptionManager
 
 # Importação da instância global do scheduler
@@ -43,6 +44,7 @@ class PlexManager:
     def __init__(self, data_manager, tautulli_manager, notifier_manager, overseerr_manager):
         self.conn = PlexConnectionManager()
         self.users = PlexUserManager(self.conn, data_manager, tautulli_manager, overseerr_manager)
+        self.online_media = PlexOnlineMediaManager(self.conn)
         self.invites = PlexInviteManager(self.conn, self.users, data_manager, self, overseerr_manager, notifier_manager)
         # 🛡️ CORREÇÃO: Injeta o global_scheduler no SubscriptionManager
         self.subscriptions = PlexSubscriptionManager(data_manager, self.users, scheduler=global_scheduler)

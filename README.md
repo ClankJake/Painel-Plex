@@ -13,6 +13,7 @@ O Painel de Gestão Plex é uma aplicação web completa projetada para simplifi
 -   **Dashboard de Admin**: Visão geral em tempo real com streams ativos, contagem de usuários, receita mensal e próximas renovações.
 -   **Gestão de Usuários**: Visualize, filtre, pesquise e gerencie todos os usuários do seu servidor. Aplique ações como bloqueio, desbloqueio, remoção e edição de perfis.
 -   **Sistema de Convites**: Crie links de convite seguros e personalizáveis com data de expiração, limite de telas, acesso a bibliotecas específicas e períodos de teste.
+-   **Fontes de Mídia Online do Plex**: Opcionalmente, o painel desliga a TV ao Vivo, os Filmes e Programas de TV gratuitos e as restantes fontes da própria Plex na conta do usuário no momento em que ele aceita o convite — o aplicativo dele abre direto no seu conteúdo. É uma preferência da conta do usuário (ele pode reativá-la em plex.tv), não um bloqueio do servidor. Configure em **Configurações → Conexões**.
 -   **API para Bots**: Gere convites automaticamente a partir de bots do Telegram ou outras automações, já vinculados ao ID do usuário.
 -   **Portal do Usuário**: Área dedicada para o usuário ver suas estatísticas, gerenciar privacidade, acompanhar pedidos e renovar o acesso.
 -   **Controle de Telas**: Limite de streams simultâneos com encerramento automático da sessão excedente.

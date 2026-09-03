@@ -8,6 +8,7 @@ import * as api from './api.js';
 import * as ui from './ui.js';
 import { i18n, fieldMap, urls } from './config.js';
 import { initGamificationSubtabs, addLevelRow, collectLevelsFromEditor, collectResetMonths, loadSeasonStatus, handleManualSeasonReset } from './gamification.js';
+import { collectOnlineMediaSources } from './online_media.js';
 import { showToast, fetchAPI, setButtonLoading, restoreButton as restoreButtonState, escapeHTML, copyToClipboard } from '../utils.js';
 
 let pinCheckInterval = null;
@@ -377,6 +378,11 @@ async function handleSaveSettings(e) {
     newConfig.SCREEN_PRICES = screenPrices;
     newConfig.XP_LEVEL_TABLE = collectLevelsFromEditor();
     newConfig.XP_RESET_MONTHS = collectResetMonths();
+    // `null` = o cartão das fontes de mídia online não chegou a carregar (Plex
+    // offline, por exemplo). Nesse caso não enviamos o campo, para não apagar
+    // a seleção guardada só porque a lista não apareceu no ecrã.
+    const onlineMediaSources = collectOnlineMediaSources();
+    if (onlineMediaSources !== null) newConfig.ONLINE_MEDIA_SOURCES_TO_DISABLE = onlineMediaSources;
     if (dom.logLevelSelector) newConfig.LOG_LEVEL = dom.logLevelSelector.value;
 
     if (settingsData.plex_url && settingsData.plex_token) {

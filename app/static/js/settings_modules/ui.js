@@ -10,6 +10,7 @@ import { i18n, fieldMap } from './config.js';
 import { settingsData } from './handlers.js';
 import { showToast } from '../utils.js';
 import { renderLevelEditor, renderResetMonthsGrid } from './gamification.js';
+import { loadOnlineMediaSources } from './online_media.js';
 
 let logIntervalId = null;
 let lastLogContent = ""; // Evita re-renderizações desnecessárias e pulos no scroll
@@ -25,6 +26,7 @@ export async function loadSettings() {
         syncTabsSelect();
         renderLevelEditor(config.XP_LEVEL_TABLE);
         renderResetMonthsGrid(config.XP_RESET_MONTHS);
+        loadOnlineMediaSources();
         // Ajusta a visibilidade do payload personalizado ao provedor já gravado.
         document.getElementById('WHATSAPP_PROVIDER')?.dispatchEvent(new Event('change'));
     } catch (error) {

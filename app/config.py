@@ -108,6 +108,14 @@ def load_or_create_config():
             "OVERSEERR_ENABLED": False,
             "OVERSEERR_URL": "",
             "OVERSEERR_API_KEY": "",
+            # 📺 Fontes de Mídia Online do Plex (TV ao Vivo, Filmes e Programas
+            # de TV gratuitos...). Quando ativo, são desligadas na conta de quem
+            # aceita o convite, para que só o conteúdo do servidor apareça.
+            "DISABLE_ONLINE_MEDIA_SOURCES_ON_CLAIM": False,
+            "ONLINE_MEDIA_SOURCES_TO_DISABLE": [
+                "tv.plex.provider.vod",
+                "tv.plex.provider.epg",
+            ],
             "CLEANUP_PENDING_PAYMENTS_ENABLED": True,
             "CLEANUP_PENDING_PAYMENTS_DAYS": 3,
             "CLEANUP_TIME": "03:00",
@@ -272,6 +280,8 @@ def load_or_create_config():
             _set_default("OVERSEERR_ENABLED", False)
             _set_default("OVERSEERR_URL", "")
             _set_default("OVERSEERR_API_KEY", "")
+            _set_default("DISABLE_ONLINE_MEDIA_SOURCES_ON_CLAIM", False)
+            _set_default("ONLINE_MEDIA_SOURCES_TO_DISABLE", ["tv.plex.provider.vod", "tv.plex.provider.epg"])
             _set_default("CLEANUP_PENDING_PAYMENTS_ENABLED", True)
             _set_default("CLEANUP_PENDING_PAYMENTS_DAYS", 3)
             _set_default("CLEANUP_TIME", "03:00")

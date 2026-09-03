@@ -15,6 +15,7 @@ export const testOverseerr = (payload) => fetchAPI(urls.testOverseerr, 'POST', p
 export const getPlexAuthContext = () => fetchAPI(`${urls.getPlexAuthContext}?from_settings=true`);
 export const checkPlexPin = (clientId, pinId) => fetchAPI(urls.checkPlexPin.replace('__CLIENT_ID__', clientId).replace('999999', pinId));
 export const getPlexServers = () => fetchAPI(`${urls.getPlexServers}?from_settings=true`);
+export const getOnlineMediaSources = () => fetchAPI(urls.onlineMediaSources);
 
 // --- Backup e Restauro ---
 export const syncProfiles = (payload) => fetchAPI(urls.syncProfiles, 'POST', payload);

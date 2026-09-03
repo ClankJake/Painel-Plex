@@ -73,6 +73,7 @@ export const fieldMap = {
     'PRICE_SCREEN_5': { type: 'price', key: '5' },
     'PRICE_SCREEN_6': { type: 'price', key: '6' },
     'OVERSEERR_ENABLED': { type: 'checkbox', default: false },
+    'DISABLE_ONLINE_MEDIA_SOURCES_ON_CLAIM': { type: 'checkbox', default: false },
     'OVERSEERR_URL': { type: 'text', default: '' },
     'OVERSEERR_API_KEY': { type: 'password', default: '' },
     'ACHIEVEMENT_MOVIE_MARATHON_BRONZE': { type: 'number', default: 5 },

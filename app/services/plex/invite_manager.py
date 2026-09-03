@@ -193,6 +193,8 @@ class PlexInviteManager:
             if not any(str(u['id']) == str(plex_user_account.id) for u in all_current_users):
                 return {"success": False, "message": accept_result.get('message')}
 
+        self._apply_online_media_preferences(plex_user_account)
+
         if invitation.get('screen_limit', 0) > 0:
             self.plex_manager.update_screen_limit(plex_user_account.id, invitation['screen_limit'])
 
@@ -479,6 +481,27 @@ class PlexInviteManager:
             return {"success": False, "message": clean_error}
 
     # =========================================================================
+    # FONTES DE MÍDIA ONLINE DO PLEX
+    # =========================================================================
+    def _apply_online_media_preferences(self, user_account):
+        """
+        Esconde as fontes de mídia da própria Plex (TV ao Vivo, Filmes e
+        Programas de TV, etc.) na conta de quem acabou de entrar.
+
+        Só é possível aqui: estas preferências pertencem à conta do utilizador,
+        e é neste instante — logo após o aceite — que o painel tem o token dele.
+        Uma falha aqui é apenas cosmética, por isso nunca interrompe o convite.
+        """
+        online_media = getattr(self.plex_manager, 'online_media', None)
+        if not online_media:
+            return
+
+        try:
+            online_media.apply_to_account(user_account)
+        except Exception as e:
+            logger.warning(f"Falha ao ajustar as fontes de mídia online do utilizador: {e}")
+
+    # =========================================================================
     # ACEITAÇÃO BLINDADA V2
     # =========================================================================
     def _accept_invite_v2(self, user_account: MyPlexAccount, max_retries=3, delay=2.0):
@@ -552,9 +575,11 @@ class PlexInviteManager:
                 self.user_manager.invalidate_user_cache()
                 all_users = self.user_manager.get_all_plex_users()
                 if any(str(u['id']) == str(user_account.id) for u in all_users):
+                    self._apply_online_media_preferences(user_account)
                     return {"success": True, "message": _("O usuário já está ativo no servidor."), "user": user_account}
                 return accept_result
 
+            self._apply_online_media_preferences(user_account)
             return {"success": True, "message": _("Convite aceite com sucesso."), "user": user_account}
             
         except Exception as e:
