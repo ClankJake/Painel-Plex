@@ -629,6 +629,7 @@ export function initializeEventListeners() {
 
     // Configuração da navegação por abas delegada à UI
     ui.setupTabNavigation(dom.mainTabs, dom.mainTabContent, '.tab-content');
+    ui.setupTabNavigation(dom.plexTabs, dom.plexTabContent, '.sub-tab-content');
     ui.setupTabNavigation(dom.paymentTabs, dom.paymentTabContent, '.sub-tab-content');
     ui.setupTabNavigation(dom.notificationTabs, dom.notificationTabContent, '.sub-tab-content');
     ui.setupTabNavigation(dom.comunicacoesTabs, dom.comunicacoesTabContent, '.sub-tab-content');

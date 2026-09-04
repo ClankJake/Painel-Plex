@@ -23,6 +23,35 @@ function renderMessage(text) {
     list.innerHTML = `<p class="text-xs text-gray-500 dark:text-gray-400 col-span-full">${text}</p>`;
 }
 
+/**
+ * Dois estados distintos, com pesos distintos:
+ *
+ * - Vermelho: há fontes marcadas que a lista do Plex não tem. É o único caso
+ *   acionável — essas escolhas não desativam nada e o admin precisa de as
+ *   trocar pelas equivalentes.
+ * - Nota discreta: o Plex não devolveu lista nenhuma, portanto nada foi
+ *   confirmado. Não é erro do admin, e por isso não leva alarme vermelho.
+ */
+function renderAccountWarning(sources, accountRead) {
+    const orphans = (Array.isArray(sources) ? sources : [])
+        .filter(source => source.selected && source.available === false);
+
+    // Alterna as classes do Tailwind em vez do atributo `hidden`: um elemento
+    // com a classe `flex` ignora `[hidden]` por completo (o utilitário vence a
+    // regra base), e o aviso ficaria permanentemente à vista.
+    const mismatch = document.getElementById('online-media-mismatch-warning');
+    if (mismatch) {
+        const mostrar = orphans.length > 0;
+        mismatch.classList.toggle('hidden', !mostrar);
+        mismatch.classList.toggle('flex', mostrar);
+        const keys = mismatch.querySelector('[data-role="mismatch-keys"]');
+        if (keys) keys.textContent = orphans.map(source => source.key).join(', ');
+    }
+
+    const unverified = document.getElementById('online-media-unverified-note');
+    if (unverified) unverified.classList.toggle('hidden', accountRead !== false);
+}
+
 function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, (c) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -32,9 +61,11 @@ function escapeHtml(value) {
 /**
  * Desenha as caixas de seleção. `sources` é [{key, label, selected}].
  */
-export function renderOnlineMediaSources(sources) {
+export function renderOnlineMediaSources(sources, accountRead = true) {
     const list = document.getElementById(LIST_ID);
     if (!list) return;
+
+    renderAccountWarning(sources, accountRead);
 
     if (!Array.isArray(sources) || sources.length === 0) {
         lastRenderedKeys = [];
@@ -70,11 +101,12 @@ export async function loadOnlineMediaSources() {
 
     try {
         const data = await api.getOnlineMediaSources();
-        renderOnlineMediaSources(data.sources || []);
+        renderOnlineMediaSources(data.sources || [], data.account_read !== false);
     } catch (error) {
         // Sem ligação ao Plex o cartão fica informativo em vez de vazio: o resto
         // das configurações continua perfeitamente utilizável.
         lastRenderedKeys = [];
+        renderAccountWarning([], true);
         renderMessage(i18n.onlineMediaLoadFailed || 'Não foi possível carregar as fontes de mídia online do Plex.');
     }
 }

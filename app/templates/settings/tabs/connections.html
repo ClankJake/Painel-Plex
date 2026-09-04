@@ -11,7 +11,7 @@
 
     <div class="space-y-6">
 
-        <!-- Cartão: Plex Media Server -->
+        <!-- Cartão: Plex (Servidor + Fontes de Mídia Online, em sub-abas) -->
         <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
             <div class="flex items-center gap-3 mb-4">
                 <div class="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
@@ -22,8 +22,19 @@
                     <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Servidor principal de partilha de média.') }}</p>
                 </div>
             </div>
-            
-            <div class="space-y-4">
+
+            <!-- Navegação do Plex (Sub-tabs) -->
+            <div class="border-b border-gray-200 dark:border-gray-700 mb-6 pb-2">
+                <nav id="plex-tabs" class="flex space-x-2 overflow-x-auto horizontal-scroll">
+                    <button type="button" data-subtab="plex-server" class="tab-button active bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-600 whitespace-nowrap">{{ _('Servidor') }}</button>
+                    <button type="button" data-subtab="plex-online-media" class="tab-button text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ _('Fontes de Mídia Online') }}</button>
+                </nav>
+            </div>
+
+            <div id="plex-tab-content">
+
+            <!-- SUB-ABA: Servidor -->
+            <div id="subtab-plex-server" class="sub-tab-content active space-y-4 animate-fade-in">
                 <div>
                     <label for="plex_url_display" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('URL do Servidor Ativo') }}</label>
                     <div class="relative">
@@ -41,21 +52,11 @@
                 </button>
                 <div id="server-selection-container" class="hidden space-y-2 mt-4 animate-fade-in-up"></div>
             </div>
-        </div>
 
-        <!-- Cartão: Fontes de Mídia Online do Plex -->
-        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
-            <div class="flex items-center gap-3 mb-4">
-                <div class="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                    <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 9.75l4.5 2.25-4.5 2.25V9.75z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6.75A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v10.5A2.25 2.25 0 0118.75 19.5H5.25A2.25 2.25 0 013 17.25V6.75z"></path></svg>
-                </div>
-                <div>
-                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">{{ _('Fontes de Mídia Online do Plex') }}</h3>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Deixe o seu conteúdo em primeiro plano no aplicativo do usuário.') }}</p>
-                </div>
-            </div>
+            <!-- SUB-ABA: Fontes de Mídia Online -->
+            <div id="subtab-plex-online-media" class="sub-tab-content hidden space-y-4 animate-fade-in">
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Deixe o seu conteúdo em primeiro plano no aplicativo do usuário.') }}</p>
 
-            <div class="space-y-4">
                 <div class="bg-white dark:bg-gray-900/30 rounded-xl p-4 border border-gray-200 dark:border-gray-700/60">
                     <label class="relative inline-flex items-center cursor-pointer w-full group">
                         <input type="checkbox" id="DISABLE_ONLINE_MEDIA_SOURCES_ON_CLAIM" class="sr-only peer">
@@ -69,15 +70,28 @@
 
                 <div id="online-media-sources-container" class="space-y-3">
                     <p class="text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Fontes a desativar') }}</p>
+                    <div id="online-media-mismatch-warning" class="hidden items-start gap-2 text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-lg p-3">
+                        <svg class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"></path></svg>
+                        <span>
+                            {{ _('Estas fontes estão marcadas mas não constam da lista que o Plex devolveu, por isso não desativam nada:') }}
+                            <strong class="font-mono" data-role="mismatch-keys"></strong>
+                            {{ _('Desmarque-as e escolha as equivalentes na lista abaixo.') }}
+                        </span>
+                    </div>
                     <div id="online-media-sources-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <p class="text-xs text-gray-500 dark:text-gray-400 col-span-full">{{ _('Carregando fontes...') }}</p>
                     </div>
+                    <p id="online-media-unverified-note" class="hidden text-xs text-gray-500 dark:text-gray-400">
+                        {{ _('O Plex não devolveu nenhuma fonte agora, por isso a lista acima é o catálogo conhecido e não foi confirmada com a sua conta.') }}
+                    </p>
                     <div class="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-lg p-3">
                         <svg class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                         <span>{{ _('Esta é uma preferência da conta Plex do usuário, não uma restrição do servidor: ele continua livre para reativar as fontes em plex.tv. O painel apenas escolhe como o aplicativo dele começa.') }}</span>
                     </div>
                 </div>
             </div>
+
+            </div><!-- /plex-tab-content -->
         </div>
 
         <!-- Cartão: Tautulli -->
