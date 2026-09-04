@@ -1,5 +1,6 @@
 # app/services/stream_manager.py
 
+import copy
 import logging
 import requests
 import time
@@ -68,6 +69,15 @@ class StreamManager:
     LISTENER_RETRY_BASE_SECONDS = 15
     LISTENER_RETRY_MAX_SECONDS = 300
 
+    # Janela em que o resultado de 'get_now_playing' é reaproveitado. Vários
+    # consumidores pedem o mesmo estado quase em simultâneo — a tarefa de
+    # background dos sockets (de 5 em 5 segundos), o pedido HTTP de cada
+    # separador aberto e as rajadas de eventos SSE — e cada um deles fazia a sua
+    # própria chamada de rede ao Plex para obter exatamente a mesma resposta.
+    # A cache é invalidada assim que um evento SSE assinala uma mudança real de
+    # estado, por isso nunca atrasa um play/pausa que o utilizador acabou de dar.
+    NOW_PLAYING_CACHE_SECONDS = 2.0
+
     def __init__(self, plex_connection, data_manager, user_manager):
         self.conn = plex_connection
         self.data_manager = data_manager
@@ -102,6 +112,10 @@ class StreamManager:
         # sempre e enchendo o log.
         self._listener_retry_at = 0.0
         self._listener_failures = 0
+        # Cache curta do estado 'Reproduzindo Agora' (ver NOW_PLAYING_CACHE_SECONDS).
+        self._now_playing_lock = threading.Lock()
+        self._now_playing_cache = None
+        self._now_playing_cached_at = 0.0
 
     # --- LÓGICA DE TEMPO REAL (SSE) ---
 
@@ -315,6 +329,11 @@ class StreamManager:
             if not self._has_state_changed(state_notifications) or not self._app:
                 return
 
+            # 0. O estado mudou mesmo: a leitura guardada ficou obsoleta. Sem isto,
+            # o pedido que o frontend faz logo a seguir ao sinal podia ser servido
+            # pela cache e mostrar ainda o estado anterior (ver NOW_PLAYING_CACHE_SECONDS).
+            self.invalidate_now_playing_cache()
+
             # 1. ATUALIZAÇÃO VISUAL IMEDIATA (Sem Lock/Debounce)
             # Garante que os botões de Pausa/Play reagem instantaneamente no Frontend
             with self._app.app_context():
@@ -403,11 +422,83 @@ class StreamManager:
 
     # --- EXTRAÇÃO DE DADOS EM TEMPO REAL ("REPRODUZINDO AGORA") ---
 
-    def get_now_playing(self):
-        """Retorna as sessões ativas com Tratamento Visual Perfeito para o Frontend."""
+    def invalidate_now_playing_cache(self):
+        """Descarta o estado guardado (ver NOW_PLAYING_CACHE_SECONDS)."""
+        with self._now_playing_lock:
+            self._now_playing_cache = None
+            self._now_playing_cached_at = 0.0
+
+    def _get_cached_now_playing(self):
+        """Devolve o último estado guardado, ou None se já expirou."""
+        with self._now_playing_lock:
+            if self._now_playing_cache is None:
+                return None
+            if (time.monotonic() - self._now_playing_cached_at) >= self.NOW_PLAYING_CACHE_SECONDS:
+                return None
+            return self._now_playing_cache
+
+    def get_now_playing(self, use_cache=True):
+        """
+        Retorna as sessões ativas com Tratamento Visual Perfeito para o Frontend.
+
+        Por omissão reaproveita um resultado com menos de NOW_PLAYING_CACHE_SECONDS,
+        para que pedidos quase simultâneos (socket + separadores abertos + rajada
+        SSE) partilhem uma única chamada ao Plex. Passe use_cache=False para forçar
+        uma leitura fresca.
+        """
         if not self.conn.plex:
             return {"success": False, "stream_count": 0, "sessions": []}
-            
+
+        if use_cache:
+            cached = self._get_cached_now_playing()
+            if cached is not None:
+                return copy.deepcopy(cached)
+
+        payload = self._build_now_playing()
+
+        # Só se guarda uma leitura bem-sucedida: uma falha de rede é transitória e
+        # não deve ficar "colada" ao painel durante a janela da cache.
+        if payload.get("success"):
+            with self._now_playing_lock:
+                self._now_playing_cache = payload
+                self._now_playing_cached_at = time.monotonic()
+
+        return copy.deepcopy(payload)
+
+    def get_active_stream_count(self, use_cache=True):
+        """
+        Conta as sessões ativas SEM construir o payload visual completo.
+
+        O resumo do dashboard só precisa deste número, mas chamava o
+        'get_now_playing()' inteiro para o obter — o que arrastava consigo a lista
+        de utilizadores do Plex, a limpeza dos avatares e a construção dos URLs de
+        todas as capas, tudo para depois ser deitado fora. Aqui só se agrupa e se
+        contam as sessões, com o mesmo critério do painel (sessões duplicadas de
+        Chromecast contam uma vez só), para que o cartão e a lista nunca discordem.
+        """
+        if not self.conn.plex:
+            return 0
+
+        if use_cache:
+            cached = self._get_cached_now_playing()
+            if cached is not None:
+                return cached.get("stream_count", 0)
+
+        try:
+            sessions = self.conn.plex.sessions()
+            network_reporter.recovered('now_playing', "'Reproduzindo Agora': o Plex voltou a responder.")
+
+            groups = self._group_sessions_by_user(sessions)
+            return sum(len(self._filter_duplicate_cast_sessions(s_list)) for s_list in groups.values())
+        except NETWORK_ERRORS as e:
+            network_reporter.failure('now_playing', e, prefix="Contagem de streams indisponível, o Plex não respondeu")
+            return 0
+        except Exception as e:
+            logger.error(f"Falha ao contar as sessões ativas: {describe(e)}", exc_info=True)
+            return 0
+
+    def _build_now_playing(self):
+        """Faz a leitura real ao Plex e monta o payload das sessões ativas."""
         try:
             sessions = self.conn.plex.sessions()
             network_reporter.recovered('now_playing', "'Reproduzindo Agora': o Plex voltou a responder.")

@@ -3,24 +3,25 @@ import { fetchAPI } from '../utils.js';
 import { state } from './config.js';
 
 /**
- * Carrega todos os dados iniciais do dashboard concorrentemente.
- * @returns {Promise<object>} - Uma promessa que resolve com os dados.
+ * Dispara todos os pedidos iniciais do dashboard em paralelo e devolve as
+ * promessas SEM esperar por elas.
+ *
+ * Devolver as promessas soltas (em vez de um Promise.all já resolvido) é o que
+ * permite ao dashboard.js pintar cada secção no momento em que a resposta dela
+ * chega. Antes, a página inteira ficava no ecrã de carregamento até à última
+ * resposta — e a última era quase sempre a das sessões ativas, que depende do
+ * servidor Plex responder.
+ *
+ * @returns {{summary: Promise, health: Promise, streams: Promise, audit: Promise}}
  */
-export async function loadDashboardData() {
+export function startDashboardRequests() {
     const { urls } = state;
-    const summaryPromise = fetchAPI(`${urls.summaryUrl}?force=true`); // Força na carga inicial
-    const healthPromise = fetchAPI(urls.healthUrl);
-    const streamsPromise = fetchAPI(urls.activeStreamsUrl);
-    const auditPromise = fetchAPI(urls.auditLogsUrl);
-
-    const [summaryData, healthData, streamsData, auditData] = await Promise.all([
-        summaryPromise,
-        healthPromise,
-        streamsPromise,
-        auditPromise
-    ]);
-
-    return { summaryData, healthData, streamsData, auditData };
+    return {
+        summary: fetchAPI(`${urls.summaryUrl}?force=true`), // Força na carga inicial
+        health: fetchAPI(urls.healthUrl),
+        streams: fetchAPI(urls.activeStreamsUrl),
+        audit: fetchAPI(urls.auditLogsUrl)
+    };
 }
 
 /**
