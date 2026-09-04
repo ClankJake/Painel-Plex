@@ -86,13 +86,16 @@ def clear_logs():
 @limiter.exempt 
 def get_dashboard_summary():
     try:
-        active_streams_data = plex_manager.get_active_sessions()
-        active_streams = active_streams_data.get('stream_count', 0)
+        # Só o NÚMERO de streams interessa a este resumo. Pedir aqui o
+        # 'get_active_sessions()' completo trazia a lista de sessões inteira —
+        # avatares, capas e detalhes de transcode — para no fim ficar apenas com
+        # o contador. A lista detalhada é servida pelo /active-streams, que o
+        # frontend carrega em separado.
+        active_streams = stream_manager.get_active_stream_count()
 
         all_users = plex_manager.get_all_plex_users()
         total_users = len(all_users) if all_users else 0
-        blocked_users_list = data_manager.get_blocked_users_list()
-        blocked_users = len(blocked_users_list)
+        blocked_users = data_manager.count_blocked_users()
         active_users = total_users - blocked_users
 
         now = datetime.now()

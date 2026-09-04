@@ -314,6 +314,23 @@ class TestBloqueados:
     def test_remover_quem_nao_esta_bloqueado(self, data_manager):
         assert data_manager.remove_blocked_user(999) is False
 
+    def test_contagem_acompanha_a_lista(self, data_manager):
+        """
+        O resumo do dashboard conta os bloqueados por COUNT em vez de
+        materializar a lista: os dois têm de dar sempre o mesmo número.
+        """
+        assert data_manager.count_blocked_users() == 0
+
+        data_manager.set_user_profile(1, {"username": "ana"})
+        data_manager.set_user_profile(2, {"username": "bea"})
+        data_manager.add_blocked_user(1, "ana", reason="manual")
+        data_manager.add_blocked_user(2, "bea", reason="expired")
+
+        assert data_manager.count_blocked_users() == len(data_manager.get_blocked_users_list()) == 2
+
+        data_manager.remove_blocked_user(1)
+        assert data_manager.count_blocked_users() == 1
+
 
 class TestPagamentos:
     def test_criar_e_atualizar_estado(self, data_manager):

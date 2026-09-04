@@ -39,24 +39,68 @@ function _createSummaryCard(id, icon, label, value, colorClass) {
     return `
         <div id="${id}" class="p-4 rounded-xl flex items-center gap-4 ${colorClass} text-white shadow-lg">
             <div class="p-3 bg-white/20 rounded-lg">${icon}</div>
-            <div>
+            <div class="min-w-0">
                 <p class="text-sm font-medium opacity-80">${label}</p>
-                <p class="text-2xl font-bold">${value}</p>
+                <p data-card-value class="text-2xl font-bold truncate">${value}</p>
             </div>
         </div>
     `;
 }
 
-export function renderSummaryCards(summary) {
-    if (!dom.summaryCardsContainer) return;
+/**
+ * Devolve os quatro cartões na ordem em que são desenhados.
+ */
+function _summaryCardValues(summary) {
     const { i18n } = state;
-    
-    dom.summaryCardsContainer.innerHTML = `
-        ${_createSummaryCard('active-streams-card', ICONS.activeStreams, i18n.activeStreams, summary.active_streams, 'bg-blue-500')}
-        ${_createSummaryCard('total-users-card', ICONS.totalUsers, i18n.totalUsers, summary.total_users, 'bg-purple-500')}
-        ${_createSummaryCard('monthly-revenue-card', ICONS.revenue, i18n.monthlyRevenue, formatCurrency(summary.monthly_revenue), 'bg-green-500')}
-        ${_createSummaryCard('upcoming-renewals-card', ICONS.renewals, i18n.upcomingRenewals, summary.upcoming_renewals, 'bg-yellow-500')}
-    `;
+    return [
+        { id: 'active-streams-card', icon: ICONS.activeStreams, label: i18n.activeStreams, value: summary.active_streams, color: 'bg-blue-500' },
+        { id: 'total-users-card', icon: ICONS.totalUsers, label: i18n.totalUsers, value: summary.total_users, color: 'bg-purple-500' },
+        { id: 'monthly-revenue-card', icon: ICONS.revenue, label: i18n.monthlyRevenue, value: formatCurrency(summary.monthly_revenue), color: 'bg-green-500' },
+        { id: 'upcoming-renewals-card', icon: ICONS.renewals, label: i18n.upcomingRenewals, value: summary.upcoming_renewals, color: 'bg-yellow-500' }
+    ];
+}
+
+export function renderSummaryCards(summary) {
+    if (!dom.summaryCardsContainer || !summary) return;
+
+    const cards = _summaryCardValues(summary);
+
+    // Esta função é chamada pelo tempo real sempre que o servidor manda um
+    // resumo novo. Refazer o innerHTML de todos os cartões de cada vez destruía
+    // e recriava os nós do DOM (e cortava qualquer seleção de texto ou
+    // transição em curso) só para mudar quatro números: quando os cartões já
+    // existem, escreve-se apenas o valor que mudou.
+    const existing = cards.map(card => document.getElementById(card.id)?.querySelector('[data-card-value]'));
+
+    if (existing.every(Boolean)) {
+        cards.forEach((card, i) => {
+            const text = String(card.value);
+            if (existing[i].textContent !== text) existing[i].textContent = text;
+        });
+        return;
+    }
+
+    dom.summaryCardsContainer.innerHTML = cards
+        .map(card => _createSummaryCard(card.id, card.icon, card.label, card.value, card.color))
+        .join('');
+}
+
+/**
+ * Esqueleto dos cartões de resumo, mostrado enquanto o pedido não chega. Mantém
+ * a altura final da grelha para a página não "saltar" quando os dados entram.
+ */
+export function renderSummaryCardsSkeleton() {
+    if (!dom.summaryCardsContainer || dom.summaryCardsContainer.children.length) return;
+
+    dom.summaryCardsContainer.innerHTML = Array.from({ length: 4 }, () => `
+        <div class="p-4 rounded-xl flex items-center gap-4 bg-gray-200 dark:bg-gray-800 animate-pulse">
+            <div class="p-3 rounded-lg bg-gray-300 dark:bg-gray-700 w-12 h-12"></div>
+            <div class="space-y-2 flex-1">
+                <div class="h-3 w-24 rounded bg-gray-300 dark:bg-gray-700"></div>
+                <div class="h-6 w-16 rounded bg-gray-300 dark:bg-gray-700"></div>
+            </div>
+        </div>
+    `).join('');
 }
 
 // ==========================================
@@ -127,6 +171,24 @@ export function renderCharts(summary) {
 // ==========================================
 // SAÚDE DO SISTEMA
 // ==========================================
+
+/**
+ * Esqueleto da grelha de saúde. Cada verificação é uma chamada de rede a um
+ * serviço externo, por isso esta secção costuma ser das últimas a responder.
+ */
+export function renderSystemHealthSkeleton() {
+    if (!dom.systemHealthContainer || dom.systemHealthContainer.children.length) return;
+
+    dom.systemHealthContainer.innerHTML = Array.from({ length: 6 }, () => `
+        <div class="flex items-center p-3 bg-gray-100 dark:bg-gray-900/50 rounded-lg animate-pulse">
+            <div class="flex-shrink-0 w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-700"></div>
+            <div class="ml-3 space-y-2 flex-1">
+                <div class="h-3 w-20 rounded bg-gray-300 dark:bg-gray-700"></div>
+                <div class="h-2 w-12 rounded bg-gray-300 dark:bg-gray-700"></div>
+            </div>
+        </div>
+    `).join('');
+}
 
 export function renderSystemHealth(health) {
     if (!dom.systemHealthContainer) return;
@@ -277,6 +339,65 @@ function _updateStreamCardDetails(s) {
     _updateStreamDetailLine(s.session_key, 'audio', texts.audio);
 }
 
+/**
+ * Estado de espera da secção de sessões: a página já está montada e o pedido às
+ * sessões ainda vai a caminho do Plex. Sem isto, a secção ficava simplesmente
+ * escondida e não havia forma de distinguir "ainda a carregar" de "ninguém está
+ * a ver nada".
+ */
+export function renderActiveStreamsLoading() {
+    if (!dom.activeStreamsSection || !dom.activeStreamsContainer) return;
+    // Se já houver cartões (por exemplo, o tempo real chegou primeiro), não os
+    // substitui por um esqueleto.
+    if (dom.activeStreamsContainer.querySelector('.stream-card')) return;
+
+    dom.activeStreamsSection.classList.remove('hidden');
+    dom.activeStreamsContainer.innerHTML = Array.from({ length: 2 }, () => `
+        <div class="stream-skeleton bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-xl shadow-md flex items-start gap-3 sm:gap-4 animate-pulse">
+            <div class="w-24 sm:w-28 flex-shrink-0 aspect-[2/3] rounded-md bg-gray-200 dark:bg-gray-700"></div>
+            <div class="flex-1 min-w-0 space-y-3 py-1">
+                <div class="h-4 w-3/4 rounded bg-gray-200 dark:bg-gray-700"></div>
+                <div class="h-3 w-1/2 rounded bg-gray-200 dark:bg-gray-700"></div>
+                <div class="h-3 w-2/3 rounded bg-gray-200 dark:bg-gray-700"></div>
+                <div class="h-3 w-1/3 rounded bg-gray-200 dark:bg-gray-700"></div>
+                <div class="h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700"></div>
+            </div>
+        </div>
+    `).join('');
+}
+
+/**
+ * O pedido das sessões falhou (Plex fora do ar, timeout). Distinguir isto de
+ * "nada a tocar" evita que o administrador leia um servidor inacessível como um
+ * servidor vazio.
+ */
+export function renderActiveStreamsUnavailable() {
+    if (!dom.activeStreamsSection || !dom.activeStreamsContainer) return;
+    if (dom.activeStreamsContainer.querySelector('.stream-card')) return;
+
+    dom.activeStreamsSection.classList.remove('hidden');
+    delete dom.activeStreamsContainer.dataset.placeholder;
+    dom.activeStreamsContainer.innerHTML = `
+        <p class="stream-placeholder col-span-full text-center text-sm text-gray-500 dark:text-gray-400 py-6">
+            ${escapeHtml(state.i18n.streamsUnavailable || 'Não foi possível obter as sessões ativas.')}
+        </p>`;
+}
+
+function _renderNoActiveStreams() {
+    const { i18n } = state;
+    dom.activeStreamsSection.classList.remove('hidden');
+
+    // Já está no ecrã: reescrever o HTML a cada atualização só reiniciava a
+    // animação de entrada sem mudar nada.
+    if (dom.activeStreamsContainer.dataset.placeholder === 'empty') return;
+    dom.activeStreamsContainer.dataset.placeholder = 'empty';
+
+    dom.activeStreamsContainer.innerHTML = `
+        <p class="stream-placeholder col-span-full text-center text-sm text-gray-500 dark:text-gray-400 py-6">
+            ${escapeHtml(i18n.noActiveStreams || 'Nenhuma reprodução ativa no momento.')}
+        </p>`;
+}
+
 export function renderActiveStreamsDashboard(sessions) {
     if (!dom.activeStreamsSection || !dom.activeStreamsContainer) return;
 
@@ -293,13 +414,18 @@ export function renderActiveStreamsDashboard(sessions) {
     });
 
     if (activeSessions.length === 0) {
-        dom.activeStreamsSection.classList.add('hidden');
-        dom.activeStreamsContainer.innerHTML = '';
+        _renderNoActiveStreams();
         clearStreamTimers();
         return;
     }
 
     dom.activeStreamsSection.classList.remove('hidden');
+
+    // Sai do estado de espera (esqueleto ou mensagem de "nada a tocar") antes de
+    // acrescentar os cartões reais. O seletor tem de ser específico: os próprios
+    // cartões usam <p> nas linhas de detalhe.
+    delete dom.activeStreamsContainer.dataset.placeholder;
+    dom.activeStreamsContainer.querySelectorAll('.stream-skeleton, .stream-placeholder').forEach(el => el.remove());
 
     activeSessions.forEach(s => {
         let card = dom.activeStreamsContainer.querySelector(`[data-session-key="${s.session_key}"]`);

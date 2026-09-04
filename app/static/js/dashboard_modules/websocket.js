@@ -80,6 +80,29 @@ export function setupWebSocket() {
     let streamUpdateTimeout = null;
     let fastUpdateTimeout = null; // Guarda o timer rápido
     let fetchCounter = 0; // Previne atropelamento de dados (Race Condition)
+    let isSocketConnected = false;
+
+    // Um único ponto de leitura das sessões, partilhado pelo sinal SSE, pelo
+    // fallback e pelo regresso ao separador. O contador impede que uma resposta
+    // atrasada sobreponha outra mais recente.
+    const fetchActiveStreams = async () => {
+        const currentFetch = ++fetchCounter;
+
+        try {
+            const scriptTag = document.getElementById('dashboard-script');
+            const activeStreamsUrl = scriptTag ? scriptTag.dataset.activeStreamsUrl : '/api/system/active-streams';
+
+            const data = await fetchAPI(activeStreamsUrl);
+
+            if (currentFetch !== fetchCounter) return;
+
+            if (data && data.success) {
+                renderActiveStreamsDashboard(data.sessions);
+            }
+        } catch (error) {
+            console.error('WS: Erro ao buscar os streams:', error);
+        }
+    };
     
     // Conexão Inteligente: Usa Polling inicial e depois atualiza para WebSocket
     const socket = io('/dashboard', {
@@ -96,10 +119,12 @@ export function setupWebSocket() {
     // --- EVENTOS DE CONEXÃO ---
     socket.on('connect', () => {
         console.log('⚡ WS: Conectado ao dashboard.');
+        isSocketConnected = true;
         updateRealtimeIndicator('connected', i18n.connected, i18n);
     });
 
     socket.on('disconnect', (reason) => {
+        isSocketConnected = false;
         if (reason !== 'ping timeout' && reason !== 'transport close') {
             console.warn(`WS: Desconectado do servidor. Motivo: ${reason}`);
         }
@@ -111,6 +136,7 @@ export function setupWebSocket() {
     });
 
     socket.on('connect_error', (error) => {
+        isSocketConnected = false;
         console.error('WS: Erro de ligação:', error.message);
         updateRealtimeIndicator('disconnected', i18n.disconnected, i18n);
     });
@@ -132,33 +158,19 @@ export function setupWebSocket() {
     socket.on('dashboard_update_streams', () => {
         if (streamUpdateTimeout) clearTimeout(streamUpdateTimeout);
         if (fastUpdateTimeout) clearTimeout(fastUpdateTimeout);
-        
+
+        // Com o separador em segundo plano não há nada para desenhar: o Plex
+        // continua a emitir sinais durante uma reprodução inteira e cada um
+        // custava dois pedidos ao servidor. O estado é reposto no regresso.
+        if (document.hidden) return;
+
         console.log("⚡ Sinal Plex detetado! A atualizar instantaneamente...");
 
-        const fetchAndUpdate = async () => {
-            const currentFetch = ++fetchCounter; 
-            
-            try {
-                const scriptTag = document.getElementById('dashboard-script');
-                const activeStreamsUrl = scriptTag ? scriptTag.dataset.activeStreamsUrl : '/api/system/active-streams';
-                
-                const data = await fetchAPI(activeStreamsUrl);
-                
-                if (currentFetch !== fetchCounter) return;
-                
-                if (data && data.success && typeof renderActiveStreamsDashboard === 'function') {
-                    renderActiveStreamsDashboard(data.sessions);
-                }
-            } catch (error) {
-                console.error('WS: Erro ao buscar os streams SSE:', error);
-            }
-        };
-
         // 1ª Chamada Rápida (400ms)
-        fastUpdateTimeout = setTimeout(fetchAndUpdate, 400);
+        fastUpdateTimeout = setTimeout(fetchActiveStreams, 400);
 
-        // 2ª Chamada Tardia (3000ms)
-        streamUpdateTimeout = setTimeout(fetchAndUpdate, 3000); 
+        // 2ª Chamada Tardia (3000ms), para apanhar o estado já assente
+        streamUpdateTimeout = setTimeout(fetchActiveStreams, 3000);
     });
 
     // --- LOGS DE AUDITORIA ---
@@ -172,19 +184,18 @@ export function setupWebSocket() {
     setupBulkNotificationHandlers(socket, i18n);
 
     // --- LOOP DE SEGURANÇA (FALLBACK) ---
-    setInterval(async () => {
-        if (document.hidden) return; 
-
-        try {
-            const scriptTag = document.getElementById('dashboard-script');
-            const activeStreamsUrl = scriptTag ? scriptTag.dataset.activeStreamsUrl : '/api/system/active-streams';
-            const data = await fetchAPI(activeStreamsUrl);
-            
-            if (data && data.success && typeof renderActiveStreamsDashboard === 'function') {
-                renderActiveStreamsDashboard(data.sessions);
-            }
-        } catch (e) {
-            // Falha silenciosa
-        }
+    // Só entra em ação quando o socket NÃO está ligado. Com o socket de pé, o
+    // servidor já empurra as sessões a cada 5 segundos: este ciclo pedia a mesma
+    // coisa por HTTP de 15 em 15 segundos, em todos os separadores abertos, e
+    // cada pedido desses era uma chamada ao Plex.
+    setInterval(() => {
+        if (document.hidden || isSocketConnected) return;
+        fetchActiveStreams();
     }, 15000);
+
+    // Ao voltar ao separador, atualiza uma vez para recuperar o que passou
+    // enquanto ele esteve em segundo plano.
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) fetchActiveStreams();
+    });
 }

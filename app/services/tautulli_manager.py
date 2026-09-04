@@ -52,12 +52,26 @@ class TautulliManager:
         logger.info("A recarregar as credenciais do Tautulli Manager...")
         self.api_client.reload_config()
         self.invalidate_stats_cache()  # Invalida a cache ao recarregar
+        # O estado de saúde também fica obsoleto: sem isto, o painel continuaria a
+        # mostrar "Offline" até 30s depois de o administrador corrigir o URL/chave.
+        cache.delete_memoized(self._check_status_cached)
 
     def check_status(self) -> Dict[str, str]:
-        """Verifica o estado da conexão com o Tautulli de forma segura."""
+        """
+        Verifica o estado da conexão com o Tautulli de forma segura.
+
+        ⚡ Com cache curta (30s), pelo mesmo motivo do Plex: testar a ligação é uma
+        chamada de rede real e o painel de saúde pede-a a cada carregamento da
+        Dashboard. 30 segundos é curto o suficiente para o estado continuar útil
+        em diagnóstico.
+        """
         if not self.api_client.is_configured:
             return {"status": "DISABLED", "message": _("Não configurado ou desativado.")}
-        
+
+        return self._check_status_cached()
+
+    @cache.memoize(timeout=30)
+    def _check_status_cached(self) -> Dict[str, str]:
         try:
             test_result = self.api_client.test_connection(self.api_client.base_url, self.api_client.api_key)
             if test_result.get('success'):

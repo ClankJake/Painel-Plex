@@ -378,3 +378,162 @@ class TestEnforceScreenLimits:
         manager._enforce_screen_limits(1, "ana", sessoes, {"screen_limit": 1}, self._config())
 
         assert sum(1 for s in sessoes if s.parou_com) == 3
+
+
+class ConexaoFalsa:
+    """Ligação mínima ao Plex: conta quantas leituras de sessões foram feitas."""
+
+    def __init__(self, sessoes=None):
+        self._sessoes = sessoes or []
+        self.chamadas = 0
+        self.account = None
+        self.plex = self
+
+    def sessions(self):
+        self.chamadas += 1
+        return self._sessoes
+
+
+class TestGetActiveStreamCount:
+    """
+    O resumo do dashboard só precisa do número de streams. Contar aqui evita
+    montar o payload visual inteiro (avatares, capas, detalhes de transcode).
+    """
+
+    def _manager(self, sessoes):
+        conn = ConexaoFalsa(sessoes)
+        gestor = StreamManager(plex_connection=conn, data_manager=FakeDataManager(), user_manager=None)
+        return gestor, conn
+
+    def test_sem_ligacao_devolve_zero(self, app_context):
+        conn = ConexaoFalsa([])
+        conn.plex = None
+        gestor = StreamManager(plex_connection=conn, data_manager=FakeDataManager(), user_manager=None)
+
+        assert gestor.get_active_stream_count() == 0
+        assert conn.chamadas == 0
+
+    def test_conta_as_sessoes_ativas(self, app_context):
+        gestor, conn = self._manager([
+            SessaoFalsa(session_key="1", user_id=1, titulo="Duna"),
+            SessaoFalsa(session_key="2", user_id=2, titulo="Matrix"),
+        ])
+
+        assert gestor.get_active_stream_count(use_cache=False) == 2
+        assert conn.chamadas == 1
+
+    def test_o_telemovel_que_comanda_o_chromecast_conta_uma_vez(self, app_context):
+        """A contagem usa o mesmo critério da lista, para os dois não discordarem."""
+        gestor, _ = self._manager([
+            SessaoFalsa(session_key="1", user_id=1, titulo="Duna", plataforma="Chromecast"),
+            SessaoFalsa(session_key="2", user_id=1, titulo="Duna", plataforma="Android"),
+        ])
+
+        assert gestor.get_active_stream_count(use_cache=False) == 1
+
+    def test_falha_de_rede_devolve_zero(self, app_context):
+        gestor, conn = self._manager([])
+
+        def rebenta():
+            raise ConnectionError("Plex inacessível")
+
+        conn.sessions = rebenta
+        assert gestor.get_active_stream_count(use_cache=False) == 0
+
+    def test_reaproveita_a_contagem_ja_guardada(self, app_context):
+        """Com uma leitura recente em cache, não se volta a falar com o Plex."""
+        gestor, conn = self._manager([])
+        gestor._now_playing_cache = {"success": True, "stream_count": 3, "sessions": []}
+        gestor._now_playing_cached_at = __import__("time").monotonic()
+
+        assert gestor.get_active_stream_count() == 3
+        assert conn.chamadas == 0
+
+
+class TestNowPlayingCache:
+    """Janela curta de reaproveitamento (ver NOW_PLAYING_CACHE_SECONDS)."""
+
+    def _manager(self):
+        conn = ConexaoFalsa([])
+        return StreamManager(plex_connection=conn, data_manager=FakeDataManager(), user_manager=None)
+
+    def test_pedidos_seguidos_partilham_uma_leitura(self, app_context, monkeypatch):
+        gestor = self._manager()
+        chamadas = []
+
+        def leitura():
+            chamadas.append(1)
+            return {"success": True, "stream_count": 1, "sessions": [{"session_key": "1"}]}
+
+        monkeypatch.setattr(gestor, "_build_now_playing", leitura)
+
+        primeiro = gestor.get_now_playing()
+        segundo = gestor.get_now_playing()
+
+        assert len(chamadas) == 1
+        assert primeiro == segundo
+
+    def test_quem_recebe_o_resultado_nao_estraga_a_cache(self, app_context, monkeypatch):
+        gestor = self._manager()
+        monkeypatch.setattr(
+            gestor, "_build_now_playing",
+            lambda: {"success": True, "stream_count": 1, "sessions": [{"session_key": "1"}]}
+        )
+
+        primeiro = gestor.get_now_playing()
+        primeiro["sessions"].clear()
+
+        assert gestor.get_now_playing()["sessions"] == [{"session_key": "1"}]
+
+    def test_use_cache_false_forca_leitura_fresca(self, app_context, monkeypatch):
+        gestor = self._manager()
+        chamadas = []
+        monkeypatch.setattr(
+            gestor, "_build_now_playing",
+            lambda: (chamadas.append(1), {"success": True, "stream_count": 0, "sessions": []})[1]
+        )
+
+        gestor.get_now_playing()
+        gestor.get_now_playing(use_cache=False)
+
+        assert len(chamadas) == 2
+
+    def test_uma_falha_nao_fica_colada_ao_painel(self, app_context, monkeypatch):
+        """Só leituras bem-sucedidas são guardadas: uma falha de rede é transitória."""
+        gestor = self._manager()
+        respostas = [
+            {"success": False, "stream_count": 0, "sessions": []},
+            {"success": True, "stream_count": 1, "sessions": [{"session_key": "1"}]},
+        ]
+        monkeypatch.setattr(gestor, "_build_now_playing", lambda: respostas.pop(0))
+
+        assert gestor.get_now_playing()["success"] is False
+        assert gestor.get_now_playing()["success"] is True
+
+    def test_mudanca_de_estado_no_sse_descarta_a_cache(self, app_context, monkeypatch):
+        """
+        Um play/pausa real tem de chegar ao painel de imediato — a cache não pode
+        servir o estado anterior ao pedido que vem logo a seguir ao sinal.
+        """
+        gestor = self._manager()
+        monkeypatch.setattr(
+            gestor, "_build_now_playing",
+            lambda: {"success": True, "stream_count": 0, "sessions": []}
+        )
+        gestor.get_now_playing()
+        assert gestor._get_cached_now_playing() is not None
+
+        gestor.invalidate_now_playing_cache()
+        assert gestor._get_cached_now_playing() is None
+
+    def test_cache_expira_ao_fim_da_janela(self, app_context, monkeypatch):
+        gestor = self._manager()
+        monkeypatch.setattr(
+            gestor, "_build_now_playing",
+            lambda: {"success": True, "stream_count": 0, "sessions": []}
+        )
+        gestor.get_now_playing()
+
+        # Recua o relógio da cache para além da janela.
+        gestor._now_playing_cached_at -= (StreamManager.NOW_PLAYING_CACHE_SECONDS + 1)
+        assert gestor._get_cached_now_playing() is None

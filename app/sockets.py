@@ -15,6 +15,17 @@ app_instance = None
 background_task_greenlet = None
 connected_clients = 0
 
+# Última carga emitida em cada canal. A tarefa corre de 5 em 5 segundos, mas o
+# resumo (utilizadores, receita) e a lista de sessões passam a maior parte do
+# tempo iguais: reemiti-los sem mudanças obrigava cada painel aberto a refazer
+# o DOM e os gráficos a cada 5 segundos, sem nada de novo para mostrar.
+_last_summary_emitted = None
+_last_sessions_emitted = None
+# Ligou um cliente novo: a próxima ronda emite sempre, mesmo que nada tenha
+# mudado, para que ele receba o estado atual em vez de esperar pela primeira
+# alteração real.
+_force_next_emit = False
+
 def _safe_get_active_sessions():
     """Busca as sessões com tratamento seguro de erros de rede."""
     try:
@@ -39,8 +50,7 @@ def _build_summary_data(active_streams_count):
         all_users = extensions.plex_manager.get_all_plex_users()
         total_users = len(all_users) if all_users else 0
         
-        blocked_users_list = extensions.data_manager.get_blocked_users_list()
-        blocked_users = len(blocked_users_list)
+        blocked_users = extensions.data_manager.count_blocked_users()
         active_users = total_users - blocked_users
 
         now = datetime.now()
@@ -87,6 +97,7 @@ def background_task():
     logger.debug("Socket: Tarefa de background (Dashboard) INICIADA.")
     global background_task_greenlet
     global connected_clients
+    global _last_summary_emitted, _last_sessions_emitted, _force_next_emit
     
     while True:
         # Verifica a condição de parada sem o bloqueio pesado do threading.Lock
@@ -99,12 +110,16 @@ def background_task():
         # O try/except global impede que a Thread morra se houver erro isolado
         try:
             summary_data, active_sessions = get_data_for_socket()
-            
-            if summary_data:
+            force = _force_next_emit
+            _force_next_emit = False
+
+            if summary_data and (force or summary_data != _last_summary_emitted):
                 extensions.socketio.emit('dashboard_update', {'summary': summary_data}, namespace='/dashboard')
-                
-            if active_sessions is not None:
+                _last_summary_emitted = summary_data
+
+            if active_sessions is not None and (force or active_sessions != _last_sessions_emitted):
                 extensions.socketio.emit('active_streams_update', {'sessions': active_sessions}, namespace='/dashboard')
+                _last_sessions_emitted = active_sessions
                 
         except Exception as e:
             logger.error(f"Socket: Falha na iteração do background task: {e}")
@@ -126,8 +141,12 @@ def handle_dashboard_connect():
     """Acionado quando um utilizador entra no Painel de Controlo."""
     global connected_clients
     global background_task_greenlet
-    
+    global _force_next_emit
+
     connected_clients += 1
+    # O painel que acabou de ligar ainda não recebeu nada por esta via: a próxima
+    # ronda é emitida mesmo que os dados não tenham mudado desde a anterior.
+    _force_next_emit = True
     logger.debug(f"Socket: Novo cliente conectado ao Dashboard. Total: {connected_clients}")
     
     # Inicia a tarefa de background apenas se ela não estiver a correr

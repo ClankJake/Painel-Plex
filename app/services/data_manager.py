@@ -950,6 +950,17 @@ class DataManager:
     def get_blocked_users_list(self):
         return [self._row_to_dict(u) for u in BlockedUser.query.all()]
 
+    def count_blocked_users(self):
+        """
+        Conta os bloqueados sem os materializar.
+
+        O resumo do dashboard só quer o número, mas usava o
+        'get_blocked_users_list()' — que carrega cada linha e a converte em
+        dicionário — e essa contagem é refeita a cada 5 segundos pela tarefa de
+        tempo real, para todos os painéis abertos.
+        """
+        return db.session.query(BlockedUser).count()
+
     def get_blocked_users_dict(self):
         return {u.user_plex_id: self._row_to_dict(u) for u in BlockedUser.query.all()}
 
