@@ -36,15 +36,20 @@ function renderAccountWarning(sources, accountRead) {
     const orphans = (Array.isArray(sources) ? sources : [])
         .filter(source => source.selected && source.available === false);
 
+    // Alterna as classes do Tailwind em vez do atributo `hidden`: um elemento
+    // com a classe `flex` ignora `[hidden]` por completo (o utilitário vence a
+    // regra base), e o aviso ficaria permanentemente à vista.
     const mismatch = document.getElementById('online-media-mismatch-warning');
     if (mismatch) {
-        mismatch.hidden = orphans.length === 0;
+        const mostrar = orphans.length > 0;
+        mismatch.classList.toggle('hidden', !mostrar);
+        mismatch.classList.toggle('flex', mostrar);
         const keys = mismatch.querySelector('[data-role="mismatch-keys"]');
         if (keys) keys.textContent = orphans.map(source => source.key).join(', ');
     }
 
     const unverified = document.getElementById('online-media-unverified-note');
-    if (unverified) unverified.hidden = accountRead !== false;
+    if (unverified) unverified.classList.toggle('hidden', accountRead !== false);
 }
 
 function escapeHtml(value) {
