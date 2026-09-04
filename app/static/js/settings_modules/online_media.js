@@ -24,13 +24,27 @@ function renderMessage(text) {
 }
 
 /**
- * A conta Plex não devolveu fontes nenhumas: a lista mostrada é só o catálogo
- * conhecido e pode não bater certo com o que a Plex oferece hoje. Dizê-lo é o
- * que evita que o admin marque fontes que não vão desativar coisa nenhuma.
+ * Dois estados distintos, com pesos distintos:
+ *
+ * - Vermelho: há fontes marcadas que a lista do Plex não tem. É o único caso
+ *   acionável — essas escolhas não desativam nada e o admin precisa de as
+ *   trocar pelas equivalentes.
+ * - Nota discreta: o Plex não devolveu lista nenhuma, portanto nada foi
+ *   confirmado. Não é erro do admin, e por isso não leva alarme vermelho.
  */
-function renderAccountWarning(accountRead) {
-    const warning = document.getElementById('online-media-account-warning');
-    if (warning) warning.hidden = accountRead !== false;
+function renderAccountWarning(sources, accountRead) {
+    const orphans = (Array.isArray(sources) ? sources : [])
+        .filter(source => source.selected && source.available === false);
+
+    const mismatch = document.getElementById('online-media-mismatch-warning');
+    if (mismatch) {
+        mismatch.hidden = orphans.length === 0;
+        const keys = mismatch.querySelector('[data-role="mismatch-keys"]');
+        if (keys) keys.textContent = orphans.map(source => source.key).join(', ');
+    }
+
+    const unverified = document.getElementById('online-media-unverified-note');
+    if (unverified) unverified.hidden = accountRead !== false;
 }
 
 function escapeHtml(value) {
@@ -46,7 +60,7 @@ export function renderOnlineMediaSources(sources, accountRead = true) {
     const list = document.getElementById(LIST_ID);
     if (!list) return;
 
-    renderAccountWarning(accountRead);
+    renderAccountWarning(sources, accountRead);
 
     if (!Array.isArray(sources) || sources.length === 0) {
         lastRenderedKeys = [];
@@ -87,6 +101,7 @@ export async function loadOnlineMediaSources() {
         // Sem ligação ao Plex o cartão fica informativo em vez de vazio: o resto
         // das configurações continua perfeitamente utilizável.
         lastRenderedKeys = [];
+        renderAccountWarning([], true);
         renderMessage(i18n.onlineMediaLoadFailed || 'Não foi possível carregar as fontes de mídia online do Plex.');
     }
 }
