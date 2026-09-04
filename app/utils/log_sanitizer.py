@@ -14,6 +14,7 @@ registo se trata, comparar entre linhas), sem permitir RECONSTRUIR o valor.
 """
 
 import re
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 
 def mask_phone(phone):
@@ -73,6 +74,86 @@ def mask_token(token, visible=4):
     if len(token) <= visible:
         return "*" * len(token)
     return f"{token[:visible]}...({len(token)} chars)"
+
+
+def mask_code(code, visible=4):
+    """
+    Mascara um código de convite ou de indicação.
+
+        9bT4xQ2mL8vZ...  ->  9bT4...(22 chars)
+        PROMO            ->  P...(5 chars)
+
+    Um código de convite é um SEGREDO PARTILHÁVEL: quem o lê consegue resgatar
+    o convite e entrar no servidor. Como os logs acabam em pedidos de suporte,
+    issues do GitHub e ferramentas de monitorização, o código completo não pode
+    lá estar. O prefixo é mantido para dar para cruzar linhas do log sobre o
+    mesmo convite.
+
+    Ao contrário do `mask_token`, o prefixo visível encolhe com o tamanho do
+    código: um código personalizado curto como 'PROMO' ficaria praticamente
+    inteiro à vista se revelássemos sempre 4 caracteres.
+    """
+    if not code:
+        return "(vazio)"
+
+    code = str(code)
+    visible = min(visible, len(code) // 3)
+    if visible <= 0:
+        return f"***({len(code)} chars)"
+    return f"{code[:visible]}...({len(code)} chars)"
+
+
+# Nomes de parâmetros cujo VALOR nunca deve aparecer num log.
+_CHAVES_SENSIVEIS = ('token', 'code', 'key', 'secret', 'password', 'senha')
+
+
+def mask_link(url):
+    """
+    Mascara os segredos de um URL antes de o registar: o último segmento do
+    caminho e os valores de parâmetros de consulta sensíveis.
+
+        .../invite/9bT4xQ2mL8vZ  ->  .../invite/9bT4...(12 chars)
+        ...accept?invite_token=X ->  ...accept?invite_token=***(1 chars)
+
+    Porque isto é preciso: o encurtador de links embrulha links de convite do
+    Plex (que levam um `invite_token` — uma credencial viva que dá acesso ao
+    servidor partilhado) e links de pagamento (que levam o `payment_token` do
+    utilizador). Ambos eram registados por inteiro, em INFO, na criação do link
+    E outra vez a cada clique no redirecionamento.
+
+    O esquema, o domínio e a rota continuam visíveis: é o que serve para
+    diagnosticar. O fragmento (#...) é descartado por inteiro, porque também
+    transporta segredos e nunca é necessário no log.
+    """
+    if not url:
+        return "(vazio)"
+
+    texto = str(url)
+    try:
+        partes = urlsplit(texto)
+    except ValueError:
+        return "***"
+
+    # Não é um URL absoluto: trata-se como um código solto.
+    if not partes.scheme and not partes.netloc:
+        return mask_code(texto)
+
+    caminho = partes.path
+    if caminho and caminho.strip('/'):
+        segmentos = caminho.rstrip('/').split('/')
+        segmentos[-1] = mask_code(segmentos[-1])
+        caminho = '/'.join(segmentos)
+
+    consulta = ''
+    if partes.query:
+        pares = []
+        for chave, valor in parse_qsl(partes.query, keep_blank_values=True):
+            if valor and any(sensivel in chave.lower() for sensivel in _CHAVES_SENSIVEIS):
+                valor = mask_code(valor)
+            pares.append(f"{chave}={valor}")
+        consulta = '&'.join(pares)
+
+    return urlunsplit((partes.scheme, partes.netloc, caminho, consulta, ''))
 
 
 def mask_secret(value):

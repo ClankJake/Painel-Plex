@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from ..extensions import db
 from ..models import ShortLink
 from ..config import load_or_create_config
+from ..utils.log_sanitizer import mask_code, mask_link
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class LinkShortener:
             # Mais eficiente que iterar, pois é executado numa única query SQL
             deleted_count = ShortLink.query.filter_by(original_url=original_url).delete(synchronize_session=False)
             if deleted_count > 0:
-                logger.debug(f"{deleted_count} link(s) antigo(s) apagado(s) para evitar duplicações de '{original_url}'.")
+                logger.debug(f"{deleted_count} link(s) antigo(s) apagado(s) para evitar duplicações de '{mask_link(original_url)}'.")
             
             # 2. Cria o novo link curto
             code = self._generate_short_code()
@@ -45,11 +46,11 @@ class LinkShortener:
             
             # 3. Commit atómico (apaga e adiciona ao mesmo tempo)
             db.session.commit()
-            logger.info(f"Novo Link curto '{code}' criado com sucesso para: {original_url}")
+            logger.info(f"Novo Link curto '{mask_code(code)}' criado com sucesso para: {mask_link(original_url)}")
             
         except SQLAlchemyError as e:
             db.session.rollback()
-            logger.error(f"Erro na Base de Dados ao criar link curto para {original_url}: {e}")
+            logger.error(f"Erro na Base de Dados ao criar link curto para {mask_link(original_url)}: {e}")
             # FALLBACK DE SEGURANÇA: Se não conseguir gerar o curto, devolve o longo para não quebrar a aplicação
             return original_url
         except Exception as e:

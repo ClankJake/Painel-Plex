@@ -12,6 +12,7 @@ from ..auth import admin_required
 from .decorators import validate_json
 from .schemas import CreateInviteSchema, CreateInviteBotSchema
 from ...config import load_or_create_config
+from ...utils.log_sanitizer import mask_code
 
 logger = logging.getLogger(__name__)
 invites_api_bp = Blueprint('invites_api', __name__)
@@ -105,7 +106,7 @@ def create_invite_for_bot(validated_data):
     if result.get('success'):
         result['invite_url'] = url_for('main.claim_invite_page', code=result['code'], _external=True)
         result['telegram_id'] = data.get('telegram_id')
-        logger.info(f"Convite '{result['code']}' criado via API para o Telegram ID {data.get('telegram_id')}.")
+        logger.info(f"Convite '{mask_code(result['code'])}' criado via API para o Telegram ID {data.get('telegram_id')}.")
         return jsonify(result), 201
 
     # Conflitos de unicidade (ID já vinculado, ou já com convite ativo) devolvem 409.

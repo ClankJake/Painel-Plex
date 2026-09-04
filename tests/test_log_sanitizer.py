@@ -4,7 +4,9 @@
 import pytest
 
 from app.utils.log_sanitizer import (
+    mask_code,
     mask_email,
+    mask_link,
     mask_phone,
     mask_secret,
     mask_token,
@@ -84,3 +86,69 @@ class TestMaskUrlCredentials:
 
     def test_none_e_devolvido_tal_como_esta(self):
         assert mask_url_credentials(None) is None
+
+
+class TestMaskCode:
+    """
+    Um código de convite é um segredo partilhável: quem o lê nos logs consegue
+    resgatar o convite e entrar no servidor.
+    """
+
+    def test_mostra_o_prefixo_e_o_comprimento(self):
+        assert mask_code("9bT4xQ2mL8vZaBcDeFgHiJ") == "9bT4...(22 chars)"
+
+    def test_codigo_curto_revela_menos(self):
+        # Com 4 caracteres fixos, 'PROMO' ficaria quase todo à vista.
+        assert mask_code("PROMO") == "P...(5 chars)"
+
+    def test_codigo_muito_curto_e_totalmente_ocultado(self):
+        assert mask_code("ab") == "***(2 chars)"
+
+    def test_nunca_revela_mais_de_um_terco(self):
+        for tamanho in range(1, 40):
+            codigo = "abcdefghijklmnopqrstuvwxyz0123456789ABCD"[:tamanho]
+            mascarado = mask_code(codigo)
+            # Ou não revela nada ('***(N chars)'), ou revela um prefixo antes de '...'
+            visivel = mascarado.split("...")[0] if "..." in mascarado else ""
+            assert len(visivel) <= tamanho // 3
+            # O que é revelado tem de ser sempre um prefixo do código original.
+            assert codigo.startswith(visivel)
+
+    def test_vazio(self):
+        assert mask_code(None) == "(vazio)"
+
+
+class TestMaskLink:
+    """
+    O encurtador embrulha links de convite do Plex (com `invite_token`, uma
+    credencial viva) e links de pagamento (com o `payment_token`). Ambos eram
+    registados por inteiro na criação e outra vez a cada clique.
+    """
+
+    def test_esconde_o_ultimo_segmento_do_caminho(self):
+        mascarado = mask_link("https://painel.exemplo/invite/9bT4xQ2mL8vZaBcDeFgHiJ")
+        assert mascarado == "https://painel.exemplo/invite/9bT4...(22 chars)"
+        assert "9bT4xQ2mL8vZaBcDeFgHiJ" not in mascarado
+
+    def test_esconde_o_valor_de_parametros_sensiveis(self):
+        url = "https://clients.plex.tv/servers/shared_servers/accept?invite_token=SEGREDOabcdef123"
+        mascarado = mask_link(url)
+        assert "SEGREDOabcdef123" not in mascarado
+        assert "invite_token=" in mascarado
+
+    def test_preserva_o_que_serve_para_diagnosticar(self):
+        mascarado = mask_link("https://painel.exemplo/pay/TOKENsecretoAqui123")
+        assert mascarado.startswith("https://painel.exemplo/pay/")
+
+    def test_parametros_inofensivos_ficam_legiveis(self):
+        assert "lang=pt" in mask_link("https://painel.exemplo/x/abc?lang=pt")
+
+    def test_descarta_o_fragmento(self):
+        mascarado = mask_link("https://app.plex.tv/auth#?code=SEGREDO&clientID=xyz")
+        assert "SEGREDO" not in mascarado
+
+    def test_url_relativo_tratado_como_codigo(self):
+        assert mask_link("apenas-um-codigo") == mask_code("apenas-um-codigo")
+
+    def test_vazio(self):
+        assert mask_link(None) == "(vazio)"

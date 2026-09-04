@@ -307,3 +307,81 @@ class TestResgateContabilizaUmaSoVez:
         convite = data_manager.get_invitation("UNICO")
         assert convite["use_count"] == 1
         assert convite["claimed_by_users"] == ["ana"]
+
+
+class TestAbusoDeTestesPorIdDoPlex:
+    """
+    O username do Plex pode ser alterado pelo próprio utilizador — o painel tem
+    sincronização (`_sync_local_user_data`) precisamente porque isso acontece.
+    A verificação anti-abuso comparava só o username, por isso bastava mudar de
+    nome para ganhar um segundo período de teste, quantas vezes se quisesse.
+    """
+
+    def _gestor_trial(self, data_manager):
+        return _gestor(data_manager, envio={"success": True})
+
+    def test_id_registado_no_resgate(self, app_context, data_manager):
+        data_manager.add_invitation("TESTE-1", detalhes(trial_duration_minutes=60))
+        gestor = self._gestor_trial(data_manager)
+
+        gestor.claim_invitation("TESTE-1", _ContaPlex(77, "ana", "ana@exemplo.pt"))
+
+        assert data_manager.get_invitation("TESTE-1")["claimed_by_ids"] == ["77"]
+
+    def test_mudar_de_username_ja_nao_dá_um_segundo_teste(self, app_context, data_manager):
+        data_manager.add_invitation("TESTE-1", detalhes(trial_duration_minutes=60))
+        data_manager.add_invitation("TESTE-2", detalhes(trial_duration_minutes=60))
+        gestor = self._gestor_trial(data_manager)
+
+        gestor.claim_invitation("TESTE-1", _ContaPlex(77, "ana", "ana@exemplo.pt"))
+
+        # A MESMA conta do Plex (ID 77) volta, agora com outro username.
+        segundo = gestor.claim_invitation("TESTE-2", _ContaPlex(77, "ana-nova", "ana@exemplo.pt"))
+
+        assert segundo["success"] is False
+        assert "teste" in segundo["message"].lower()
+
+    def test_utilizador_diferente_continua_a_poder_usar_um_teste(self, app_context, data_manager):
+        data_manager.add_invitation("TESTE-1", detalhes(trial_duration_minutes=60))
+        data_manager.add_invitation("TESTE-2", detalhes(trial_duration_minutes=60))
+        gestor = self._gestor_trial(data_manager)
+
+        gestor.claim_invitation("TESTE-1", _ContaPlex(77, "ana", "ana@exemplo.pt"))
+        outro = gestor.claim_invitation("TESTE-2", _ContaPlex(88, "bruno", "bruno@exemplo.pt"))
+
+        assert outro["success"] is True
+
+    def test_historico_antigo_sem_ids_continua_a_bloquear(self, app_context, data_manager):
+        """
+        Convites resgatados antes desta alteração não têm IDs guardados.
+        Ignorá-los reabriria a mesma brecha para quem já está no histórico.
+        """
+        data_manager.add_invitation("ANTIGO", detalhes(trial_duration_minutes=60))
+        data_manager.increment_invitation_use("ANTIGO", "ana")  # sem plex_user_id
+        data_manager.add_invitation("TESTE-2", detalhes(trial_duration_minutes=60))
+
+        resultado = self._gestor_trial(data_manager).claim_invitation(
+            "TESTE-2", _ContaPlex(77, "ana", "ana@exemplo.pt")
+        )
+
+        assert resultado["success"] is False
+
+    def test_resgate_duplicado_reconhecido_pelo_id(self, app_context, data_manager):
+        data_manager.add_invitation("MULTI", detalhes(max_uses=5))
+        gestor = _gestor(data_manager, envio={"success": True})
+
+        gestor.claim_invitation("MULTI", _ContaPlex(77, "ana", "ana@exemplo.pt"))
+        repetido = gestor.claim_invitation("MULTI", _ContaPlex(77, "ana-nova", "ana@exemplo.pt"))
+
+        assert repetido["success"] is False
+        assert data_manager.get_invitation("MULTI")["use_count"] == 1
+
+    def test_libertar_a_vaga_retira_tambem_o_id(self, app_context, data_manager):
+        data_manager.add_invitation("UNICO", detalhes(max_uses=1))
+        gestor = _gestor(data_manager, envio={"success": False, "message": "Plex fora do ar"})
+
+        gestor.claim_invitation("UNICO", _ContaPlex(77, "ana", "ana@exemplo.pt"))
+
+        convite = data_manager.get_invitation("UNICO")
+        assert convite["claimed_by_ids"] == []
+        assert convite["claimed_by_users"] == []

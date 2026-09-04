@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from flask_babel import gettext as _, ngettext
 from collections import defaultdict
 from tzlocal import get_localzone_name
+from ..utils.log_sanitizer import mask_code
 
 logger = logging.getLogger(__name__)
 
@@ -902,7 +903,12 @@ class DataManager:
         return invitation is not None
 
     @db_transaction
-    def increment_invitation_use(self, code, username):
+    def increment_invitation_use(self, code, username, plex_user_id=None):
+        """
+        Incremento SEM verificação de limite. O resgate usa
+        `reserve_invitation_use`, que valida as vagas de forma atómica; este
+        método fica para os casos em que o uso já foi decidido noutro sítio.
+        """
         invitation = Invitation.query.get(code)
         if invitation:
             invitation.use_count += 1
@@ -911,11 +917,17 @@ class DataManager:
             if username not in claimed_users: 
                 claimed_users.append(username)
             invitation.claimed_by_users = json.dumps(claimed_users)
+
+            if plex_user_id is not None:
+                claimed_ids = json.loads(invitation.claimed_by_ids or '[]')
+                if str(plex_user_id) not in claimed_ids:
+                    claimed_ids.append(str(plex_user_id))
+                    invitation.claimed_by_ids = json.dumps(claimed_ids)
             return True
         return False
             
     @db_transaction
-    def reserve_invitation_use(self, code, username):
+    def reserve_invitation_use(self, code, username, plex_user_id=None):
         """
         Reserva ATOMICAMENTE uma utilização do convite. Devolve False se já não
         houver vagas (ou o convite não existir), sem alterar nada.
@@ -959,10 +971,18 @@ class DataManager:
             if username and username not in claimed_users:
                 claimed_users.append(username)
                 invitation.claimed_by_users = json.dumps(claimed_users)
+
+            # O ID é a identidade estável: o username do Plex pode ser mudado
+            # pelo próprio utilizador e deixaria de servir para reconhecê-lo.
+            if plex_user_id is not None:
+                claimed_ids = json.loads(invitation.claimed_by_ids or '[]')
+                if str(plex_user_id) not in claimed_ids:
+                    claimed_ids.append(str(plex_user_id))
+                    invitation.claimed_by_ids = json.dumps(claimed_ids)
         return True
 
     @db_transaction
-    def release_invitation_use(self, code, username):
+    def release_invitation_use(self, code, username, plex_user_id=None):
         """
         Devolve a vaga reservada por `reserve_invitation_use`.
 
@@ -981,6 +1001,12 @@ class DataManager:
         if username in claimed_users:
             claimed_users.remove(username)
             invitation.claimed_by_users = json.dumps(claimed_users)
+
+        if plex_user_id is not None:
+            claimed_ids = json.loads(invitation.claimed_by_ids or '[]')
+            if str(plex_user_id) in claimed_ids:
+                claimed_ids.remove(str(plex_user_id))
+                invitation.claimed_by_ids = json.dumps(claimed_ids)
         return True
 
     @db_transaction
@@ -994,7 +1020,7 @@ class DataManager:
                         invitation.expires_at = None
                 except (ValueError, TypeError):
                      invitation.expires_at = None
-            logger.info(f"Convite '{code}' reativado manualmente (contagem resetada).")
+            logger.info(f"Convite '{mask_code(code)}' reativado manualmente (contagem resetada).")
             return True
         return False
     
@@ -1097,5 +1123,13 @@ class DataManager:
                     d['claimed_by_users'] = []
             elif not d.get('claimed_by_users'):
                 d['claimed_by_users'] = []
+
+            if d.get('claimed_by_ids') and isinstance(d['claimed_by_ids'], str):
+                try:
+                    d['claimed_by_ids'] = json.loads(d['claimed_by_ids'])
+                except json.JSONDecodeError:
+                    d['claimed_by_ids'] = []
+            elif 'claimed_by_ids' in d and not d.get('claimed_by_ids'):
+                d['claimed_by_ids'] = []
                 
         return d
