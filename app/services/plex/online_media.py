@@ -12,11 +12,15 @@ que é uma definição *da conta de cada utilizador*, não do servidor. Ou seja:
 só é possível alterá-las enquanto temos o token do próprio utilizador em mão —
 exatamente o que acontece no momento em que ele aceita o convite no painel.
 
-O pedido é feito aqui à mão, em vez de `MyPlexAccount.onlineMediaSources()`,
-porque o leitor do plexapi assume uma forma exata de resposta: exige XML (parte
-se a Plex responder JSON) e só reconhece `<optOut>` como filho *direto* da raiz.
-Qualquer mudança de forma do lado da Plex devolveria uma lista vazia sem erro
-nenhum — a funcionalidade deixaria de fazer o que promete, em silêncio.
+O pedido é feito aqui à mão, e não com `MyPlexAccount.onlineMediaSources()`,
+porque esse leitor não serve para a resposta real. A Plex devolve hoje um
+objeto JSON plano —
+
+    {"tv.plex.provider.vod": "opt_out", "tv.plex.provider.epg": "opt_out", ...}
+
+— enquanto o plexapi exige XML com elementos `<optOut>` como filhos diretos da
+raiz. O resultado era uma lista vazia sem erro nenhum, ou seja, a funcionalidade
+a não fazer nada em silêncio.
 """
 
 import json
@@ -34,17 +38,22 @@ OPT_OUTS_URL = "https://plex.tv/api/v2/user/{uuid}/settings/opt_outs"
 
 REQUEST_TIMEOUT = 15
 
-# Catálogo das fontes conhecidas, pela ordem em que fazem sentido para o admin.
-# As chaves reais são lidas da conta do Plex sempre que possível (ver
-# `get_catalog`); esta lista serve para as ordenar, para lhes dar um nome
-# legível e para a interface continuar utilizável com o Plex offline.
+# Catálogo conhecido, pela ordem em que faz sentido para o admin: primeiro as
+# fontes de conteúdo, depois as definições do Discover. Corresponde ao que uma
+# conta real devolve hoje — as chaves em uso são sempre lidas da conta ligada ao
+# painel (ver `get_catalog`), pelo que esta lista só ordena, dá nomes legíveis e
+# mantém a página utilizável com o Plex offline.
 KNOWN_SOURCE_KEYS = [
     "tv.plex.provider.vod",
     "tv.plex.provider.epg",
     "tv.plex.provider.music",
-    "tv.plex.provider.news",
     "tv.plex.provider.podcasts",
-    "tv.plex.provider.metadata",
+    "tv.plex.provider.webshows",
+    "includeMetadataInSearch",
+    "includeDiscoverSource",
+    "includeAvailabilities",
+    "includeSocialProof",
+    "scrobbling",
 ]
 
 
@@ -56,9 +65,18 @@ def source_label(key):
         "tv.plex.provider.vod": _("Filmes e Programas de TV (grátis, com anúncios)"),
         "tv.plex.provider.epg": _("TV ao Vivo (canais gratuitos do Plex)"),
         "tv.plex.provider.music": _("Vídeos Musicais"),
-        "tv.plex.provider.news": _("Notícias"),
         "tv.plex.provider.podcasts": _("Podcasts"),
+        "tv.plex.provider.webshows": _("Web Shows"),
+        "tv.plex.provider.news": _("Notícias"),
         "tv.plex.provider.metadata": _("Descobrir (Plex Discover)"),
+        # As restantes não são fontes de conteúdo, mas vêm na mesma resposta e
+        # também mexem com o que o usuário vê. Os nomes dizem exatamente o que
+        # fazem, para ninguém desligar por engano o que não queria.
+        "includeMetadataInSearch": _("Incluir o catálogo da Plex na pesquisa"),
+        "includeDiscoverSource": _("Resultados do Plex Discover"),
+        "includeAvailabilities": _("Mostrar onde assistir noutros serviços"),
+        "includeSocialProof": _("Sugestões sociais (o que os amigos veem)"),
+        "scrobbling": _("Partilhar o que assiste com a Plex (scrobbling)"),
     }
     return labels.get(key, key)
 
@@ -118,9 +136,10 @@ def parse_opt_outs(body):
     """
     Lê a resposta do endpoint de opt-outs, seja ela JSON ou XML.
 
-    A leitura é deliberadamente tolerante — procura, a qualquer profundidade,
-    entradas com um atributo `key` — porque a forma exata desta resposta já é
-    a segunda coisa que a Plex mudou por baixo desta funcionalidade.
+    A forma real é hoje um objeto JSON plano `{chave: valor}`. As outras formas
+    continuam a ser aceites — lista de `{"key", "value"}`, JSON aninhado, XML a
+    qualquer profundidade — porque esta resposta já mudou de forma antes e a
+    alternativa a ser tolerante é a funcionalidade parar sem dar sinal.
     """
     body = (body or "").strip()
     if not body:
@@ -130,9 +149,18 @@ def parse_opt_outs(body):
 
     if body[0] in "[{":
         try:
-            _walk_json(json.loads(body), found)
+            data = json.loads(body)
         except ValueError:
-            found = []
+            return []
+        _walk_json(data, found)
+        if not found and isinstance(data, dict):
+            # Forma que a Plex devolve hoje: um objeto plano {chave: valor},
+            # sem `key`/`value` nenhum — daí a procura acima não achar nada.
+            found = [
+                {"key": key, "value": value}
+                for key, value in data.items()
+                if isinstance(key, str) and key and isinstance(value, str)
+            ]
     else:
         try:
             root = ET.fromstring(body)

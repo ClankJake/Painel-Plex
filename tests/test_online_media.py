@@ -56,6 +56,17 @@ class FakeConnection:
         self.account = account
 
 
+# Resposta real da Plex, copiada do log de produção em 2026-09-04. Fica aqui
+# como referência: foi a forma que ninguém tinha — um objeto plano, sem
+# `key`/`value` — que fez a funcionalidade não desativar nada em silêncio.
+REAL_RESPONSE = (
+    '{"tv.plex.provider.music":"opt_out","tv.plex.provider.podcasts":"opt_out",'
+    '"tv.plex.provider.webshows":"opt_out","tv.plex.provider.vod":"opt_out",'
+    '"tv.plex.provider.epg":"opt_out","scrobbling":"opt_in",'
+    '"includeAvailabilities":"opt_out","includeDiscoverSource":"opt_out_managed",'
+    '"includeMetadataInSearch":"opt_out_managed","includeSocialProof":"opt_out"}'
+)
+
 XML_SOURCES = """<?xml version="1.0" encoding="UTF-8"?>
 <optOuts size="2">
   <optOut key="tv.plex.provider.vod" value="opt_in"/>
@@ -97,6 +108,23 @@ class TestSanitizacao:
 
 class TestLeituraDaResposta:
     """A forma desta resposta já mudou uma vez; o leitor tem de aguentar variações."""
+
+    def test_le_a_resposta_real_da_plex(self):
+        lidas = {e["key"]: e["value"] for e in parse_opt_outs(REAL_RESPONSE)}
+
+        assert len(lidas) == 10
+        # As duas que o painel desativa por omissão têm mesmo de estar lá.
+        assert lidas["tv.plex.provider.vod"] == "opt_out"
+        assert lidas["tv.plex.provider.epg"] == "opt_out"
+        assert lidas["scrobbling"] == "opt_in"
+
+    def test_le_objeto_plano_chave_valor(self):
+        body = '{"tv.plex.provider.vod": "opt_in", "scrobbling": "opt_out"}'
+
+        assert parse_opt_outs(body) == [
+            {"key": "tv.plex.provider.vod", "value": "opt_in"},
+            {"key": "scrobbling", "value": "opt_out"},
+        ]
 
     def test_le_xml_plano(self):
         assert parse_opt_outs(XML_SOURCES) == [
@@ -281,6 +309,20 @@ class TestAplicacaoNoAceite:
         assert resultado["success"] is False
         assert resultado["failed"] == ["tv.plex.provider.vod"]
         assert resultado["disabled"] == ["tv.plex.provider.news"]
+
+    def test_a_resposta_real_reconhece_as_chaves_por_omissao(self, config_file):
+        # O caso que falhou em produção: com a resposta real, nem 'vod' nem
+        # 'epg' podem voltar a ser dadas como inexistentes na conta.
+        self._config(config_file, ["tv.plex.provider.vod", "tv.plex.provider.epg"])
+        sessao = FakeSession(FakeResponse(REAL_RESPONSE))
+
+        resultado = manager_with(sessao).apply_to_account(FakeAccount())
+
+        assert resultado["missing"] == []
+        assert sorted(resultado["already_disabled"]) == [
+            "tv.plex.provider.epg",
+            "tv.plex.provider.vod",
+        ]
 
     def test_chave_inexistente_na_conta_e_reportada(self, config_file):
         self._config(config_file, ["tv.plex.provider.renomeada"])
