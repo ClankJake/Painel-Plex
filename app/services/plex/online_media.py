@@ -225,9 +225,11 @@ class PlexOnlineMediaManager:
         if not sources:
             # Sem isto, uma mudança de forma da resposta seria indistinguível de
             # uma conta genuinamente sem fontes. O corpo cru é o que permite
-            # perceber o que a Plex passou a devolver.
+            # perceber o que a Plex passou a devolver — e o nome da conta diz se
+            # o problema é do administrador ou de quem está a aceitar o convite.
+            username = getattr(account, "username", None) or "?"
             logger.warning(
-                "A Plex não devolveu nenhuma fonte de mídia online. "
+                f"A Plex não devolveu nenhuma fonte de mídia online para '{username}'. "
                 f"Resposta crua (até 500 caracteres): {response.text[:500]!r}"
             )
         return sources
