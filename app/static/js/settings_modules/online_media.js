@@ -23,6 +23,16 @@ function renderMessage(text) {
     list.innerHTML = `<p class="text-xs text-gray-500 dark:text-gray-400 col-span-full">${text}</p>`;
 }
 
+/**
+ * A conta Plex não devolveu fontes nenhumas: a lista mostrada é só o catálogo
+ * conhecido e pode não bater certo com o que a Plex oferece hoje. Dizê-lo é o
+ * que evita que o admin marque fontes que não vão desativar coisa nenhuma.
+ */
+function renderAccountWarning(accountRead) {
+    const warning = document.getElementById('online-media-account-warning');
+    if (warning) warning.hidden = accountRead !== false;
+}
+
 function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, (c) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -32,9 +42,11 @@ function escapeHtml(value) {
 /**
  * Desenha as caixas de seleção. `sources` é [{key, label, selected}].
  */
-export function renderOnlineMediaSources(sources) {
+export function renderOnlineMediaSources(sources, accountRead = true) {
     const list = document.getElementById(LIST_ID);
     if (!list) return;
+
+    renderAccountWarning(accountRead);
 
     if (!Array.isArray(sources) || sources.length === 0) {
         lastRenderedKeys = [];
@@ -70,7 +82,7 @@ export async function loadOnlineMediaSources() {
 
     try {
         const data = await api.getOnlineMediaSources();
-        renderOnlineMediaSources(data.sources || []);
+        renderOnlineMediaSources(data.sources || [], data.account_read !== false);
     } catch (error) {
         // Sem ligação ao Plex o cartão fica informativo em vez de vazio: o resto
         // das configurações continua perfeitamente utilizável.

@@ -1,38 +1,54 @@
 # tests/test_online_media.py
-"""Fontes de Mídia Online do Plex: catálogo, sanitização e aplicação no aceite."""
+"""Fontes de Mídia Online do Plex: leitura, catálogo e aplicação no aceite."""
 
 import pytest
 
 from app.services.plex import online_media
-from app.services.plex.online_media import PlexOnlineMediaManager, sanitize_source_keys
+from app.services.plex.online_media import (
+    PlexOnlineMediaManager,
+    parse_opt_outs,
+    sanitize_source_keys,
+)
 
 
-class FakeSource:
-    """Substituto de plexapi.myplex.AccountOptOut."""
+class FakeResponse:
+    def __init__(self, text="", status=200):
+        self.text = text
+        self.status_code = status
 
-    def __init__(self, key, value="opt_in", fail=False):
-        self.key = key
-        self.value = value
-        self.fail = fail
-        self.opt_out_calls = 0
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
 
-    def optOut(self):
-        self.opt_out_calls += 1
-        if self.fail:
+
+class FakeSession:
+    """Substituto do `requests` que grava os pedidos feitos."""
+
+    def __init__(self, get_response=None, post_response=None, post_fails=()):
+        self._get_response = get_response if get_response is not None else FakeResponse("[]")
+        self._post_response = post_response or FakeResponse("{}")
+        self._post_fails = set(post_fails)
+        self.gets = []
+        self.posts = []
+
+    def get(self, url, headers=None, timeout=None, **kwargs):
+        self.gets.append({"url": url, "headers": headers or {}})
+        if isinstance(self._get_response, Exception):
+            raise self._get_response
+        return self._get_response
+
+    def post(self, url, headers=None, params=None, timeout=None, **kwargs):
+        self.posts.append({"url": url, "params": params or {}})
+        if (params or {}).get("key") in self._post_fails:
             raise RuntimeError("a Plex recusou o pedido")
-        self.value = "opt_out"
+        return self._post_response
 
 
 class FakeAccount:
-    def __init__(self, sources, raises=False):
-        self.username = "convidado"
-        self._sources = sources
-        self._raises = raises
-
-    def onlineMediaSources(self):
-        if self._raises:
-            raise RuntimeError("token inválido")
-        return self._sources
+    def __init__(self, uuid="uuid-123", token="token-abc", username="convidado"):
+        self.uuid = uuid
+        self.authToken = token
+        self.username = username
 
 
 class FakeConnection:
@@ -40,9 +56,21 @@ class FakeConnection:
         self.account = account
 
 
+XML_SOURCES = """<?xml version="1.0" encoding="UTF-8"?>
+<optOuts size="2">
+  <optOut key="tv.plex.provider.vod" value="opt_in"/>
+  <optOut key="tv.plex.provider.music" value="opt_out"/>
+</optOuts>"""
+
+
+def manager_with(session, account=None):
+    return PlexOnlineMediaManager(FakeConnection(account), session=session)
+
+
 @pytest.fixture()
 def manager():
-    return PlexOnlineMediaManager(FakeConnection())
+    """Gestor sem conta ligada (o catálogo cai para a lista conhecida)."""
+    return PlexOnlineMediaManager(FakeConnection(), session=FakeSession())
 
 
 class TestSanitizacao:
@@ -67,131 +95,219 @@ class TestSanitizacao:
         assert len(sanitize_source_keys([f"chave.{i}" for i in range(100)])) == 25
 
 
+class TestLeituraDaResposta:
+    """A forma desta resposta já mudou uma vez; o leitor tem de aguentar variações."""
+
+    def test_le_xml_plano(self):
+        assert parse_opt_outs(XML_SOURCES) == [
+            {"key": "tv.plex.provider.vod", "value": "opt_in"},
+            {"key": "tv.plex.provider.music", "value": "opt_out"},
+        ]
+
+    def test_le_xml_com_as_fontes_aninhadas(self):
+        # É exatamente esta forma que o leitor do plexapi deixa passar em branco,
+        # por só olhar para os filhos diretos da raiz.
+        xml = """<MediaContainer>
+          <Settings>
+            <optOut key="tv.plex.provider.vod" value="opt_in"/>
+          </Settings>
+        </MediaContainer>"""
+
+        assert parse_opt_outs(xml) == [{"key": "tv.plex.provider.vod", "value": "opt_in"}]
+
+    def test_le_json_em_lista(self):
+        body = '[{"key": "tv.plex.provider.vod", "value": "opt_in"}]'
+
+        assert parse_opt_outs(body) == [{"key": "tv.plex.provider.vod", "value": "opt_in"}]
+
+    def test_le_json_aninhado(self):
+        body = '{"MediaContainer": {"optOut": [{"key": "tv.plex.provider.epg", "value": "opt_out"}]}}'
+
+        assert parse_opt_outs(body) == [{"key": "tv.plex.provider.epg", "value": "opt_out"}]
+
+    def test_corpo_vazio_ou_ilegivel_devolve_lista_vazia(self):
+        assert parse_opt_outs("") == []
+        assert parse_opt_outs("   ") == []
+        assert parse_opt_outs("isto não é nem XML nem JSON") == []
+        assert parse_opt_outs("{isto tampouco}") == []
+
+    def test_a_mesma_chave_repetida_conta_uma_vez(self):
+        body = '{"a": {"key": "x", "value": "opt_in"}, "b": [{"key": "x", "value": "opt_out"}]}'
+
+        assert parse_opt_outs(body) == [{"key": "x", "value": "opt_in"}]
+
+
+class TestPedidoHttp:
+    def test_usa_o_uuid_e_o_token_da_conta(self):
+        sessao = FakeSession(FakeResponse(XML_SOURCES))
+        gestor = manager_with(sessao)
+
+        gestor.read_sources(FakeAccount(uuid="abc", token="tok"))
+
+        pedido = sessao.gets[0]
+        assert pedido["url"] == "https://plex.tv/api/v2/user/abc/settings/opt_outs"
+        assert pedido["headers"]["X-Plex-Token"] == "tok"
+
+    def test_conta_sem_uuid_ou_token_falha_de_imediato(self):
+        gestor = manager_with(FakeSession())
+
+        with pytest.raises(ValueError):
+            gestor.read_sources(FakeAccount(uuid=None))
+        with pytest.raises(ValueError):
+            gestor.read_sources(FakeAccount(token=None))
+
+    def test_desativar_envia_a_chave_e_o_valor(self):
+        sessao = FakeSession(FakeResponse(XML_SOURCES))
+        gestor = manager_with(sessao)
+
+        gestor._disable_source(FakeAccount(), "tv.plex.provider.vod")
+
+        assert sessao.posts[0]["params"] == {
+            "key": "tv.plex.provider.vod",
+            "value": "opt_out",
+        }
+
+
 class TestCatalogo:
     def test_usa_o_catalogo_conhecido_sem_ligacao_ao_plex(self, manager, config_file):
         config_file(ONLINE_MEDIA_SOURCES_TO_DISABLE=["tv.plex.provider.epg"])
 
         catalogo = manager.get_catalog()
-        chaves = [item["key"] for item in catalogo]
 
-        assert chaves == online_media.KNOWN_SOURCE_KEYS
-        selecionadas = [item["key"] for item in catalogo if item["selected"]]
+        assert catalogo["account_read"] is False
+        assert [item["key"] for item in catalogo["sources"]] == online_media.KNOWN_SOURCE_KEYS
+        selecionadas = [item["key"] for item in catalogo["sources"] if item["selected"]]
         assert selecionadas == ["tv.plex.provider.epg"]
 
     def test_le_as_chaves_da_conta_do_admin_quando_ha_ligacao(self, app_context, config_file):
         config_file(ONLINE_MEDIA_SOURCES_TO_DISABLE=[])
-        conta = FakeAccount([FakeSource("tv.plex.provider.vod"), FakeSource("tv.plex.provider.novidade")])
-        gestor = PlexOnlineMediaManager(FakeConnection(conta))
+        xml = """<optOuts>
+          <optOut key="tv.plex.provider.vod" value="opt_in"/>
+          <optOut key="tv.plex.provider.novidade" value="opt_in"/>
+        </optOuts>"""
+        gestor = manager_with(FakeSession(FakeResponse(xml)), FakeAccount())
 
-        chaves = [item["key"] for item in gestor.get_catalog()]
+        catalogo = gestor.get_catalog()
 
+        assert catalogo["account_read"] is True
         # As conhecidas vêm primeiro, na ordem do catálogo; as novas ficam no fim.
-        assert chaves == ["tv.plex.provider.vod", "tv.plex.provider.novidade"]
+        assert [i["key"] for i in catalogo["sources"]] == [
+            "tv.plex.provider.vod",
+            "tv.plex.provider.novidade",
+        ]
 
     def test_uma_fonte_ja_escolhida_nunca_desaparece_da_lista(self, app_context, config_file):
         config_file(ONLINE_MEDIA_SOURCES_TO_DISABLE=["tv.plex.provider.antiga"])
-        conta = FakeAccount([FakeSource("tv.plex.provider.vod")])
-        gestor = PlexOnlineMediaManager(FakeConnection(conta))
+        gestor = manager_with(FakeSession(FakeResponse(XML_SOURCES)), FakeAccount())
+
+        catalogo = {i["key"]: i for i in gestor.get_catalog()["sources"]}
+
+        assert catalogo["tv.plex.provider.antiga"]["selected"] is True
+        assert catalogo["tv.plex.provider.antiga"]["available"] is False
+        assert catalogo["tv.plex.provider.vod"]["available"] is True
+
+    def test_conta_que_nao_devolve_nada_e_sinalizada(self, app_context, config_file):
+        # O caso real observado em produção: a Plex responde 200 mas sem fontes.
+        # A interface tem de dizer que a lista mostrada é só o catálogo conhecido.
+        config_file(ONLINE_MEDIA_SOURCES_TO_DISABLE=[])
+        gestor = manager_with(FakeSession(FakeResponse("<optOuts/>")), FakeAccount())
 
         catalogo = gestor.get_catalog()
-        antiga = next(item for item in catalogo if item["key"] == "tv.plex.provider.antiga")
 
-        assert antiga["selected"] is True
+        assert catalogo["account_read"] is False
+        assert all(item["available"] for item in catalogo["sources"])
+
+    def test_erro_no_pedido_nao_rebenta_a_pagina(self, app_context, config_file):
+        config_file(ONLINE_MEDIA_SOURCES_TO_DISABLE=[])
+        gestor = manager_with(FakeSession(RuntimeError("rede em baixo")), FakeAccount())
+
+        catalogo = gestor.get_catalog()
+
+        assert catalogo["account_read"] is False
+        assert [i["key"] for i in catalogo["sources"]] == online_media.KNOWN_SOURCE_KEYS
 
     def test_chave_desconhecida_usa_a_propria_chave_como_nome(self, app_context):
         assert online_media.source_label("tv.plex.provider.novidade") == "tv.plex.provider.novidade"
 
-    def test_marca_como_indisponivel_a_chave_que_a_conta_nao_reconhece(self, app_context, config_file):
-        config_file(ONLINE_MEDIA_SOURCES_TO_DISABLE=["tv.plex.provider.renomeada"])
-        conta = FakeAccount([FakeSource("tv.plex.provider.vod")])
-        gestor = PlexOnlineMediaManager(FakeConnection(conta))
-
-        catalogo = {item["key"]: item for item in gestor.get_catalog()}
-
-        assert catalogo["tv.plex.provider.vod"]["available"] is True
-        assert catalogo["tv.plex.provider.renomeada"]["available"] is False
-
-    def test_sem_ligacao_ao_plex_nada_e_acusado_de_indisponivel(self, manager, config_file):
-        # Sem resposta da conta não sabemos o que existe: acusar aqui seria
-        # apontar o dedo a chaves perfeitamente válidas.
-        config_file(ONLINE_MEDIA_SOURCES_TO_DISABLE=["tv.plex.provider.renomeada"])
-
-        assert all(item["available"] for item in manager.get_catalog())
-
 
 class TestAplicacaoNoAceite:
-    def test_desativa_apenas_as_fontes_configuradas(self, manager, config_file):
+    def _config(self, config_file, chaves):
         config_file(
             DISABLE_ONLINE_MEDIA_SOURCES_ON_CLAIM=True,
-            ONLINE_MEDIA_SOURCES_TO_DISABLE=["tv.plex.provider.vod", "tv.plex.provider.epg"],
+            ONLINE_MEDIA_SOURCES_TO_DISABLE=chaves,
         )
-        vod = FakeSource("tv.plex.provider.vod")
-        epg = FakeSource("tv.plex.provider.epg")
-        musica = FakeSource("tv.plex.provider.music")
 
-        resultado = manager.apply_to_account(FakeAccount([vod, epg, musica]))
+    def test_desativa_apenas_as_fontes_configuradas(self, config_file):
+        self._config(config_file, ["tv.plex.provider.vod"])
+        sessao = FakeSession(FakeResponse(XML_SOURCES))
+
+        resultado = manager_with(sessao).apply_to_account(FakeAccount())
 
         assert resultado["success"] is True
-        assert sorted(resultado["disabled"]) == ["tv.plex.provider.epg", "tv.plex.provider.vod"]
-        assert vod.value == "opt_out" and epg.value == "opt_out"
-        assert musica.opt_out_calls == 0
-        assert musica.value == "opt_in"
+        assert resultado["disabled"] == ["tv.plex.provider.vod"]
+        assert [p["params"]["key"] for p in sessao.posts] == ["tv.plex.provider.vod"]
 
-    def test_nao_faz_nada_quando_a_opcao_esta_desligada(self, manager, config_file):
+    def test_nao_faz_nada_quando_a_opcao_esta_desligada(self, config_file):
         config_file(
             DISABLE_ONLINE_MEDIA_SOURCES_ON_CLAIM=False,
             ONLINE_MEDIA_SOURCES_TO_DISABLE=["tv.plex.provider.vod"],
         )
-        vod = FakeSource("tv.plex.provider.vod")
+        sessao = FakeSession(FakeResponse(XML_SOURCES))
 
-        resultado = manager.apply_to_account(FakeAccount([vod]))
+        resultado = manager_with(sessao).apply_to_account(FakeAccount())
 
         assert resultado["skipped"] is True
-        assert vod.opt_out_calls == 0
+        assert sessao.gets == [] and sessao.posts == []
 
-    def test_nao_repete_o_pedido_para_fontes_ja_desativadas(self, manager, config_file):
-        config_file(
-            DISABLE_ONLINE_MEDIA_SOURCES_ON_CLAIM=True,
-            ONLINE_MEDIA_SOURCES_TO_DISABLE=["tv.plex.provider.vod"],
-        )
-        vod = FakeSource("tv.plex.provider.vod", value="opt_out")
+    def test_nao_repete_o_pedido_para_fontes_ja_desativadas(self, config_file):
+        self._config(config_file, ["tv.plex.provider.music"])
+        sessao = FakeSession(FakeResponse(XML_SOURCES))
 
-        resultado = manager.apply_to_account(FakeAccount([vod]))
+        resultado = manager_with(sessao).apply_to_account(FakeAccount())
 
-        assert vod.opt_out_calls == 0
-        assert resultado["already_disabled"] == ["tv.plex.provider.vod"]
-        assert resultado["disabled"] == []
+        assert resultado["already_disabled"] == ["tv.plex.provider.music"]
+        assert sessao.posts == []
 
-    def test_uma_fonte_que_falha_nao_impede_as_restantes(self, manager, config_file):
-        config_file(
-            DISABLE_ONLINE_MEDIA_SOURCES_ON_CLAIM=True,
-            ONLINE_MEDIA_SOURCES_TO_DISABLE=["tv.plex.provider.vod", "tv.plex.provider.epg"],
-        )
-        vod = FakeSource("tv.plex.provider.vod", fail=True)
-        epg = FakeSource("tv.plex.provider.epg")
+    def test_uma_fonte_que_falha_nao_impede_as_restantes(self, config_file):
+        self._config(config_file, ["tv.plex.provider.vod", "tv.plex.provider.news"])
+        xml = """<optOuts>
+          <optOut key="tv.plex.provider.vod" value="opt_in"/>
+          <optOut key="tv.plex.provider.news" value="opt_in"/>
+        </optOuts>"""
+        sessao = FakeSession(FakeResponse(xml), post_fails=["tv.plex.provider.vod"])
 
-        resultado = manager.apply_to_account(FakeAccount([vod, epg]))
+        resultado = manager_with(sessao).apply_to_account(FakeAccount())
 
         assert resultado["success"] is False
         assert resultado["failed"] == ["tv.plex.provider.vod"]
-        assert resultado["disabled"] == ["tv.plex.provider.epg"]
+        assert resultado["disabled"] == ["tv.plex.provider.news"]
 
-    def test_erro_de_leitura_devolve_falha_sem_levantar_excecao(self, manager, config_file, app_context):
-        config_file(
-            DISABLE_ONLINE_MEDIA_SOURCES_ON_CLAIM=True,
-            ONLINE_MEDIA_SOURCES_TO_DISABLE=["tv.plex.provider.vod"],
-        )
+    def test_chave_inexistente_na_conta_e_reportada(self, config_file):
+        self._config(config_file, ["tv.plex.provider.renomeada"])
+        sessao = FakeSession(FakeResponse(XML_SOURCES))
 
-        resultado = manager.apply_to_account(FakeAccount([], raises=True))
+        resultado = manager_with(sessao).apply_to_account(FakeAccount())
+
+        assert resultado["missing"] == ["tv.plex.provider.renomeada"]
+        assert resultado["disabled"] == []
+        assert sessao.posts == []
+
+    def test_erro_de_leitura_devolve_falha_sem_levantar_excecao(self, config_file, app_context):
+        self._config(config_file, ["tv.plex.provider.vod"])
+        sessao = FakeSession(RuntimeError("token inválido"))
+
+        resultado = manager_with(sessao).apply_to_account(FakeAccount())
 
         assert resultado["success"] is False
         assert resultado["disabled"] == []
 
-    def test_chaves_explicitas_ignoram_a_configuracao(self, manager, config_file):
+    def test_chaves_explicitas_ignoram_a_configuracao(self, config_file):
         config_file(DISABLE_ONLINE_MEDIA_SOURCES_ON_CLAIM=False)
-        vod = FakeSource("tv.plex.provider.vod")
+        sessao = FakeSession(FakeResponse(XML_SOURCES))
 
-        resultado = manager.apply_to_account(FakeAccount([vod]), keys=["tv.plex.provider.vod"])
+        resultado = manager_with(sessao).apply_to_account(
+            FakeAccount(), keys=["tv.plex.provider.vod"]
+        )
 
         assert resultado["disabled"] == ["tv.plex.provider.vod"]
 
@@ -214,14 +330,14 @@ class TestGanchoNoConvite:
 
         gestor = self._invite_manager(Explosivo())
 
-        gestor._apply_online_media_preferences(FakeAccount([]))  # não deve levantar
+        gestor._apply_online_media_preferences(FakeAccount())  # não deve levantar
 
     def test_sem_gestor_configurado_nao_faz_nada(self):
+        from app.services.plex.invite_manager import PlexInviteManager
+
         class FacadeSemGestor:
             pass
 
-        from app.services.plex.invite_manager import PlexInviteManager
-
         gestor = PlexInviteManager(None, None, None, FacadeSemGestor(), None, None)
 
-        gestor._apply_online_media_preferences(FakeAccount([]))  # não deve levantar
+        gestor._apply_online_media_preferences(FakeAccount())  # não deve levantar

@@ -724,10 +724,10 @@ def get_online_media_sources():
     painel, para acompanhar o que a Plex oferece em cada momento.
     """
     try:
-        return jsonify({"success": True, "sources": plex_manager.online_media.get_catalog()})
+        return jsonify({"success": True, **plex_manager.online_media.get_catalog()})
     except Exception as e:
         logger.error(f"Falha ao listar as fontes de mídia online: {e}", exc_info=True)
-        return jsonify({"success": False, "message": _("Não foi possível obter as fontes de mídia online."), "sources": []}), 500
+        return jsonify({"success": False, "message": _("Não foi possível obter as fontes de mídia online."), "sources": [], "account_read": False}), 500
 
 @system_api_bp.route('/bulk-notify', methods=['POST'])
 @login_required
