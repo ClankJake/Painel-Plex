@@ -3,6 +3,8 @@
  * Lógica para a página de login, incluindo o fluxo de autenticação com Plex.
  */
 
+import { buildPinCheckUrl } from './utils.js';
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- ELEMENTOS E DADOS GLOBAIS ---
     const loginButton = document.getElementById('login-button');
@@ -56,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             try {
-                const checkUrl = urls.checkPlexPin.replace('__CLIENT_ID__', client_id).replace('999999', pin_id);
+                const checkUrl = buildPinCheckUrl(urls.checkPlexPin, client_id, pin_id);
                 const checkResponse = await fetch(checkUrl);
                 const checkData = await checkResponse.json();
 

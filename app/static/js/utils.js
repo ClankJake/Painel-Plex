@@ -281,3 +281,36 @@ export function escapeHTML(value) {
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[char]));
 }
+
+
+/**
+ * Constrói o URL de verificação do PIN do Plex a partir do modelo que o
+ * `url_for` deixa no template (…/check-pin/__CLIENT_ID__/999999).
+ *
+ * 🐛 CORREÇÃO: os cinco locais que faziam isto à mão usavam
+ * `.replace('__CLIENT_ID__', id).replace('999999', pin)`. A segunda
+ * substituição corre DEPOIS de o client_id já estar dentro do URL, por isso um
+ * client_id que contivesse "999999" era mutilado e o sentinela ficava por
+ * substituir:
+ *
+ *     '…/__CLIENT_ID__/999999' + client_id 'abc999999def' + pin 4242
+ *       ->  '…/abc4242def/999999'   (client_id inexistente, PIN errado)
+ *
+ * O pedido seguia então para um client_id que não pertence à sessão, o backend
+ * recusava-o e a autenticação nunca concluía — sem qualquer erro visível.
+ * Substituir primeiro o PIN, enquanto o URL ainda só contém texto nosso,
+ * elimina a dependência da ordem.
+ *
+ * O `encodeURIComponent` protege o caminho de valores com '/' ou '?' e, de
+ * caminho, escapa o '$' — que de outra forma o `String.prototype.replace`
+ * leria como padrão de substituição ('$&' reinseria o próprio marcador).
+ *
+ * O sentinela é um número literal (e não um marcador como o `__CLIENT_ID__`)
+ * porque a rota declara `<int:pin_id>`: o `url_for` recusa um valor não
+ * numérico ao gerar o modelo.
+ */
+export function buildPinCheckUrl(urlTemplate, clientId, pinId) {
+    return String(urlTemplate)
+        .replace('999999', encodeURIComponent(String(pinId)))
+        .replace('__CLIENT_ID__', encodeURIComponent(String(clientId)));
+}

@@ -78,6 +78,11 @@ class Invitation(db.Model):
     created_at = db.Column(db.String, nullable=False)
     expires_at = db.Column(db.String)
     claimed_by_users = db.Column(db.Text)
+    # IDs do Plex de quem resgatou, em paralelo com 'claimed_by_users'.
+    # O username do Plex PODE MUDAR (o painel até tem sincronização para isso),
+    # por isso não serve como identidade estável para a verificação anti-abuso
+    # de períodos de teste. O ID nunca muda.
+    claimed_by_ids = db.Column(db.Text)
     claimed_at = db.Column(db.String)
     trial_duration_minutes = db.Column(db.Integer, nullable=False, default=0)
     overseerr_access = db.Column(db.Boolean, default=False)

@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from flask_babel import gettext as _, ngettext
 from collections import defaultdict
 from tzlocal import get_localzone_name
+from ..utils.log_sanitizer import mask_code
 
 logger = logging.getLogger(__name__)
 
@@ -902,7 +903,12 @@ class DataManager:
         return invitation is not None
 
     @db_transaction
-    def increment_invitation_use(self, code, username):
+    def increment_invitation_use(self, code, username, plex_user_id=None):
+        """
+        Incremento SEM verificação de limite. O resgate usa
+        `reserve_invitation_use`, que valida as vagas de forma atómica; este
+        método fica para os casos em que o uso já foi decidido noutro sítio.
+        """
         invitation = Invitation.query.get(code)
         if invitation:
             invitation.use_count += 1
@@ -911,9 +917,98 @@ class DataManager:
             if username not in claimed_users: 
                 claimed_users.append(username)
             invitation.claimed_by_users = json.dumps(claimed_users)
+
+            if plex_user_id is not None:
+                claimed_ids = json.loads(invitation.claimed_by_ids or '[]')
+                if str(plex_user_id) not in claimed_ids:
+                    claimed_ids.append(str(plex_user_id))
+                    invitation.claimed_by_ids = json.dumps(claimed_ids)
             return True
         return False
             
+    @db_transaction
+    def reserve_invitation_use(self, code, username, plex_user_id=None):
+        """
+        Reserva ATOMICAMENTE uma utilização do convite. Devolve False se já não
+        houver vagas (ou o convite não existir), sem alterar nada.
+
+        🐛 CORREÇÃO DE CONCORRÊNCIA: o resgate validava o convite com
+        `get_invitation_by_code` (leitura) e só contabilizava o uso lá no fim,
+        com `increment_invitation_use`. Entre as duas coisas há dezenas de
+        chamadas de rede à API do Plex (enviar o convite, aceitá-lo, aplicar
+        preferências) e o servidor corre com um worker gevent: cada espera de
+        rede é um ponto de troca entre greenlets. Dois resgates simultâneos do
+        MESMO código liam ambos `use_count = 0 < max_uses = 1`, ambos passavam
+        na validação e ambos recebiam acesso — o `use_count` acabava em 2. Um
+        link de uso único partilhado num grupo entrava por duas pessoas.
+
+        A condição `use_count < max_uses` vive agora DENTRO do UPDATE, pelo que
+        é a própria base de dados a decidir quem fica com a vaga. Só quem
+        receber True prossegue; em caso de falha a seguir, `release_invitation_use`
+        devolve a vaga.
+        """
+        atualizadas = db.session.query(Invitation).filter(
+            Invitation.code == code,
+            Invitation.use_count < Invitation.max_uses,
+        ).update(
+            {
+                Invitation.use_count: Invitation.use_count + 1,
+                Invitation.claimed_at: datetime.now(timezone.utc).isoformat(),
+            },
+            synchronize_session=False,
+        )
+        if not atualizadas:
+            return False
+
+        # `populate_existing` força a releitura da linha: o UPDATE acima passou
+        # ao lado da sessão (synchronize_session=False) e o objeto em cache
+        # ainda traria o `use_count` antigo.
+        invitation = db.session.query(Invitation).populate_existing().filter(
+            Invitation.code == code
+        ).first()
+        if invitation is not None:
+            claimed_users = json.loads(invitation.claimed_by_users or '[]')
+            if username and username not in claimed_users:
+                claimed_users.append(username)
+                invitation.claimed_by_users = json.dumps(claimed_users)
+
+            # O ID é a identidade estável: o username do Plex pode ser mudado
+            # pelo próprio utilizador e deixaria de servir para reconhecê-lo.
+            if plex_user_id is not None:
+                claimed_ids = json.loads(invitation.claimed_by_ids or '[]')
+                if str(plex_user_id) not in claimed_ids:
+                    claimed_ids.append(str(plex_user_id))
+                    invitation.claimed_by_ids = json.dumps(claimed_ids)
+        return True
+
+    @db_transaction
+    def release_invitation_use(self, code, username, plex_user_id=None):
+        """
+        Devolve a vaga reservada por `reserve_invitation_use`.
+
+        Chamado quando o resgate falha depois da reserva (o Plex recusa o
+        convite, o utilizador já é amigo, o aceite não chega a tempo). Sem isto,
+        uma tentativa falhada queimava permanentemente uma utilização do convite.
+        """
+        invitation = Invitation.query.get(code)
+        if not invitation:
+            return False
+
+        if invitation.use_count > 0:
+            invitation.use_count -= 1
+
+        claimed_users = json.loads(invitation.claimed_by_users or '[]')
+        if username in claimed_users:
+            claimed_users.remove(username)
+            invitation.claimed_by_users = json.dumps(claimed_users)
+
+        if plex_user_id is not None:
+            claimed_ids = json.loads(invitation.claimed_by_ids or '[]')
+            if str(plex_user_id) in claimed_ids:
+                claimed_ids.remove(str(plex_user_id))
+                invitation.claimed_by_ids = json.dumps(claimed_ids)
+        return True
+
     @db_transaction
     def reset_invitation_usage(self, code):
         invitation = Invitation.query.get(code)
@@ -925,7 +1020,7 @@ class DataManager:
                         invitation.expires_at = None
                 except (ValueError, TypeError):
                      invitation.expires_at = None
-            logger.info(f"Convite '{code}' reativado manualmente (contagem resetada).")
+            logger.info(f"Convite '{mask_code(code)}' reativado manualmente (contagem resetada).")
             return True
         return False
     
@@ -1028,5 +1123,13 @@ class DataManager:
                     d['claimed_by_users'] = []
             elif not d.get('claimed_by_users'):
                 d['claimed_by_users'] = []
+
+            if d.get('claimed_by_ids') and isinstance(d['claimed_by_ids'], str):
+                try:
+                    d['claimed_by_ids'] = json.loads(d['claimed_by_ids'])
+                except json.JSONDecodeError:
+                    d['claimed_by_ids'] = []
+            elif 'claimed_by_ids' in d and not d.get('claimed_by_ids'):
+                d['claimed_by_ids'] = []
                 
         return d

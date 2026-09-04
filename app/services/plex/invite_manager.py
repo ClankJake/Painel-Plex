@@ -12,7 +12,7 @@ from plexapi.myplex import MyPlexAccount
 from plexapi.exceptions import BadRequest, NotFound
 from flask_babel import gettext as _
 from flask import url_for
-from ...utils.log_sanitizer import mask_email
+from ...utils.log_sanitizer import mask_email, mask_code
 
 logger = logging.getLogger(__name__)
 
@@ -122,8 +122,20 @@ class PlexInviteManager:
         if invitation.get('use_count', 0) >= invitation.get('max_uses', 1):
             return None, _("Este convite já atingiu o seu limite máximo de utilizações.")
 
-        if invitation.get('expires_at') and datetime.fromisoformat(invitation['expires_at']) < datetime.now(timezone.utc): 
-            return None, _("Este convite expirou.")
+        # Esta rota é pública: uma data mal formada na base de dados (edição
+        # manual, importação antiga, valor sem fuso horário — comparar um
+        # datetime ingénuo com um consciente levanta TypeError) devolvia 500 a
+        # quem abrisse o link. Tratamos o convite como expirado, que é o lado
+        # seguro do erro.
+        expires_at = invitation.get('expires_at')
+        if expires_at:
+            try:
+                expirado = datetime.fromisoformat(expires_at) < datetime.now(timezone.utc)
+            except (TypeError, ValueError):
+                logger.warning(f"O convite '{mask_code(code)}' tem uma data de expiração inválida ({expires_at!r}). Tratado como expirado.")
+                expirado = True
+            if expirado:
+                return None, _("Este convite expirou.")
             
         return invitation, _("Convite válido.")
 
@@ -138,8 +150,14 @@ class PlexInviteManager:
         username = plex_user_account.username
         plex_user_id = plex_user_account.id
         
-        # 1. Validação básica de resgate duplicado do mesmo convite
-        if username in invitation.get('claimed_by_users', []):
+        # 1. Validação básica de resgate duplicado do mesmo convite.
+        # Compara pelo ID do Plex (identidade estável) e, para os convites
+        # antigos que ainda não têm IDs registados, pelo username.
+        ja_resgatou = (
+            str(plex_user_id) in (invitation.get('claimed_by_ids') or [])
+            or username in invitation.get('claimed_by_users', [])
+        )
+        if ja_resgatou:
             return {"success": False, "message": _("Já resgatou este convite anteriormente.")}
             
         # 🛡️ 1.5. SISTEMA ANTI-BURLA (O bloqueio de espertinhos)
@@ -150,7 +168,7 @@ class PlexInviteManager:
             
             # Se o utilizador já foi cliente, mas deixou expirar ou foi bloqueado
             if existing_profile.get('status') == 'inactive' or is_blocked:
-                logger.warning(f"O utilizador inativo '{username}' tentou usar o convite '{code}' para contornar o pagamento.")
+                logger.warning(f"O utilizador inativo '{username}' tentou usar o convite '{mask_code(code)}' para contornar o pagamento.")
                 return {
                     "success": False,
                     "message": _("A sua conta encontra-se inativa ou expirada. Por favor, acesse à página minha conta para renovar a assinatura em vez de utilizar um novo convite.")
@@ -165,7 +183,7 @@ class PlexInviteManager:
         
         # 2. Prevenção de Abuso de Testes (Trials)
         if invitation.get("trial_duration_minutes", 0) > 0:
-            if self._check_trial_abuse(username):
+            if self._check_trial_abuse(username, plex_user_id):
                 logger.warning(f"Bloqueio de Abuso: O utilizador {username} tentou resgatar um segundo convite de teste.")
                 return {
                     "success": False, 
@@ -174,31 +192,50 @@ class PlexInviteManager:
         
         telegram_id_from_invite = self._handle_telegram_linking(invitation, username)
 
-        invite_result = self.send_plex_invite(
-            identifier=plex_user_account.email, 
-            library_titles=invitation['libraries'], 
-            plex_user_id=plex_user_account.id,
-            allow_sync=invitation.get('allow_downloads', False)
-        )
-        
-        if not invite_result.get("success"):
-            return invite_result
-        if invite_result.get("already_exists"):
-            return {"success": False, "message": _("Já tem acesso a este servidor.")}
+        # 🛡️ RESERVA A VAGA ANTES DE FALAR COM O PLEX.
+        # A validação acima (get_invitation_by_code) é só uma leitura, e a partir
+        # daqui seguem-se dezenas de chamadas de rede. Com o worker gevent, cada
+        # uma delas é um ponto de troca entre greenlets: dois resgates simultâneos
+        # do mesmo código passavam ambos na validação e ambos recebiam acesso.
+        # A reserva é atómica na base de dados, por isso só um pode ganhar.
+        if not self.data_manager.reserve_invitation_use(code, username, plex_user_id):
+            logger.warning(f"Resgate do convite '{mask_code(code)}' recusado: as vagas esgotaram-se entretanto.")
+            return {"success": False, "message": _("Este convite já atingiu o seu limite máximo de utilizações.")}
 
-        accept_result = self._accept_invite_v2(plex_user_account)
-        if not accept_result.get("success"):
-            self.user_manager.invalidate_user_cache()
-            all_current_users = self.user_manager.get_all_plex_users()
-            if not any(str(u['id']) == str(plex_user_account.id) for u in all_current_users):
-                return {"success": False, "message": accept_result.get('message')}
+        # A partir daqui, QUALQUER saída sem sucesso tem de devolver a vaga —
+        # caso contrário uma tentativa falhada queimava uma utilização do convite.
+        try:
+            invite_result = self.send_plex_invite(
+                identifier=plex_user_account.email, 
+                library_titles=invitation['libraries'], 
+                plex_user_id=plex_user_account.id,
+                allow_sync=invitation.get('allow_downloads', False)
+            )
+            
+            if not invite_result.get("success"):
+                self.data_manager.release_invitation_use(code, username, plex_user_id)
+                return invite_result
+            if invite_result.get("already_exists"):
+                self.data_manager.release_invitation_use(code, username, plex_user_id)
+                return {"success": False, "message": _("Já tem acesso a este servidor.")}
 
-        self._apply_online_media_preferences(plex_user_account)
+            accept_result = self._accept_invite_v2(plex_user_account)
+            if not accept_result.get("success"):
+                self.user_manager.invalidate_user_cache()
+                all_current_users = self.user_manager.get_all_plex_users()
+                if not any(str(u['id']) == str(plex_user_account.id) for u in all_current_users):
+                    self.data_manager.release_invitation_use(code, username, plex_user_id)
+                    return {"success": False, "message": accept_result.get('message')}
 
-        if invitation.get('screen_limit', 0) > 0:
-            self.plex_manager.update_screen_limit(plex_user_account.id, invitation['screen_limit'])
+            self._apply_online_media_preferences(plex_user_account)
 
-        self.data_manager.increment_invitation_use(code, username)
+            if invitation.get('screen_limit', 0) > 0:
+                self.plex_manager.update_screen_limit(plex_user_account.id, invitation['screen_limit'])
+        except Exception:
+            self.data_manager.release_invitation_use(code, username, plex_user_id)
+            raise
+
+        # O uso já foi contabilizado pela reserva — não voltar a incrementar aqui.
         self.user_manager.invalidate_user_cache()
         
         try:
@@ -216,15 +253,35 @@ class PlexInviteManager:
             "user_data": user_data_response
         }
 
-    def _check_trial_abuse(self, username):
+    def _check_trial_abuse(self, username, plex_user_id=None):
+        """
+        Já houve um período de teste para esta pessoa?
+
+        🐛 CORREÇÃO: a verificação comparava apenas o USERNAME do Plex, que o
+        próprio utilizador pode alterar a qualquer momento em plex.tv — o painel
+        até tem sincronização (`_sync_local_user_data`) precisamente porque essa
+        mudança é um caso esperado. Bastava mudar de nome para o histórico
+        deixar de bater certo e ganhar um segundo teste grátis, tantas vezes
+        quantas se quisesse.
+
+        Passa a comparar pelo ID do Plex, que nunca muda. O username continua a
+        ser aceite como recurso: os convites resgatados antes desta alteração
+        não têm IDs guardados, e ignorá-los abriria exatamente a mesma brecha
+        para quem já está no histórico.
+        """
         try:
             all_invites = self.data_manager.get_all_invitations()
             invites_list = all_invites.values() if isinstance(all_invites, dict) else all_invites
-            
+
+            id_procurado = str(plex_user_id) if plex_user_id is not None else None
+
             for past_invite in invites_list:
-                if past_invite.get("trial_duration_minutes", 0) > 0:
-                    if username in past_invite.get('claimed_by_users', []):
-                        return True
+                if past_invite.get("trial_duration_minutes", 0) <= 0:
+                    continue
+                if id_procurado and id_procurado in (past_invite.get('claimed_by_ids') or []):
+                    return True
+                if username in past_invite.get('claimed_by_users', []):
+                    return True
             return False
         except Exception as e:
             logger.error(f"Erro ao verificar histórico de testes do utilizador {username}: {e}")
@@ -255,7 +312,7 @@ class PlexInviteManager:
 
             referrer = self.data_manager.get_user_profile_by_referral_code(code)
             if not referrer:
-                logger.info(f"Código de indicação '{code}' não corresponde a nenhum utilizador. Ignorado.")
+                logger.info(f"Código de indicação '{mask_code(code)}' não corresponde a nenhum utilizador. Ignorado.")
                 return None
 
             referrer_id = referrer.get('plex_user_id')
@@ -333,7 +390,11 @@ class PlexInviteManager:
 
         config = load_or_create_config()
         overseerr_url = config.get("OVERSEERR_URL", "").rstrip('/')
-        expiration_date = profile_data.get("trial_end_date") or profile_data.get("expiration_date")
+        # 🐛 `profile_data` é o dicionário montado aqui e NUNCA tem a chave
+        # 'expiration_date' — só 'trial_end_date', e apenas para testes. O segundo
+        # ramo era portanto sempre None e o ecrã de sucesso nunca chegava a mostrar
+        # "O seu acesso é válido até ...". A data tem de vir do perfil gravado.
+        expiration_date = profile_data.get("trial_end_date") or new_profile.get("expiration_date")
 
         return {
             "username": plex_account.username,

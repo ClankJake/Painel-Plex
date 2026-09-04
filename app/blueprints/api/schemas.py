@@ -1,8 +1,34 @@
 # app/blueprints/api/schemas.py
 
+import re
+
 from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Literal, Union
 from datetime import datetime
+
+# Um código personalizado vira a chave primária do convite E um segmento do URL
+# público (/invite/<code>). Antes era aceite tal e qual, sem qualquer limite:
+#   • um código de 1 ou 2 caracteres é adivinhável à força bruta;
+#   • '/' partia a rota e gerava um link permanentemente 404;
+#   • espaços, '#' e '?' produziam links que morriam ao serem partilhados.
+# O alfabeto é o mesmo do `secrets.token_urlsafe`, usado nos códigos automáticos,
+# por isso nenhum convite gerado pelo painel deixa de ser válido.
+CUSTOM_CODE_RE = re.compile(r'^[A-Za-z0-9_-]{4,64}$')
+
+
+def _validar_custom_code(v):
+    """Partilhado pelos dois esquemas de criação de convite."""
+    if v is None:
+        return None
+    v = str(v).strip()
+    if not v:
+        return None
+    if not CUSTOM_CODE_RE.match(v):
+        raise ValueError(
+            "O código personalizado deve ter entre 4 e 64 caracteres e usar "
+            "apenas letras, números, '-' e '_'."
+        )
+    return v
 
 class CreateInviteSchema(BaseModel):
     libraries: List[str] = Field(..., min_items=1, description="Pelo menos uma biblioteca deve ser selecionada.")
@@ -14,6 +40,10 @@ class CreateInviteSchema(BaseModel):
     custom_code: Optional[str] = None
     max_uses: int = Field(1, ge=1)
     telegram_id: Optional[str] = None # Novo campo opcional
+
+    @validator('custom_code')
+    def custom_code_valido(cls, v):
+        return _validar_custom_code(v)
 
 
 class CreateInviteBotSchema(BaseModel):
@@ -38,6 +68,10 @@ class CreateInviteBotSchema(BaseModel):
     overseerr_access: bool = False
     custom_code: Optional[str] = None
     max_uses: int = Field(1, ge=1)
+
+    @validator('custom_code')
+    def custom_code_valido(cls, v):
+        return _validar_custom_code(v)
 
     @validator('telegram_id')
     def telegram_id_not_blank(cls, v):
