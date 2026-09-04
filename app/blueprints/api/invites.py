@@ -123,7 +123,7 @@ def list_invites_route():
 @login_required
 @admin_required
 def delete_invite_route():
-    code = request.json.get('code')
+    code = (request.get_json(silent=True) or {}).get('code')
     if not code:
         return jsonify({"success": False, "message": "Código do convite não fornecido."}), 400
     return jsonify(plex_manager.delete_invitation(code))
@@ -133,20 +133,35 @@ def delete_invite_route():
 @login_required
 @admin_required
 def reactivate_invite_route():
-    code = request.json.get('code')
+    code = (request.get_json(silent=True) or {}).get('code')
     if not code:
         return jsonify({"success": False, "message": "Código do convite não fornecido."}), 400
     return jsonify(plex_manager.reactivate_invitation(code))
 
 @invites_api_bp.route('/details/<string:code>', methods=['GET'])
+@limiter.limit("30 per minute")
 def get_invite_details_route(code):
+    """
+    🔒 Rota PÚBLICA (sem sessão): responde 200 para um código válido e 404 para
+    um inválido, ou seja, é um oráculo que diz se um código existe. O limitador
+    global não define `default_limits`, por isso sem este decorador não havia
+    limite nenhum e um código personalizado curto podia ser descoberto à força
+    bruta. 30/min chega para qualquer utilização legítima (a página valida o
+    convite uma vez ao abrir).
+    """
     invitation, message = plex_manager.get_invitation_by_code(code)
     if not invitation: return jsonify({"success": False, "message": message}), 404
     return jsonify({"success": True, "details": {"expires_at": invitation.get("expires_at")}})
 
 @invites_api_bp.route('/claim', methods=['POST'])
+@limiter.limit("10 per minute")
 def claim_invite_route():
-    data = request.json
+    """
+    🔒 Rota PÚBLICA e a mais cara de todas: cada chamada valida um token junto da
+    plex.tv e, se o convite for válido, concede acesso ao servidor. Sem limite,
+    servia para testar códigos e tokens à vontade.
+    """
+    data = request.get_json(silent=True) or {}
     try:
         plex_token = data.get('plex_token')
         if not plex_token:

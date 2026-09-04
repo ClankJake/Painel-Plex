@@ -166,7 +166,7 @@ export function showCreateInviteModal() {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label for="inviteCustomCode" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.customCode}</label>
-                    <input type="text" id="inviteCustomCode" class="w-full p-2.5 text-sm font-mono uppercase text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" placeholder="${i18n.optional}">
+                    <input type="text" id="inviteCustomCode" maxlength="64" class="w-full p-2.5 text-sm font-mono text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" placeholder="${i18n.optional}">
                 </div>
                 <div>
                     <label for="inviteMaxUses" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.numberOfUses}</label>

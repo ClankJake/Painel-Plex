@@ -122,8 +122,20 @@ class PlexInviteManager:
         if invitation.get('use_count', 0) >= invitation.get('max_uses', 1):
             return None, _("Este convite já atingiu o seu limite máximo de utilizações.")
 
-        if invitation.get('expires_at') and datetime.fromisoformat(invitation['expires_at']) < datetime.now(timezone.utc): 
-            return None, _("Este convite expirou.")
+        # Esta rota é pública: uma data mal formada na base de dados (edição
+        # manual, importação antiga, valor sem fuso horário — comparar um
+        # datetime ingénuo com um consciente levanta TypeError) devolvia 500 a
+        # quem abrisse o link. Tratamos o convite como expirado, que é o lado
+        # seguro do erro.
+        expires_at = invitation.get('expires_at')
+        if expires_at:
+            try:
+                expirado = datetime.fromisoformat(expires_at) < datetime.now(timezone.utc)
+            except (TypeError, ValueError):
+                logger.warning(f"O convite '{code}' tem uma data de expiração inválida ({expires_at!r}). Tratado como expirado.")
+                expirado = True
+            if expirado:
+                return None, _("Este convite expirou.")
             
         return invitation, _("Convite válido.")
 
@@ -174,31 +186,50 @@ class PlexInviteManager:
         
         telegram_id_from_invite = self._handle_telegram_linking(invitation, username)
 
-        invite_result = self.send_plex_invite(
-            identifier=plex_user_account.email, 
-            library_titles=invitation['libraries'], 
-            plex_user_id=plex_user_account.id,
-            allow_sync=invitation.get('allow_downloads', False)
-        )
-        
-        if not invite_result.get("success"):
-            return invite_result
-        if invite_result.get("already_exists"):
-            return {"success": False, "message": _("Já tem acesso a este servidor.")}
+        # 🛡️ RESERVA A VAGA ANTES DE FALAR COM O PLEX.
+        # A validação acima (get_invitation_by_code) é só uma leitura, e a partir
+        # daqui seguem-se dezenas de chamadas de rede. Com o worker gevent, cada
+        # uma delas é um ponto de troca entre greenlets: dois resgates simultâneos
+        # do mesmo código passavam ambos na validação e ambos recebiam acesso.
+        # A reserva é atómica na base de dados, por isso só um pode ganhar.
+        if not self.data_manager.reserve_invitation_use(code, username):
+            logger.warning(f"Resgate do convite '{code}' recusado: as vagas esgotaram-se entretanto.")
+            return {"success": False, "message": _("Este convite já atingiu o seu limite máximo de utilizações.")}
 
-        accept_result = self._accept_invite_v2(plex_user_account)
-        if not accept_result.get("success"):
-            self.user_manager.invalidate_user_cache()
-            all_current_users = self.user_manager.get_all_plex_users()
-            if not any(str(u['id']) == str(plex_user_account.id) for u in all_current_users):
-                return {"success": False, "message": accept_result.get('message')}
+        # A partir daqui, QUALQUER saída sem sucesso tem de devolver a vaga —
+        # caso contrário uma tentativa falhada queimava uma utilização do convite.
+        try:
+            invite_result = self.send_plex_invite(
+                identifier=plex_user_account.email, 
+                library_titles=invitation['libraries'], 
+                plex_user_id=plex_user_account.id,
+                allow_sync=invitation.get('allow_downloads', False)
+            )
+            
+            if not invite_result.get("success"):
+                self.data_manager.release_invitation_use(code, username)
+                return invite_result
+            if invite_result.get("already_exists"):
+                self.data_manager.release_invitation_use(code, username)
+                return {"success": False, "message": _("Já tem acesso a este servidor.")}
 
-        self._apply_online_media_preferences(plex_user_account)
+            accept_result = self._accept_invite_v2(plex_user_account)
+            if not accept_result.get("success"):
+                self.user_manager.invalidate_user_cache()
+                all_current_users = self.user_manager.get_all_plex_users()
+                if not any(str(u['id']) == str(plex_user_account.id) for u in all_current_users):
+                    self.data_manager.release_invitation_use(code, username)
+                    return {"success": False, "message": accept_result.get('message')}
 
-        if invitation.get('screen_limit', 0) > 0:
-            self.plex_manager.update_screen_limit(plex_user_account.id, invitation['screen_limit'])
+            self._apply_online_media_preferences(plex_user_account)
 
-        self.data_manager.increment_invitation_use(code, username)
+            if invitation.get('screen_limit', 0) > 0:
+                self.plex_manager.update_screen_limit(plex_user_account.id, invitation['screen_limit'])
+        except Exception:
+            self.data_manager.release_invitation_use(code, username)
+            raise
+
+        # O uso já foi contabilizado pela reserva — não voltar a incrementar aqui.
         self.user_manager.invalidate_user_cache()
         
         try:
@@ -333,7 +364,11 @@ class PlexInviteManager:
 
         config = load_or_create_config()
         overseerr_url = config.get("OVERSEERR_URL", "").rstrip('/')
-        expiration_date = profile_data.get("trial_end_date") or profile_data.get("expiration_date")
+        # 🐛 `profile_data` é o dicionário montado aqui e NUNCA tem a chave
+        # 'expiration_date' — só 'trial_end_date', e apenas para testes. O segundo
+        # ramo era portanto sempre None e o ecrã de sucesso nunca chegava a mostrar
+        # "O seu acesso é válido até ...". A data tem de vir do perfil gravado.
+        expiration_date = profile_data.get("trial_end_date") or new_profile.get("expiration_date")
 
         return {
             "username": plex_account.username,

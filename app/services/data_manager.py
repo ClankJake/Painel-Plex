@@ -915,6 +915,75 @@ class DataManager:
         return False
             
     @db_transaction
+    def reserve_invitation_use(self, code, username):
+        """
+        Reserva ATOMICAMENTE uma utilização do convite. Devolve False se já não
+        houver vagas (ou o convite não existir), sem alterar nada.
+
+        🐛 CORREÇÃO DE CONCORRÊNCIA: o resgate validava o convite com
+        `get_invitation_by_code` (leitura) e só contabilizava o uso lá no fim,
+        com `increment_invitation_use`. Entre as duas coisas há dezenas de
+        chamadas de rede à API do Plex (enviar o convite, aceitá-lo, aplicar
+        preferências) e o servidor corre com um worker gevent: cada espera de
+        rede é um ponto de troca entre greenlets. Dois resgates simultâneos do
+        MESMO código liam ambos `use_count = 0 < max_uses = 1`, ambos passavam
+        na validação e ambos recebiam acesso — o `use_count` acabava em 2. Um
+        link de uso único partilhado num grupo entrava por duas pessoas.
+
+        A condição `use_count < max_uses` vive agora DENTRO do UPDATE, pelo que
+        é a própria base de dados a decidir quem fica com a vaga. Só quem
+        receber True prossegue; em caso de falha a seguir, `release_invitation_use`
+        devolve a vaga.
+        """
+        atualizadas = db.session.query(Invitation).filter(
+            Invitation.code == code,
+            Invitation.use_count < Invitation.max_uses,
+        ).update(
+            {
+                Invitation.use_count: Invitation.use_count + 1,
+                Invitation.claimed_at: datetime.now(timezone.utc).isoformat(),
+            },
+            synchronize_session=False,
+        )
+        if not atualizadas:
+            return False
+
+        # `populate_existing` força a releitura da linha: o UPDATE acima passou
+        # ao lado da sessão (synchronize_session=False) e o objeto em cache
+        # ainda traria o `use_count` antigo.
+        invitation = db.session.query(Invitation).populate_existing().filter(
+            Invitation.code == code
+        ).first()
+        if invitation is not None:
+            claimed_users = json.loads(invitation.claimed_by_users or '[]')
+            if username and username not in claimed_users:
+                claimed_users.append(username)
+                invitation.claimed_by_users = json.dumps(claimed_users)
+        return True
+
+    @db_transaction
+    def release_invitation_use(self, code, username):
+        """
+        Devolve a vaga reservada por `reserve_invitation_use`.
+
+        Chamado quando o resgate falha depois da reserva (o Plex recusa o
+        convite, o utilizador já é amigo, o aceite não chega a tempo). Sem isto,
+        uma tentativa falhada queimava permanentemente uma utilização do convite.
+        """
+        invitation = Invitation.query.get(code)
+        if not invitation:
+            return False
+
+        if invitation.use_count > 0:
+            invitation.use_count -= 1
+
+        claimed_users = json.loads(invitation.claimed_by_users or '[]')
+        if username in claimed_users:
+            claimed_users.remove(username)
+            invitation.claimed_by_users = json.dumps(claimed_users)
+        return True
+
+    @db_transaction
     def reset_invitation_usage(self, code):
         invitation = Invitation.query.get(code)
         if invitation:
