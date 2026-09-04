@@ -3,7 +3,7 @@
  * Lógica para a página de resgate de convites.
  */
 
-import { setButtonLoading, restoreButton, escapeHTML } from './utils.js';
+import { setButtonLoading, restoreButton, escapeHTML, buildPinCheckUrl } from './utils.js';
 
 // --- INICIALIZAÇÃO ---
 const scriptTag = document.getElementById('invite-script');
@@ -146,7 +146,8 @@ function showImprovedOnboarding(welcomeMessage, userData) {
             </ol>
         </div>
 
-        <div class="mt-8 text-left">
+        <div class="mt-8 text-left border-t border-gray-200 dark:border-gray-700/50 pt-6">
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 text-center">${i18n.enjoyAnywhere}</h2>
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-center">
                 ${createAppCard('Desktop', 'https://www.plex.tv/pt-br/media-server-downloads/#plex-app', desktopIcon)}
                 ${createAppCard('Android', 'https://play.google.com/store/apps/details?id=com.plexapp.android', mobileIcon)}
@@ -209,7 +210,7 @@ function startPolling(pin_id, client_id) {
         }
         
         try {
-            const checkUrl = urls.checkPinForToken.replace('__CLIENT_ID__', client_id).replace('999999', pin_id);
+            const checkUrl = buildPinCheckUrl(urls.checkPinForToken, client_id, pin_id);
             const checkResponse = await fetch(checkUrl);
             const checkData = await checkResponse.json();
 

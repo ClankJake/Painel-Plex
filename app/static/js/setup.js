@@ -1,4 +1,4 @@
-import { showToast } from './utils.js';
+import { showToast, buildPinCheckUrl } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- ESTADO E DADOS GLOBAIS ---
@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 try {
-                    const checkUrl = urls.checkPlexPin.replace('__CLIENT_ID__', client_id).replace('999999', pin_id);
+                    const checkUrl = buildPinCheckUrl(urls.checkPlexPin, client_id, pin_id);
                     const checkResponse = await fetch(checkUrl);
                     const checkData = await checkResponse.json();
 

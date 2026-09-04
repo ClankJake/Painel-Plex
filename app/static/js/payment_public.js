@@ -1,5 +1,5 @@
 // app/static/js/payment_public.js
-import { fetchAPI, showToast, createModal, setButtonLoading, restoreButton } from './utils.js';
+import { fetchAPI, showToast, createModal, setButtonLoading, restoreButton, buildPinCheckUrl } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // --- ELEMENTOS E DADOS GLOBAIS ---
@@ -434,7 +434,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             
             try {
-                const checkUrl = urls.checkPlexPin.replace('__CLIENT_ID__', client_id).replace('999999', pin_id);
+                const checkUrl = buildPinCheckUrl(urls.checkPlexPin, client_id, pin_id);
                 const checkResponse = await fetch(checkUrl);
                 const checkData = await checkResponse.json();
 
