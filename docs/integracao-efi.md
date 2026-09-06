@@ -139,6 +139,11 @@ Efí. Isto elimina, na prática:
 
 Nestes cenários **use o modo HMAC**.
 
+Se o TLS termina mesmo no seu servidor, veja
+[5.4.1](#541-topologia-a-na-prática-nginx-proxy-manager--mtls) para uma
+configuração de Nginx/NPM de referência — e para as três armadilhas que fazem o
+mTLS parecer ativo sem estar.
+
 ### Modo HMAC (obrigatório atrás de CDN/proxy que termina TLS)
 
 Desative **Usar mTLS**. O painel passa a registar o webhook com um segredo na
@@ -274,10 +279,112 @@ escolha é uma só, para todo o painel:
 Para a topologia **A**, a Efí mantém um servidor Nginx de referência já preparado
 para o mTLS dos webhooks: [`efipay/mtls-webhook`](https://github.com/efipay/mtls-webhook).
 Ele fica à frente do painel e repassa o pedido só depois de validar o certificado.
-Nesse caso mantenha `Usar mTLS` **ativado** e lembre-se de tratar o sufixo `/pix`
-no `proxy_pass`.
+Nesse caso mantenha `Usar mTLS` **ativado**.
 
-O resto desta secção cobre as topologias **B** e **C**.
+Se já tem um proxy próprio e não quer acrescentar mais um contentor, a subsecção
+seguinte mostra a mesma validação feita à mão. O resto da secção 5 cobre as
+topologias **B** e **C**.
+
+#### 5.4.1. Topologia A na prática: Nginx Proxy Manager + mTLS
+
+Configuração de referência, validada em produção, para quem serve o painel com
+**Nginx Proxy Manager** e o domínio em **nuvem cinzenta** (DNS-only). Vai toda no
+separador **Advanced** do *proxy host*:
+
+```nginx
+# --- Nível 'server': negoceia o certificado de cliente ---
+ssl_verify_client optional;
+ssl_client_certificate /etc/nginx/efi_certs/certificate-chain-prod.crt;
+ssl_verify_depth 3;
+
+# --- Nível 'location': IMPÕE o certificado, só no caminho do webhook ---
+location /api/payments/webhook/efi {
+    if ($ssl_client_verify != SUCCESS) {
+        return 403;
+    }
+
+    proxy_set_header Host              $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For   $remote_addr;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_pass       $forward_scheme://$server:$port;
+}
+```
+
+Com o `Usar mTLS` **ativado** no painel. As variáveis `$forward_scheme`, `$server`
+e `$port` são definidas pelo próprio NPM no topo do bloco `server` — usá-las evita
+fixar IP e porta à mão.
+
+**Três armadilhas** que fazem esta configuração parecer segura sem o ser:
+
+1. **`ssl_verify_client optional` não impõe nada.** É o que "optional" quer dizer:
+   o Nginx *pede* o certificado, valida-o se vier, e **deixa passar de qualquer
+   forma** — sem certificado, ou com um inválido. Ele apenas preenche
+   `$ssl_client_verify` com `SUCCESS`, `FAILED:...` ou `NONE`. Sem o `if` que lê
+   essa variável, o webhook fica **aberto à internet** apesar de toda a
+   configuração de certificados. E `optional` é obrigatório aqui: com
+   `ssl_verify_client on` o Nginx exigiria certificado a toda a gente e ninguém
+   abriria o painel no navegador — por isso a imposição tem de ser por `location`.
+
+2. **Um `location` novo não herda o `proxy_pass`.** Ao declarar
+   `location /api/payments/webhook/efi`, ele passa a substituir o `location /` do
+   NPM. Sem `proxy_pass` lá dentro, o Nginx tenta servir um ficheiro estático e a
+   Efí leva `404`. Daí os `proxy_set_header` e o `proxy_pass` repetidos no bloco.
+
+3. **Repassar o resultado ao backend não serve de nada.** É tentador acrescentar
+   `proxy_set_header SSL_CLIENT_VERIFY $ssl_client_verify;` ao nível `server` —
+   mas o Nginx só herda `proxy_set_header` do nível anterior **se o nível atual
+   não definir nenhum**, e o `location /` do NPM define vários. Os cabeçalhos são
+   descartados em bloco. E mesmo que chegassem, **o painel não os lê**: em modo
+   mTLS ele confia inteiramente na validação do proxy.
+
+**Validar em dois passos.** O primeiro prova que quem não tem certificado é
+barrado:
+
+```bash
+curl -i -X POST "https://SEU-DOMINIO/api/payments/webhook/efi?ignorar=/pix" \
+  -H "Content-Type: application/json" \
+  -d '{"evento":"teste_webhook"}'
+```
+
+Deve devolver **`403`** com a página HTML de erro do Nginx. Se devolver
+`200 {"status":"received"}`, falta o `if` — o endpoint está aberto.
+
+O segundo prova que a Efí, **com** certificado, passa e chega à aplicação: mude
+qualquer campo em Configurações → Pagamentos → Efí e grave, para forçar o
+reregisto. No `config/app.log` devem aparecer as três linhas:
+
+```
+A registar Webhook na Efí para a chave ***. URL destino: https://...
+Webhook Efí: Evento de validação concluído.     ← saiu do Flask: atravessou o Nginx
+Webhook da Efí configurado com sucesso.
+```
+
+A linha do meio é a prova que interessa — ela é escrita pela aplicação, não pelo
+proxy. Barrar quem não tem certificado não garante que quem tem consegue entrar;
+uma cadeia errada ou um `proxy_pass` em falta dão `403`/`404` exatamente igual, e
+o resultado é um endpoint perfeitamente seguro e perfeitamente inútil.
+
+**Se o registo falhar** (`Falha ao tentar registar o Webhook na Efí`), o log de
+erro do NPM diz porquê:
+
+```bash
+docker exec -it <container-npm> tail -50 /data/logs/proxy-host-*_error.log
+```
+
+Procure por `client SSL certificate verify error`. Por ordem de frequência: cadeia
+de homologação com credenciais de produção (ou o contrário — são ficheiros
+diferentes), `ssl_verify_depth` curto demais, e um `.crt` só com o certificado
+folha em vez da cadeia completa.
+
+> **O que vai partir isto um dia:** a cadeia da Efí não se atualiza sozinha.
+> Quando expirar ou for rotacionada, todas as notificações passam a levar `403` e
+> o sintoma é o do costume — pagamento feito, subscrição não renovada, nada no
+> log do painel. A pista está no `error.log` do proxy, não no painel.
+
+> **Lembre-se do reverso da medalha:** em nuvem cinzenta o IP de origem fica
+> exposto. Confirme que o *firewall* do host publica apenas o 80/443 e que a porta
+> do painel (5000) não ficou aberta por engano.
 
 ### 5.5. Configuração da Cloudflare, item a item
 
