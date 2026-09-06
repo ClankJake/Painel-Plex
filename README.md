@@ -85,6 +85,8 @@ Esta é a forma mais simples e rápida de colocar a aplicação em funcionamento
 
     > O `restart: unless-stopped` é **necessário** para que a restauração de backup funcione: o painel reinicia sozinho após restaurar.
 
+    > **`IMAGE_PROXY_ALLOWED_HOSTS` (opcional).** O proxy de imagens só descarrega capas e avatares de uma lista de domínios conhecidos (`plex.tv`, `plex.direct`, `gravatar.com`, `tmdb.org`, entre outros, mais o endereço do seu Plex e do Tautulli). É essa lista que impede que o painel seja usado para fazer pedidos à sua rede interna (SSRF). Se alguma imagem legítima vier de outro domínio, acrescente-o aqui, separado por vírgulas: `IMAGE_PROXY_ALLOWED_HOSTS=cdn.exemplo.com,outro.net` (subdomínios são incluídos automaticamente).
+
 2.  **Inicie a Aplicação:**
     ```bash
     docker compose up -d

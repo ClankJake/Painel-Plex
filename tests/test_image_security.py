@@ -5,8 +5,10 @@ import pytest
 
 from app.blueprints import image as image_module
 from app.blueprints.image import (
+    build_authorized_image_url,
     build_final_url,
     get_cache_filepath,
+    is_allowed_image_host,
     is_private_ip,
     validate_external_url,
 )
@@ -171,10 +173,20 @@ class TestBuildFinalUrl:
         with pytest.raises(ValueError):
             build_final_url("url", "http://127.0.0.1/x.png")
 
-    def test_fonte_url_publica(self):
-        url, params = build_final_url("url", "https://8.8.8.8/avatar.png")
+    def test_fonte_url_recusa_dominio_publico_fora_da_allowlist(self):
+        # Um IP/dominio publico arbitrario deixou de ser um destino valido:
+        # e isso que separa um proxy de imagens de um SSRF.
+        with pytest.raises(ValueError):
+            build_final_url("url", "https://8.8.8.8/avatar.png")
 
-        assert url == "https://8.8.8.8/avatar.png"
+    def test_fonte_url_aceita_dominio_da_allowlist(self, monkeypatch):
+        monkeypatch.setattr(
+            image_module, "validate_external_url", lambda url: url
+        )
+
+        url, params = build_final_url("url", "https://secure.gravatar.com/avatar/abc?s=200")
+
+        assert url == "https://secure.gravatar.com/avatar/abc?s=200"
         assert params == {}
 
     def test_fonte_tautulli_monta_o_proxy(self, monkeypatch):
@@ -216,3 +228,184 @@ class TestCacheFilepath:
 
         assert ".." not in str(caminho)
         assert caminho.parent == image_module.IMAGE_CACHE_DIR
+
+
+class TestAllowlistDeDominios:
+    """
+    A allowlist é o que separa um proxy de imagens de um SSRF: sem ela,
+    `/image/?source=<base64>` faz o servidor buscar qualquer URL escolhido por
+    quem faz o pedido, já a partir de dentro da rede.
+    """
+
+    @pytest.mark.parametrize("hostname", [
+        "plex.tv",
+        "metadata-static.plex.tv",
+        "secure.gravatar.com",
+        "1-2-3-4.abcdef.plex.direct",
+        "PLEX.TV",          # comparação insensível a maiúsculas
+        "plex.tv.",         # ponto final da raiz DNS
+    ])
+    def test_dominios_autorizados(self, hostname):
+        assert is_allowed_image_host(hostname) is True
+
+    @pytest.mark.parametrize("hostname", [
+        "atacante.exemplo",
+        "plex.tv.atacante.com",   # sufixo colado: o `in netloc` deixava passar
+        "naoeplex.tv",            # sem fronteira de rótulo
+        "gravatar.com.evil.net",
+        "",
+        None,
+    ])
+    def test_dominios_recusados(self, hostname):
+        assert is_allowed_image_host(hostname) is False
+
+    def test_admin_pode_acrescentar_dominios(self, monkeypatch):
+        monkeypatch.setenv("IMAGE_PROXY_ALLOWED_HOSTS", "cdn.exemplo.com, outro.net")
+
+        assert is_allowed_image_host("img.cdn.exemplo.com") is True
+        assert is_allowed_image_host("outro.net") is True
+        assert is_allowed_image_host("terceiro.org") is False
+
+    def test_o_host_do_plex_configurado_e_autorizado(self, monkeypatch):
+        class PlexFalso:
+            _baseurl = "https://plex.meudominio.com:32400"
+
+        class ManagerFalso:
+            plex = PlexFalso()
+
+        monkeypatch.setattr(image_module, "plex_manager", ManagerFalso())
+
+        assert is_allowed_image_host("plex.meudominio.com") is True
+
+
+class TestBuildAuthorizedImageUrl:
+    @pytest.fixture(autouse=True)
+    def _sem_dns(self, monkeypatch):
+        # Isola a allowlist da camada de DNS/IP (já testada acima).
+        monkeypatch.setattr(image_module, "validate_external_url", lambda url: url)
+
+    def test_url_e_remontado_a_partir_dos_componentes_validados(self):
+        url = build_authorized_image_url("https://plex.tv/users/1/avatar?c=123")
+
+        assert url == "https://plex.tv/users/1/avatar?c=123"
+
+    def test_caminho_vazio_gera_raiz(self):
+        assert build_authorized_image_url("https://plex.tv") == "https://plex.tv/"
+
+    def test_fragmento_e_descartado(self):
+        url = build_authorized_image_url("https://plex.tv/a.png#fragmento")
+
+        assert url == "https://plex.tv/a.png"
+
+    @pytest.mark.parametrize("url", [
+        "https://atacante.exemplo/x.png",
+        "https://plex.tv.atacante.com/x.png",
+        "https://169.254.169.254/latest/meta-data/",
+    ])
+    def test_dominios_fora_da_allowlist_sao_recusados(self, url):
+        with pytest.raises(ValueError):
+            build_authorized_image_url(url)
+
+    @pytest.mark.parametrize("url", [
+        "file:///etc/passwd",
+        "gopher://plex.tv/x",
+        "ftp://plex.tv/x.png",
+    ])
+    def test_esquemas_nao_http_sao_recusados(self, url):
+        with pytest.raises(ValueError):
+            build_authorized_image_url(url)
+
+    def test_porta_do_plex_e_aceite(self):
+        url = build_authorized_image_url("https://1-2-3-4.abc.plex.direct:32400/photo/x")
+
+        assert url == "https://1-2-3-4.abc.plex.direct:32400/photo/x"
+
+    @pytest.mark.parametrize("porta", [22, 3306, 6379, 8080])
+    def test_portas_fora_da_lista_sao_recusadas(self, porta):
+        # Sem isto, o proxy servia para varrer portas de serviços internos.
+        with pytest.raises(ValueError):
+            build_authorized_image_url(f"https://plex.tv:{porta}/x.png")
+
+    def test_porta_malformada_e_recusada(self):
+        with pytest.raises(ValueError):
+            build_authorized_image_url("https://plex.tv:porta/x.png")
+
+    def test_a_validacao_de_ip_continua_a_correr(self, monkeypatch):
+        chamadas = []
+
+        def valida(url):
+            chamadas.append(url)
+            raise ValueError("IP interno")
+
+        monkeypatch.setattr(image_module, "validate_external_url", valida)
+
+        with pytest.raises(ValueError):
+            build_authorized_image_url("https://plex.tv/x.png")
+
+        assert chamadas == ["https://plex.tv/x.png"]
+
+
+class TestPinnedIPAdapter:
+    """
+    O adaptador tem de fixar mesmo a ligação ao IP validado. Se o pedido seguir
+    com o hostname, o 'requests' resolve o DNS outra vez e o atacante pode
+    devolver um IP interno nessa segunda resolução (DNS rebinding).
+    """
+
+    class PedidoFalso:
+        def __init__(self, url):
+            self.url = url
+            self.headers = {}
+
+    def _envia(self, monkeypatch, adapter, pedido):
+        enviados = {}
+
+        def super_send(self, request, **kwargs):
+            enviados["url"] = request.url
+            enviados["host"] = request.headers.get("Host")
+            return "resposta"
+
+        monkeypatch.setattr(image_module.HTTPAdapter, "send", super_send)
+        adapter.send(pedido)
+        return enviados
+
+    def test_https_liga_ao_ip_e_preserva_o_host(self, monkeypatch):
+        adapter = image_module._PinnedIPAdapter("93.184.216.34")
+        pedido = self.PedidoFalso("https://plex.tv/users/avatar.png?c=1")
+
+        enviados = self._envia(monkeypatch, adapter, pedido)
+
+        assert enviados["url"] == "https://93.184.216.34/users/avatar.png?c=1"
+        assert enviados["host"] == "plex.tv"
+        # SNI e validação do certificado continuam a usar o nome original.
+        assert adapter.poolmanager.connection_pool_kw["server_hostname"] == "plex.tv"
+        assert adapter.poolmanager.connection_pool_kw["assert_hostname"] == "plex.tv"
+
+    def test_a_porta_e_preservada(self, monkeypatch):
+        adapter = image_module._PinnedIPAdapter("93.184.216.34")
+        pedido = self.PedidoFalso("https://x.plex.direct:32400/photo/a.png")
+
+        enviados = self._envia(monkeypatch, adapter, pedido)
+
+        assert enviados["url"] == "https://93.184.216.34:32400/photo/a.png"
+        assert enviados["host"] == "x.plex.direct:32400"
+
+    def test_http_nao_recebe_parametros_de_tls(self, monkeypatch):
+        # 'server_hostname'/'assert_hostname' só existem em ligações HTTPS:
+        # numa ligação HTTP o urllib3 rebentaria com TypeError.
+        adapter = image_module._PinnedIPAdapter("93.184.216.34")
+        pedido = self.PedidoFalso("http://plex.tv/a.png")
+
+        enviados = self._envia(monkeypatch, adapter, pedido)
+
+        assert enviados["url"] == "http://93.184.216.34/a.png"
+        assert "server_hostname" not in adapter.poolmanager.connection_pool_kw
+        assert "assert_hostname" not in adapter.poolmanager.connection_pool_kw
+
+    def test_ipv6_e_escrito_entre_parenteses_retos(self, monkeypatch):
+        adapter = image_module._PinnedIPAdapter("2606:2800:220:1:248:1893:25c8:1946")
+        pedido = self.PedidoFalso("https://plex.tv/a.png")
+
+        enviados = self._envia(monkeypatch, adapter, pedido)
+
+        assert enviados["url"] == "https://[2606:2800:220:1:248:1893:25c8:1946]/a.png"

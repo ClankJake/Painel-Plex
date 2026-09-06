@@ -17,6 +17,7 @@ from plexapi.exceptions import NotFound
 
 from ..config import load_or_create_config
 from ..utils.log_formatting import NETWORK_ERRORS, ThrottledReporter, describe
+from ..utils.url_safety import is_plex_tv_host
 
 logger = logging.getLogger(__name__)
 
@@ -563,7 +564,7 @@ class StreamManager:
                             clean_query = urlencode([(k, v) for k, v in parse_qsl(parsed_thumb.query) if k.lower() != 'x-plex-token'])
                             clean_url = parsed_thumb._replace(query=clean_query).geturl()
                             
-                            if 'plex.tv' in parsed_thumb.netloc or not parsed_thumb.netloc:
+                            if is_plex_tv_host(parsed_thumb.hostname) or not parsed_thumb.netloc:
                                 payload_str = f"plex_account:{clean_url}"
                             else:
                                 payload_str = f"url:{clean_url}"

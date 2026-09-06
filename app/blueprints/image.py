@@ -14,10 +14,11 @@ from typing import Tuple, Optional
 
 from flask import Blueprint, request, abort, send_from_directory, redirect
 from requests.adapters import HTTPAdapter
-from urllib.parse import urlparse, parse_qs, urljoin
+from urllib.parse import urlparse, parse_qs, urljoin, urlunparse
 
 # Importa os gestores para aceder às configurações e tokens de forma segura
 from ..extensions import plex_manager, tautulli_manager, limiter
+from ..utils.url_safety import is_plex_tv_host, match_domain, normalize_host
 
 logger = logging.getLogger(__name__)
 image_bp = Blueprint('image', __name__)
@@ -92,6 +93,135 @@ def resolve_and_validate_host(hostname: str, port: int):
     return resolved_ips[0]
 
 
+# Domínios de onde o painel aceita descarregar imagens quando a fonte é 'url'
+# (avatares e capas que o Plex devolve como URL absoluto).
+#
+# A lista vive no servidor: o pedido do utilizador apenas ESCOLHE uma destas
+# entradas, nunca define um destino novo. É exatamente esta a diferença entre um
+# proxy de imagens e um SSRF — sem a allowlist, `/image/?source=<base64>` faz o
+# servidor buscar qualquer URL que o atacante queira, já a partir de dentro da rede.
+ALLOWED_IMAGE_HOSTS: Tuple[str, ...] = (
+    'plex.tv',
+    'plexapp.com',
+    'plex.direct',
+    'gravatar.com',
+    'tmdb.org',
+    'thetvdb.com',
+    'fanart.tv',
+)
+
+# Portas aceites nos URLs externos. 32400 é a porta padrão do Plex Media Server,
+# usada nos posters servidos diretamente pelo servidor (*.plex.direct:32400).
+ALLOWED_IMAGE_PORTS = frozenset({80, 443, 32400})
+
+# Variável de ambiente para o administrador acrescentar domínios próprios
+# (por exemplo, um CDN de capas), separados por vírgulas.
+EXTRA_HOSTS_ENV_VAR = 'IMAGE_PROXY_ALLOWED_HOSTS'
+
+
+def _extra_allowed_hosts() -> Tuple[str, ...]:
+    """Domínios adicionais autorizados pelo administrador via ambiente."""
+    raw = os.environ.get(EXTRA_HOSTS_ENV_VAR, '')
+    return tuple(
+        normalize_host(entrada)
+        for entrada in raw.split(',')
+        if normalize_host(entrada)
+    )
+
+
+def _configured_endpoints() -> Tuple[Tuple[str, Optional[int]], ...]:
+    """
+    Hosts do próprio Plex/Tautulli, tal como configurados no painel.
+
+    São destinos legítimos do proxy (o Plex serve as capas a partir do endereço
+    onde está instalado), por isso entram na allowlist em tempo de execução em
+    vez de ficarem escritos no código.
+    """
+    endpoints = []
+
+    for base_url in (
+        getattr(getattr(plex_manager, 'plex', None), '_baseurl', None) if plex_manager else None,
+        getattr(getattr(tautulli_manager, 'api_client', None), 'base_url', None) if tautulli_manager else None,
+    ):
+        if not base_url:
+            continue
+        try:
+            parsed = urlparse(base_url)
+            host = normalize_host(parsed.hostname)
+            if host:
+                endpoints.append((host, parsed.port))
+        except ValueError:
+            continue
+
+    return tuple(endpoints)
+
+
+def _allowed_image_ports() -> frozenset:
+    """Portas aceites: as conhecidas mais as que o administrador configurou."""
+    configuradas = {porta for _host, porta in _configured_endpoints() if porta}
+    return ALLOWED_IMAGE_PORTS | configuradas
+
+
+def is_allowed_image_host(hostname: Optional[str]) -> bool:
+    """
+    Verifica se o domínio consta da allowlist do proxy de imagens.
+
+    A comparação é feita pela fronteira do rótulo DNS (ver utils/url_safety.py):
+    'plex.tv' cobre 'plex.tv' e '*.plex.tv', mas nunca 'plex.tv.atacante.com'.
+    """
+    dominios = ALLOWED_IMAGE_HOSTS + _extra_allowed_hosts() + tuple(
+        host for host, _porta in _configured_endpoints()
+    )
+    return match_domain(hostname, dominios) is not None
+
+
+def build_authorized_image_url(url_str: str) -> str:
+    """
+    Reconstrói o URL de uma imagem externa a partir de componentes validados.
+
+    O painel nunca faz o pedido com o texto que recebeu. O esquema é escolhido de
+    duas constantes, o domínio tem de constar da allowlist do servidor e a porta
+    de uma lista fechada; só depois o URL é montado de novo. Do pedido original
+    sobra apenas o caminho e a query, já dentro de um domínio autorizado — é o
+    que a documentação do CodeQL descreve como "escolher a partir de uma lista de
+    URLs autorizados no servidor" (py/full-ssrf).
+    """
+    parsed = urlparse(url_str)
+
+    # 1. Esquema: escolhido de constantes, nunca copiado do pedido.
+    if parsed.scheme == 'https':
+        prefixo = 'https://'
+    elif parsed.scheme == 'http':
+        prefixo = 'http://'
+    else:
+        raise ValueError(f"Esquema de URL não suportado: {parsed.scheme}")
+
+    # 2. Domínio: tem de constar da allowlist do servidor.
+    hostname = normalize_host(parsed.hostname)
+    if not is_allowed_image_host(hostname):
+        raise ValueError(
+            f"Domínio não autorizado para o proxy de imagens: {hostname or '(ausente)'}"
+        )
+
+    # 3. Porta: `parsed.port` levanta ValueError se for inválida — o que já é o
+    #    comportamento certo, porque o chamador trata ValueError como bloqueio.
+    porta = parsed.port
+    if porta is not None and porta not in _allowed_image_ports():
+        raise ValueError(f"Porta não autorizada para o proxy de imagens: {porta}")
+
+    netloc = f"[{hostname}]" if ':' in hostname else hostname
+    if porta is not None:
+        netloc = f"{netloc}:{porta}"
+
+    url_seguro = prefixo + netloc + (parsed.path or '/')
+    if parsed.query:
+        url_seguro = url_seguro + '?' + parsed.query
+
+    # 4. Última camada: resolve o DNS e recusa qualquer IP interno.
+    validate_external_url(url_seguro)
+    return url_seguro
+
+
 def validate_external_url(url_str: str) -> str:
     """
     Valida URLs externas para evitar que o servidor seja usado como proxy
@@ -137,9 +267,23 @@ class _PinnedIPAdapter(HTTPAdapter):
         hostname = parsed.hostname
         if hostname and self.pinned_ip:
             # Preserva o Host original (necessário para vhosts e para o SNI)
-            request.headers.setdefault('Host', parsed.netloc)
-            self.poolmanager.connection_pool_kw['server_hostname'] = hostname
-            self.poolmanager.connection_pool_kw['assert_hostname'] = hostname
+            request.headers['Host'] = parsed.netloc
+
+            # Só a partir daqui a ligação fica mesmo fixada: o pedido passa a
+            # apontar para o IP já validado, por isso o 'requests' não volta a
+            # resolver o DNS — era essa segunda resolução que reabria a janela
+            # de DNS rebinding que este adaptador existe para fechar.
+            ip_literal = f"[{self.pinned_ip}]" if ':' in self.pinned_ip else self.pinned_ip
+            novo_netloc = f"{ip_literal}:{parsed.port}" if parsed.port else ip_literal
+            request.url = urlunparse(parsed._replace(netloc=novo_netloc))
+
+            if parsed.scheme == 'https':
+                # Com o IP no URL, é preciso dizer explicitamente ao TLS qual é o
+                # nome a usar no SNI e a validar no certificado. Estes parâmetros
+                # só existem em ligações HTTPS: passá-los numa ligação HTTP faz o
+                # urllib3 rebentar com TypeError.
+                self.poolmanager.connection_pool_kw['server_hostname'] = hostname
+                self.poolmanager.connection_pool_kw['assert_hostname'] = hostname
         return super().send(request, **kwargs)
 
 
@@ -214,7 +358,9 @@ def build_final_url(source: str, image_path: str) -> Tuple[Optional[str], dict]:
             # FIX DE SEGURANÇA: Obriga as imagens a serem relativas a plex.tv
             if image_path.startswith('http://') or image_path.startswith('https://'):
                 parsed = urlparse(image_path)
-                if 'plex.tv' in parsed.netloc:
+                # `'plex.tv' in parsed.netloc` aceitava 'plex.tv.atacante.com' e
+                # entregava-lhe o token da conta Plex.
+                if is_plex_tv_host(parsed.hostname):
                     image_path = parsed.path + ("?" + parsed.query if parsed.query else "")
                 else:
                     raise ValueError("URL absoluto inválido para o prefixo plex_account.")
@@ -226,8 +372,10 @@ def build_final_url(source: str, image_path: str) -> Tuple[Optional[str], dict]:
             params['X-Plex-Token'] = plex_manager.account._token
             
     elif source == 'url':
-        # FIX DE SEGURANÇA: Valida rigorosamente as URLs de avatares de terceiros
-        final_url = validate_external_url(image_path)
+        # FIX DE SEGURANÇA (SSRF): o URL é reconstruído a partir da allowlist de
+        # domínios do servidor. O pedido escolhe o destino de uma lista fechada,
+        # em vez de o definir — ver build_authorized_image_url.
+        final_url = build_authorized_image_url(image_path)
         
     elif source == 'tautulli':
         # Protege contra Tautulli não configurado/carregado no boot
