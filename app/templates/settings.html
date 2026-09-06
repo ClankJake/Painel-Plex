@@ -4,13 +4,18 @@
 
 {% block extra_head %}
 <style>
-    /* Estilos das Tabs Otimizados */
-    .tab-button {
-        @apply px-4 py-2.5 rounded-lg text-sm font-semibold text-gray-500 dark:text-gray-400 transition-all duration-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none;
-    }
-    .tab-button.active {
-        @apply bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-600;
-    }
+    /* ⚠️ NÃO REDEFINIR AQUI AS CLASSES DAS ABAS.
+
+       O Tailwind deste projeto compila APENAS o app/static/css/input.css (ver
+       "npm run build:css"); os templates são lidos só para descobrir NOMES de
+       classes, nunca processados como CSS. Um @apply escrito num <style> daqui
+       chega ao browser como CSS inválido e é descartado em silêncio.
+
+       Existiam aqui redefinições com @apply de:
+           .tab-button, .tab-button.active
+       que, por isso, nunca chegaram a ter efeito — quem manda no aspeto destas
+       abas é, e sempre foi, o input.css. Foram removidas para não continuarem a
+       enganar quem as lê. Para mudar o aspeto, edita o input.css. */
     
     /* Animação suave para o botão Sticky */
     .sticky-btn-wrapper {

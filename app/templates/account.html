@@ -4,6 +4,20 @@
 
 {% block extra_head %}
 <style>
+    /* ⚠️ NÃO REDEFINIR AQUI AS CLASSES DAS ABAS.
+
+       O Tailwind deste projeto compila APENAS o app/static/css/input.css (ver
+       "npm run build:css"); os templates são lidos só para descobrir NOMES de
+       classes, nunca processados como CSS. Um @apply escrito num <style> daqui
+       chega ao browser como CSS inválido e é descartado em silêncio.
+
+       Existiam aqui redefinições com @apply de:
+           .tab-button, .tab-button.active
+           .filter-btn, .filter-btn.active   (os filtros do Overseerr, em azul)
+       que, por isso, nunca chegaram a ter efeito — quem manda no aspeto é, e
+       sempre foi, o input.css (onde o filtro ativo é amarelo, não azul). Foram
+       removidas para não continuarem a enganar quem as lê. Para mudar o
+       aspeto, edita o input.css. */
     /* Ocultar barra de scroll para navegação horizontal (Tabs) */
     .horizontal-scroll {
         -ms-overflow-style: none;  /* IE and Edge */
@@ -11,14 +25,6 @@
     }
     .horizontal-scroll::-webkit-scrollbar {
         display: none; /* Chrome, Safari, Opera */
-    }
-
-    /* Estilos das Tabs (Separadores) Otimizados e Alinhados */
-    .tab-button {
-        @apply whitespace-nowrap px-4 py-2 rounded-lg text-sm font-medium text-gray-500 dark:text-gray-400 transition-all duration-200 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none;
-    }
-    .tab-button.active {
-        @apply bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-600;
     }
 
     /* Títulos longos nos cartões de pedidos: corta em 2 linhas com reticências,
@@ -30,14 +36,6 @@
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
-    }
-
-    /* Filtros do Overseerr */
-    .filter-btn {
-        @apply px-4 py-1.5 rounded-full text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700/50 transition-colors hover:bg-gray-200 dark:hover:bg-gray-600;
-    }
-    .filter-btn.active {
-        @apply bg-blue-600 text-white dark:bg-blue-500 shadow-md;
     }
 
     /* 🐛 'line-clamp-2' do Tailwind NÃO está presente no CSS compilado deste
