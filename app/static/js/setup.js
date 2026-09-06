@@ -33,20 +33,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- LÓGICA DO WIZARD ---
 
+    // 🐛 CORREÇÃO: cada passo agenda um `setTimeout` de 500 ms para se esconder ou
+    // mostrar. Duas navegações seguidas (ex.: ir para a seleção de servidores e
+    // voltar atrás quando o pedido falha) deixavam timers antigos em voo, e o
+    // temporizador de "esconder" do primeiro salto apagava o passo que o segundo
+    // acabara de mostrar — o assistente ficava num cartão em branco, sem saída.
+    // Guardamos, no máximo, um temporizador por elemento e cancelamos o anterior.
+    const stepTimers = new Map();
+
+    function scheduleStepTransition(element, action) {
+        if (!element) return;
+        if (stepTimers.has(element)) clearTimeout(stepTimers.get(element));
+        stepTimers.set(element, setTimeout(() => {
+            stepTimers.delete(element);
+            action();
+        }, 500));
+    }
+
     function navigateToStep(targetStep) {
+        if (targetStep < 0) targetStep = 0;
+        if (targetStep === currentStep) return;
+
         const currentStepEl = document.querySelector(`[data-step="${currentStep}"]`);
         if (currentStepEl) {
             currentStepEl.classList.add('opacity-0');
-            setTimeout(() => currentStepEl.classList.add('hidden'), 500);
+            scheduleStepTransition(currentStepEl, () => currentStepEl.classList.add('hidden'));
         }
 
         const targetStepEl = document.querySelector(`[data-step="${targetStep}"]`);
         if (targetStepEl) {
-            setTimeout(() => {
+            scheduleStepTransition(targetStepEl, () => {
                 targetStepEl.classList.remove('hidden');
                 void targetStepEl.offsetWidth; 
                 targetStepEl.classList.remove('opacity-0');
-            }, 500);
+            });
         }
         
         const previousStep = currentStep;
@@ -67,8 +87,21 @@ document.addEventListener('DOMContentLoaded', () => {
         stepIndicator.textContent = stepTitles[currentStep];
     }
     
+    // 🐛 CORREÇÃO: ao repor o botão de login usava-se `textContent = 'Login com Plex'`
+    // — uma cadeia fixa em português, que ignorava o idioma escolhido e ainda
+    // deitava fora o ícone do Plex que vem no HTML. Guardamos o conteúdo original
+    // uma única vez e repomo-lo tal e qual.
+    const loginButtonEl = document.getElementById('login-with-plex');
+    const loginButtonOriginalHtml = loginButtonEl ? loginButtonEl.innerHTML : '';
+
+    function resetLoginButton() {
+        if (!loginButtonEl) return;
+        loginButtonEl.disabled = false;
+        loginButtonEl.innerHTML = loginButtonOriginalHtml;
+    }
+
     async function loginWithPlex() {
-        const loginButton = document.getElementById('login-with-plex');
+        const loginButton = loginButtonEl;
         if (loginButton) {
             loginButton.disabled = true;
             loginButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"></circle><path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" fill="currentColor" class="opacity-75"></path></svg> ${i18n.verifying}`;
@@ -107,13 +140,33 @@ document.addEventListener('DOMContentLoaded', () => {
             const auth_url = `https://app.plex.tv/auth#?${authUrlParams.toString()}`;
             const authWindow = window.open(auth_url, 'plexAuth', 'width=800,height=700');
 
+            // 🐛 CORREÇÃO: com um bloqueador de pop-ups ativo, `window.open` devolve
+            // null. Antes, a verificação seguinte cancelava o ciclo em silêncio e o
+            // botão voltava ao estado inicial — o instalador parecia simplesmente
+            // "não fazer nada", sem nada que explicasse porquê. Agora dizemos o que
+            // se passou e o utilizador pode autorizar os pop-ups e tentar de novo.
+            if (!authWindow) {
+                showToast(i18n.popupBlocked || 'Autorize as janelas pop-up deste site para entrar com o Plex.', 'error');
+                resetLoginButton();
+                return;
+            }
+
+            // Limite de vida do ciclo de verificação: o PIN do Plex expira ao fim de
+            // ~15 minutos, e sem isto o separador ficava a interrogar o servidor de
+            // 3 em 3 segundos para sempre.
+            const pollDeadline = Date.now() + 15 * 60 * 1000;
+            // Quando a janela é fechada, ainda fazemos algumas tentativas: é comum
+            // fechá-la manualmente logo após aprovar o acesso, e antes disso o
+            // assistente descartava uma autenticação que já tinha sido concedida.
+            let checksAfterClose = 0;
+
             pinCheckInterval = setInterval(async () => {
-                if (!authWindow || authWindow.closed) {
+                const windowClosed = authWindow.closed;
+                if (windowClosed) checksAfterClose += 1;
+
+                if (Date.now() > pollDeadline || checksAfterClose > 3) {
                     clearInterval(pinCheckInterval);
-                    if (loginButton) {
-                        loginButton.disabled = false;
-                        loginButton.textContent = 'Login com Plex';
-                    }
+                    resetLoginButton();
                     return;
                 }
                 
@@ -124,38 +177,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (checkData.success) {
                         clearInterval(pinCheckInterval);
-                        if (authWindow && !authWindow.closed) {
+                        if (!authWindow.closed) {
                             authWindow.close();
                         }
                         showToast(i18n.authenticated, "success");
                         await initializeSetup(checkData);
                     } else if (checkData.message === 'auth_denied') {
                         clearInterval(pinCheckInterval);
-                        if (authWindow && !authWindow.closed) {
+                        if (!authWindow.closed) {
                             authWindow.close();
                         }
                         showToast(checkData.error, 'error');
-                        if (loginButton) {
-                            loginButton.disabled = false;
-                            loginButton.textContent = 'Login com Plex';
-                        }
+                        resetLoginButton();
                     }
                 } catch (e) {
                     clearInterval(pinCheckInterval);
                     showToast(`${i18n.verificationError} ${e.message}`, 'error');
-                    if (loginButton) {
-                        loginButton.disabled = false;
-                        loginButton.textContent = 'Login com Plex';
-                    }
+                    resetLoginButton();
                 }
             }, 3000);
 
         } catch (error) {
             showToast(error.message, 'error');
-            if (loginButton) {
-                loginButton.disabled = false;
-                loginButton.textContent = 'Login com Plex';
-            }
+            resetLoginButton();
         }
     }
     
@@ -163,6 +207,14 @@ document.addEventListener('DOMContentLoaded', () => {
         navigateToStep(2);
         const serverListDiv = document.getElementById('server-list');
         serverListDiv.innerHTML = `<p class="text-center p-8 text-gray-600 dark:text-gray-400">${i18n.fetchingServers}</p>`;
+
+        // 🐛 CORREÇÃO: ao voltar atrás e autenticar de novo, a lista de servidores é
+        // reconstruída (nenhum rádio fica marcado) mas o botão "Próximo" continuava
+        // ativo com a escolha ANTERIOR ainda em `setupData` — dava para avançar e
+        // instalar o painel apontado a um servidor que já não estava selecionado.
+        setupData.plex_url = null;
+        const nextButton = document.getElementById('next-2');
+        if (nextButton) nextButton.disabled = true;
         
         try {
             const response = await fetch(urls.getPlexServers);
@@ -304,6 +356,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('finish-setup').addEventListener('click', async () => {
         const finishButton = document.getElementById('finish-setup');
+
+        // Barreira de segurança: o servidor recusa (com 400) um pedido sem estes
+        // dados, mas aqui a mensagem é imediata e diz para onde voltar.
+        if (!setupData.plex_url || !setupData.plex_token || !setupData.admin_user) {
+            showToast(i18n.missingSetupData || 'Conclua a autenticação e escolha um servidor Plex antes de finalizar.', 'error');
+            navigateToStep(1);
+            return;
+        }
+
         finishButton.disabled = true;
         finishButton.textContent = i18n.saving;
 
@@ -386,5 +447,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }), 'testConnection', 'overseerr-test-result');
     });
     
-    navigateToStep(0);
+    // Estado inicial. O passo 0 já vem visível do HTML, por isso basta pintar a
+    // barra de progresso e o rótulo — chamar `navigateToStep(0)` aqui fazia o
+    // cartão desvanecer e voltar a aparecer a cada carregamento da página.
+    progressBar.style.width = '0%';
+    stepIndicator.textContent = stepTitles[0] || '';
 });

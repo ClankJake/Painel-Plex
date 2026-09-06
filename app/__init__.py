@@ -62,6 +62,97 @@ def shutdown_scheduler(signum=None, frame=None):
     except Exception as e:
         logger.debug(f"Aviso ao encerrar o listener SSE: {e}")
 
+    # 🐛 CORREÇÃO: quando esta função é instalada como handler de SIGTERM/SIGINT,
+    # ela SUBSTITUI o comportamento por omissão — que é terminar o processo. O
+    # resultado era que, depois de limpar o agendador, a aplicação simplesmente
+    # continuava a correr:
+    #   • o restauro de backup (que faz `os.kill(os.getpid(), SIGTERM)` para se
+    #     reiniciar) prometia um reinício que nunca acontecia, ficando com o
+    #     agendador morto e sem nenhuma tarefa de fundo;
+    #   • um `docker stop` esperava o tempo todo de cortesia e acabava em SIGKILL.
+    # Repomos o handler por omissão e reenviamos o sinal para terminar de facto.
+    if signum is not None:
+        try:
+            signal.signal(signum, signal.SIG_DFL)
+            os.kill(os.getpid(), signum)
+        except Exception as e:  # pragma: no cover - dependente do SO
+            logger.debug(f"Não foi possível reenviar o sinal {signum}: {e}")
+
+
+# Os handlers de encerramento são globais ao processo: registá-los mais do que
+# uma vez faria o `atexit` chamar a limpeza repetidamente.
+_shutdown_handlers_registered = False
+
+
+def _register_shutdown_handlers():
+    """Regista o encerramento seguro do agendador (idempotente)."""
+    global _shutdown_handlers_registered
+    if _shutdown_handlers_registered:
+        return
+
+    atexit.register(shutdown_scheduler)
+    try:
+        signal.signal(signal.SIGTERM, shutdown_scheduler)
+        signal.signal(signal.SIGINT, shutdown_scheduler)
+    except ValueError:
+        # `signal.signal` só funciona na thread principal. Quando o agendador
+        # arranca a partir de um pedido HTTP (fim do assistente de instalação),
+        # ficamos apenas com o `atexit` — que é suficiente para a limpeza.
+        logger.debug(
+            "Handlers de sinal não registados (fora da thread principal). "
+            "O encerramento seguro fica a cargo do atexit."
+        )
+
+    _shutdown_handlers_registered = True
+
+
+def _configure_scheduler():
+    """Aponta o agendador ao seu jobstore e fuso horário (idempotente)."""
+    if extensions.scheduler.running:
+        return
+
+    scheduler_db_path = os.path.join(CONFIG_DIR, 'scheduler_jobs.db')
+    jobstores = {
+        'default': SQLAlchemyJobStore(url=f'sqlite:///{scheduler_db_path}?timeout=30')
+    }
+    try:
+        local_tz_name = get_localzone_name()
+    except Exception:
+        local_tz_name = 'UTC'
+
+    extensions.scheduler.configure(jobstores=jobstores, timezone=local_tz_name)
+
+
+def start_background_services(app) -> bool:
+    """
+    Arranca o agendador com todas as tarefas recorrentes e regista o encerramento
+    seguro. Devolve True se o agendador ficou a correr neste processo.
+
+    🐛 CORREÇÃO: isto era feito APENAS dentro do `create_app()`, e só quando a
+    aplicação já estava configurada. Numa instalação nova o assistente gravava a
+    configuração, autenticava o administrador e mandava-o para o painel — mas
+    nenhuma tarefa de fundo chegava a arrancar: sem verificação de streams (e
+    portanto sem controlo de telas simultâneas nem listener SSE em tempo real),
+    sem avisos de vencimento, sem remoção de bloqueados, sem limpezas, sem
+    processador de tarefas em lote e sem backups automáticos. Tudo isso só
+    começava a funcionar no reinício seguinte do contentor — que podia demorar
+    dias. O fim do assistente passa a chamar esta função.
+
+    É idempotente: se o agendador já estiver a correr, não faz nada.
+    """
+    if extensions.scheduler.running:
+        return True
+
+    try:
+        _configure_scheduler()
+        setup_scheduler(app)
+    except Exception as e:
+        logger.error(f"Falha ao iniciar o agendador de tarefas: {e}", exc_info=True)
+        return False
+
+    _register_shutdown_handlers()
+    return extensions.scheduler.running
+
 def create_app() -> Flask:
     """
     Cria e configura a instância principal da aplicação Flask (Application Factory).
@@ -81,7 +172,6 @@ def create_app() -> Flask:
     # e cache vivam sempre no mesmo sítio.
     config_dir_path = CONFIG_DIR
     db_path = os.path.join(config_dir_path, 'app_data.db')
-    scheduler_db_path = os.path.join(config_dir_path, 'scheduler_jobs.db')
     cache_dir_path = os.path.join(config_dir_path, 'cache', 'web_cache')
 
     # Configurações do Flask e Segurança de Sessão
@@ -207,27 +297,13 @@ def create_app() -> Flask:
     # CONFIGURAÇÃO DO SCHEDULER
     # ==========================================
     set_app_for_jobs(app)
-    
-    if not extensions.scheduler.running:
-        jobstores = {
-            'default': SQLAlchemyJobStore(url=f'sqlite:///{scheduler_db_path}?timeout=30')
-        }
-        try:
-            local_tz_name = get_localzone_name()
-        except Exception:
-            local_tz_name = 'UTC'
-            
-        extensions.scheduler.configure(jobstores=jobstores, timezone=local_tz_name)
 
-        if is_configured():
-            try:
-                setup_scheduler(app)
-                # Regista handlers de encerramento seguro
-                atexit.register(shutdown_scheduler)
-                signal.signal(signal.SIGTERM, shutdown_scheduler)
-                signal.signal(signal.SIGINT, shutdown_scheduler)
-            except Exception as e:
-                logger.error(f"Falha ao iniciar o agendador de tarefas: {e}")
+    # O jobstore é preparado sempre — mesmo numa instalação por concluir — para que
+    # o assistente de instalação possa arrancar o agendador no fim, sem reiniciar.
+    _configure_scheduler()
+
+    if is_configured():
+        start_background_services(app)
 
     # ==========================================
     # HOOKS E ERROR HANDLERS

@@ -117,11 +117,12 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
                                 <label for="tautulli_url" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('URL do Tautulli') }}</label>
-                                <input type="text" id="tautulli_url" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" placeholder="http://127.0.0.1:8181">
+                                <input type="text" id="tautulli_url" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" placeholder="http://127.0.0.1:8181" value="{{ config.TAUTULLI_URL or '' }}">
                             </div>
                             <div>
                                 <label for="tautulli_api_key" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Chave da API') }}</label>
-                                <input type="password" id="tautulli_api_key" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white">
+                                <input type="password" id="tautulli_api_key" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" autocomplete="off">
+                                {% if config.TAUTULLI_API_KEY %}<p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{{ _('Já existe uma chave guardada. Deixe em branco para a manter.') }}</p>{% endif %}
                             </div>
                         </div>
                         <div class="flex items-center gap-3 mt-3">
@@ -141,18 +142,19 @@
                                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Permite que os usuários façam pedidos de conteúdo pelo painel.') }}</p>
                             </div>
                             <label class="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
-                                <input id="overseerr_enabled" type="checkbox" class="sr-only peer">
+                                <input id="overseerr_enabled" type="checkbox" class="sr-only peer" {% if config.OVERSEERR_ENABLED %}checked{% endif %}>
                                 <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-500"></div>
                             </label>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                             <div>
                                 <label for="overseerr_url" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">URL</label>
-                                <input type="url" id="overseerr_url" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" placeholder="http://127.0.0.1:5055">
+                                <input type="url" id="overseerr_url" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" placeholder="http://127.0.0.1:5055" value="{{ config.OVERSEERR_URL or '' }}">
                             </div>
                             <div>
                                 <label for="overseerr_api_key" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Chave da API') }}</label>
-                                <input type="password" id="overseerr_api_key" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white">
+                                <input type="password" id="overseerr_api_key" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" autocomplete="off">
+                                {% if config.OVERSEERR_API_KEY %}<p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{{ _('Já existe uma chave guardada. Deixe em branco para a manter.') }}</p>{% endif %}
                             </div>
                         </div>
                         <div class="flex items-center gap-3 mt-3">
@@ -233,6 +235,8 @@
     data-i18n-restore-now="{{ _('Restaurar Agora') }}"
     data-i18n-invalid-file-type="{{ _('Selecione um arquivo .zip válido.') }}"
     data-i18n-unknown-error="{{ _('Erro desconhecido.') }}"
+    data-i18n-popup-blocked="{{ _('Não foi possível abrir a janela do Plex. Autorize os pop-ups deste site e tente novamente.') }}"
+    data-i18n-missing-setup-data="{{ _('Conclua a autenticação no Plex e escolha um servidor antes de finalizar.') }}"
 ></script>
 
 </body>
