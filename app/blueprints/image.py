@@ -114,9 +114,13 @@ ALLOWED_IMAGE_HOSTS: Tuple[str, ...] = (
 # usada nos posters servidos diretamente pelo servidor (*.plex.direct:32400).
 ALLOWED_IMAGE_PORTS = frozenset({80, 443, 32400})
 
-# Variável de ambiente para o administrador acrescentar domínios próprios
-# (por exemplo, um CDN de capas), separados por vírgulas.
+# Variáveis de ambiente para o administrador alargar a allowlist: domínios
+# próprios (por exemplo, um CDN de capas) e portas próprias, separados por
+# vírgulas. A porta do Plex e do Tautulli configurados já entra sozinha — isto
+# serve para os casos em que as capas chegam noutra porta (é comum quando a
+# porta de acesso remoto difere da porta local).
 EXTRA_HOSTS_ENV_VAR = 'IMAGE_PROXY_ALLOWED_HOSTS'
+EXTRA_PORTS_ENV_VAR = 'IMAGE_PROXY_ALLOWED_PORTS'
 
 
 def _extra_allowed_hosts() -> Tuple[str, ...]:
@@ -156,10 +160,29 @@ def _configured_endpoints() -> Tuple[Tuple[str, Optional[int]], ...]:
     return tuple(endpoints)
 
 
+def _extra_allowed_ports() -> set:
+    """Portas adicionais autorizadas pelo administrador via ambiente."""
+    portas = set()
+    for entrada in os.environ.get(EXTRA_PORTS_ENV_VAR, '').split(','):
+        entrada = entrada.strip()
+        if not entrada:
+            continue
+        try:
+            porta = int(entrada)
+        except ValueError:
+            logger.warning(f"Valor inválido em {EXTRA_PORTS_ENV_VAR}, ignorado: '{entrada}'")
+            continue
+        if 1 <= porta <= 65535:
+            portas.add(porta)
+        else:
+            logger.warning(f"Porta fora do intervalo em {EXTRA_PORTS_ENV_VAR}, ignorada: {porta}")
+    return portas
+
+
 def _allowed_image_ports() -> frozenset:
-    """Portas aceites: as conhecidas mais as que o administrador configurou."""
+    """Portas aceites: as conhecidas mais as do Plex/Tautulli e as do administrador."""
     configuradas = {porta for _host, porta in _configured_endpoints() if porta}
-    return ALLOWED_IMAGE_PORTS | configuradas
+    return ALLOWED_IMAGE_PORTS | configuradas | _extra_allowed_ports()
 
 
 def is_allowed_image_host(hostname: Optional[str]) -> bool:

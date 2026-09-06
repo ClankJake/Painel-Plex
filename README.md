@@ -87,6 +87,8 @@ Esta é a forma mais simples e rápida de colocar a aplicação em funcionamento
 
     > **`IMAGE_PROXY_ALLOWED_HOSTS` (opcional).** O proxy de imagens só descarrega capas e avatares de uma lista de domínios conhecidos (`plex.tv`, `plex.direct`, `gravatar.com`, `tmdb.org`, entre outros, mais o endereço do seu Plex e do Tautulli). É essa lista que impede que o painel seja usado para fazer pedidos à sua rede interna (SSRF). Se alguma imagem legítima vier de outro domínio, acrescente-o aqui, separado por vírgulas: `IMAGE_PROXY_ALLOWED_HOSTS=cdn.exemplo.com,outro.net` (subdomínios são incluídos automaticamente).
 
+    > **`IMAGE_PROXY_ALLOWED_PORTS` (opcional).** As portas aceites são a 80, a 443, a 32400 e a porta do seu Plex e do seu Tautulli — quem usa uma porta diferente da padrão não precisa de configurar nada. Só é necessário se as capas chegarem numa terceira porta (acontece quando a porta de acesso remoto do Plex difere da porta local): `IMAGE_PROXY_ALLOWED_PORTS=41234,8443`.
+
 2.  **Inicie a Aplicação:**
     ```bash
     docker compose up -d

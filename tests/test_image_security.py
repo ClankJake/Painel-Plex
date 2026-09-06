@@ -326,6 +326,41 @@ class TestBuildAuthorizedImageUrl:
         with pytest.raises(ValueError):
             build_authorized_image_url(f"https://plex.tv:{porta}/x.png")
 
+    def test_a_porta_do_plex_configurado_e_aceite(self, monkeypatch):
+        # Quem corre o Plex numa porta diferente da padrao nao precisa de configurar
+        # nada: a porta do PLEX_URL entra sozinha na lista.
+        class PlexFalso:
+            _baseurl = "https://plex.exemplo.com:32450"
+
+        class ManagerFalso:
+            plex = PlexFalso()
+
+        monkeypatch.setattr(image_module, "plex_manager", ManagerFalso())
+
+        url = build_authorized_image_url("https://plex.exemplo.com:32450/photo/x.png")
+
+        assert url == "https://plex.exemplo.com:32450/photo/x.png"
+
+    def test_admin_pode_acrescentar_portas(self, monkeypatch):
+        # Escape hatch para quando as capas chegam noutra porta (por exemplo, a
+        # porta de acesso remoto do Plex, diferente da porta local).
+        monkeypatch.setenv("IMAGE_PROXY_ALLOWED_PORTS", "41234, 8443")
+
+        assert build_authorized_image_url("https://plex.tv:41234/x.png") == "https://plex.tv:41234/x.png"
+        assert build_authorized_image_url("https://plex.tv:8443/x.png") == "https://plex.tv:8443/x.png"
+
+        with pytest.raises(ValueError):
+            build_authorized_image_url("https://plex.tv:9999/x.png")
+
+    @pytest.mark.parametrize("valor", ["nao-e-numero", "0", "70000", ""])
+    def test_valores_invalidos_de_porta_sao_ignorados(self, monkeypatch, valor):
+        monkeypatch.setenv("IMAGE_PROXY_ALLOWED_PORTS", valor)
+
+        # Nada de exceções na leitura da variável: as portas conhecidas continuam a valer.
+        assert build_authorized_image_url("https://plex.tv/x.png") == "https://plex.tv/x.png"
+        with pytest.raises(ValueError):
+            build_authorized_image_url("https://plex.tv:9999/x.png")
+
     def test_porta_malformada_e_recusada(self):
         with pytest.raises(ValueError):
             build_authorized_image_url("https://plex.tv:porta/x.png")
