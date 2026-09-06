@@ -618,9 +618,46 @@ def save_setup():
             "message": _("O sistema já está configurado. Apenas um administrador autenticado pode reconfigurá-lo.")
         }), 403
 
-    data = request.json
+    # 🛡️ Um corpo que não seja um objeto JSON rebentava com AttributeError (erro 500
+    # e uma página de erro HTML no meio do assistente). Agora é recusado com uma
+    # mensagem clara.
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"success": False, "message": _("Pedido inválido: era esperado um corpo JSON.")}), 400
+
     config = load_or_create_config()
     previous_admin = str(config.get('ADMIN_USER', '') or '').strip().lower()
+
+    # ✅ VALIDAÇÃO PRÉVIA: sem estes três campos não há instalação possível. Antes,
+    # um pedido incompleto era gravado à mesma no config.json (com IS_CONFIGURED a
+    # True) e só depois falhava na ligação ao Plex, deixando o ficheiro sujo com
+    # valores vazios ou nulos.
+    obrigatorios = {
+        'plex_url': _("Servidor Plex"),
+        'plex_token': _("Token do Plex"),
+        'admin_user': _("Conta do administrador"),
+    }
+    em_falta = [
+        rotulo for campo, rotulo in obrigatorios.items()
+        if not str(data.get(campo) or '').strip()
+    ]
+    if em_falta:
+        return jsonify({
+            "success": False,
+            "message": _(
+                "Faltam dados obrigatórios: %(campos)s. Volte atrás e conclua a autenticação "
+                "e a escolha do servidor.",
+                campos=", ".join(em_falta)
+            )
+        }), 400
+
+    # 🔑 Credenciais opcionais que o assistente envia SEMPRE, mesmo em branco. Numa
+    # reconfiguração (/setup?force=true) os campos aparecem vazios porque o
+    # assistente nunca mostra segredos guardados — gravá-los tal e qual apagava as
+    # chaves do Tautulli e do Seerr de uma instalação a funcionar. Um valor em
+    # branco passa a significar "manter o que já existe"; para limpar de facto uma
+    # chave usa-se a página de Configurações.
+    credenciais_preservadas = ('TAUTULLI_API_KEY', 'OVERSEERR_API_KEY')
 
     normalized_data = {}
     for key, value in data.items():
@@ -628,6 +665,9 @@ def save_setup():
         if upper_key.endswith('_ID') or upper_key == 'DAYS_TO_REMOVE_BLOCKED_USER' or upper_key == 'DAYS_TO_NOTIFY_EXPIRATION':
             try: value = int(value)
             except (ValueError, TypeError): value = 0
+        if upper_key in credenciais_preservadas and not str(value or '').strip() and config.get(upper_key):
+            logger.info(f"Assistente de instalação: '{upper_key}' veio vazio — a chave já guardada foi mantida.")
+            continue
         normalized_data[upper_key] = value
     config.update(normalized_data)
     config['IS_CONFIGURED'] = True
@@ -655,18 +695,65 @@ def save_setup():
         efi_manager.configure_webhook()
 
     success, message = plex_manager.reload_connections()
-    if success:
-        user_details = {'id': config.get('ADMIN_USER'), 'username': config.get('ADMIN_USER'), 'role': 'admin'}
-        user = User(**user_details)
-        login_user(user)
-        session['user_details'] = user_details
-        session.pop('plex_token', None)
-        session.pop('plex_username', None)
-        return jsonify({"success": True, "redirect_url": url_for('main.index')})
-    
-    config['IS_CONFIGURED'] = False
-    save_app_config(config)
-    return jsonify({"success": False, "message": _("Configuração salva, mas falha ao conectar: %(message)s", message=message)})
+    if not success:
+        config['IS_CONFIGURED'] = False
+        save_app_config(config)
+        return jsonify({"success": False, "message": _("Configuração salva, mas falha ao conectar: %(message)s", message=message)})
+
+    account = getattr(plex_manager, 'account', None)
+
+    # 🛡️ Regista já o ID Plex do administrador (imutável), em vez de esperar pelo
+    # seu próximo login. Sem ele, o 'removal_job' e a revalidação da sessão de
+    # administrador ficam dependentes apenas do username — que o Plex permite
+    # trocar — durante os 30 dias em que a sessão criada aqui é válida.
+    if account is not None:
+        try:
+            if str(config.get('ADMIN_USER_ID', '') or '') != str(account.id):
+                config['ADMIN_USER_ID'] = str(account.id)
+                save_app_config(config)
+                logger.info(f"ID do administrador ({account.id}) registado durante a instalação.")
+        except Exception as e:
+            logger.warning(f"Não foi possível registar o ADMIN_USER_ID durante a instalação: {e}")
+
+    # 🚀 ARRANQUE DOS SERVIÇOS DE FUNDO: numa instalação nova o agendador nunca
+    # tinha sido iniciado (o `create_app()` corre com a aplicação ainda por
+    # configurar). Sem esta chamada o administrador era levado para um painel sem
+    # nenhuma automação a correr — controlo de telas, avisos de vencimento,
+    # remoções, limpezas e backups só arrancariam no reinício seguinte.
+    from ... import start_background_services
+    if start_background_services(current_app._get_current_object()):
+        logger.info("Serviços de fundo iniciados no fim do assistente de instalação.")
+    else:
+        logger.warning(
+            "O assistente concluiu, mas o agendador não arrancou neste processo. "
+            "Se as tarefas automáticas não funcionarem, reinicie a aplicação."
+        )
+
+    # 🔒 A sessão é criada pelo MESMO caminho do login normal: renovação da sessão
+    # (anti-fixação), sessão permanente com 'remember me' e — sobretudo — o ID
+    # NUMÉRICO da conta Plex como identificador. Antes gravava-se aqui o username
+    # em 'id'; numa reconfiguração (/setup?force=true), em que o ADMIN_USER_ID já
+    # está preenchido, a revalidação por ID falhava logo no pedido seguinte e o
+    # administrador era atirado de volta para o ecrã de login — mesmo tendo
+    # acabado de concluir o assistente com sucesso.
+    if account is not None:
+        from ..auth import _login_user_session
+        return _login_user_session(account, 'admin', 'main.index')
+
+    # Sem conta Plex disponível (cenário improvável), mantemos o caminho antigo
+    # para não bloquear a instalação.
+    logger.warning("Conta Plex indisponível após a ligação; a sessão de administrador usa o username.")
+    user_details = {
+        'id': config.get('ADMIN_USER'), 'username': config.get('ADMIN_USER'),
+        'email': None, 'thumb': None, 'role': 'admin'
+    }
+    user = User(**user_details)
+    login_user(user, remember=True)
+    session.permanent = True
+    session['user_details'] = user_details
+    session.pop('plex_token', None)
+    session.pop('plex_username', None)
+    return jsonify({"success": True, "redirect_url": url_for('main.index')})
 
 @system_api_bp.route('/test/tautulli-connection', methods=['POST'])
 def test_tautulli_connection():

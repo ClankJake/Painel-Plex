@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timezone
-from flask import Blueprint, render_template, redirect, url_for, flash, current_app, request, session
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session
 from flask_login import login_required, current_user
 from flask_babel import get_locale, gettext as _
 
@@ -169,8 +169,11 @@ def setup():
             pass
         else:
             return redirect(url_for('auth.login'))
-    
-    return render_template('setup.html', config=current_app.config, get_locale=get_locale)
+
+    # Lê a configuração do disco (e não `current_app.config`, que é uma cópia feita
+    # no arranque) para que uma reconfiguração via '?force=true' mostre sempre os
+    # valores realmente em vigor nos campos do último passo.
+    return render_template('setup.html', config=load_or_create_config(), get_locale=get_locale)
 
 @main_bp.route('/settings')
 @login_required
