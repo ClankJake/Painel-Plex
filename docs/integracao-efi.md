@@ -773,13 +773,17 @@ Cadeia de `X-Forwarded-For` com um salto a mais. Ver [5.8](#58-ip-real-do-visita
 - **Autenticação (saída):** OAuth2 com certificado de cliente (mTLS).
 - **Autenticação (entrada, webhook):** mTLS validado pelo seu proxy **ou** HMAC na
   query string — nunca ambos, e nunca nenhum.
-- **TLS:** a imagem Docker do painel baixa o `SECLEVEL` do OpenSSL de 2 para 1
-  propositadamente. O Debian impõe um mínimo de 112 bits, que recusa
-  certificados assinados com SHA-1 e chaves RSA/DH abaixo de 2048 bits; sem o
-  ajuste o handshake com a API da Efí pode falhar com `ca md too weak` ou
-  `dh key too small`. O ajuste é **global ao processo** — vale para todas as
-  ligações de saída do painel, não só as da Efí. O `Dockerfile` traz o comando
-  para verificar se a Efí já modernizou o TLS dela e a linha já pode sair.
+- **TLS:** o `Dockerfile` traz um ajuste que baixa o `SECLEVEL` do OpenSSL de 2
+  para 1 **se a imagem base o impuser**. O Debian 10/11 impunha um mínimo de 112
+  bits, que recusa certificados assinados com SHA-1 e chaves RSA/DH abaixo de
+  2048 bits, e isso podia derrubar o handshake com a API da Efí (`ca md too
+  weak`, `dh key too small`). **Na imagem atual (bookworm) essa imposição não
+  existe** e o ajuste não altera nada — o nível efetivo já é o 1, que é o
+  padrão do próprio OpenSSL. O bloco fica no lugar como rede de segurança para
+  uma imagem base futura, e escreve o estado real da configuração no log do
+  build, para não voltar a ser preciso adivinhar. Quando se aplica, o efeito é
+  **global ao processo**: vale para todas as ligações de saída do painel, não
+  só as da Efí.
 - **Sufixo `/pix`:** a Efí acrescenta `/pix` ao fim da URL registada ao disparar a
   notificação. O painel termina a URL em `?ignorar=` para que o sufixo caia na
   query string e o caminho da rota se mantenha.

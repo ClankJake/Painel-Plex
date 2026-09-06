@@ -43,36 +43,42 @@ ENV PYTHONUNBUFFERED=1
 
 # Instala as dependências de sistema necessárias.
 #
-# CORREÇÃO SSL: o Debian define 'CipherString = DEFAULT@SECLEVEL=2' no
-# /etc/ssl/openssl.cnf, o que impõe um mínimo de 112 bits e recusa certificados
-# assinados com SHA-1 ou chaves RSA/DH abaixo de 2048 bits. Baixar para
-# SECLEVEL=1 evita falhas de handshake com a API da Efí ('ca md too weak',
-# 'dh key too small', 'EE certificate key too weak').
+# CORREÇÃO SSL (histórica): o Debian 10/11 impunha
+# 'CipherString = DEFAULT@SECLEVEL=2' no /etc/ssl/openssl.cnf, exigindo 112 bits
+# e recusando certificados assinados com SHA-1 ou chaves RSA/DH abaixo de 2048
+# bits. Isso podia derrubar o handshake com a API da Efí ('ca md too weak',
+# 'dh key too small'), daí o ajuste para SECLEVEL=1.
 #
-# ⚠️ Isto é GLOBAL ao processo: afeta todas as ligações de saída do painel
-# (Plex, Tautulli, Overseerr, Telegram, Mercado Pago…), não só a Efí. Note que
-# o 'MinProtocol = TLSv1.2' da mesma secção NÃO é alterado — TLS 1.0/1.1
-# continuam desligados.
+# No bookworm essa imposição NÃO existe: o build 270 provou que não havia nada
+# para o 'sed' alterar. O bloco abaixo mantém-se por segurança — se uma imagem
+# base futura voltar a impor o nível 2, ele baixa-o — mas já não assume que a
+# diretiva está lá.
 #
-# Para verificar se ainda é preciso (a Efí pode já ter modernizado o TLS dela),
-# corra contra a imagem base SEM esta correção:
-#   docker run --rm -v "$PWD/certs:/certs" python:3.12-slim-bookworm \
-#     openssl s_client -connect pix.api.efipay.com.br:443 \
-#       -servername pix.api.efipay.com.br \
-#       -cert /certs/certificado.pem -key /certs/certificado.pem </dev/null
-# 'Verify return code: 0 (ok)' significa que esta linha já pode sair.
+# ⚠️ Quando o ajuste se aplica, ele é GLOBAL ao processo: afeta todas as ligações
+# de saída do painel (Plex, Tautulli, Overseerr, Telegram…), não só a Efí. O
+# 'MinProtocol' da mesma secção nunca é tocado.
 #
-# O 'grep' a seguir é intencional: se um dia a imagem base deixar de trazer
-# SECLEVEL=2, o 'sed' vira um no-op silencioso e os pagamentos passariam a
-# falhar só em produção. Assim, falha no build.
+# O 'grep' de diagnóstico escreve o estado real no log do build, para ninguém
+# ter de adivinhar outra vez; a verificação final falha o build se o SECLEVEL=2
+# sobreviver ao 'sed' (por exemplo, escrito noutro formato).
 RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     zlib1g-dev \
     libwebp-dev \
     --no-install-recommends && \
-    sed -i 's/SECLEVEL=2/SECLEVEL=1/g' /etc/ssl/openssl.cnf && \
-    grep -q 'SECLEVEL=1' /etc/ssl/openssl.cnf && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    if [ -f /etc/ssl/openssl.cnf ]; then \
+        echo "--- /etc/ssl/openssl.cnf ---"; \
+        grep -nE 'SECLEVEL|CipherString|MinProtocol' /etc/ssl/openssl.cnf \
+            || echo "(sem diretivas SECLEVEL/CipherString/MinProtocol)"; \
+        sed -i 's/SECLEVEL=2/SECLEVEL=1/g' /etc/ssl/openssl.cnf; \
+        if grep -qE 'SECLEVEL[[:space:]]*=[[:space:]]*2' /etc/ssl/openssl.cnf; then \
+            echo "ERRO: SECLEVEL=2 sobreviveu ao ajuste - formato novo, rever o sed"; \
+            exit 1; \
+        fi; \
+    else \
+        echo "AVISO: /etc/ssl/openssl.cnf nao existe nesta imagem base - nada a ajustar"; \
+    fi
 
 # Instalação de Dependências Python:
 COPY requirements.txt .
