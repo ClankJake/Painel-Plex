@@ -4,27 +4,99 @@
 
 {% block extra_head %}
 <style>
-    /* Utilitário para esconder a barra de scroll padrão mas manter a funcionalidade */
+    /* ------------------------------------------------------------------
+       ⚠️ NÃO USAR @apply NESTE FICHEIRO.
+
+       O Tailwind deste projeto compila APENAS o app/static/css/input.css
+       (ver "npm run build:css"). Os templates são lidos só para descobrir
+       nomes de classes — nunca são processados como CSS. Ou seja, um
+       @apply escrito aqui chega ao browser como texto inválido e é
+       simplesmente deitado fora.
+
+       Era exatamente isso que acontecia: as medalhas de conquistas e os
+       botões das carrosséis ficavam SEM QUALQUER ESTILO. Está agora tudo
+       escrito em CSS normal, que funciona sem depender da build.
+       ------------------------------------------------------------------ */
+
+    /* Esconde a barra de scroll mas mantém o scroll funcional. */
     .horizontal-scroll {
         -ms-overflow-style: none;  /* IE and Edge */
         scrollbar-width: none;     /* Firefox */
+        /* Impede que o "swipe" horizontal accione o voltar-atrás do browser. */
+        overscroll-behavior-x: contain;
     }
     .horizontal-scroll::-webkit-scrollbar {
         display: none; /* Chrome, Safari, Opera */
     }
-    
-    /* Estilos das Conquistas (Achievements) */
+    /* O contentor traz "snap-x", mas sem alinhamento nos filhos o snap não
+       faz nada. Os cartões são injetados por JS, por isso alinhamos aqui. */
+    .horizontal-scroll.snap-x > * {
+        scroll-snap-align: start;
+    }
+
+    /* ---------------- Conquistas (Achievements) ---------------- */
     .achievement-badge {
-        @apply flex flex-col items-center justify-center p-4 rounded-xl border-2 border-transparent text-center transition-all duration-300 relative cursor-default;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        border-radius: 0.75rem;
+        border: 2px solid transparent;
+        text-align: center;
+        cursor: default;
+        transition: transform 300ms ease, box-shadow 300ms ease, border-color 300ms ease;
     }
     .achievement-badge .icon {
-        @apply text-4xl mb-2 transform transition-transform duration-300 group-hover:scale-110;
+        font-size: 2.25rem;
+        line-height: 2.5rem;
+        margin-bottom: 0.5rem;
+        transition: transform 300ms ease;
+    }
+    /* O hover era escrito como "group-hover:scale-110", mas a medalha nunca
+       teve a classe "group" — logo, nunca aumentava. Aqui reage mesmo. */
+    .achievement-badge:hover .icon,
+    .achievement-badge:focus-visible .icon {
+        transform: scale(1.1);
     }
     .achievement-badge .title {
-        @apply font-bold text-sm text-gray-800 dark:text-gray-200 leading-tight;
+        font-weight: 700;
+        font-size: 0.875rem;
+        line-height: 1.25;
+        color: #1F2937; /* gray-800 */
     }
+    .dark .achievement-badge .title {
+        color: #E5E7EB; /* gray-200 */
+    }
+
     .achievement-badge .tooltip {
-        @apply invisible opacity-0 absolute bottom-full mb-3 w-56 p-3 text-xs font-medium bg-gray-900 dark:bg-gray-800 text-white rounded-lg shadow-xl transition-all duration-300 z-10 text-center pointer-events-none;
+        visibility: hidden;
+        opacity: 0;
+        position: absolute;
+        bottom: 100%;
+        /* Antes o tooltip encostava à esquerda da medalha e transbordava da
+           grelha; agora fica centrado sobre ela. */
+        left: 50%;
+        transform: translateX(-50%) translateY(4px);
+        margin-bottom: 0.75rem;
+        width: max-content;
+        max-width: min(14rem, 70vw);
+        padding: 0.75rem;
+        font-size: 0.75rem;
+        line-height: 1rem;
+        font-weight: 500;
+        background-color: #111827; /* gray-900 */
+        color: #FFFFFF;
+        border-radius: 0.5rem;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.25);
+        text-align: center;
+        pointer-events: none;
+        z-index: 30;
+        transition: opacity 200ms ease, transform 200ms ease, visibility 0s linear 200ms;
+    }
+    .dark .achievement-badge .tooltip {
+        background-color: #1F2937; /* gray-800 */
     }
     /* Seta do tooltip */
     .achievement-badge .tooltip::after {
@@ -40,28 +112,110 @@
     .dark .achievement-badge .tooltip::after {
         border-color: #1F2937 transparent transparent transparent;
     }
-    
-    .achievement-badge:hover .tooltip {
-        @apply visible opacity-100 mb-4;
+    /* Também com teclado: a medalha é focável, por isso o tooltip tem de
+       aparecer a quem navega sem rato. */
+    .achievement-badge:hover .tooltip,
+    .achievement-badge:focus-visible .tooltip,
+    .achievement-badge:focus-within .tooltip {
+        visibility: visible;
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+        transition-delay: 0s;
     }
-    
-    /* Cores dos Níveis de Conquista */
+    .achievement-badge:focus-visible {
+        outline: 2px solid #EAB308; /* yellow-500 */
+        outline-offset: 2px;
+    }
+
+    /* Cores dos níveis (bronze / prata / ouro) */
     .achievement-badge.unlocked-bronze {
-        @apply border-orange-400/50 dark:border-orange-500/50 bg-gradient-to-b from-orange-50 to-orange-100/50 dark:from-orange-900/20 dark:to-orange-900/10 shadow-sm;
+        border-color: rgba(251, 146, 60, 0.5);
+        background-image: linear-gradient(to bottom, #FFF7ED, rgba(255, 237, 213, 0.5));
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    }
+    .dark .achievement-badge.unlocked-bronze {
+        border-color: rgba(249, 115, 22, 0.5);
+        background-image: linear-gradient(to bottom, rgba(124, 45, 18, 0.2), rgba(124, 45, 18, 0.1));
     }
     .achievement-badge.unlocked-silver {
-        @apply border-gray-400/50 dark:border-gray-500/50 bg-gradient-to-b from-gray-50 to-gray-100/50 dark:from-gray-800/40 dark:to-gray-800/20 shadow-sm;
+        border-color: rgba(156, 163, 175, 0.5);
+        background-image: linear-gradient(to bottom, #F9FAFB, rgba(243, 244, 246, 0.5));
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    }
+    .dark .achievement-badge.unlocked-silver {
+        border-color: rgba(107, 114, 128, 0.5);
+        background-image: linear-gradient(to bottom, rgba(31, 41, 55, 0.4), rgba(31, 41, 55, 0.2));
     }
     .achievement-badge.unlocked-gold {
-        @apply border-yellow-400/70 dark:border-yellow-500/70 bg-gradient-to-b from-yellow-50 to-yellow-100/50 dark:from-yellow-900/30 dark:to-yellow-900/10 shadow-md;
+        border-color: rgba(250, 204, 21, 0.7);
+        background-image: linear-gradient(to bottom, #FEFCE8, rgba(254, 249, 195, 0.5));
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    }
+    .dark .achievement-badge.unlocked-gold {
+        border-color: rgba(234, 179, 8, 0.7);
+        background-image: linear-gradient(to bottom, rgba(113, 63, 18, 0.3), rgba(113, 63, 18, 0.1));
     }
     .achievement-badge.unlocked-gold .icon {
         filter: drop-shadow(0 4px 6px rgba(250, 204, 21, 0.4));
     }
 
-    /* Estilos para os botões de scroll de itens recentes */
+    /* ---------------- Botões de scroll das carrosséis ---------------- */
+    /* Antes só apareciam em :hover do contentor ("group-hover/container"),
+       o que os tornava INVISÍVEIS em ecrãs táteis — onde não há hover. Agora
+       estão sempre presentes, discretos, e desvanecem quando não há mais
+       nada para onde deslizar. */
     .scroll-button {
-        @apply bg-white/80 dark:bg-gray-800/80 text-gray-800 dark:text-white rounded-full w-9 h-9 flex items-center justify-center transition-all duration-200 opacity-0 group-hover/container:opacity-100 disabled:opacity-0 shadow-md border border-gray-200 dark:border-gray-700 backdrop-blur-sm z-20 hover:bg-gray-100 dark:hover:bg-gray-700 hover:scale-105;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: 9999px;
+        background-color: rgba(255, 255, 255, 0.8);
+        color: #1F2937;
+        border: 1px solid #E5E7EB;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(4px);
+        z-index: 20;
+        transition: opacity 200ms ease, transform 200ms ease, background-color 200ms ease;
+    }
+    .dark .scroll-button {
+        background-color: rgba(31, 41, 55, 0.8);
+        color: #FFFFFF;
+        border-color: #374151;
+    }
+    .scroll-button:hover:not(:disabled) {
+        background-color: #F3F4F6;
+        transform: scale(1.05);
+    }
+    .dark .scroll-button:hover:not(:disabled) {
+        background-color: #374151;
+    }
+    .scroll-button:focus-visible {
+        outline: 2px solid #EAB308; /* yellow-500 */
+        outline-offset: 2px;
+    }
+    .scroll-button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    /* Respeita quem prefere menos movimento. */
+    @media (prefers-reduced-motion: reduce) {
+        .achievement-badge,
+        .achievement-badge .icon,
+        .achievement-badge .tooltip,
+        .scroll-button {
+            transition: none;
+        }
+        .horizontal-scroll {
+            scroll-behavior: auto;
+        }
+        #loadingIndicator .animate-spin,
+        #loadingIndicator .animate-pulse {
+            animation: none;
+        }
     }
 </style>
 {% endblock %}
@@ -71,7 +225,7 @@
 <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
     <div>
         <h2 class="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-            <svg class="w-8 h-8 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+            <svg class="w-8 h-8 text-yellow-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
             {% if current_user.is_admin() %}{{ _('Estatísticas de Uso') }}{% else %}{{ _('As Suas Estatísticas') }}{% endif %}
         </h2>
         <p class="text-gray-500 dark:text-gray-400 mt-2 text-sm md:text-base">
@@ -82,14 +236,15 @@
             {% endif %}
         </p>
     </div>
-    
+
     <!-- Filtro de Tempo Otimizado Visualmente e Compacto -->
     <div class="flex-shrink-0 w-full sm:w-auto">
          <div class="relative bg-white dark:bg-gray-800 p-0.5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex items-center focus-within:ring-1 focus-within:ring-yellow-500 transition-all">
             <div class="pl-2 pr-1 text-gray-400 pointer-events-none">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
             </div>
             <!-- Devolvemos o controlo ao navegador nativo (sem seta customizada, sem conflitos) -->
+            <label for="daysFilter" class="sr-only">{{ _('Período de análise') }}</label>
             <select id="daysFilter" class="bg-transparent bg-none border-none focus:ring-0 text-gray-900 dark:text-white font-medium text-sm w-full py-1.5 pl-1 pr-6 cursor-pointer">
                 <option value="7" selected>{{ _('Últimos 7 dias') }}</option>
                 <option value="15">{{ _('Últimos 15 dias') }}</option>
@@ -100,9 +255,20 @@
     </div>
 </header>
 
+<!-- Sem JavaScript a página ficava presa para sempre no spinner, sem explicar
+     porquê. O <style> desliga o indicador só quando os scripts estão off. -->
+<noscript>
+    <style>#loadingIndicator { display: none !important; }</style>
+    <div class="text-center py-12 px-4 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800/50 rounded-2xl max-w-2xl mx-auto">
+        <p class="text-base font-semibold text-yellow-800 dark:text-yellow-300">
+            {{ _('É necessário ativar o JavaScript para ver as estatísticas.') }}
+        </p>
+    </div>
+</noscript>
+
 <!-- Indicador de Carregamento -->
-<div id="loadingIndicator" class="flex flex-col items-center justify-center py-24">
-    <div class="relative w-16 h-16">
+<div id="loadingIndicator" class="flex flex-col items-center justify-center py-24" role="status" aria-live="polite">
+    <div class="relative w-16 h-16" aria-hidden="true">
         <div class="absolute inset-0 rounded-full border-t-2 border-yellow-500 animate-spin"></div>
         <div class="absolute inset-2 rounded-full border-r-2 border-blue-500 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
     </div>
@@ -111,29 +277,29 @@
 
 <!-- Container Principal de Estatísticas -->
 <div id="statsContainer" class="hidden space-y-8 animate-fade-in">
-    
+
     {% if current_user.is_admin() %}
     <!-- ########## VISÃO DO ADMINISTRADOR ########## -->
     <div id="admin-view" class="space-y-8">
-        
+
         <!-- Cartões de Destaque -->
         <div id="admin-summary-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6"></div>
 
         <!-- Pódio de Campeões -->
-        <div class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50">
+        <section class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50" aria-labelledby="podium-heading">
             <div class="flex items-center justify-center gap-3 mb-8">
-                <span class="text-2xl">🏆</span>
-                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Pódio dos Campeões') }}</h2>
-                <span class="text-2xl">🏆</span>
+                <span class="text-2xl" aria-hidden="true">🏆</span>
+                <h2 id="podium-heading" class="text-2xl font-bold text-gray-900 dark:text-white">{{ _('Pódio dos Campeões') }}</h2>
+                <span class="text-2xl" aria-hidden="true">🏆</span>
             </div>
             <div id="podiumContainer" class="flex justify-center items-end gap-2 sm:gap-6 min-h-[220px]"></div>
-        </div>
+        </section>
 
         <!-- Tabela de Classificação Global -->
-        <div id="otherUsersSection" class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 hidden">
+        <section id="otherUsersSection" class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 hidden" aria-labelledby="ranking-heading">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                <h3 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+                <h3 id="ranking-heading" class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
                     {{ _('Ranking Completo') }}
                 </h3>
                 <div class="flex items-center gap-3 bg-gray-50 dark:bg-gray-900/50 p-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -145,16 +311,17 @@
                     </select>
                 </div>
             </div>
-            
+
             <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <caption class="sr-only">{{ _('Ranking Completo') }}</caption>
                     <!-- CORREÇÃO DA TABELA: Fundo sólido reconhecido pelo Tailwind -->
                     <thead class="bg-gray-100 dark:bg-gray-800">
                         <tr>
-                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">#</th>
-                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Usuário') }}</th>
-                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Tempo Assistido') }}</th>
-                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Reproduções') }}</th>
+                            <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">#</th>
+                            <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Usuário') }}</th>
+                            <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Tempo Assistido') }}</th>
+                            <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ _('Reproduções') }}</th>
                         </tr>
                     </thead>
                     <!-- Tbody transparente para herdar o dark mode sem bloquear com bg-white -->
@@ -163,49 +330,49 @@
                     </tbody>
                 </table>
             </div>
-            <div id="paginationControls" class="flex justify-center items-center mt-6 text-sm font-medium text-gray-600 dark:text-gray-400 gap-4"></div>
-        </div>
+            <nav id="paginationControls" class="flex justify-center items-center mt-6 text-sm font-medium text-gray-600 dark:text-gray-400 gap-4" aria-label="{{ _('Paginação') }}"></nav>
+        </section>
 
         <!-- Gráfico Principal Bar Chart -->
-        <div class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50">
-            <h2 class="text-xl font-bold mb-6 text-gray-900 dark:text-white">{{ _('Horas Assistidas (Top 15)') }}</h2>
-            <div class="h-96 w-full relative"><canvas id="mainBarChart"></canvas></div>
-        </div>
-        
+        <section class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50" aria-labelledby="main-chart-heading">
+            <h2 id="main-chart-heading" class="text-xl font-bold mb-6 text-gray-900 dark:text-white">{{ _('Horas Assistidas (Top 15)') }}</h2>
+            <div class="h-96 w-full relative"><canvas id="mainBarChart" role="img" aria-label="{{ _('Horas Assistidas (Top 15)') }}"></canvas></div>
+        </section>
+
     </div>
-    
+
     {% else %}
     <!-- ########## VISÃO DO UTILIZADOR COMUM ########## -->
     <div id="user-view" class="space-y-8">
-        
+
         <!-- Secção Adicionados Recentemente -->
-        <div id="newly-added-section" class="hidden bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50">
-             <div class="flex justify-between items-center mb-6 group/container">
-                <h3 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <span class="text-yellow-500">✨</span> {{ _('Novidades no Servidor') }}
+        <section id="newly-added-section" class="hidden bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50" aria-labelledby="newly-added-heading">
+             <div class="flex justify-between items-center gap-4 mb-6">
+                <h3 id="newly-added-heading" class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 min-w-0">
+                    <span class="text-yellow-500" aria-hidden="true">✨</span> {{ _('Novidades no Servidor') }}
                 </h3>
-                <div class="flex items-center space-x-2">
-                    <button id="scroll-left-btn" class="scroll-button" aria-label="Anterior">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                <div class="flex items-center space-x-2 flex-shrink-0">
+                    <button type="button" id="scroll-left-btn" class="scroll-button" aria-label="{{ _('Anterior') }}" aria-controls="newly-added-container">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
                     </button>
-                    <button id="scroll-right-btn" class="scroll-button" aria-label="Seguinte">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                    <button type="button" id="scroll-right-btn" class="scroll-button" aria-label="{{ _('Próximo') }}" aria-controls="newly-added-container">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
                     </button>
                 </div>
             </div>
             <div class="relative -mx-2 px-2">
-                <div id="newly-added-container" class="flex space-x-4 overflow-x-auto py-4 horizontal-scroll scroll-smooth snap-x">
+                <div id="newly-added-container" class="flex space-x-4 overflow-x-auto py-4 horizontal-scroll scroll-smooth snap-x" tabindex="0" role="group" aria-label="{{ _('Novidades no Servidor') }}">
                     <!-- Posters injetados via JS -->
                 </div>
             </div>
-        </div>
-        
+        </section>
+
         <!-- Secção Recomendações: "Porque assistiu X, pode gostar de Y" -->
-        <div id="recommendations-section" class="hidden bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50">
+        <section id="recommendations-section" class="hidden bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50" aria-labelledby="recommendations-heading">
             <div class="flex items-start justify-between gap-4 mb-2">
                 <div>
-                    <h3 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <span class="text-purple-500">🎯</span> {{ _('Feito a Pensar em Si') }}
+                    <h3 id="recommendations-heading" class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <span class="text-purple-500" aria-hidden="true">🎯</span> {{ _('Feito a Pensar em Si') }}
                     </h3>
                     <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
                         {{ _('Cruzamos o seu histórico com o de quem assiste coisas parecidas para encontrar o próximo título.') }}
@@ -215,35 +382,38 @@
             <div id="recommendations-container" class="space-y-8 mt-6">
                 <!-- Faixas injetadas via JS -->
             </div>
-        </div>
+        </section>
 
         <!-- Análise Pessoal do Utilizador (Gráficos e Conquistas) -->
         <div id="personal-analysis"></div>
 
         <!-- Ranking Rápido -->
-        <div id="leaderboard-section" class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50">
-            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+        <section id="leaderboard-section" class="bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50" aria-labelledby="leaderboard-heading">
+            <h3 id="leaderboard-heading" class="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                 {{ _('A Sua Posição no Ranking Global') }}
             </h3>
             <div id="leaderboard-list" class="space-y-2"></div>
-        </div>
-        
+        </section>
+
     </div>
     {% endif %}
 
 </div>
 
 <!-- Contentor de Erro -->
-<div id="errorContainer" class="hidden text-center py-12 px-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/50 rounded-2xl max-w-2xl mx-auto mt-8">
-    <svg class="w-12 h-12 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+<div id="errorContainer" class="hidden text-center py-12 px-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/50 rounded-2xl max-w-2xl mx-auto mt-8" role="alert" aria-live="assertive">
+    <svg class="w-12 h-12 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
     <p class="text-lg font-bold text-red-800 dark:text-red-400">{{ _('Ocorreu um erro ao carregar as estatísticas.') }}</p>
     <p id="errorMessage" class="text-sm text-red-600 dark:text-red-300 mt-2 font-mono bg-red-100/50 dark:bg-red-900/30 p-2 rounded inline-block"></p>
 </div>
 
 <!-- Modal para Detalhes do Utilizador -->
 <!-- Usar fixed inset-0 z-50 para garantir que o Modal cobre toda a janela independentemente da classe "modal-backdrop" no base.css -->
-<div id="userDetailsModal" class="hidden fixed inset-0 z-50 bg-gray-900/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+<!-- O conteúdo é injetado pelo JS, por isso o título não existe no HTML: um
+     aria-labelledby a apontar para um id inexistente não anuncia nada, logo
+     usamos um aria-label próprio. -->
+<div id="userDetailsModal" class="hidden fixed inset-0 z-50 bg-gray-900/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto" aria-label="{{ _('Análise de Perfil:') }}" role="dialog" aria-modal="true">
     <!-- O conteúdo do modal será injetado pelo JS, mas a classe principal acima garante que não foge do ecrã -->
 </div>
 
@@ -251,14 +421,22 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='dist/chart.umd.js') }}"></script>
-<!-- A injeção de variáveis continua igual para compatibilidade total com o seu statistics.js -->
+<!-- A injeção de variáveis continua igual para compatibilidade total com o seu statistics.js.
+
+     🐛 O data-current-user tinha "| safe" dentro de um atributo entre plicas.
+     Como o JSON traz 'username' e 'email' vindos do Plex, bastava um apóstrofo
+     no nome para fechar o atributo a meio: o JSON.parse rebentava e a página
+     inteira deixava de carregar — e um nome com HTML conseguia injetar markup.
+     Sem "| safe", o Jinja escapa o valor e o browser devolve-o intacto ao ler
+     dataset.currentUser, por isso o JS não precisa de alteração nenhuma. -->
 <script id="statistics-script"
-        type="module" 
+        type="module"
         src="{{ url_for('static', filename='js/statistics.js') }}"
-        data-current-user='{{ current_user.to_json() | safe }}'
+        data-current-user='{{ current_user.to_json() }}'
         data-stats-url="{{ url_for('stats_api.get_statistics_data') }}"
         data-user-stats-url="{{ url_for('stats_api.get_user_statistics', plex_user_id=0) }}"
         data-recently-added-url="{{ url_for('stats_api.get_recently_added_route') }}"
+        data-recommendations-url="{{ url_for('stats_api.get_recommendations_route') }}"
         data-i18n-loading-failed="{{ _('Falha ao comunicar com o servidor.') }}"
         data-i18n-no-data="{{ _('Nenhum dado de visualização encontrado.') }}"
         data-i18n-user-analysis-error="{{ _('Não foi possível carregar a análise deste usuário:') }}"
@@ -310,7 +488,6 @@
         data-i18n-hours-ago="{{ _('{count} horas') }}"
         data-i18n-minutes-ago="{{ _('{count} min') }}"
         data-i18n-just-now="{{ _('agora mesmo') }}"
-        data-recommendations-url="{{ url_for('stats_api.get_recommendations_route') }}"
         data-i18n-because-you-watched="{{ _('Porque assistiu') }}"
         data-i18n-you-might-like="{{ _('pode gostar de') }}"
         data-i18n-match-viewers="{{ _('{count} pessoas que viram este título também viram') }}"

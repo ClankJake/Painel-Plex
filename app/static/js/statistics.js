@@ -478,11 +478,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 achievementsHtmlForContainer = `
                     <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
                         <h4 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">${achievementsTitle}</h4>
-                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" role="list">
                             ${details.achievements.map(ach => `
-                                <div class="achievement-badge unlocked-${ach.level}">
-                                    <span class="icon">${ach.icon}</span><span class="title">${ach.title}</span>
-                                    <div class="tooltip">${ach.description}</div>
+                                <div class="achievement-badge unlocked-${ach.level}" role="listitem" tabindex="0">
+                                    <span class="icon" aria-hidden="true">${ach.icon}</span><span class="title">${ach.title}</span>
+                                    <div class="tooltip" role="tooltip">${ach.description}</div>
                                 </div>
                             `).join('')}
                         </div>
