@@ -4,6 +4,23 @@
 
 {% block extra_head %}
 <style>
+    /* ⚠️ NÃO REDEFINIR AQUI AS CLASSES DAS ABAS.
+
+       O Tailwind deste projeto compila APENAS o app/static/css/input.css (ver
+       "npm run build:css"); os templates são lidos só para descobrir NOMES de
+       classes, nunca processados como CSS. Um @apply escrito num <style> daqui
+       chega ao browser como CSS inválido e é descartado em silêncio.
+
+       Existiam aqui redefinições com @apply de:
+           .user-tab, .user-tab.active, .user-tab .tab-count
+       que, por isso, nunca chegaram a ter efeito — quem manda no aspeto destas
+       abas é, e sempre foi, o input.css (o sublinhado amarelo que o container
+       .border-b + .-mb-px desta página espera). Para mudar o aspeto, edita o
+       input.css.
+
+       Saíram também .invite-tab-btn / .invite-tab-btn.active: além de nunca
+       terem sido compiladas, a classe não é usada em nenhum template nem em
+       nenhum JS — sobra de uma funcionalidade que não existe. */
     /* Esconde a barra de scroll horizontal */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -15,26 +32,6 @@
     .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-    /* Estilização avançada para as Abas de Utilizadores controladas por JS */
-    .user-tab {
-        /* flex-shrink-0 impede que os botões sejam esmagados! */
-        @apply flex-shrink-0 flex items-center whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-500 dark:text-gray-400 transition-all duration-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50;
-    }
-    .user-tab.active {
-        @apply bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-600;
-    }
-    .user-tab .tab-count {
-        /* flex-shrink-0 adicionado para garantir que a bolinha de contagem nunca encolhe */
-        @apply ml-2 px-2 py-0.5 rounded-full text-xs font-bold transition-colors flex-shrink-0;
-    }
-    
-    /* Toggle de Convites interno (Estilo iOS) blindado contra esmagamento */
-    .invite-tab-btn {
-        @apply relative flex-shrink-0 flex items-center justify-center whitespace-nowrap px-4 py-1.5 text-sm font-bold rounded-lg transition-all duration-200 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200;
-    }
-    .invite-tab-btn.active {
-        @apply bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm z-10;
-    }
 </style>
 {% endblock %}
 

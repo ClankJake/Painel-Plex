@@ -38,7 +38,15 @@
         /* Modais */
         .modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(15, 23, 42, 0.75); display: flex; justify-content: center; align-items: center; z-index: 50; backdrop-filter: blur(8px); opacity: 0; transition: opacity 0.3s ease; pointer-events: none;}
         .modal-backdrop:not(.hidden) { opacity: 1; pointer-events: auto;}
-        .modal-content { @apply bg-white dark:bg-[#1e293b]; padding: 1.5rem; border-radius: 1.5rem; max-width: 90%; width: 500px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); transform: scale(0.95); transition: transform 0.3s ease;}
+        /* 🐛 CORREÇÃO: aqui estava `@apply bg-white dark:bg-[#1e293b]`. Esta
+           página usa o CDN do Tailwind, que só processa `@apply` dentro de um
+           <style type="text/tailwindcss"> — num <style> normal a diretiva chega
+           ao browser como CSS inválido e a declaração é descartada. O resto da
+           regra aplicava-se na mesma, pelo que sobrava uma moldura TRANSPARENTE
+           de 1.5rem, com sombra pesada, à volta do cartão branco interior.
+           Escrito agora em CSS puro, com a variante do tema escuro. */
+        .modal-content { background-color: #ffffff; padding: 1.5rem; border-radius: 1.5rem; max-width: 90%; width: 500px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); transform: scale(0.95); transition: transform 0.3s ease;}
+        .dark .modal-content { background-color: #1e293b; }
         .modal-backdrop:not(.hidden) .modal-content { transform: scale(1); }
         
         /* Utilidades */

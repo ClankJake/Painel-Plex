@@ -210,11 +210,13 @@
     #bulk-notify-selection-list::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 4px; }
     
     /* Filtros de 'Os Meus Pedidos'.
-       ⚠️ NOTA: o account.html define o SEU PRÓPRIO .filter-btn (em azul) num
-       bloco @layer components local, que por ser carregado depois vence esta
-       regra. Mantemos aqui apenas o estado base, para que a classe funcione em
-       qualquer página que a use sem ter estilos próprios — evitando um botão
-       sem qualquer aparência. */
+       ⚠️ A nota que aqui estava dizia que o account.html definia o SEU PRÓPRIO
+       .filter-btn (em azul) num bloco @layer components local e que esse, por
+       ser carregado depois, vencia esta regra. Não era verdade: o bloco de lá
+       era um <style> normal com @apply, e o Tailwind não compila templates —
+       só este ficheiro. Essa redefinição nunca chegou ao browser, pelo que o
+       filtro ativo sempre foi o amarelo daqui, nunca o azul. O bloco morto do
+       account.html já foi removido; esta é agora a única definição. */
     .filter-btn {
         @apply px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors;
         @apply text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700/50;
