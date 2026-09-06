@@ -22,7 +22,9 @@ RUN npm run build:css
 
 # --- Estágio 2: Aplicação Python ---
 # Começamos com uma imagem Python leve e oficial.
-FROM python:3.12-slim-bullseye
+# 'bookworm' (Debian 12) e não 'bullseye' (Debian 11): o LTS do bullseye terminou
+# em 31/08/2026 e ele deixou de receber atualizações de segurança.
+FROM python:3.12-slim-bookworm
 
 # Set default environment variables for user/group IDs
 ENV PUID=1000
@@ -39,14 +41,37 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Instala as dependências de sistema necessárias
-# CORREÇÃO SSL: Ajusta o nível de segurança do OpenSSL para evitar erros de decriptação em ambientes containerizados
+# Instala as dependências de sistema necessárias.
+#
+# CORREÇÃO SSL: o Debian define 'CipherString = DEFAULT@SECLEVEL=2' no
+# /etc/ssl/openssl.cnf, o que impõe um mínimo de 112 bits e recusa certificados
+# assinados com SHA-1 ou chaves RSA/DH abaixo de 2048 bits. Baixar para
+# SECLEVEL=1 evita falhas de handshake com a API da Efí ('ca md too weak',
+# 'dh key too small', 'EE certificate key too weak').
+#
+# ⚠️ Isto é GLOBAL ao processo: afeta todas as ligações de saída do painel
+# (Plex, Tautulli, Overseerr, Telegram, Mercado Pago…), não só a Efí. Note que
+# o 'MinProtocol = TLSv1.2' da mesma secção NÃO é alterado — TLS 1.0/1.1
+# continuam desligados.
+#
+# Para verificar se ainda é preciso (a Efí pode já ter modernizado o TLS dela),
+# corra contra a imagem base SEM esta correção:
+#   docker run --rm -v "$PWD/certs:/certs" python:3.12-slim-bookworm \
+#     openssl s_client -connect pix.api.efipay.com.br:443 \
+#       -servername pix.api.efipay.com.br \
+#       -cert /certs/certificado.pem -key /certs/certificado.pem </dev/null
+# 'Verify return code: 0 (ok)' significa que esta linha já pode sair.
+#
+# O 'grep' a seguir é intencional: se um dia a imagem base deixar de trazer
+# SECLEVEL=2, o 'sed' vira um no-op silencioso e os pagamentos passariam a
+# falhar só em produção. Assim, falha no build.
 RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     zlib1g-dev \
     libwebp-dev \
     --no-install-recommends && \
     sed -i 's/SECLEVEL=2/SECLEVEL=1/g' /etc/ssl/openssl.cnf && \
+    grep -q 'SECLEVEL=1' /etc/ssl/openssl.cnf && \
     rm -rf /var/lib/apt/lists/*
 
 # Instalação de Dependências Python:

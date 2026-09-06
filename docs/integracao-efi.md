@@ -53,6 +53,20 @@ openssl pkcs12 -in seu-certificado.p12 -out certificado.pem -nodes
 Quando pedir a senha, basta pressionar **Enter** (os certificados da Efí
 não têm senha).
 
+> **Se der erro `unsupported` ou `Error outputting keys and certificates`:** o
+> seu OpenSSL é da série 3.x (padrão em Debian 12+, Ubuntu 22.04+, Fedora e no
+> macOS via Homebrew) e os `.p12` da Efí usam algoritmos que a versão 3
+> desativou por omissão, movendo-os para o *provider* `legacy`. Acrescente a
+> opção `-legacy`:
+>
+> ```bash
+> openssl pkcs12 -legacy -in seu-certificado.p12 -out certificado.pem -nodes
+> ```
+>
+> A opção **só existe no OpenSSL 3.x** — em sistemas mais antigos (OpenSSL
+> 1.1.1) ela dá `unknown option`, e aí é o comando sem `-legacy` que é o
+> correto. Confirme a sua versão com `openssl version`.
+
 ### 2.2. Colocar o certificado no servidor
 
 Copie o `.pem` para a pasta `certs/` do painel:
@@ -759,10 +773,13 @@ Cadeia de `X-Forwarded-For` com um salto a mais. Ver [5.8](#58-ip-real-do-visita
 - **Autenticação (saída):** OAuth2 com certificado de cliente (mTLS).
 - **Autenticação (entrada, webhook):** mTLS validado pelo seu proxy **ou** HMAC na
   query string — nunca ambos, e nunca nenhum.
-- **TLS:** a imagem Docker do painel define `SECLEVEL=1` no OpenSSL
-  propositadamente — os certificados da Efí usam algoritmos que as versões mais
-  recentes do Debian rejeitariam por omissão. Sem esse ajuste, o handshake TLS
-  falharia.
+- **TLS:** a imagem Docker do painel baixa o `SECLEVEL` do OpenSSL de 2 para 1
+  propositadamente. O Debian impõe um mínimo de 112 bits, que recusa
+  certificados assinados com SHA-1 e chaves RSA/DH abaixo de 2048 bits; sem o
+  ajuste o handshake com a API da Efí pode falhar com `ca md too weak` ou
+  `dh key too small`. O ajuste é **global ao processo** — vale para todas as
+  ligações de saída do painel, não só as da Efí. O `Dockerfile` traz o comando
+  para verificar se a Efí já modernizou o TLS dela e a linha já pode sair.
 - **Sufixo `/pix`:** a Efí acrescenta `/pix` ao fim da URL registada ao disparar a
   notificação. O painel termina a URL em `?ignorar=` para que o sufixo caia na
   query string e o caminho da rota se mantenha.
