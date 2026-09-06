@@ -5,10 +5,13 @@ name: Build and Publish Docker Image to GHCR
 
 # Define quando este workflow deve ser executado
 on:
-  # Executa sempre que houver um push para a branch 'main'
+  # Executa sempre que houver um push para a branch 'stable'.
+  # 'stable' é a branch padrão do repositório — não existe 'main' aqui, e por
+  # isso este workflow só corria manualmente. Como é a branch padrão, o
+  # metadata-action publica as tags 'stable' E 'latest'.
   push:
     branches:
-      - main
+      - stable
   # Permite que execute este workflow manualmente a partir da interface do GitHub
   workflow_dispatch:
 

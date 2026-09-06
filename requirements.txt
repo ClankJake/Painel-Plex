@@ -19,7 +19,10 @@ tzlocal
 Flask-SocketIO
 dnspython>=2.0.0
 greenlet>=3.0.3
-cryptography==41.0.7
+# Não é importada diretamente pelo painel: entra como dependência de base do
+# stack TLS. Fica fixada para o build ser reproduzível — reveja de tempos a
+# tempos, é uma biblioteca de criptografia.
+cryptography==50.0.1
 gevent
 gevent-websocket
 gunicorn
