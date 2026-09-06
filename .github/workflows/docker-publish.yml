@@ -7,8 +7,13 @@ name: Build and Publish Docker Image to GHCR
 on:
   # Executa sempre que houver um push para a branch 'stable'.
   # 'stable' é a branch padrão do repositório — não existe 'main' aqui, e por
-  # isso este workflow só corria manualmente. Como é a branch padrão, o
-  # metadata-action publica as tags 'stable' E 'latest'.
+  # isso este workflow só corria manualmente.
+  #
+  # A tag publicada é 'stable' (o nome da branch), que é a que o README manda
+  # usar. NÃO é publicada uma tag 'latest': o metadata-action usa
+  # 'flavor: latest=auto' por omissão, e nesse modo o 'latest' só é aplicado a
+  # tags semver, não a pushes de branch. Para passar a publicar 'latest' seria
+  # preciso acrescentar 'flavor: latest=true' ao passo de metadados.
   push:
     branches:
       - stable
