@@ -106,13 +106,15 @@ Esta é a forma mais simples e rápida de colocar a aplicação em funcionamento
 
     > ⚠️ Este passo é **essencial** se você usar pagamentos. É a partir dele que os webhooks são construídos — sem um endereço público válido, os pagamentos são criados mas **nunca são confirmados automaticamente**.
 
+    > 🔶 **Usa Cloudflare (nuvem laranja ou Tunnel)?** O webhook da Efí precisa de configuração extra e o modo mTLS **não funciona** nesse cenário. Veja [Rodar atrás da Cloudflare](docs/integracao-efi.md#5-rodar-atrás-da-cloudflare) antes de ativar os pagamentos.
+
 ## Guias de Configuração
 
 Cada integração tem um guia próprio, com passo a passo e resolução de problemas:
 
 | Integração | Guia | O que cobre |
 |---|---|---|
-| **Efí Bank** (PIX) | [docs/integracao-efi.md](docs/integracao-efi.md) | Certificado digital, escopos, mTLS vs. HMAC |
+| **Efí Bank** (PIX) | [docs/integracao-efi.md](docs/integracao-efi.md) | Certificado digital, escopos, mTLS vs. HMAC, **rodar atrás da Cloudflare** |
 | **Mercado Pago** (PIX) | [docs/integracao-mercadopago.md](docs/integracao-mercadopago.md) | Access Token, webhook assinado, reembolsos |
 | **Gates2b** (PIX) | [docs/integracao-gates2b.md](docs/integracao-gates2b.md) | Chave de API, valor mínimo, migração da BPIX |
 | **Seerr** (pedidos) | [docs/integracao-seerr.md](docs/integracao-seerr.md) | Pedidos no portal, notificações com capa |
