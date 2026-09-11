@@ -1,4 +1,4 @@
-# app/services/plex/online_media.py
+# app/services/media_server/plex/online_media.py
 
 """
 Gestão das "Fontes de Mídia Online" do Plex (Online Media Sources).

@@ -46,6 +46,9 @@ def load_or_create_config():
             "LAST_NOTIFICATION_CHECK": "1970-01-01T00:00:00",
             "ADMIN_USER": "",
             "ADMIN_USER_ID": "",
+            # Qual o servidor de média que este painel administra. Ver
+            # app/services/media_server/factory.py para os valores suportados.
+            "MEDIA_SERVER_TYPE": "plex",
             "PLEX_URL": "",
             "PLEX_TOKEN": "",
             "TAUTULLI_URL": "",
@@ -223,6 +226,9 @@ def load_or_create_config():
                     config_was_modified = True
 
             _set_default("ADMIN_USER_ID", "")
+            # Instalações anteriores à camada de servidores de média não têm esta
+            # chave: todas elas são, por definição, instalações Plex.
+            _set_default("MEDIA_SERVER_TYPE", "plex")
             _set_default("INTERNAL_TRIGGER_KEY", secrets.token_hex(32))
             _set_default("APP_BASE_URL", "")
             _set_default("LOG_LEVEL", "INFO")

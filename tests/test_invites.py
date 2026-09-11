@@ -198,7 +198,7 @@ def _gestor(data_manager, envio, aceite=None):
     Gestor de convites com as chamadas ao Plex substituídas, mas com o
     DataManager REAL — é a contabilização das vagas que está a ser testada.
     """
-    from app.services.plex.invite_manager import PlexInviteManager
+    from app.services.media_server.plex.invite_manager import PlexInviteManager
 
     gestor = PlexInviteManager(
         connection=None,

@@ -10,7 +10,7 @@ from flask_babel import gettext as _
 from apscheduler.jobstores.base import JobLookupError
 from sqlalchemy.exc import OperationalError
 
-from ...config import load_or_create_config
+from ....config import load_or_create_config
 
 logger = logging.getLogger(__name__)
 
@@ -382,7 +382,7 @@ class PlexSubscriptionManager:
 
     def _replace_expiration_job(self, profile, plex_user_id, new_expiration_date):
         """Cancela a tarefa de suspensão antiga e agenda uma nova no APScheduler."""
-        from ...scheduler import end_subscription_job
+        from ....scheduler import end_subscription_job
 
         if not self.scheduler:
             logger.error("O agendador (scheduler) não foi injetado. A tarefa de expiração não pode ser agendada.")

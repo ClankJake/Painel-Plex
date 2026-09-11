@@ -322,7 +322,7 @@ def api_settings():
                 elif field == 'ONLINE_MEDIA_SOURCES_TO_DISABLE':
                     # Lista de chaves da Plex: filtrada no servidor para que uma
                     # interface adulterada não consiga guardar lixo no config.json.
-                    from ...services.plex.online_media import sanitize_source_keys
+                    from ...services.media_server.plex.online_media import sanitize_source_keys
                     config_to_update[field] = sanitize_source_keys(value)
                 elif field == 'SCREEN_LIMIT_TERMINATION_STRATEGY':
                     # Defesa extra: só aceita os dois valores válidos, mesmo que a UI já restrinja isso.

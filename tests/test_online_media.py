@@ -3,8 +3,8 @@
 
 import pytest
 
-from app.services.plex import online_media
-from app.services.plex.online_media import (
+from app.services.media_server.plex import online_media
+from app.services.media_server.plex.online_media import (
     PlexOnlineMediaManager,
     parse_opt_outs,
     sanitize_source_keys,
@@ -358,7 +358,7 @@ class TestGanchoNoConvite:
     """O aceite do convite nunca pode falhar por causa desta preferência."""
 
     def _invite_manager(self, online_media_manager):
-        from app.services.plex.invite_manager import PlexInviteManager
+        from app.services.media_server.plex.invite_manager import PlexInviteManager
 
         class FakeFacade:
             online_media = online_media_manager
@@ -375,7 +375,7 @@ class TestGanchoNoConvite:
         gestor._apply_online_media_preferences(FakeAccount())  # não deve levantar
 
     def test_sem_gestor_configurado_nao_faz_nada(self):
-        from app.services.plex.invite_manager import PlexInviteManager
+        from app.services.media_server.plex.invite_manager import PlexInviteManager
 
         class FacadeSemGestor:
             pass

@@ -1,4 +1,4 @@
-# /app/services/plex/invite_manager.py 
+# app/services/media_server/plex/invite_manager.py
 
 import logging
 import secrets
@@ -12,7 +12,7 @@ from plexapi.myplex import MyPlexAccount
 from plexapi.exceptions import BadRequest, NotFound
 from flask_babel import gettext as _
 from flask import url_for
-from ...utils.log_sanitizer import mask_email, mask_code
+from ....utils.log_sanitizer import mask_email, mask_code
 
 logger = logging.getLogger(__name__)
 

@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from tzlocal import get_localzone
 
-from app.services.plex import subscription_manager as subscription_module
-from app.services.plex.subscription_manager import PlexSubscriptionManager
+from app.services.media_server.plex import subscription_manager as subscription_module
+from app.services.media_server.plex.subscription_manager import PlexSubscriptionManager
 from tests.conftest import FakeDataManager
 
 UTC = timezone.utc

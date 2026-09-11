@@ -1,4 +1,4 @@
-# app/services/plex/connection.py
+# app/services/media_server/plex/connection.py
 
 import logging
 import requests
@@ -11,8 +11,8 @@ from plexapi.server import PlexServer
 from requests.exceptions import ConnectTimeout, ReadTimeout, ConnectionError, RequestException
 
 from app.config import load_or_create_config
-from ...extensions import cache
-from ...utils.log_formatting import describe
+from ....extensions import cache
+from ....utils.log_formatting import describe
 
 logger = logging.getLogger(__name__)
 

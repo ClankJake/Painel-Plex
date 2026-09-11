@@ -253,7 +253,7 @@ def create_app() -> Flask:
     # INICIALIZAÇÃO DE MANAGERS E SERVIÇOS
     # ==========================================
     from .services import (
-        DataManager, TautulliManager, PlexManager, 
+        DataManager, TautulliManager, create_media_server,
         NotifierManager, EfiManager, MercadoPagoManager,
         OverseerrManager, LinkShortener, Gates2bManager, StreamManager,
         PricingManager, BackupManager, ReferralManager
@@ -274,20 +274,26 @@ def create_app() -> Flask:
         notifier_manager=extensions.notifier_manager
     )
     
-    extensions.plex_manager = PlexManager(
-        data_manager=extensions.data_manager, 
-        tautulli_manager=extensions.tautulli_manager,
+    # O backend do servidor de média é escolhido pela configuração. Hoje só
+    # existe o Plex; a fábrica é o único sítio que precisa de saber disso.
+    extensions.media_server = create_media_server(
+        app_config.get('MEDIA_SERVER_TYPE'),
+        data_manager=extensions.data_manager,
+        stats_manager=extensions.tautulli_manager,
         notifier_manager=extensions.notifier_manager,
-        overseerr_manager=extensions.overseerr_manager
+        requests_manager=extensions.overseerr_manager,
     )
-    extensions.plex_manager.init_app(app)
+    # Alias herdado: o MESMO objeto com o nome antigo, para não partir os pontos
+    # de chamada que ainda fazem `from ..extensions import plex_manager`.
+    extensions.plex_manager = extensions.media_server
+    extensions.media_server.init_app(app)
     
     extensions.stream_manager = StreamManager(
-        plex_connection=extensions.plex_manager.conn,
+        plex_connection=extensions.media_server.conn,
         data_manager=extensions.data_manager,
-        user_manager=extensions.plex_manager.users
+        user_manager=extensions.media_server.users
     )
-    extensions.plex_manager.stream_manager = extensions.stream_manager
+    extensions.media_server.stream_manager = extensions.stream_manager
 
     # 🔗 Injeção tardia: o ReferralManager precisa do SubscriptionManager para
     # somar dias grátis, mas este só existe depois do PlexManager ser construído.

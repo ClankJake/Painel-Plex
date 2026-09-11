@@ -41,6 +41,12 @@ limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
 
 # Os 'managers' dos serviços são inicializados como None
 data_manager = None
+
+# O servidor de média ativo (ver app/services/media_server/). 'plex_manager' é o
+# nome herdado e aponta para O MESMO objeto: existe para que os ~100 pontos de
+# chamada atuais continuem a funcionar enquanto são migrados. Código novo deve
+# usar 'media_server'.
+media_server = None
 plex_manager = None
 tautulli_manager = None
 stream_manager = None 

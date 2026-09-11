@@ -44,21 +44,45 @@ estatísticas vindas do Tautulli.
 
 ### Managers como singletons de módulo
 
-`app/extensions.py` declara as extensões Flask **e** treze `managers` a `None`.
+`app/extensions.py` declara as extensões Flask **e** os `managers` a `None`.
 `create_app()` instancia cada um e atribui de volta ao módulo. O resto do código
-faz `from ..extensions import plex_manager` — nunca instancie um manager
-diretamente numa rota ou num job.
+faz `from ..extensions import media_server` — nunca instancie um manager
+diretamente numa rota ou num job. (`plex_manager` é o nome herdado do mesmo
+objeto, mantido enquanto os pontos de chamada antigos não são migrados; código
+novo usa `media_server`.)
 
 A ordem de construção importa: há injeções tardias porque as dependências são
 circulares. O `ReferralManager` só recebe o `subscription_manager` depois do
 `PlexManager` existir; o `PlexManager` só recebe o `stream_manager` depois de o
 `StreamManager` ser construído a partir da conexão dele.
 
-`PlexManager` é uma fachada sobre `app/services/plex/`: `.conn`, `.users`,
-`.invites`, `.subscriptions`, `.online_media`. Lógica nova de Plex vai no
-submanager correspondente, não na fachada. `TautulliManager` segue o mesmo
-padrão sobre `app/services/tautulli/` (`api_client`, `stats_handler`,
-`recommendations_handler`).
+### Servidor de média: um backend, escolhido pela configuração
+
+O painel não fala com o Plex diretamente: fala com um **backend de servidor de
+média**, escolhido por `MEDIA_SERVER_TYPE` no config.json.
+
+- `app/services/media_server/base.py` — o contrato (`MediaServerBackend` e os
+  protocolos dos submanagers) e as `MediaServerCapabilities`.
+- `app/services/media_server/factory.py` — o **único** sítio que sabe que existe
+  mais do que um servidor possível. Registar um backend novo é uma entrada em
+  `_BACKENDS`.
+- `app/services/media_server/plex/` — o backend do Plex, e o único sítio onde
+  vive conhecimento sobre a API do Plex.
+
+Quando uma funcionalidade não existe em todos os servidores (convites nativos,
+Fontes de Mídia Online, login delegado), pergunte pelas
+`media_server.capabilities` em vez de comparar o tipo de servidor — a interface
+cresce por capacidades, não por uma cascata de exceções por marca.
+
+`PlexManager` (em `media_server/plex/backend.py`) é uma fachada sobre os
+submanagers: `.conn`, `.users`, `.invites`, `.subscriptions`, `.online_media`.
+Lógica nova de Plex vai no submanager correspondente, não na fachada. A fachada
+expõe também a superfície agnóstica do contrato (`get_all_users`,
+`is_connected`, `get_server_identifier`), que é a que código novo deve usar —
+os nomes com 'plex' continuam lá apenas para os pontos de chamada por migrar.
+
+`TautulliManager` segue o mesmo padrão sobre `app/services/tautulli/`
+(`api_client`, `stats_handler`, `recommendations_handler`).
 
 ### Configuração: config.json, não variáveis de ambiente
 

@@ -8,7 +8,8 @@ noutras partes da aplicação.
 
 from .data_manager import DataManager
 from .tautulli_manager import TautulliManager
-from .plex_manager import PlexManager
+from .media_server import create_media_server, resolve_media_server_type
+from .media_server.plex import PlexManager
 from .notifier_manager import NotifierManager
 from .efi_manager import EfiManager
 from .mercado_pago_manager import MercadoPagoManager
@@ -24,6 +25,8 @@ __all__ = [
     'DataManager',
     'TautulliManager',
     'PlexManager',
+    'create_media_server',
+    'resolve_media_server_type',
     'NotifierManager',
     'EfiManager',
     'MercadoPagoManager',

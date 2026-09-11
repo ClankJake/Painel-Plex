@@ -1,4 +1,4 @@
-# app/services/plex/user_manager.py
+# app/services/media_server/plex/user_manager.py
 
 import logging
 import json
@@ -13,8 +13,8 @@ from plexapi.exceptions import NotFound
 from requests.exceptions import RequestException
 from apscheduler.jobstores.base import JobLookupError
 
-from ...extensions import cache
-from ...utils.log_formatting import describe
+from ....extensions import cache
+from ....utils.log_formatting import describe
 
 logger = logging.getLogger(__name__)
 
