@@ -13,6 +13,7 @@ from .invite_manager import PlexInviteManager
 from .online_media import PlexOnlineMediaManager
 from .subscription_manager import PlexSubscriptionManager
 from .user_manager import PlexUserManager
+from .sessions import PlexSessionsProvider
 from .backend import PlexManager
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "PlexInviteManager",
     "PlexManager",
     "PlexOnlineMediaManager",
+    "PlexSessionsProvider",
     "PlexSubscriptionManager",
     "PlexUserManager",
 ]

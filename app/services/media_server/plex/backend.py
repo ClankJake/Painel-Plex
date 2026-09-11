@@ -16,6 +16,7 @@ from .user_manager import PlexUserManager
 from .invite_manager import PlexInviteManager
 from .online_media import PlexOnlineMediaManager
 from .subscription_manager import PlexSubscriptionManager
+from .sessions import PlexSessionsProvider, thumb_source
 from ..base import MediaServerCapabilities
 
 # Importação da instância global do scheduler
@@ -23,6 +24,7 @@ from ....extensions import scheduler as global_scheduler
 from ....extensions import cache
 from ....utils.url_safety import is_plex_tv_host
 from ....utils.identity import normalize_user_id
+from ....utils.image_proxy import proxied_image_url
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,7 @@ class PlexManager:
         self.conn = PlexConnectionManager()
         self.users = PlexUserManager(self.conn, data_manager, tautulli_manager, overseerr_manager)
         self.online_media = PlexOnlineMediaManager(self.conn)
+        self.sessions = PlexSessionsProvider(self.conn)
         self.invites = PlexInviteManager(self.conn, self.users, data_manager, self, overseerr_manager, notifier_manager)
         # 🛡️ CORREÇÃO: Injeta o global_scheduler no SubscriptionManager
         self.subscriptions = PlexSubscriptionManager(data_manager, self.users, scheduler=global_scheduler)
@@ -106,8 +109,7 @@ class PlexManager:
             # silenciosamente. Paramo-lo aqui; será recriado automaticamente na
             # próxima verificação de streams, já ligado à nova conexão.
             try:
-                if self.stream_manager:
-                    self.stream_manager.stop_listener()
+                self.sessions.stop_listener()
             except Exception as e:
                 logger.debug(f"Aviso ao reiniciar o listener SSE após reload: {e}")
             
@@ -340,29 +342,11 @@ class PlexManager:
             
             if original_thumb:
                 try:
-                    if '/image/' not in original_thumb:
-                        parsed_thumb = urlparse(original_thumb)
-                        
-                        query_params = parse_qsl(parsed_thumb.query)
-                        clean_query = urlencode([(k, v) for k, v in query_params if k.lower() != 'x-plex-token'])
-                        clean_url = parsed_thumb._replace(query=clean_query).geturl()
-                        
-                        if is_plex_tv_host(parsed_thumb.hostname) or not parsed_thumb.netloc:
-                            payload_str = f"plex_account:{clean_url}"
-                        else:
-                            payload_str = f"url:{clean_url}"
-                            
-                        b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                        
-                        try:
-                            # Tenta usar o contexto do app se estiver disponível para a url
-                            user['thumb'] = url_for('image.proxy_image', source=b64_payload)
-                        except RuntimeError:
-                            # Fallback para rota manual se executado por worker assíncrono (Scheduler)
-                            user['thumb'] = f"/image/?source={b64_payload}"
-                    else:
-                        user['thumb'] = original_thumb
-                        
+                    # A tradução do avatar para o vocabulário do proxy vive no
+                    # provider de sessões, que é quem já a fazia para as sessões
+                    # em curso — eram duas cópias da mesma regra.
+                    fonte = thumb_source(original_thumb)
+                    user['thumb'] = proxied_image_url(fonte) if fonte else original_thumb
                 except Exception as e:
                     logger.debug(f"Erro ao converter imagem do utilizador {user.get('username')}: {e}")
             

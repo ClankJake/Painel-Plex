@@ -286,7 +286,7 @@ def create_app() -> Flask:
     extensions.media_server.init_app(app)
     
     extensions.stream_manager = StreamManager(
-        connection=extensions.media_server.conn,
+        sessions_provider=extensions.media_server.sessions,
         data_manager=extensions.data_manager,
         user_manager=extensions.media_server.users
     )

@@ -88,8 +88,31 @@ Cuidado com a diferença entre `users.list_users()` (leitura crua do servidor) e
 `media_server.get_all_users()` (a mesma lista tratada para a interface). Foram
 o mesmo nome em duas camadas durante muito tempo.
 
-Continua acoplado ao Plex, por migrar: o `StreamManager` (sessões e listener
-SSE).
+### Streams: política e vocabulário, separados
+
+`StreamManager` (`app/services/stream_manager.py`) já não fala com nenhum
+servidor. Recebe um `SessionsProvider` que lhe entrega `MediaSession` — uma
+reprodução já traduzida (quem está a ver, estado, progresso, plataforma, capa)
+— e sabe encerrá-las.
+
+- **Política, no `StreamManager`**: o que conta como uma tela (o telemóvel que
+  comanda um Chromecast não conta duas vezes), quem é cortado primeiro, o
+  anti-spam dos cortes, o debounce dos eventos e a cache curta do
+  "Reproduzindo Agora".
+- **Vocabulário, no provider** (`media_server/plex/sessions.py`): onde está o
+  estado do leitor, qual o campo da capa, como se reconhece um Chromecast, o
+  formato das notificações do websocket e a filtragem dos pings de progresso.
+
+`MediaSession.raw` leva o objeto original do servidor, e existe apenas para o
+provider o receber de volta em `terminate()`. Nada fora do provider o deve
+inspecionar, ou volta a haver conhecimento do Plex espalhado pelo painel.
+
+`terminate()` devolve `False` quando a reprodução ainda não pode ser encerrada
+(a carregar, sem identificador interno no servidor). Quem chama reagenda em vez
+de dar o corte por feito — não é um erro, é um "ainda não".
+
+Os URLs de imagens passam todos por `app/utils/image_proxy.py`; o prefixo
+(`plex:`, `plex_account:`, `url:`) é escolhido pelo backend.
 
 ### Identidade do utilizador: texto, não inteiro
 
@@ -189,8 +212,9 @@ Flask-SocketIO em modo **gevent**, com **1 worker** de propósito (ver o `CMD` d
 Dockerfile). Não há `message_queue`, por isso mais workers perderiam eventos
 entre processos, e misturar com eventlet quebra o monkey-patching. `run.py`
 chama `monkey.patch_all()` antes de qualquer import. `app/sockets.py` mantém a
-tarefa de fundo que empurra o resumo do dashboard; o `StreamManager` mantém um
-listener SSE do Plex que precisa de ser parado no encerramento.
+tarefa de fundo que empurra o resumo do dashboard; o listener de eventos do
+servidor vive no `SessionsProvider` e precisa de ser parado no encerramento
+(`StreamManager.stop_listener()`, que também cancela o debounce pendente).
 
 ### Frontend
 

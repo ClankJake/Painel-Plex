@@ -23,8 +23,8 @@ Duas notas sobre o desenho:
    capacidades ou por uma cascata de exceções por marca.
 """
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -147,6 +147,103 @@ class SubscriptionScheduler(Protocol):
     def check_user_expiration(self, media_user_id: Any) -> Any: ...
 
 
+
+@dataclass
+class MediaSession:
+    """Uma reprodução a decorrer, já traduzida do vocabulário do servidor.
+
+    O motor de streams (`app/services/stream_manager.py`) só conhece esta
+    forma. Tudo o que é específico de um servidor — como se lê o estado de um
+    leitor, onde está o progresso, que campo tem a capa — fica do lado do
+    `SessionsProvider` que a produziu.
+
+    `raw` é o objeto original do servidor. Existe apenas para que o provider o
+    receba de volta em `terminate()`: nada fora do provider o deve inspecionar,
+    ou volta a haver conhecimento do Plex espalhado pelo painel.
+    """
+
+    # Quem está a ver. `user_id` já vem normalizado (ver app/utils/identity.py);
+    # `username_fallback` é o nome que o próprio servidor associa à sessão, usado
+    # quando o utilizador não consta do diretório.
+    user_id: Optional[str]
+    username_fallback: str
+    user_email: str
+
+    session_key: str
+
+    # `media_title` é o título composto que vai para os logs e para a auditoria
+    # ("Série S01E02 - Episódio"); `title`/`subtitle` são o que a interface mostra.
+    media_title: str
+    title: str
+    subtitle: str
+    media_type: str
+
+    # Um de: playing, paused, buffering, stopped.
+    state: str
+
+    # `platform` é a classe de ícone já resolvida (chromecast, chrome, ios, ...).
+    platform: str
+    player: str
+
+    progress: float
+    view_offset: int
+    duration: int
+
+    # Prefixo + caminho no vocabulário de imagens do backend (ver
+    # `MediaServerBackend.IMAGE_SOURCES`), ex. "plex:/library/metadata/1/thumb".
+    # O painel limita-se a passá-lo ao proxy de imagens.
+    artwork_source: Optional[str] = None
+
+    stream_details: Dict[str, Any] = field(default_factory=dict)
+
+    raw: Any = None
+
+
+@runtime_checkable
+class SessionsProvider(Protocol):
+    """Lê e encerra reproduções, e avisa quando alguma coisa muda.
+
+    É a fronteira do tempo real. O motor de streams decide *o que fazer* (quem
+    excede telas, quem está bloqueado, com que atraso reagir); o provider sabe
+    *como falar* com o servidor.
+    """
+
+    def is_connected(self) -> bool: ...
+
+    def reconnect(self) -> Tuple[bool, str]: ...
+
+    def get_owner_id(self) -> Optional[str]: ...
+
+    def list_sessions(self) -> List[MediaSession]: ...
+
+    def terminate(self, session: MediaSession, reason: str) -> bool:
+        """Encerra a sessão. Devolve False quando ainda não é possível.
+
+        Uma sessão que o servidor ainda não registou por completo (a carregar,
+        sem identificador interno) não pode ser encerrada: o provider diz que
+        não, e quem chama volta a tentar mais tarde em vez de dar o corte por
+        feito.
+        """
+
+    def user_thumb_source(self, raw_thumb: Optional[str]) -> Optional[str]:
+        """Converte o avatar cru do diretório num prefixo para o proxy de imagens."""
+
+    # --- Tempo real ---
+
+    def supports_realtime(self) -> bool: ...
+
+    def is_listener_healthy(self) -> bool: ...
+
+    def start_listener(self, on_change: Callable[[], None]) -> None:
+        """Liga-se aos eventos do servidor e chama `on_change` quando algo muda.
+
+        O provider é responsável por filtrar o ruído: os servidores reenviam o
+        estado de cada sessão de poucos em poucos segundos, e `on_change` só
+        deve ser chamado numa mudança real (sessão nova, play/pausa, fim).
+        """
+
+    def stop_listener(self) -> None: ...
+
 @runtime_checkable
 class MediaServerBackend(Protocol):
     """A fachada que o painel consome.
@@ -168,6 +265,7 @@ class MediaServerBackend(Protocol):
     users: UserDirectory
     invites: AccountProvisioning
     subscriptions: SubscriptionScheduler
+    sessions: SessionsProvider
 
     # --- Ciclo de vida ---
     def init_app(self, app: Any) -> None: ...
@@ -222,6 +320,8 @@ __all__ = [
     'ConnectionBackend',
     'MediaServerBackend',
     'MediaServerCapabilities',
+    'MediaSession',
+    'SessionsProvider',
     'SubscriptionScheduler',
     'UserDirectory',
 ]
