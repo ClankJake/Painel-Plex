@@ -172,7 +172,7 @@ class TestSyncUserXp:
 
         # 3600s = 60 min * 1 XP = 60
         assert handler.sync_user_xp(1, "ana") == 60
-        assert dados.profiles[1]["xp"] == 60
+        assert dados.profiles["1"]["xp"] == 60
 
     def test_bonus_por_item_concluido(self, app_context, configurar):
         configurar()
@@ -191,7 +191,7 @@ class TestSyncUserXp:
         )
 
         assert handler.sync_user_xp(1, "ana") == 110
-        assert dados.profiles[1]["lifetime_xp"] == 510
+        assert dados.profiles["1"]["lifetime_xp"] == 510
 
     def test_nao_reprocessa_historico_ja_contado(self, app_context, configurar):
         configurar()
@@ -212,14 +212,14 @@ class TestSyncUserXp:
 
         handler.sync_user_xp(1, "ana")
 
-        assert dados.profiles[1]["xp_last_sync_at"] == 1700009999
+        assert dados.profiles["1"]["xp_last_sync_at"] == 1700009999
 
     def test_historico_vazio_marca_a_sincronizacao(self, app_context, configurar):
         configurar()
         handler, dados = self._handler(history=[])
 
         assert handler.sync_user_xp(1, "ana") == 0
-        assert dados.profiles[1]["xp_last_sync_at"] > 0
+        assert dados.profiles["1"]["xp_last_sync_at"] > 0
 
     def test_primeira_sincronizacao_pede_todo_o_historico(self, app_context, configurar):
         configurar()
@@ -333,7 +333,7 @@ class TestResetSeason:
         resultado = handler.reset_season_if_due()
 
         assert resultado["reset"] is False
-        assert handler.data_manager.profiles[1]["xp"] == 500
+        assert handler.data_manager.profiles["1"]["xp"] == 500
 
     def test_mes_que_nao_e_de_reset(self, handler, configurar):
         mes_diferente = 12 if datetime.now(UTC).month != 12 else 1
@@ -359,14 +359,14 @@ class TestResetSeason:
 
         assert resultado["reset"] is True
         assert resultado["affected_users"] == 2
-        assert handler.data_manager.profiles[1]["xp"] == 0
+        assert handler.data_manager.profiles["1"]["xp"] == 0
 
     def test_o_lifetime_xp_nunca_e_reposto(self, handler, configurar):
         configurar()
 
         handler.reset_season_if_due(force=True)
 
-        assert handler.data_manager.profiles[1]["lifetime_xp"] == 500
+        assert handler.data_manager.profiles["1"]["lifetime_xp"] == 500
 
     def test_falha_na_base_de_dados_e_reportada(self, app_context, configurar, monkeypatch):
         configurar()

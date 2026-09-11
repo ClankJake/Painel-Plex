@@ -53,7 +53,7 @@ class TestGeracaoDeCodigos:
 
         assert len(codigo) == CODE_LENGTH
         assert set(codigo) <= set(CODE_ALPHABET)
-        assert dm.profiles[2]["referral_code"] == codigo
+        assert dm.profiles["2"]["referral_code"] == codigo
 
     def test_codigo_existente_e_reutilizado(self, cenario):
         gestor, _dm, _subs = cenario
@@ -78,14 +78,14 @@ class TestRegisterReferral:
 
         assert resultado["success"] is True
         assert resultado["referrer_username"] == "ana"
-        assert dm.profiles[2]["referred_by"] == 1
-        assert dm.profiles[2]["referral_rewarded"] is False
+        assert dm.profiles["2"]["referred_by"] == 1
+        assert dm.profiles["2"]["referral_rewarded"] is False
 
     def test_codigo_e_insensivel_a_maiusculas_e_espacos(self, cenario):
         gestor, dm, _subs = cenario
 
         assert gestor.register_referral(2, "  abcd2345 ")["success"] is True
-        assert dm.profiles[2]["referred_by"] == 1
+        assert dm.profiles["2"]["referred_by"] == 1
 
     def test_auto_indicacao_e_bloqueada(self, cenario):
         gestor, dm, _subs = cenario
@@ -93,7 +93,7 @@ class TestRegisterReferral:
         resultado = gestor.register_referral(1, "ABCD2345")
 
         assert resultado["success"] is False
-        assert "referred_by" not in dm.profiles[1]
+        assert "referred_by" not in dm.profiles["1"]
 
     def test_codigo_invalido(self, cenario):
         gestor, _dm, _subs = cenario
@@ -107,23 +107,23 @@ class TestRegisterReferral:
 
     def test_apenas_uma_indicacao_por_utilizador(self, cenario):
         gestor, dm, _subs = cenario
-        dm.profiles[2]["referred_by"] = 99
+        dm.profiles["2"]["referred_by"] = 99
 
         resultado = gestor.register_referral(2, "ABCD2345")
 
         assert resultado["success"] is False
-        assert dm.profiles[2]["referred_by"] == 99
+        assert dm.profiles["2"]["referred_by"] == 99
 
     def test_indicacao_circular_e_bloqueada(self, cenario):
         """Dois amigos a trocarem códigos entre si não podem premiar-se um ao outro."""
         gestor, dm, _subs = cenario
-        dm.profiles[1]["referred_by"] = 2
-        dm.profiles[2]["referral_code"] = "WXYZ6789"
+        dm.profiles["1"]["referred_by"] = 2
+        dm.profiles["2"]["referral_code"] = "WXYZ6789"
 
         resultado = gestor.register_referral(2, "ABCD2345")
 
         assert resultado["success"] is False
-        assert dm.profiles[2].get("referred_by") is None
+        assert dm.profiles["2"].get("referred_by") is None
 
     def test_quem_ja_pagou_nao_pode_usar_um_codigo(self, app_context, configurar):
         """O programa premeia assinaturas NOVAS, não a renovação de um cliente antigo."""
@@ -139,7 +139,7 @@ class TestRegisterReferral:
         resultado = ReferralManager(dm).register_referral(2, "ABCD2345")
 
         assert resultado["success"] is False
-        assert dm.profiles[2].get("referred_by") is None
+        assert dm.profiles["2"].get("referred_by") is None
 
     def test_sistema_desativado(self, app_context, configurar):
         configurar(REFERRAL_ENABLED=False)
@@ -150,8 +150,8 @@ class TestRegisterReferral:
 
 class TestRecompensa:
     def _com_indicacao(self, dm):
-        dm.profiles[2]["referred_by"] = 1
-        dm.profiles[2]["referral_rewarded"] = False
+        dm.profiles["2"]["referred_by"] = 1
+        dm.profiles["2"]["referral_rewarded"] = False
 
     def test_dias_gratis_sao_somados_a_quem_indicou(self, cenario):
         gestor, dm, subs = cenario
@@ -161,7 +161,7 @@ class TestRecompensa:
 
         assert resultado["rewarded"] is True
         assert subs.chamadas == [(1, 7)]
-        assert dm.profiles[2]["referral_rewarded"] is True
+        assert dm.profiles["2"]["referral_rewarded"] is True
 
     def test_credito_e_somado_ao_saldo(self, app_context, configurar):
         configurar(REFERRAL_REWARD_TYPE="credit", REFERRAL_REWARD_CREDIT=5.0)
@@ -173,7 +173,7 @@ class TestRecompensa:
         resultado = ReferralManager(dm).reward_referrer_on_payment(2)
 
         assert resultado["rewarded"] is True
-        assert dm.profiles[1]["referral_credit"] == 7.5
+        assert dm.profiles["1"]["referral_credit"] == 7.5
 
     def test_a_recompensa_e_paga_apenas_uma_vez(self, cenario):
         gestor, dm, subs = cenario
@@ -239,7 +239,7 @@ class TestRecompensa:
         assert resultado["rewarded"] is False
         assert subs.chamadas == []
         # A oportunidade fica intacta: se o limite subir, a recompensa ainda pode ser paga.
-        assert dm.profiles[3]["referral_rewarded"] is False
+        assert dm.profiles["3"]["referral_rewarded"] is False
 
     def test_uma_entrega_falhada_nao_queima_a_recompensa(self, app_context, configurar):
         """
@@ -260,7 +260,7 @@ class TestRecompensa:
         resultado = ReferralManager(dm, SubscriptionManagerQueRebenta()).reward_referrer_on_payment(2)
 
         assert resultado == {"success": False, "rewarded": False}
-        assert dm.profiles[2]["referral_rewarded"] is False
+        assert dm.profiles["2"]["referral_rewarded"] is False
 
     def test_falha_no_indicador_nunca_quebra_o_pagamento(self, app_context, configurar):
         configurar()
@@ -310,7 +310,7 @@ class TestConsumeCredit:
         usado = ReferralManager(dm).consume_credit(1, 4.0)
 
         assert usado == 4.0
-        assert dm.profiles[1]["referral_credit"] == 6.0
+        assert dm.profiles["1"]["referral_credit"] == 6.0
 
     def test_nunca_consome_mais_do_que_o_saldo(self, app_context, configurar):
         configurar()
@@ -319,14 +319,14 @@ class TestConsumeCredit:
         usado = ReferralManager(dm).consume_credit(1, 10.0)
 
         assert usado == 3.0
-        assert dm.profiles[1]["referral_credit"] == 0.0
+        assert dm.profiles["1"]["referral_credit"] == 0.0
 
     def test_valor_negativo_e_ignorado(self, app_context, configurar):
         configurar()
         dm = FakeDataManager(profiles={1: {"media_user_id": 1, "referral_credit": 3.0}})
 
         assert ReferralManager(dm).consume_credit(1, -5.0) == 0.0
-        assert dm.profiles[1]["referral_credit"] == 3.0
+        assert dm.profiles["1"]["referral_credit"] == 3.0
 
     def test_perfil_inexistente(self, app_context, configurar):
         configurar()

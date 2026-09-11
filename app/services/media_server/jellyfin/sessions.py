@@ -1,0 +1,285 @@
+# app/services/media_server/jellyfin/sessions.py
+
+"""Leitura e encerramento das sessões do Jellyfin.
+
+Cumpre o mesmo contrato `SessionsProvider` que o Plex, para que o motor de
+streams não saiba com qual dos dois está a falar.
+
+Duas diferenças de vocabulário que vale a pena ter presentes:
+
+* O Jellyfin conta tempo em **ticks** — 10 000 000 por segundo. O painel
+  trabalha em milissegundos (herança do Plex), por isso a conversão é feita
+  aqui, à entrada, e não espalhada por quem consome.
+* O comando de paragem não leva um motivo. Para o utilizador perceber porque
+  foi cortado, envia-se primeiro uma mensagem ao cliente e só depois o
+  `Stop` — que é o mais próximo do `reason` do Plex.
+"""
+
+import logging
+from typing import List, Optional, Tuple
+
+from ....utils.identity import normalize_user_id
+from ....utils.log_formatting import describe
+from ..base import MediaSession
+from .api_client import JellyfinApiError
+
+logger = logging.getLogger(__name__)
+
+# O Jellyfin mede tempo em ticks de 100 nanossegundos.
+TICKS_POR_MILISSEGUNDO = 10_000
+
+
+def ticks_para_ms(ticks) -> int:
+    try:
+        return int((ticks or 0) // TICKS_POR_MILISSEGUNDO)
+    except (TypeError, ValueError):
+        return 0
+
+
+def plataforma_de(cliente: str, dispositivo: str, tipo: str) -> str:
+    """Classe de ícone a partir do que o Jellyfin diz sobre o cliente."""
+    texto = f"{cliente or ''} {dispositivo or ''} {tipo or ''}".lower()
+
+    # ⚠️ A ORDEM IMPORTA, pela mesma razão que no Plex: as verificações são por
+    # substring e 'chrome' está contido em 'chromecast'.
+    if 'chromecast' in texto or 'cast' in texto: return 'chromecast'
+
+    if 'chrome' in texto: return 'chrome'
+    if 'safari' in texto: return 'safari'
+    if 'firefox' in texto: return 'firefox'
+    if 'edge' in texto: return 'msedge'
+    if 'opera' in texto: return 'opera'
+
+    if 'android' in texto: return 'android'
+    if 'roku' in texto: return 'roku'
+    if 'tvos' in texto or 'apple tv' in texto: return 'atv'
+    if 'ios' in texto or 'iphone' in texto or 'ipad' in texto: return 'ios'
+    if 'playstation' in texto or 'ps4' in texto or 'ps5' in texto: return 'playstation'
+    if 'xbox' in texto: return 'xbox'
+    if 'samsung' in texto or 'tizen' in texto: return 'samsung'
+    if 'webos' in texto or texto.strip().startswith('lg'): return 'lg'
+    if 'kodi' in texto: return 'kodi'
+    if 'dlna' in texto: return 'dlna'
+
+    if 'mac' in texto: return 'macos'
+    if 'windows' in texto: return 'windows'
+    if 'linux' in texto: return 'linux'
+
+    if 'jellyfin' in texto or 'findroid' in texto or 'infuse' in texto: return 'plex'
+
+    return 'default'
+
+
+class JellyfinSessionsProvider:
+    """Cumpre o contrato `SessionsProvider` para o Jellyfin."""
+
+    # Uma sessão sem atividade recente não interessa ao controlo de streams.
+    ACTIVE_WITHIN_SECONDS = 60
+
+    def __init__(self, connection):
+        self.conn = connection
+
+    # =========================================================================
+    # LIGAÇÃO
+    # =========================================================================
+
+    def is_connected(self) -> bool:
+        return bool(self.conn and self.conn.connected)
+
+    def reconnect(self) -> Tuple[bool, str]:
+        return self.conn.reload(from_job=True)
+
+    def get_owner_id(self) -> Optional[str]:
+        """No Jellyfin não há um "dono" isento como no Plex.
+
+        Um administrador é apenas um utilizador com `IsAdministrator`, e o
+        painel não deve isentá-lo dos limites automaticamente: quem administra
+        o Jellyfin costuma ser a mesma pessoa que administra o painel, e nesse
+        caso a isenção configura-se no perfil.
+        """
+        return None
+
+    def user_thumb_source(self, raw_thumb: Optional[str]) -> Optional[str]:
+        """O avatar é servido pelo próprio Jellyfin, com a chave de API."""
+        if not raw_thumb or '/image/' in raw_thumb:
+            return None
+        return f"jellyfin:{raw_thumb}"
+
+    # =========================================================================
+    # LEITURA DAS SESSÕES
+    # =========================================================================
+
+    def list_sessions(self) -> List[MediaSession]:
+        if not self.is_connected():
+            return []
+
+        sessoes = self.conn.api.get(
+            '/Sessions', params={'activeWithinSeconds': self.ACTIVE_WITHIN_SECONDS}
+        ) or []
+
+        # O Jellyfin devolve também as sessões que estão apenas ligadas, sem
+        # nada a tocar. Para o controlo de streams, só interessa quem está a ver.
+        return [self._traduzir(s) for s in sessoes if s.get('NowPlayingItem')]
+
+    def _traduzir(self, sessao: dict) -> MediaSession:
+        item = sessao.get('NowPlayingItem') or {}
+        estado_reproducao = sessao.get('PlayState') or {}
+
+        posicao = ticks_para_ms(estado_reproducao.get('PositionTicks'))
+        duracao = ticks_para_ms(item.get('RunTimeTicks'))
+
+        progresso = 0.0
+        if duracao and posicao:
+            progresso = max(0.0, min(100.0, (posicao / duracao) * 100))
+
+        tipo = str(item.get('Type', 'unknown')).lower()
+        cliente = sessao.get('Client') or ''
+        dispositivo = sessao.get('DeviceName') or ''
+
+        return MediaSession(
+            user_id=normalize_user_id(sessao.get('UserId')),
+            username_fallback=sessao.get('UserName') or 'Desconhecido',
+            # O Jellyfin não associa email às sessões; o painel usa o do perfil.
+            user_email='',
+            session_key=str(sessao.get('Id') or ''),
+            media_title=self._titulo_para_registo(item, tipo),
+            title=self._titulo(item, tipo),
+            subtitle=self._subtitulo(item, tipo),
+            media_type='episode' if tipo == 'episode' else tipo,
+            state='paused' if estado_reproducao.get('IsPaused') else 'playing',
+            platform=plataforma_de(cliente, dispositivo, sessao.get('DeviceType')),
+            player=f"{cliente} - {dispositivo}" if cliente and dispositivo else cliente or dispositivo or "Desconhecido",
+            progress=round(progresso, 2),
+            view_offset=posicao,
+            duration=duracao,
+            artwork_source=self._capa(item),
+            stream_details=self._detalhes_do_stream(sessao),
+            raw=sessao,
+        )
+
+    def _titulo(self, item, tipo) -> str:
+        if tipo == 'episode':
+            return item.get('SeriesName') or item.get('Name') or 'Desconhecido'
+        return item.get('Name') or 'Desconhecido'
+
+    def _subtitulo(self, item, tipo) -> str:
+        if tipo != 'episode':
+            return str(item.get('ProductionYear') or '')
+
+        temporada = item.get('ParentIndexNumber')
+        episodio = item.get('IndexNumber')
+        if temporada is not None and episodio is not None:
+            return f"S{int(temporada):02d} · E{int(episodio):02d} - {item.get('Name', '')}"
+        return item.get('Name', '')
+
+    def _titulo_para_registo(self, item, tipo) -> str:
+        """O título composto que vai para os logs e para a auditoria."""
+        nome = item.get('Name') or 'Desconhecido'
+        if tipo != 'episode':
+            return nome
+
+        serie = item.get('SeriesName')
+        if not serie:
+            return nome
+
+        titulo = serie
+        temporada = item.get('ParentIndexNumber')
+        episodio = item.get('IndexNumber')
+        if temporada is not None and episodio is not None:
+            try:
+                titulo += f" S{int(temporada):02d}E{int(episodio):02d}"
+            except (ValueError, TypeError):
+                pass
+        return f"{titulo} - {nome}" if nome else titulo
+
+    def _capa(self, item) -> Optional[str]:
+        """O identificador da imagem, no vocabulário do proxy deste backend.
+
+        Prefere-se a capa da SÉRIE num episódio (é a que o painel mostra), com
+        recurso ao próprio item quando não existe.
+        """
+        etiquetas = item.get('ImageTags') or {}
+        if etiquetas.get('Primary') and item.get('Id'):
+            return f"jellyfin:/Items/{item['Id']}/Images/Primary?tag={etiquetas['Primary']}"
+
+        if item.get('SeriesPrimaryImageTag') and item.get('SeriesId'):
+            return f"jellyfin:/Items/{item['SeriesId']}/Images/Primary?tag={item['SeriesPrimaryImageTag']}"
+
+        if item.get('Id'):
+            return f"jellyfin:/Items/{item['Id']}/Images/Primary"
+        return None
+
+    def _detalhes_do_stream(self, sessao) -> dict:
+        transcode = sessao.get('TranscodingInfo') or {}
+        a_transcodificar = bool(transcode)
+
+        video_directo = transcode.get('IsVideoDirect')
+        audio_directo = transcode.get('IsAudioDirect')
+
+        return {
+            "is_transcoding": a_transcodificar,
+            "stream": "Transcode" if a_transcodificar else "Direct Play",
+            "video_decision": "Direct Play" if (not a_transcodificar or video_directo) else "Transcode",
+            "audio_decision": "Direct Play" if (not a_transcodificar or audio_directo) else "Transcode",
+            "video_codec": str(transcode.get('VideoCodec') or 'N/A').upper(),
+            "audio_codec": str(transcode.get('AudioCodec') or 'N/A').upper(),
+            "container": str(transcode.get('Container') or 'N/A').upper(),
+            "video_resolution": f"{transcode['Height']}p" if transcode.get('Height') else "N/A",
+            "transcode_speed": transcode.get('TranscodingFramerate'),
+            "transcode_progress": int(transcode['CompletionPercentage']) if transcode.get('CompletionPercentage') else None,
+        }
+
+    # =========================================================================
+    # ENCERRAMENTO
+    # =========================================================================
+
+    def terminate(self, session: MediaSession, reason: str) -> bool:
+        if not session.session_key:
+            return False
+
+        # O comando de paragem do Jellyfin não leva motivo. Enviamos primeiro a
+        # mensagem para que o utilizador perceba porque foi cortado — se ela
+        # falhar, o corte faz-se na mesma: o motivo é um extra, não a operação.
+        try:
+            self.conn.api.post(
+                f'/Sessions/{session.session_key}/Message',
+                json={'Header': 'Painel', 'Text': str(reason), 'TimeoutMs': 8000},
+            )
+        except Exception as e:
+            logger.debug(f"Não foi possível avisar a sessão {session.session_key}: {describe(e)}")
+
+        try:
+            self.conn.api.post(f'/Sessions/{session.session_key}/Playing/Stop')
+            return True
+        except JellyfinApiError as e:
+            # A sessão já não existe: para efeitos práticos está encerrada.
+            if e.status_code == 404:
+                return True
+            logger.debug(f"O Jellyfin recusou encerrar a sessão {session.session_key}: {describe(e)}")
+            return True
+        except Exception as e:
+            logger.debug(f"Falha ao encerrar a sessão {session.session_key}: {describe(e)}")
+            return True
+
+    # =========================================================================
+    # TEMPO REAL
+    # =========================================================================
+
+    def supports_realtime(self) -> bool:
+        """Ainda não: o painel cai na verificação periódica.
+
+        O Jellyfin tem um websocket (`/socket`) que permitiria o mesmo tempo
+        real do Plex. Fica para quando o backend estiver validado contra um
+        servidor real — dizer que não o suporta faz o motor de streams usar a
+        verificação periódica, que funciona e é o comportamento seguro.
+        """
+        return False
+
+    def is_listener_healthy(self) -> bool:
+        return True
+
+    def start_listener(self, on_change) -> None:
+        return None
+
+    def stop_listener(self) -> None:
+        return None

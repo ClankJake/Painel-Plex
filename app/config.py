@@ -51,6 +51,8 @@ def load_or_create_config():
             "MEDIA_SERVER_TYPE": "plex",
             "PLEX_URL": "",
             "PLEX_TOKEN": "",
+            "JELLYFIN_URL": "",
+            "JELLYFIN_API_KEY": "",
             "TAUTULLI_URL": "",
             "TAUTULLI_API_KEY": "",
             "STREAM_CHECK_INTERVAL_SECONDS": 15,
@@ -229,6 +231,8 @@ def load_or_create_config():
             # Instalações anteriores à camada de servidores de média não têm esta
             # chave: todas elas são, por definição, instalações Plex.
             _set_default("MEDIA_SERVER_TYPE", "plex")
+            _set_default("JELLYFIN_URL", "")
+            _set_default("JELLYFIN_API_KEY", "")
             _set_default("INTERNAL_TRIGGER_KEY", secrets.token_hex(32))
             _set_default("APP_BASE_URL", "")
             _set_default("LOG_LEVEL", "INFO")

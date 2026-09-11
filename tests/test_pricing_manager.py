@@ -228,7 +228,7 @@ class TestCreditoDeIndicacoes:
         PricingManager(dm).calculate_price("2", media_user_id=1, apply_referral_credit=True)
 
         # Um PIX gerado e nunca pago não pode consumir o crédito de ninguém.
-        assert dm.profiles[1]["referral_credit"] == 5.0
+        assert dm.profiles["1"]["referral_credit"] == 5.0
 
 
 class TestRequiresProrationForUpgrade:

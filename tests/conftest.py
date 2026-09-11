@@ -132,6 +132,18 @@ def data_manager(db_session):
     return DataManager()
 
 
+def _id(valor):
+    """A identidade como o DataManager real a guarda: texto normalizado.
+
+    🐛 Este duplo convertia os IDs para inteiro. Desde que a identidade passou a
+    ser texto (para caber um GUID do Jellyfin), isso fazia o duplo comportar-se
+    de forma diferente do real — e rebentava com qualquer ID não numérico.
+    """
+    from app.utils.identity import normalize_user_id
+
+    return normalize_user_id(valor)
+
+
 class FakeDataManager:
     """
     Substituto em memória do DataManager, para testar a lógica de negócio dos
@@ -141,36 +153,42 @@ class FakeDataManager:
     def __init__(self, profiles=None, coupons=None, used_coupons=None, blocked=None,
                  paid_users=None, reserved_credit=None, reserved_coupons=None,
                  pending_coupon_charges=None):
-        self.profiles = profiles or {}
+        # As chaves são normalizadas à entrada: um teste que semeie o duplo com
+        # `{1: {...}}` tem de encontrar o mesmo perfil ao pedir "1" ou 1, tal
+        # como acontece com o DataManager real.
+        self.profiles = {_id(k): v for k, v in (profiles or {}).items()}
         self.coupons = coupons or {}
-        self.used_coupons = set(used_coupons or [])
-        self.blocked = blocked or {}
+        self.used_coupons = {(_id(u), c) for u, c in (used_coupons or [])}
+        self.blocked = {_id(k): v for k, v in (blocked or {}).items()}
         # Utilizadores com pagamentos já confirmados e crédito preso em cobranças
         # abertas — ambos entram nas regras do programa de indicações.
-        self.paid_users = set(paid_users or [])
-        self.reserved_credit = reserved_credit or {}
+        self.paid_users = {_id(u) for u in (paid_users or [])}
+        self.reserved_credit = {_id(k): v for k, v in (reserved_credit or {}).items()}
         # Cupões "presos" em cobranças geradas e ainda por pagar: {codigo: nº} e
         # os pares (utilizador, codigo) com uma cobrança aberta.
         self.reserved_coupons = reserved_coupons or {}
-        self.pending_coupon_charges = set(pending_coupon_charges or [])
+        self.pending_coupon_charges = {(_id(u), c) for u, c in (pending_coupon_charges or [])}
         self.achievements = {}
         self.notifications = []
         self.terminations = []
 
     # --- Perfis ---
     def get_user_profile(self, media_user_id):
-        return self.profiles.get(int(media_user_id))
+        return self.profiles.get(_id(media_user_id))
 
     def set_user_profile(self, media_user_id, profile_data):
-        profile = self.profiles.setdefault(int(media_user_id), {"media_user_id": int(media_user_id)})
+        profile = self.profiles.setdefault(_id(media_user_id), {"media_user_id": _id(media_user_id)})
         profile.update(profile_data)
         return profile
 
     def get_user_profiles_by_id(self, media_user_ids):
+        # As chaves saem como texto, tal como no DataManager real — era o
+        # último int() que restava neste duplo, e fazia o filtro de privacidade
+        # das recomendações parecer estragado quando não estava.
         return {
-            int(user_id): self.profiles[int(user_id)]
+            _id(user_id): self.profiles[_id(user_id)]
             for user_id in media_user_ids
-            if int(user_id) in self.profiles
+            if _id(user_id) in self.profiles
         }
 
     def get_user_profile_by_email(self, email):
@@ -189,11 +207,11 @@ class FakeDataManager:
         return None
 
     def get_users_referred_by(self, media_user_id):
-        return [p for p in self.profiles.values() if p.get("referred_by") == int(media_user_id)]
+        return [p for p in self.profiles.values() if _id(p.get("referred_by")) == _id(media_user_id)]
 
     # --- Indicações (equivalentes em memória das operações atómicas) ---
     def set_user_referral_code(self, media_user_id, code):
-        profile = self.profiles.setdefault(int(media_user_id), {"media_user_id": int(media_user_id)})
+        profile = self.profiles.setdefault(_id(media_user_id), {"media_user_id": _id(media_user_id)})
         if not profile.get("referral_code"):
             profile["referral_code"] = code
         return profile["referral_code"]
@@ -202,12 +220,12 @@ class FakeDataManager:
         valor = round(float(amount or 0), 2)
         if valor <= 0:
             return 0.0
-        profile = self.profiles.setdefault(int(media_user_id), {"media_user_id": int(media_user_id)})
+        profile = self.profiles.setdefault(_id(media_user_id), {"media_user_id": _id(media_user_id)})
         profile["referral_credit"] = round(float(profile.get("referral_credit") or 0) + valor, 2)
         return valor
 
     def consume_referral_credit(self, media_user_id, amount):
-        profile = self.profiles.get(int(media_user_id))
+        profile = self.profiles.get(_id(media_user_id))
         if not profile:
             return 0.0
         disponivel = float(profile.get("referral_credit") or 0)
@@ -217,17 +235,17 @@ class FakeDataManager:
         return usado
 
     def get_reserved_referral_credit(self, media_user_id, exclude_txid=None):
-        return float(self.reserved_credit.get(int(media_user_id), 0.0))
+        return float(self.reserved_credit.get(_id(media_user_id), 0.0))
 
     def claim_referral_reward(self, media_user_id):
-        profile = self.profiles.get(int(media_user_id))
+        profile = self.profiles.get(_id(media_user_id))
         if not profile or not profile.get("referred_by") or profile.get("referral_rewarded"):
             return False
         profile["referral_rewarded"] = True
         return True
 
     def release_referral_reward(self, media_user_id):
-        profile = self.profiles.get(int(media_user_id))
+        profile = self.profiles.get(_id(media_user_id))
         if not profile:
             return False
         profile["referral_rewarded"] = False
@@ -236,11 +254,11 @@ class FakeDataManager:
     def count_rewarded_referrals(self, media_user_id):
         return len([
             p for p in self.profiles.values()
-            if p.get("referred_by") == int(media_user_id) and p.get("referral_rewarded")
+            if _id(p.get("referred_by")) == _id(media_user_id) and p.get("referral_rewarded")
         ])
 
     def user_has_completed_payment(self, media_user_id):
-        return int(media_user_id) in self.paid_users
+        return _id(media_user_id) in self.paid_users
 
     def reset_all_users_xp(self):
         for profile in self.profiles.values():
@@ -249,14 +267,14 @@ class FakeDataManager:
 
     # --- Bloqueios ---
     def get_blocked_user(self, media_user_id):
-        return self.blocked.get(int(media_user_id))
+        return self.blocked.get(_id(media_user_id))
 
     # --- Conquistas ---
     def get_unlocked_achievements(self, media_user_id):
-        return set(self.achievements.get(int(media_user_id), set()))
+        return set(self.achievements.get(_id(media_user_id), set()))
 
     def add_unlocked_achievements(self, media_user_id, username, achievements_to_add):
-        atuais = self.achievements.setdefault(int(media_user_id), set())
+        atuais = self.achievements.setdefault(_id(media_user_id), set())
         atuais.update(ach["id"] for ach in achievements_to_add)
 
     # --- Cupões ---
@@ -264,13 +282,13 @@ class FakeDataManager:
         return self.coupons.get(code)
 
     def has_user_used_coupon(self, media_user_id, code):
-        return (int(media_user_id), code) in self.used_coupons
+        return (_id(media_user_id), code) in self.used_coupons
 
     def get_reserved_coupon_uses(self, code):
         return int(self.reserved_coupons.get(code, 0))
 
     def has_user_pending_coupon_charge(self, media_user_id, code):
-        return (int(media_user_id), code) in self.pending_coupon_charges
+        return (_id(media_user_id), code) in self.pending_coupon_charges
 
     # --- Auditoria ---
     def log_stream_termination(self, media_user_id, username, media_title, platform, reason):

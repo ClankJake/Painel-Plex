@@ -30,9 +30,21 @@ def _construir_plex(*, data_manager, stats_manager, notifier_manager, requests_m
     )
 
 
+def _construir_jellyfin(*, data_manager, stats_manager, notifier_manager, requests_manager):
+    from .jellyfin import JellyfinManager
+
+    return JellyfinManager(
+        data_manager=data_manager,
+        stats_manager=stats_manager,
+        notifier_manager=notifier_manager,
+        requests_manager=requests_manager,
+    )
+
+
 # tipo -> construtor. As chaves são o que vai no config.json.
 _BACKENDS = {
     'plex': _construir_plex,
+    'jellyfin': _construir_jellyfin,
 }
 
 

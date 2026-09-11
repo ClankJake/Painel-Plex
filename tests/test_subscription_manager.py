@@ -246,7 +246,7 @@ class TestAddDaysToSubscription:
     def test_soma_ao_vencimento_futuro(self, manager):
         agora = datetime.now(get_localzone())
         vencimento = agora + timedelta(days=10)
-        manager.data_manager.profiles[1]["expiration_date"] = vencimento.isoformat()
+        manager.data_manager.profiles["1"]["expiration_date"] = vencimento.isoformat()
 
         nova = manager.add_days_to_subscription(1, 7)
 
@@ -254,7 +254,7 @@ class TestAddDaysToSubscription:
 
     def test_vencimento_expirado_conta_a_partir_de_hoje(self, manager):
         agora = datetime.now(get_localzone())
-        manager.data_manager.profiles[1]["expiration_date"] = (agora - timedelta(days=30)).isoformat()
+        manager.data_manager.profiles["1"]["expiration_date"] = (agora - timedelta(days=30)).isoformat()
 
         nova = manager.add_days_to_subscription(1, 7)
 
@@ -267,14 +267,14 @@ class TestAddDaysToSubscription:
         assert (nova - datetime.now(get_localzone())).days >= 4
 
     def test_vencimento_ilegivel_conta_a_partir_de_hoje(self, manager):
-        manager.data_manager.profiles[1]["expiration_date"] = "não é uma data"
+        manager.data_manager.profiles["1"]["expiration_date"] = "não é uma data"
 
         assert manager.add_days_to_subscription(1, 5) is not None
 
     @pytest.mark.parametrize("dias", [0, -5, None])
     def test_dias_invalidos_nao_fazem_nada(self, manager, dias):
         assert manager.add_days_to_subscription(1, dias) is None
-        assert "expiration_date" not in manager.data_manager.profiles[1]
+        assert "expiration_date" not in manager.data_manager.profiles["1"]
 
     def test_perfil_inexistente(self, manager):
         with pytest.raises(ValueError):
@@ -293,7 +293,7 @@ class TestRenewSubscription:
     def test_renovacao_mensal_completa(self, manager):
         nova = manager.renew_subscription(1, months_to_add=1)
 
-        perfil = manager.data_manager.profiles[1]
+        perfil = manager.data_manager.profiles["1"]
         assert perfil["expiration_date"] == nova.isoformat()
         assert perfil["billing_day"] == nova.day
         assert perfil["expiration_job_id"] in manager.scheduler.jobs
@@ -301,38 +301,38 @@ class TestRenewSubscription:
     def test_atualiza_o_limite_de_telas(self, manager):
         manager.renew_subscription(1, months_to_add=1, screens=3)
 
-        assert manager.data_manager.profiles[1]["screen_limit"] == 3
+        assert manager.data_manager.profiles["1"]["screen_limit"] == 3
 
     def test_telas_nao_indicadas_ficam_como_estavam(self, manager):
         manager.renew_subscription(1, months_to_add=1)
 
-        assert manager.data_manager.profiles[1]["screen_limit"] == 1
+        assert manager.data_manager.profiles["1"]["screen_limit"] == 1
 
     def test_perfil_inativo_e_reativado(self, manager):
-        manager.data_manager.profiles[1]["status"] = "inactive"
+        manager.data_manager.profiles["1"]["status"] = "inactive"
 
         manager.renew_subscription(1, months_to_add=1)
 
-        perfil = manager.data_manager.profiles[1]
+        perfil = manager.data_manager.profiles["1"]
         assert perfil["status"] == "active"
         assert perfil["last_reactivation_time"] > 0
 
     def test_limpa_os_dados_do_periodo_de_teste(self, manager):
         manager.scheduler.jobs["trial_1"] = {}
-        manager.data_manager.profiles[1].update({
+        manager.data_manager.profiles["1"].update({
             "trial_end_date": "2026-01-01T00:00:00", "trial_job_id": "trial_1",
         })
 
         manager.renew_subscription(1, months_to_add=1)
 
-        perfil = manager.data_manager.profiles[1]
+        perfil = manager.data_manager.profiles["1"]
         assert perfil["trial_end_date"] is None
         assert perfil["trial_job_id"] is None
         assert "trial_1" in manager.scheduler.removidos
 
     def test_a_tarefa_de_expiracao_antiga_e_substituida(self, manager):
         manager.scheduler.jobs["sub_end_antigo"] = {}
-        manager.data_manager.profiles[1]["expiration_job_id"] = "sub_end_antigo"
+        manager.data_manager.profiles["1"]["expiration_job_id"] = "sub_end_antigo"
 
         manager.renew_subscription(1, months_to_add=1)
 
@@ -340,8 +340,8 @@ class TestRenewSubscription:
         assert len(manager.scheduler.jobs) == 1
 
     def test_renovacoes_sucessivas_mantem_a_ancora(self, manager):
-        manager.data_manager.profiles[1]["billing_day"] = 31
-        manager.data_manager.profiles[1]["expiration_date"] = datetime(
+        manager.data_manager.profiles["1"]["billing_day"] = 31
+        manager.data_manager.profiles["1"]["expiration_date"] = datetime(
             2026, 1, 31, 12, 0, tzinfo=get_localzone()
         ).isoformat()
 
@@ -349,7 +349,7 @@ class TestRenewSubscription:
         for _ in range(2):
             manager.renew_subscription(1, months_to_add=1, base_mode="expiry_date")
 
-        assert manager.data_manager.profiles[1]["billing_day"] == 31
+        assert manager.data_manager.profiles["1"]["billing_day"] == 31
 
     def test_perfil_inexistente(self, manager):
         with pytest.raises(ValueError):
@@ -374,7 +374,7 @@ class TestUnblockUserIfNeeded:
 
     @pytest.mark.parametrize("motivo", ["expired", "trial_expired"])
     def test_desbloqueia_quem_foi_bloqueado_por_vencimento(self, manager, motivo):
-        manager.data_manager.blocked[1] = {"media_user_id": 1, "block_reason": motivo}
+        manager.data_manager.blocked["1"] = {"media_user_id": 1, "block_reason": motivo}
         manager.plex_manager = self.PlexManagerEspiao()
 
         manager._unblock_user_if_needed(1)
@@ -383,7 +383,7 @@ class TestUnblockUserIfNeeded:
 
     def test_bloqueio_manual_do_administrador_e_mantido(self, manager):
         # Pagar não deve anular um bloqueio aplicado à mão pelo administrador.
-        manager.data_manager.blocked[1] = {"media_user_id": 1, "block_reason": "manual"}
+        manager.data_manager.blocked["1"] = {"media_user_id": 1, "block_reason": "manual"}
         manager.plex_manager = self.PlexManagerEspiao()
 
         manager._unblock_user_if_needed(1)

@@ -352,6 +352,7 @@ def api_settings():
             return any(old_config.get(k) != config_to_update.get(k) for k in keys)
 
         plex_changed = _changed('PLEX_URL', 'PLEX_TOKEN')
+        jellyfin_changed = _changed('JELLYFIN_URL', 'JELLYFIN_API_KEY', 'MEDIA_SERVER_TYPE')
         efi_changed = _changed(
             'EFI_CLIENT_ID', 'EFI_CLIENT_SECRET', 'EFI_CERTIFICATE', 'EFI_SANDBOX',
             'EFI_PIX_KEY', 'EFI_ENABLED', 'EFI_USE_MTLS', 'EFI_WEBHOOK_HMAC_SECRET',
@@ -363,6 +364,12 @@ def api_settings():
         # 🐛 A Gates2b tinha sido esquecida na recarga seletiva: as credenciais
         # em memória nunca eram atualizadas ao gravar as configurações.
         gates2b_changed = _changed('GATES2B_ENABLED', 'GATES2B_AUTH_TOKEN', 'GATES2B_MIN_AMOUNT', 'APP_BASE_URL')
+
+        # Trocar de servidor de média, ou mudar as credenciais do Jellyfin, tem
+        # de reconectar — senão o painel continua a falar com o servidor antigo
+        # até ao próximo reinício.
+        if jellyfin_changed and media_server.SERVER_TYPE == 'jellyfin':
+            media_server.reload_connections()
 
         if efi_changed:
             efi_manager.reload_credentials()
@@ -809,7 +816,18 @@ def get_online_media_sources():
     Lista as Fontes de Mídia Online que o admin pode desligar nas contas de
     quem aceita um convite. As chaves vêm da própria conta Plex ligada ao
     painel, para acompanhar o que a Plex oferece em cada momento.
+
+    Nem todos os servidores têm este conceito. Em vez de comparar o tipo de
+    servidor, pergunta-se pela capacidade: quem não a tiver recebe uma lista
+    vazia e a interface esconde a secção, em vez de rebentar com um 500.
     """
+    if not media_server.capabilities.fontes_media_online:
+        return jsonify({
+            "success": True, "sources": [], "account_read": False,
+            "not_supported": True,
+            "message": _("Este servidor de média não tem Fontes de Mídia Online."),
+        })
+
     try:
         return jsonify({"success": True, **media_server.online_media.get_catalog()})
     except Exception as e:

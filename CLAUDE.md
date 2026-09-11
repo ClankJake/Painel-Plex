@@ -66,11 +66,27 @@ média**, escolhido por `MEDIA_SERVER_TYPE` no config.json.
   `_BACKENDS`.
 - `app/services/media_server/plex/` — o backend do Plex, e o único sítio onde
   vive conhecimento sobre a API do Plex.
+- `app/services/media_server/jellyfin/` — o mesmo para o Jellyfin.
+- `app/services/media_server/invitations.py` — o ciclo de vida de um convite
+  (código, vagas, validade), que é igual em todos os servidores e por isso não
+  vive em nenhum deles.
 
 Quando uma funcionalidade não existe em todos os servidores (convites nativos,
 Fontes de Mídia Online, login delegado), pergunte pelas
 `media_server.capabilities` em vez de comparar o tipo de servidor — a interface
-cresce por capacidades, não por uma cascata de exceções por marca.
+cresce por capacidades, não por uma cascata de exceções por marca. Uma
+capacidade em falta esconde a funcionalidade; nunca deve dar erro.
+
+**A diferença que não é técnica**: no Plex, o utilizador traz a conta dele e o
+painel convida-a. No Jellyfin as contas são **locais**, o painel CRIA-as e
+passa a ser responsável por entregar as credenciais. Isso muda o fluxo do
+convite (passa a pedir utilizador e palavra-passe) e enfraquece o anti-abuso de
+períodos de teste — uma conta nova não custa nada e nada a liga à mesma pessoa.
+Um convite de teste num servidor destes deve exigir um contacto verificável.
+
+Em troca, o bloqueio é muito melhor: `Policy.IsDisabled` é um booleano, e o
+utilizador mantém as bibliotecas. No Plex é preciso retirar as partilhas,
+guardar quais eram e repô-las depois.
 
 `PlexManager` (em `media_server/plex/backend.py`) é uma fachada sobre os
 submanagers: `.conn`, `.users`, `.invites`, `.subscriptions`, `.online_media`.
@@ -136,7 +152,19 @@ O campo JSON de entrada chama-se `media_user_id`; `plex_user_id` continua a ser
 aceite em `user_lookup_by_id` para não partir integrações já feitas.
 
 `TautulliManager` segue o mesmo padrão sobre `app/services/tautulli/`
-(`api_client`, `stats_handler`, `recommendations_handler`).
+(`api_client`, `stats_handler`, `recommendations_handler`). O Tautulli só
+suporta Plex: num painel ligado ao Jellyfin as estatísticas ficam
+indisponíveis até haver um fornecedor alternativo.
+
+Duas armadilhas do backend Jellyfin, ambas com teste de regressão:
+
+- `POST /Users/{id}/Policy` **substitui a política inteira**. Enviar só os
+  campos alterados repõe os restantes nos valores por omissão — um
+  administrador perdia a flag de administrador ao mudar de biblioteca. Leia
+  sempre a política, altere por cima, grave inteira.
+- A política guarda os **ItemId** das bibliotecas, não os nomes. E
+  "todas as bibliotecas" é o campo `EnableAllFolders`: sem o marcar, uma
+  biblioteca criada depois fica invisível para quem devia ver tudo.
 
 ### Configuração: config.json, não variáveis de ambiente
 
