@@ -301,7 +301,7 @@ class NotifierManager:
         # Um pedaco vazio (bloco so com espacos) seria recusado pela API.
         return [p for p in pedacos if p.strip()]
 
-    def _telegram_call(self, action, request_id, plex_user_id=None, max_retries=3):
+    def _telegram_call(self, action, request_id, media_user_id=None, max_retries=3):
         """
         Executa uma chamada à API do Telegram tratando o limite de ritmo (429) e
         o bloqueio do bot pelo utilizador (403).
@@ -325,10 +325,10 @@ class NotifierManager:
                     continue
 
                 if e.error_code == 403:
-                    if plex_user_id:
-                        logger.warning(f"[ID: {request_id}] Bot bloqueado pelo utilizador {plex_user_id}. A remover contacto.")
+                    if media_user_id:
+                        logger.warning(f"[ID: {request_id}] Bot bloqueado pelo utilizador {media_user_id}. A remover contacto.")
                         from .. import extensions
-                        extensions.data_manager.update_user_profile(plex_user_id, {'telegram_id': None, 'telegram_user': None})
+                        extensions.data_manager.update_user_profile(media_user_id, {'telegram_id': None, 'telegram_user': None})
                     raise NotificationError(_("O utilizador bloqueou o bot no Telegram."))
 
                 logger.error(f"[ID: {request_id}] Erro Telegram: {e.description}")
@@ -344,7 +344,7 @@ class NotifierManager:
         )
 
     def _send_telegram_notification(self, message, chat_id, request_id, reply_markup=None,
-                                    plex_user_id=None, photo_url=None, config=None):
+                                    media_user_id=None, photo_url=None, config=None):
         bot = self._get_bot(config)
         if not bot:
             # O canal está ligado mas sem token: comunicar isto como falha evita
@@ -360,7 +360,7 @@ class NotifierManager:
             try:
                 self._telegram_call(
                     lambda: bot.send_photo(chat_id=chat_id, photo=photo_url),
-                    request_id, plex_user_id
+                    request_id, media_user_id
                 )
             except NotificationError as e:
                 # A capa é acessória: se falhar, a mensagem ainda tem de sair.
@@ -373,7 +373,7 @@ class NotifierManager:
                     chat_id=chat_id, photo=photo_url, caption=html_message,
                     parse_mode='HTML', reply_markup=reply_markup
                 ),
-                request_id, plex_user_id
+                request_id, media_user_id
             )
             return
 
@@ -387,7 +387,7 @@ class NotifierManager:
                     chat_id=chat_id, text=p, parse_mode='HTML',
                     reply_markup=m, disable_web_page_preview=True
                 ),
-                request_id, plex_user_id
+                request_id, media_user_id
             )
 
     def _sleep(self, seconds):
@@ -882,7 +882,7 @@ class NotifierManager:
             if message:
                 _entregar('Telegram', lambda: self._send_telegram_notification(
                     message, telegram_chat_id, request_id,
-                    reply_markup=markup, plex_user_id=user_profile.get('plex_user_id'),
+                    reply_markup=markup, media_user_id=user_profile.get('media_user_id'),
                     photo_url=photo_url, config=config
                 ))
 
@@ -971,7 +971,7 @@ class NotifierManager:
                     chat_id = user_profile.get('telegram_id') or user_profile.get('telegram_user')
                     self._send_telegram_notification(
                         msg, chat_id, request_id,
-                        plex_user_id=user_profile.get('plex_user_id'),
+                        media_user_id=user_profile.get('media_user_id'),
                         photo_url=image_url, config=config
                     )
             except Exception as e:
@@ -1073,7 +1073,7 @@ class NotifierManager:
             # marcador, a menção era publicada tal e qual — literalmente
             # "<@{discord_user_id}>" — em vez de notificar quem devia.
             'discord_user_id': user_profile.get('discord_user_id', ''),
-            'plex_user_id': user_profile.get('plex_user_id') or user.get('id') or '',
+            'media_user_id': user_profile.get('media_user_id') or user.get('id') or '',
             **context
         }
 
@@ -1111,7 +1111,7 @@ class NotifierManager:
             config = load_or_create_config()
 
             alvos = self._get_bulk_target_users(payload, extensions)
-            all_profiles = {p['plex_user_id']: p for p in extensions.data_manager.get_all_user_profiles()}
+            all_profiles = {p['media_user_id']: p for p in extensions.data_manager.get_all_user_profiles()}
 
             elegiveis, ignorados = self._split_by_reachability(alvos, all_profiles, config)
             total_users = len(elegiveis)
@@ -1295,7 +1295,7 @@ class NotifierManager:
         elif target_audience == 'all': 
             return all_plex_users
         else:
-            blocked_ids = {str(u['user_plex_id']) for u in extensions.data_manager.get_blocked_users_list()}
+            blocked_ids = {str(u['media_user_id']) for u in extensions.data_manager.get_blocked_users_list()}
             if target_audience == 'blocked':
                 return [u for u in all_plex_users if str(u['id']) in blocked_ids]
             else: 

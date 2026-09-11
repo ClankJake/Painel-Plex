@@ -192,7 +192,7 @@ class MercadoPagoManager:
                 txid = str(payment['id'])
                 self.data_manager.create_pix_payment(
                     txid=txid,
-                    plex_user_id=user_info['plex_user_id'],
+                    media_user_id=user_info['media_user_id'],
                     username=user_info['username'],
                     value=price,
                     provider='MERCADOPAGO',

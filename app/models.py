@@ -92,10 +92,10 @@ class Coupon(db.Model):
 class CouponUsage(db.Model):
     __tablename__ = 'coupon_usages'
     id = db.Column(db.Integer, primary_key=True)
-    user_plex_id = db.Column(UserId(), db.ForeignKey('user_profiles.plex_user_id'), nullable=False, index=True)
+    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), nullable=False, index=True)
     coupon_id = db.Column(db.Integer, db.ForeignKey('coupons.id'), nullable=False)
     used_at = db.Column(db.DateTime, default=datetime.utcnow)
-    __table_args__ = (db.UniqueConstraint('user_plex_id', 'coupon_id', name='_user_coupon_uc'),)
+    __table_args__ = (db.UniqueConstraint('media_user_id', 'coupon_id', name='_user_coupon_uc'),)
 
 class Invitation(db.Model):
     __tablename__ = 'invitations'
@@ -120,7 +120,7 @@ class Invitation(db.Model):
 
 class BlockedUser(db.Model):
     __tablename__ = 'blocked_users'
-    user_plex_id = db.Column(UserId(), db.ForeignKey('user_profiles.plex_user_id'), primary_key=True)
+    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), primary_key=True)
     username = db.Column(db.String, nullable=False)
     blocked_at = db.Column(db.String)
     block_reason = db.Column(db.String(50), nullable=True)
@@ -131,7 +131,7 @@ class UserProfile(db.Model):
     # o Jellyfin um GUID. Ver app/utils/identity.py — no SQLite uma consulta
     # feita com um inteiro NÃO encontra a linha guardada como texto, e é por
     # isso que o DataManager normaliza tudo o que recebe.
-    plex_user_id = db.Column(UserId(), primary_key=True)
+    media_user_id = db.Column(UserId(), primary_key=True)
     # Que servidor de média criou este perfil. Um painel que troque de servidor
     # não pode confundir o histórico de um ID Plex com o de um GUID do Jellyfin
     # que por acaso coincida.
@@ -165,7 +165,7 @@ class UserProfile(db.Model):
     lifetime_xp = db.Column(db.Integer, default=0, nullable=False)
     # --- Sistema de Referência ("Indique e Ganhe") ---
     # 'referral_code' é o código público que o utilizador partilha.
-    # 'referred_by' guarda o plex_user_id de quem o indicou (a coluna já existia na
+    # 'referred_by' guarda o media_user_id de quem o indicou (a coluna já existia na
     # base de dados desde a migração 'c92625823728', mas nunca chegou a ser mapeada
     # aqui nem usada por qualquer código — agora passa a ser utilizada de facto).
     # 'referral_rewarded' evita pagar a recompensa mais do que uma vez pelo mesmo
@@ -181,7 +181,7 @@ class UserProfile(db.Model):
 class PixPayment(db.Model):
     __tablename__ = 'pix_payments'
     txid = db.Column(db.String, primary_key=True)
-    user_plex_id = db.Column(UserId(), db.ForeignKey('user_profiles.plex_user_id'), nullable=False, index=True)
+    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), nullable=False, index=True)
     username = db.Column(db.String, nullable=False)
     value = db.Column(db.Float, nullable=False)
     status = db.Column(db.String, nullable=False, default='ATIVA')
@@ -208,7 +208,7 @@ class PixPayment(db.Model):
 class Notification(db.Model):
     __tablename__ = 'notifications'
     id = db.Column(db.Integer, primary_key=True)
-    user_plex_id = db.Column(UserId(), db.ForeignKey('user_profiles.plex_user_id'), nullable=True, index=True)
+    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), nullable=True, index=True)
     message = db.Column(db.String, nullable=False)
     category = db.Column(db.String(20), nullable=False, default='info')
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
@@ -225,16 +225,16 @@ class ShortLink(db.Model):
 class UnlockedAchievement(db.Model):
     __tablename__ = 'unlocked_achievements'
     id = db.Column(db.Integer, primary_key=True)
-    user_plex_id = db.Column(UserId(), db.ForeignKey('user_profiles.plex_user_id'), nullable=False, index=True)
+    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), nullable=False, index=True)
     username = db.Column(db.String, nullable=False)
     achievement_id = db.Column(db.String, nullable=False)
     unlocked_at = db.Column(db.DateTime, default=datetime.utcnow)
-    __table_args__ = (db.UniqueConstraint('user_plex_id', 'achievement_id', name='_user_achievement_uc'),)
+    __table_args__ = (db.UniqueConstraint('media_user_id', 'achievement_id', name='_user_achievement_uc'),)
 
 class StreamTerminationLog(db.Model):
     __tablename__ = 'stream_termination_logs'
     id = db.Column(db.Integer, primary_key=True)
-    user_plex_id = db.Column(UserId(), db.ForeignKey('user_profiles.plex_user_id'), nullable=False, index=True)
+    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), nullable=False, index=True)
     username = db.Column(db.String, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     media_title = db.Column(db.String, nullable=False)

@@ -85,63 +85,63 @@ def expiration_notification_job():
     with _app.test_request_context('/'):
         from . import extensions
         users_to_check = extensions.media_server.get_users_within_notification_window()
-        for plex_user_id in users_to_check:
-            user_info = extensions.media_server.get_user_by_id(plex_user_id)
+        for media_user_id in users_to_check:
+            user_info = extensions.media_server.get_user_by_id(media_user_id)
             if user_info:
                 # 🛡️ ISOLAMENTO DE FALHA: uma notificação que falhe (ex: webhook fora do ar)
                 # não pode impedir que os demais usuários do lote sejam notificados.
                 _execute_with_retry(
                     action=lambda u=user_info: extensions.media_server.send_expiration_notification_if_needed(u),
-                    description=f"notificar vencimento para '{user_info.get('username', plex_user_id)}'"
+                    description=f"notificar vencimento para '{user_info.get('username', media_user_id)}'"
                 )
 
-def end_trial_job(plex_user_id):
+def end_trial_job(media_user_id):
     """Tarefa dinâmica para finalizar períodos de teste."""
     if not _app: return
     with _app.test_request_context('/'):
         from . import extensions
-        user_info = extensions.media_server.get_user_by_id(plex_user_id)
-        user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
+        user_info = extensions.media_server.get_user_by_id(media_user_id)
+        user_identifier = user_info['username'] if user_info else f"ID '{media_user_id}'"
         logger.info(f"Fim do período de teste para '{user_identifier}'. Acionando o bloqueio.")
         
         if user_info:
             success = _execute_with_retry(
-                action=lambda: extensions.media_server.block_user(plex_user_id, reason='trial_expired'),
+                action=lambda: extensions.media_server.block_user(media_user_id, reason='trial_expired'),
                 description=f"bloquear usuário por fim de teste '{user_identifier}'"
             )
             if success:
-                profile = extensions.data_manager.get_user_profile(plex_user_id)
+                profile = extensions.data_manager.get_user_profile(media_user_id)
                 if profile:
                     extensions.notifier_manager.send_trial_end_notification(user_info, profile)
                     profile['trial_job_id'] = None
-                    extensions.data_manager.set_user_profile(plex_user_id, profile)
+                    extensions.data_manager.set_user_profile(media_user_id, profile)
         else:
-            logger.warning(f"O usuário '{plex_user_id}' não foi encontrado durante a tarefa de fim de teste.")
+            logger.warning(f"O usuário '{media_user_id}' não foi encontrado durante a tarefa de fim de teste.")
 
-def end_subscription_job(plex_user_id):
+def end_subscription_job(media_user_id):
     """Tarefa individual acionada no fim exato da assinatura."""
     if not _app: return
     with _app.app_context():
         from . import extensions
-        user_info = extensions.media_server.get_user_by_id(plex_user_id)
-        user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
+        user_info = extensions.media_server.get_user_by_id(media_user_id)
+        user_identifier = user_info['username'] if user_info else f"ID '{media_user_id}'"
         logger.info(f"Fim da assinatura para '{user_identifier}'. Processando vencimento da conta.")
         
         try:
-            profile = extensions.data_manager.get_user_profile(plex_user_id)
+            profile = extensions.data_manager.get_user_profile(media_user_id)
             if profile and profile.get('expiration_job_id'):
                 profile['expiration_job_id'] = None
-                extensions.data_manager.set_user_profile(plex_user_id, profile)
+                extensions.data_manager.set_user_profile(media_user_id, profile)
         except Exception as e:
-            logger.error(f"Erro ao limpar o ID da tarefa '{plex_user_id}': {e}", exc_info=True)
+            logger.error(f"Erro ao limpar o ID da tarefa '{media_user_id}': {e}", exc_info=True)
 
         if user_info:
             _execute_with_retry(
-                action=lambda: extensions.media_server.block_user(plex_user_id, reason='expired'),
+                action=lambda: extensions.media_server.block_user(media_user_id, reason='expired'),
                 description=f"bloquear usuário por assinatura expirada '{user_identifier}'"
             )
         else:
-            logger.warning(f"O usuário '{plex_user_id}' não foi encontrado durante a tarefa de fim de assinatura.")
+            logger.warning(f"O usuário '{media_user_id}' não foi encontrado durante a tarefa de fim de assinatura.")
 
 @single_instance_job('removal_job')
 def removal_job():
@@ -160,9 +160,9 @@ def removal_job():
         admin_user = str(config.get("ADMIN_USER", "")).strip().lower()
         admin_id = str(config.get("ADMIN_USER_ID", "") or "").strip()
 
-        for plex_user_id in users_to_remove:
+        for media_user_id in users_to_remove:
             is_admin = False
-            user_info = extensions.media_server.get_user_by_id(plex_user_id)
+            user_info = extensions.media_server.get_user_by_id(media_user_id)
 
             # 🐛 CORREÇÃO IMPORTANTE: 'get_user_by_id' procura na lista de AMIGOS do
             # Plex — e o administrador é o DONO do servidor, por isso nunca aparece
@@ -173,19 +173,19 @@ def removal_job():
             # existe mesmo para utilizadores que já não estão no Plex.
             profile_dict = None
             try:
-                profile_dict = extensions.data_manager.get_user_profile(plex_user_id)
+                profile_dict = extensions.data_manager.get_user_profile(media_user_id)
             except Exception as e:
-                logger.warning(f"Não foi possível ler o perfil local do utilizador ID '{plex_user_id}': {e}")
+                logger.warning(f"Não foi possível ler o perfil local do utilizador ID '{media_user_id}': {e}")
 
             # Identificador legível: prioriza o Plex, cai para o perfil local, e só
             # em último caso usa o ID cru.
             username = (user_info or {}).get('username') or (profile_dict or {}).get('username')
             email = (user_info or {}).get('email') or (profile_dict or {}).get('email')
-            user_identifier = username or (f"ID '{plex_user_id}'")
+            user_identifier = username or (f"ID '{media_user_id}'")
 
             # Camada 1: comparação por ID do administrador (a mais fiável, imune a
             # mudanças de nome de utilizador ou email).
-            if admin_id and str(plex_user_id) == admin_id:
+            if admin_id and str(media_user_id) == admin_id:
                 is_admin = True
 
             # Camada 2: comparação por username/email do administrador, agora usando
@@ -205,21 +205,21 @@ def removal_job():
             # e damos o caso por encerrado.
             if not user_info:
                 logger.warning(
-                    f"Tarefa 'removal_job': utilizador '{user_identifier}' (ID {plex_user_id}) já não existe "
+                    f"Tarefa 'removal_job': utilizador '{user_identifier}' (ID {media_user_id}) já não existe "
                     f"na lista de amigos do Plex. A limpar o registo local em vez de tentar removê-lo de novo."
                 )
                 try:
                     if profile_dict:
                         profile_dict['status'] = 'inactive'
                         profile_dict['expiration_date'] = None
-                        extensions.data_manager.set_user_profile(plex_user_id, profile_dict)
-                    extensions.data_manager.remove_blocked_user(plex_user_id)
+                        extensions.data_manager.set_user_profile(media_user_id, profile_dict)
+                    extensions.data_manager.remove_blocked_user(media_user_id)
                 except Exception as e:
-                    logger.error(f"Falha ao limpar o registo local do utilizador ID '{plex_user_id}': {e}")
+                    logger.error(f"Falha ao limpar o registo local do utilizador ID '{media_user_id}': {e}")
                 continue
 
             success = _execute_with_retry(
-                action=lambda pid=plex_user_id: extensions.media_server.remove_user(pid),
+                action=lambda pid=media_user_id: extensions.media_server.remove_user(pid),
                 description=f"remover usuário '{user_identifier}'"
             )
             if success:
@@ -298,14 +298,14 @@ def sync_xp_job():
         from . import extensions
         profiles = extensions.data_manager.get_all_user_profiles()
         for profile in profiles:
-            plex_user_id = profile.get('plex_user_id')
+            media_user_id = profile.get('media_user_id')
             username = profile.get('username')
-            if not plex_user_id or not username:
+            if not media_user_id or not username:
                 continue
             # 🛡️ ISOLAMENTO DE FALHA: um utilizador com histórico problemático no
             # Tautulli não pode impedir a sincronização dos demais.
             _execute_with_retry(
-                action=lambda pid=plex_user_id, u=username: extensions.tautulli_manager.stats.sync_user_xp(pid, u),
+                action=lambda pid=media_user_id, u=username: extensions.tautulli_manager.stats.sync_user_xp(pid, u),
                 description=f"sincronizar XP para '{username}'"
             )
 

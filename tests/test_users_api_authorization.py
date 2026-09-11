@@ -19,7 +19,7 @@ def configurada(config_file):
     return config_file(IS_CONFIGURED=True, ADMIN_USER="dono", ADMIN_USER_ID="1")
 
 
-def _criar_perfil(plex_user_id):
+def _criar_perfil(media_user_id):
     """
     Cria o perfil local do utilizador.
 
@@ -31,9 +31,9 @@ def _criar_perfil(plex_user_id):
     from app.models import UserProfile
 
     perfil = UserProfile(
-        plex_user_id=plex_user_id,
-        username=f"utilizador-{plex_user_id}",
-        email=f"utilizador-{plex_user_id}@exemplo.test",
+        media_user_id=media_user_id,
+        username=f"utilizador-{media_user_id}",
+        email=f"utilizador-{media_user_id}@exemplo.test",
         status="active",
     )
     db.session.add(perfil)
@@ -41,7 +41,7 @@ def _criar_perfil(plex_user_id):
     return perfil
 
 
-def _autenticar(client, plex_user_id, role):
+def _autenticar(client, media_user_id, role):
     """
     Coloca o cliente de teste autenticado como um utilizador concreto.
 
@@ -51,12 +51,12 @@ def _autenticar(client, plex_user_id, role):
     """
     with client.session_transaction() as sessao:
         sessao["user_details"] = {
-            "id": str(plex_user_id),
-            "username": f"utilizador-{plex_user_id}",
-            "email": f"utilizador-{plex_user_id}@exemplo.test",
+            "id": str(media_user_id),
+            "username": f"utilizador-{media_user_id}",
+            "email": f"utilizador-{media_user_id}@exemplo.test",
             "role": role,
         }
-        sessao["_user_id"] = str(plex_user_id)
+        sessao["_user_id"] = str(media_user_id)
         sessao["_fresh"] = True
 
 
@@ -70,7 +70,7 @@ class TestHistoricoDePagamentos:
 
     def test_recusa_ver_o_historico_de_outro_utilizador(self, client, configurada, db_session):
         _criar_perfil(111)
-        _autenticar(client, plex_user_id=111, role="user")
+        _autenticar(client, media_user_id=111, role="user")
 
         resposta = client.get("/api/users/payments/222")
 
@@ -79,7 +79,7 @@ class TestHistoricoDePagamentos:
 
     def test_permite_ver_o_proprio_historico(self, client, configurada, db_session):
         _criar_perfil(111)
-        _autenticar(client, plex_user_id=111, role="user")
+        _autenticar(client, media_user_id=111, role="user")
 
         resposta = client.get("/api/users/payments/111")
 
@@ -87,7 +87,7 @@ class TestHistoricoDePagamentos:
         assert resposta.get_json()["success"] is True
 
     def test_o_administrador_ve_o_historico_de_qualquer_um(self, client, configurada, db_session):
-        _autenticar(client, plex_user_id=1, role="admin")
+        _autenticar(client, media_user_id=1, role="admin")
 
         resposta = client.get("/api/users/payments/222")
 
@@ -115,7 +115,7 @@ class TestPaginaDeUtilizadores:
             ADMIN_USER_ID="1",
             APP_BASE_URL="https://painel.exemplo.test/",
         )
-        _autenticar(client, plex_user_id=1, role="admin")
+        _autenticar(client, media_user_id=1, role="admin")
 
         pagina = client.get("/users").get_data(as_text=True)
 
@@ -127,7 +127,7 @@ class TestPaginaDeUtilizadores:
         "Esgotado" de um convite, mas a chave nunca era renderizada — o texto
         ficava sempre na versão de reserva, em português, mesmo noutro idioma.
         """
-        _autenticar(client, plex_user_id=1, role="admin")
+        _autenticar(client, media_user_id=1, role="admin")
 
         pagina = client.get("/users").get_data(as_text=True)
 

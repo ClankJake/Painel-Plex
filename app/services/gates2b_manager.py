@@ -241,7 +241,7 @@ class Gates2bManager:
                 logger.info(f"Cobrança Gates2b criada com sucesso. Charge ID: {mask_token(charge_id)}")
                 self.data_manager.create_pix_payment(
                     txid=charge_id,
-                    plex_user_id=user_info['plex_user_id'],
+                    media_user_id=user_info['media_user_id'],
                     username=user_info['username'],
                     value=price,
                     provider='GATES2B',

@@ -42,9 +42,9 @@ def get_public_user_profile_by_token(token):
     username = profile.username
 
     if profile.status == 'active':
-        user = extensions.media_server.get_user_by_id(profile.plex_user_id)
+        user = extensions.media_server.get_user_by_id(profile.media_user_id)
         if not user:
-            logger.warning(f"Utilizador ativo '{username}' (ID: {profile.plex_user_id}) não encontrado no Plex. A tratar como inativo para a página pública.")
+            logger.warning(f"Utilizador ativo '{username}' (ID: {profile.media_user_id}) não encontrado no Plex. A tratar como inativo para a página pública.")
         else:
             user_thumb = user.get('thumb')
 
@@ -87,8 +87,8 @@ def finalize_reactivation_route():
              return jsonify({"success": False, "message": _("Perfil local não encontrado.")}), 404
 
         # Segurança: Verifica se o ID do Plex que aceitou o convite é o mesmo do perfil local
-        if not same_user(profile.plex_user_id, plex_user_obj.id):
-             logger.warning(f"Tentativa de reativação com conta incorreta. Token: {profile.plex_user_id}, Login: {plex_user_obj.id}")
+        if not same_user(profile.media_user_id, plex_user_obj.id):
+             logger.warning(f"Tentativa de reativação com conta incorreta. Token: {profile.media_user_id}, Login: {plex_user_obj.id}")
              return jsonify({
                 "success": False, 
                 "message": _("A conta Plex utilizada ('%(plex_user)s') não corresponde à conta original deste perfil. Saia do Plex e entre com a conta original (%(local_user)s).", plex_user=plex_user_obj.username, local_user=profile.username)
@@ -97,7 +97,7 @@ def finalize_reactivation_route():
         # Verifica mudança de username/email (Evita colisões na DB)
         if profile.username != plex_user_obj.username or profile.email != plex_user_obj.email:
             existing_collision = UserProfile.query.filter_by(username=plex_user_obj.username).first()
-            if existing_collision and existing_collision.plex_user_id != profile.plex_user_id:
+            if existing_collision and existing_collision.media_user_id != profile.media_user_id:
                  return jsonify({
                     "success": False, 
                     "message": _("Alterou o seu nome no Plex para '%(new_name)s', mas este já existe no sistema. Contacte o suporte.", new_name=plex_user_obj.username)
@@ -130,23 +130,23 @@ def finalize_reactivation_route():
 @login_required
 def get_account_details():
     config = load_or_create_config()
-    plex_user_id = normalize_user_id(current_user.id)
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    media_user_id = normalize_user_id(current_user.id)
+    profile = extensions.data_manager.get_user_profile(media_user_id)
     
-    is_blocked_info = extensions.data_manager.get_blocked_user(plex_user_id)
+    is_blocked_info = extensions.data_manager.get_blocked_user(media_user_id)
 
     expiration_info = _get_expiration_details(profile, config)
     
     join_date = _("Não disponível")
-    if join_date_str := extensions.data_manager.get_user_claim_date(plex_user_id):
+    if join_date_str := extensions.data_manager.get_user_claim_date(media_user_id):
         try: 
             local_tz = get_localzone()
             join_date = format_date(datetime.fromisoformat(join_date_str).astimezone(local_tz), 'd \'de\' MMMM \'de\' yyyy')
         except (ValueError, TypeError): 
             pass
 
-    libraries_data = extensions.media_server.get_user_libraries(plex_user_id)
-    watch_data = extensions.tautulli_manager.get_user_watch_details(plex_user_id=plex_user_id)
+    libraries_data = extensions.media_server.get_user_libraries(media_user_id)
+    watch_data = extensions.tautulli_manager.get_user_watch_details(media_user_id=media_user_id)
 
     is_on_trial = False
     if trial_end_date_iso := profile.get('trial_end_date'):
@@ -192,10 +192,10 @@ def get_account_details():
 def update_account_profile(validated_data):
     # Compatibilidade com Pydantic v1 e v2
     data = validated_data.dict(exclude_unset=True) if hasattr(validated_data, 'dict') else validated_data.model_dump(exclude_unset=True)
-    plex_user_id = normalize_user_id(current_user.id)
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    media_user_id = normalize_user_id(current_user.id)
+    profile = extensions.data_manager.get_user_profile(media_user_id)
     profile.update(data)
-    extensions.data_manager.set_user_profile(plex_user_id, profile)
+    extensions.data_manager.set_user_profile(media_user_id, profile)
     return jsonify({"success": True, "message": _("Perfil atualizado com sucesso.")})
 
 @users_api_bp.route('/account/privacy', methods=['POST'])
@@ -205,10 +205,10 @@ def update_privacy_settings():
     if not isinstance(hide_setting, bool): 
         return jsonify({"success": False, "message": _("Valor inválido.")}), 400
     
-    plex_user_id = normalize_user_id(current_user.id)
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    media_user_id = normalize_user_id(current_user.id)
+    profile = extensions.data_manager.get_user_profile(media_user_id)
     profile['hide_from_leaderboard'] = hide_setting
-    extensions.data_manager.set_user_profile(plex_user_id, profile)
+    extensions.data_manager.set_user_profile(media_user_id, profile)
     return jsonify({"success": True, "message": _("Configuração de privacidade atualizada com sucesso.")})
 
 @users_api_bp.route('/account/requests')
@@ -275,7 +275,7 @@ def get_user_list():
         # 🐛 As chaves vêm da base de dados como TEXTO e o `user['id']` vem do
         # servidor de média como INTEIRO: sem normalizar, este `.get()` devolvia
         # sempre {} e a lista de contactos aparecia vazia, sem erro nenhum.
-        profiles_map = {normalize_user_id(p['plex_user_id']): p for p in user_profiles}
+        profiles_map = {normalize_user_id(p['media_user_id']): p for p in user_profiles}
 
         filtered_users = []
         for user in plex_users:
@@ -292,19 +292,19 @@ def get_user_list():
         logger.error(f"Erro ao listar utilizadores para seleção: {e}")
         return jsonify({"success": False, "message": _("Erro interno ao obter lista.")}), 500
 
-@users_api_bp.route('/profile/<plex_user_id>', methods=['GET', 'POST'])
+@users_api_bp.route('/profile/<media_user_id>', methods=['GET', 'POST'])
 @login_required
 @admin_required
-def user_profile_route(plex_user_id):
+def user_profile_route(media_user_id):
     """Consulta ou edita diretamente as informações de um utilizador específico (Admin)."""
-    user_info = extensions.media_server.get_user_by_id(plex_user_id)
+    user_info = extensions.media_server.get_user_by_id(media_user_id)
     if not user_info:
         return jsonify({"success": False, "message": _("Usuário não encontrado no Plex.")}), 404
 
     username = user_info['username']
 
     if request.method == 'GET':
-        profile = extensions.data_manager.get_user_profile(plex_user_id)
+        profile = extensions.data_manager.get_user_profile(media_user_id)
         config = load_or_create_config()
         
         is_on_trial = False
@@ -338,17 +338,17 @@ def user_profile_route(plex_user_id):
     data = validated_data.dict(exclude_unset=True) if hasattr(validated_data, 'dict') else validated_data.model_dump(exclude_unset=True)
     local_datetime_str = data.pop('expiration_datetime_local', None)
     
-    profile_to_update = extensions.data_manager.get_user_profile(plex_user_id)
+    profile_to_update = extensions.data_manager.get_user_profile(media_user_id)
     profile_to_update.update(data)
 
-    _update_manual_expiration_job(plex_user_id, username, profile_to_update, local_datetime_str)
-    extensions.data_manager.set_user_profile(plex_user_id, profile_to_update)
-    _enforce_user_status_by_date(plex_user_id, username, profile_to_update)
+    _update_manual_expiration_job(media_user_id, username, profile_to_update, local_datetime_str)
+    extensions.data_manager.set_user_profile(media_user_id, profile_to_update)
+    _enforce_user_status_by_date(media_user_id, username, profile_to_update)
 
     logger.info(f"Admin '{current_user.username}' atualizou o perfil de '{username}'.")
     return jsonify({"success": True, "message": _("Perfil do usuário atualizado com sucesso.")})
 
-@users_api_bp.route('/extend-trial/<plex_user_id>', methods=['POST'])
+@users_api_bp.route('/extend-trial/<media_user_id>', methods=['POST'])
 @login_required
 @admin_required
 @user_lookup_by_id
@@ -357,10 +357,10 @@ def extend_trial_route(user, validated_data):
     from ...extensions import scheduler
     from ...scheduler import end_trial_job
 
-    plex_user_id = user['id']
+    media_user_id = user['id']
     username = user['username']
     extend_minutes = validated_data.extend_minutes
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    profile = extensions.data_manager.get_user_profile(media_user_id)
     
     try:
         now_utc = datetime.now(timezone.utc)
@@ -379,9 +379,9 @@ def extend_trial_route(user, validated_data):
             try: scheduler.remove_job(old_job_id)
             except JobLookupError: pass
 
-        new_job_id = f"trial_end_{plex_user_id}_{secrets.token_hex(4)}"
+        new_job_id = f"trial_end_{media_user_id}_{secrets.token_hex(4)}"
         naive_run_date = new_trial_end_utc.astimezone(scheduler.timezone).replace(tzinfo=None)
-        scheduler.add_job(id=new_job_id, func=end_trial_job, args=[plex_user_id], trigger='date', run_date=naive_run_date, replace_existing=True, misfire_grace_time=3600)
+        scheduler.add_job(id=new_job_id, func=end_trial_job, args=[media_user_id], trigger='date', run_date=naive_run_date, replace_existing=True, misfire_grace_time=3600)
 
         profile['trial_end_date'] = new_trial_end_utc.isoformat()
         profile['trial_job_id'] = new_job_id
@@ -394,11 +394,11 @@ def extend_trial_route(user, validated_data):
             except JobLookupError: pass
             profile['expiration_job_id'] = None
 
-        extensions.data_manager.set_user_profile(plex_user_id, profile)
+        extensions.data_manager.set_user_profile(media_user_id, profile)
 
-        blocked_info = extensions.data_manager.get_blocked_user(plex_user_id)
+        blocked_info = extensions.data_manager.get_blocked_user(media_user_id)
         if blocked_info and blocked_info.get('block_reason') in ['trial_expired', 'expired']:
-            extensions.media_server.unblock_user(plex_user_id)
+            extensions.media_server.unblock_user(media_user_id)
 
         logger.info(f"Admin '{current_user.username}' estendeu/iniciou o período de teste de '{username}' por {extend_minutes} minutos.")
         return jsonify({"success": True, "message": _("Período de teste estendido/definido. Fim a %(date)s.", date=naive_run_date.strftime('%d/%m/%Y %H:%M'))})
@@ -410,13 +410,13 @@ def extend_trial_route(user, validated_data):
 @login_required
 @admin_required
 def reactivate_user_route():
-    plex_user_id = request.json.get('plex_user_id')
+    media_user_id = request.json.get('media_user_id')
     libraries = request.json.get('libraries')
 
-    if not plex_user_id or not libraries:
+    if not media_user_id or not libraries:
         return jsonify({"success": False, "message": _("Dados incompletos fornecidos.")}), 400
 
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    profile = extensions.data_manager.get_user_profile(media_user_id)
     if not profile or profile.get('status') != 'inactive':
         return jsonify({"success": False, "message": _("Apenas usuários inativos podem ser reativados.")}), 404
 
@@ -428,14 +428,14 @@ def reactivate_user_route():
 
     try:
         logger.info(f"Admin '{current_user.username}' a iniciar reativação manual de '{username}'.")
-        invite_result = extensions.media_server.invites.send_invite(identifier, libraries, plex_user_id=plex_user_id)
+        invite_result = extensions.media_server.invites.send_invite(identifier, libraries, media_user_id=media_user_id)
         
         if not invite_result.get('success'):
             logger.error(f"Falha ao enviar convite de reativação para '{username}': {invite_result.get('message')}")
             return jsonify({"success": False, "message": invite_result.get('message', 'Erro ao convidar.')})
 
-        extensions.data_manager.set_user_profile(plex_user_id, {'status': 'active', 'libraries': json.dumps(libraries)})
-        extensions.data_manager.remove_blocked_user(plex_user_id)
+        extensions.data_manager.set_user_profile(media_user_id, {'status': 'active', 'libraries': json.dumps(libraries)})
+        extensions.data_manager.remove_blocked_user(media_user_id)
 
         if extensions.socketio:
             extensions.socketio.emit('user_list_updated', {'message': _("O usuário %(username)s foi reativado.", username=username)}, namespace='/dashboard')
@@ -443,10 +443,10 @@ def reactivate_user_route():
         return jsonify({"success": True, "message": _("Usuário reativado. Convite enviado com sucesso!")})
 
     except Exception as e:
-        logger.error(f"Erro interno ao reativar {plex_user_id}: {e}", exc_info=True)
+        logger.error(f"Erro interno ao reativar {media_user_id}: {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Erro interno ao processar reativação.")}), 500
 
-@users_api_bp.route('/renew/<plex_user_id>', methods=['POST'])
+@users_api_bp.route('/renew/<media_user_id>', methods=['POST'])
 @login_required
 @admin_required
 @user_lookup_by_id
@@ -533,21 +533,21 @@ def renew_user_subscription_route(user, validated_data):
 @login_required
 @admin_required
 def delete_permanently_route():
-    plex_user_id = request.json.get('plex_user_id')
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    media_user_id = request.json.get('media_user_id')
+    profile = extensions.data_manager.get_user_profile(media_user_id)
     if not profile or profile.get('status') != 'inactive':
         return jsonify({"success": False, "message": _("Apenas usuários inativos podem ser apagados permanentemente.")}), 400
 
     try:
         username = profile.get('username', 'Desconhecido')
-        extensions.data_manager.delete_user_profile(plex_user_id)
-        logger.info(f"Admin '{current_user.username}' apagou permanentemente o utilizador '{username}' (ID: {plex_user_id}).")
+        extensions.data_manager.delete_user_profile(media_user_id)
+        logger.info(f"Admin '{current_user.username}' apagou permanentemente o utilizador '{username}' (ID: {media_user_id}).")
         return jsonify({"success": True, "message": _("Usuário apagado permanentemente.")})
     except Exception as e:
-        logger.error(f"Erro ao apagar utilizador {plex_user_id}: {e}", exc_info=True)
+        logger.error(f"Erro ao apagar utilizador {media_user_id}: {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Erro interno ao excluir o usuário.")}), 500
 
-@users_api_bp.route('/notify/<plex_user_id>', methods=['POST'])
+@users_api_bp.route('/notify/<media_user_id>', methods=['POST'])
 @login_required
 @admin_required
 @user_lookup_by_id
@@ -564,7 +564,7 @@ def notify_user_route(user):
     logger.info(f"Admin '{current_user.username}' disparou uma notificação manual de vencimento para '{user['username']}'.")
     return jsonify({"success": True, "message": _("Notificação de vencimento enviada.")})
 
-@users_api_bp.route('/libraries/<plex_user_id>')
+@users_api_bp.route('/libraries/<media_user_id>')
 @login_required
 @admin_required
 @user_lookup_by_id
@@ -594,7 +594,7 @@ def update_all_libraries_route():
 @login_required
 @admin_required
 def remove_user_route(): 
-    res = extensions.media_server.remove_user(request.json.get('plex_user_id'))
+    res = extensions.media_server.remove_user(request.json.get('media_user_id'))
     if res.get('success'): logger.info(f"Admin '{current_user.username}' removeu/inativou um utilizador com sucesso.")
     return jsonify(res)
 
@@ -652,16 +652,16 @@ def toggle_overseerr_access_route(user):
     if res.get('success'): logger.info(f"Admin '{current_user.username}' alterou acesso Overseerr de '{user['username']}' para {access}.")
     return jsonify(res)
 
-@users_api_bp.route('/payments/<plex_user_id>')
+@users_api_bp.route('/payments/<media_user_id>')
 @login_required
-def get_user_payments_history(plex_user_id):
+def get_user_payments_history(media_user_id):
     # 🐛 CORREÇÃO DE SEGURANÇA: a verificação anterior era `not current_user.is_admin`.
     # Como `is_admin` é um MÉTODO, a expressão avaliava o objeto do método — sempre
     # verdadeiro — e a condição nunca era satisfeita. Na prática, qualquer utilizador
     # autenticado conseguia ler o histórico de pagamentos de qualquer outra pessoa.
-    if not current_user.is_admin() and str(current_user.id) != str(plex_user_id):
+    if not current_user.is_admin() and str(current_user.id) != str(media_user_id):
         return jsonify({"success": False, "message": _("Acesso não autorizado.")}), 403
-    return jsonify({"success": True, "payments": extensions.data_manager.get_payments_by_user(plex_user_id)})
+    return jsonify({"success": True, "payments": extensions.data_manager.get_payments_by_user(media_user_id)})
 
 # ==========================================
 # FUNÇÕES AUXILIARES (HELPERS PRIVADOS)
@@ -690,10 +690,10 @@ def _get_expiration_details(profile, config):
 
 def _sync_plex_and_local_profiles(all_plex_users_list, admin_username):
     plex_user_details = {u['id']: u for u in all_plex_users_list}
-    plex_user_ids = set(plex_user_details.keys())
+    media_user_ids = set(plex_user_details.keys())
     all_profiles_from_db = extensions.data_manager.get_all_user_profiles()
     blocked_users_data = extensions.data_manager.get_blocked_users_dict()
-    local_profile_ids = {p.get('plex_user_id') for p in all_profiles_from_db}
+    local_profile_ids = {p.get('media_user_id') for p in all_profiles_from_db}
 
     all_users_to_return = []
     profiles_to_create = []
@@ -701,7 +701,7 @@ def _sync_plex_and_local_profiles(all_plex_users_list, admin_username):
     for plex_id, plex_data in plex_user_details.items():
         if plex_id not in local_profile_ids and plex_data['username'] != admin_username:
             new_profile_data = {
-                'plex_user_id': plex_id, 'username': plex_data['username'], 'email': plex_data.get('email'),
+                'media_user_id': plex_id, 'username': plex_data['username'], 'email': plex_data.get('email'),
                 'screen_limit': 0, 'status': 'active', 'hide_from_leaderboard': False, 'overseerr_access': False
             }
             profiles_to_create.append(new_profile_data)
@@ -713,38 +713,38 @@ def _sync_plex_and_local_profiles(all_plex_users_list, admin_username):
 
     if profiles_to_create:
         for new_profile in profiles_to_create:
-            extensions.data_manager.set_user_profile(new_profile['plex_user_id'], new_profile)
+            extensions.data_manager.set_user_profile(new_profile['media_user_id'], new_profile)
 
     for profile in all_profiles_from_db:
-        plex_user_id = profile.get('plex_user_id')
+        media_user_id = profile.get('media_user_id')
         username = profile.get('username')
 
-        if not plex_user_id or username == admin_username or plex_user_id not in plex_user_ids:
+        if not media_user_id or username == admin_username or media_user_id not in media_user_ids:
             if profile.get('status') == 'active':
                  profile['status'] = 'inactive'
-                 extensions.data_manager.set_user_profile(plex_user_id, {'status': 'inactive'})
+                 extensions.data_manager.set_user_profile(media_user_id, {'status': 'inactive'})
             if username != admin_username:
                  all_users_to_return.append({
-                     'id': plex_user_id, 'username': username, 'name': profile.get('name'), 
-                     'email': profile.get('email'), 'thumb': None, 'is_blocked': plex_user_id in blocked_users_data,
+                     'id': media_user_id, 'username': username, 'name': profile.get('name'), 
+                     'email': profile.get('email'), 'thumb': None, 'is_blocked': media_user_id in blocked_users_data,
                      'status': 'inactive', 'screen_limit': profile.get('screen_limit', 0),
                      'expiration_date': profile.get('expiration_date'), 'trial_end_date': profile.get('trial_end_date'),
                      'is_on_trial': False, 'payment_token': profile.get('payment_token')
                  })
             continue
 
-        plex_data = plex_user_details.get(plex_user_id, {})
+        plex_data = plex_user_details.get(media_user_id, {})
         if profile.get('username') != plex_data.get('username'):
               profile['username'] = plex_data.get('username')
-              extensions.data_manager.set_user_profile(plex_user_id, {'username': plex_data.get('username')})
+              extensions.data_manager.set_user_profile(media_user_id, {'username': plex_data.get('username')})
               username = plex_data.get('username')
 
-        is_blocked = plex_user_id in blocked_users_data
+        is_blocked = media_user_id in blocked_users_data
         final_status = profile.get('status', 'inactive')
         
         if final_status == 'inactive' and not is_blocked:
               final_status = 'active'
-              extensions.data_manager.set_user_profile(plex_user_id, {'status': 'active'})
+              extensions.data_manager.set_user_profile(media_user_id, {'status': 'active'})
 
         is_on_trial = False
         if trial_end_date_str := profile.get('trial_end_date'):
@@ -754,14 +754,14 @@ def _sync_plex_and_local_profiles(all_plex_users_list, admin_username):
             except (ValueError, TypeError): pass
 
         user_data = {
-            'id': plex_user_id, 'username': username, 'name': profile.get('name'), 
+            'id': media_user_id, 'username': username, 'name': profile.get('name'), 
             'email': plex_data.get('email', profile.get('email')), 'thumb': plex_data.get('thumb'),
             'is_blocked': is_blocked, 'status': final_status, 'screen_limit': profile.get('screen_limit', 0),
             'expiration_date': profile.get('expiration_date'), 'trial_end_date': profile.get('trial_end_date'),
             'is_on_trial': is_on_trial, 'payment_token': profile.get('payment_token')
         }
         
-        existing_index = next((i for i, u in enumerate(all_users_to_return) if u['id'] == plex_user_id), -1)
+        existing_index = next((i for i, u in enumerate(all_users_to_return) if u['id'] == media_user_id), -1)
         if existing_index != -1:
             all_users_to_return[existing_index] = user_data
         else:
@@ -769,7 +769,7 @@ def _sync_plex_and_local_profiles(all_plex_users_list, admin_username):
 
     return all_users_to_return
 
-def _update_manual_expiration_job(plex_user_id, username, profile_to_update, local_datetime_str):
+def _update_manual_expiration_job(media_user_id, username, profile_to_update, local_datetime_str):
     from ...extensions import scheduler
     from ...scheduler import end_subscription_job
 
@@ -799,8 +799,8 @@ def _update_manual_expiration_job(plex_user_id, username, profile_to_update, loc
             try: scheduler.remove_job(old_job_id)
             except JobLookupError: pass
 
-        new_job_id = f"sub_end_{plex_user_id}_{secrets.token_hex(4)}"
-        scheduler.add_job(id=new_job_id, func=end_subscription_job, args=[plex_user_id], trigger='date', run_date=naive_dt, misfire_grace_time=3600)
+        new_job_id = f"sub_end_{media_user_id}_{secrets.token_hex(4)}"
+        scheduler.add_job(id=new_job_id, func=end_subscription_job, args=[media_user_id], trigger='date', run_date=naive_dt, misfire_grace_time=3600)
 
         profile_to_update['expiration_date'] = naive_dt.astimezone(timezone.utc).isoformat()
         profile_to_update['expiration_job_id'] = new_job_id
@@ -814,8 +814,8 @@ def _update_manual_expiration_job(plex_user_id, username, profile_to_update, loc
         # passar a ser a nova referência.
         profile_to_update['billing_day'] = naive_dt.day
 
-def _enforce_user_status_by_date(plex_user_id, username, profile_to_update):
-    is_blocked = extensions.data_manager.get_blocked_user(plex_user_id) is not None
+def _enforce_user_status_by_date(media_user_id, username, profile_to_update):
+    is_blocked = extensions.data_manager.get_blocked_user(media_user_id) is not None
     now_utc = datetime.now(timezone.utc)
     new_status = 'active'
 
@@ -827,13 +827,13 @@ def _enforce_user_status_by_date(plex_user_id, username, profile_to_update):
         if trial_end_utc <= now_utc: new_status = 'trial_expired'
 
     if new_status != 'active':
-        current_block_info = extensions.data_manager.get_blocked_user(plex_user_id)
+        current_block_info = extensions.data_manager.get_blocked_user(media_user_id)
         if not current_block_info or current_block_info.get('block_reason') != new_status:
-            extensions.media_server.block_user(plex_user_id, reason=new_status)
+            extensions.media_server.block_user(media_user_id, reason=new_status)
     elif is_blocked:
-        block_reason = extensions.data_manager.get_blocked_user(plex_user_id).get('block_reason')
+        block_reason = extensions.data_manager.get_blocked_user(media_user_id).get('block_reason')
         if block_reason in ['expired', 'trial_expired']:
-            extensions.media_server.unblock_user(plex_user_id)
+            extensions.media_server.unblock_user(media_user_id)
 
 
 # ==========================================
@@ -852,12 +852,12 @@ def get_my_referral_info():
         return jsonify({"success": True, "enabled": False})
 
     try:
-        plex_user_id = normalize_user_id(current_user.id)
+        media_user_id = normalize_user_id(current_user.id)
     except (TypeError, ValueError):
         return jsonify({"success": False, "message": _("Usuário inválido.")}), 400
 
-    code = extensions.referral_manager.get_or_create_code(plex_user_id)
-    stats = extensions.referral_manager.get_referral_stats(plex_user_id)
+    code = extensions.referral_manager.get_or_create_code(media_user_id)
+    stats = extensions.referral_manager.get_referral_stats(media_user_id)
 
     # O link aponta para a página pública de convite, com o código anexado.
     base_url = (config.get("APP_BASE_URL") or request.host_url).rstrip('/')
@@ -879,9 +879,9 @@ def claim_referral_code():
     code = str(data.get('code', '')).strip()
 
     try:
-        plex_user_id = normalize_user_id(current_user.id)
+        media_user_id = normalize_user_id(current_user.id)
     except (TypeError, ValueError):
         return jsonify({"success": False, "message": _("Usuário inválido.")}), 400
 
-    result = extensions.referral_manager.register_referral(plex_user_id, code)
+    result = extensions.referral_manager.register_referral(media_user_id, code)
     return jsonify(result), (200 if result.get('success') else 400)

@@ -166,7 +166,7 @@ class TestBuildIndex:
         configurar(RECOMMENDATIONS_RESPECT_PRIVACY=True, RECOMMENDATIONS_GENRE_LOOKUP_LIMIT=0)
         handler = self._handler(
             [filme(1, "10", "Duna"), filme(2, "10", "Duna")],
-            profiles={2: {"plex_user_id": 2, "hide_from_leaderboard": True}},
+            profiles={2: {"media_user_id": 2, "hide_from_leaderboard": True}},
         )
 
         index = handler.build_index()
@@ -180,7 +180,7 @@ class TestBuildIndex:
         configurar(RECOMMENDATIONS_RESPECT_PRIVACY=False, RECOMMENDATIONS_GENRE_LOOKUP_LIMIT=0)
         handler = self._handler(
             [filme(1, "10", "Duna"), filme(2, "10", "Duna")],
-            profiles={2: {"plex_user_id": 2, "hide_from_leaderboard": True}},
+            profiles={2: {"media_user_id": 2, "hide_from_leaderboard": True}},
         )
 
         assert handler.build_index()["item_users"]["movie:10"] == {"1", "2"}

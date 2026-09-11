@@ -324,7 +324,7 @@ class RecommendationsHandler:
     # RECOMENDAÇÕES DE UM UTILIZADOR
     # ======================================================================
 
-    def recommend(self, index: Dict[str, Any], plex_user_id: str) -> Dict[str, Any]:
+    def recommend(self, index: Dict[str, Any], media_user_id: str) -> Dict[str, Any]:
         """
         Gera as secções "Porque assistiu X, pode gostar de Y" para um utilizador.
 
@@ -338,7 +338,7 @@ class RecommendationsHandler:
         min_co = _config_int(config, "RECOMMENDATIONS_MIN_CO_OCCURRENCE", minimum=1)
 
         catalog = index.get("catalog") or {}
-        user_items = (index.get("user_items") or {}).get(str(plex_user_id)) or {}
+        user_items = (index.get("user_items") or {}).get(str(media_user_id)) or {}
 
         if not user_items:
             return {"success": True, "sections": [], "reason": "no_history"}

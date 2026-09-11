@@ -16,12 +16,12 @@ notifications_api_bp = Blueprint('notifications_api', __name__)
 @limiter.exempt
 def get_notifications_route():
     try:
-        # Admin vê notificações do sistema (user_plex_id=None)
-        # Utilizadores vêm as suas próprias (user_plex_id=current_user.id)
+        # Admin vê notificações do sistema (media_user_id=None)
+        # Utilizadores vêm as suas próprias (media_user_id=current_user.id)
         target_plex_id = None if current_user.is_admin() else current_user.id
         
-        notifications_data = data_manager.get_notifications(user_plex_id=target_plex_id, limit=15, include_read=True)
-        unread_count = data_manager.get_unread_notification_count(user_plex_id=target_plex_id)
+        notifications_data = data_manager.get_notifications(media_user_id=target_plex_id, limit=15, include_read=True)
+        unread_count = data_manager.get_unread_notification_count(media_user_id=target_plex_id)
 
         for n in notifications_data:
             if isinstance(n.get('timestamp'), datetime):
@@ -36,7 +36,7 @@ def get_notifications_route():
 def mark_all_notifications_as_read_route():
     try:
         target_plex_id = None if current_user.is_admin() else current_user.id
-        updated_count = data_manager.mark_all_as_read(user_plex_id=target_plex_id)
+        updated_count = data_manager.mark_all_as_read(media_user_id=target_plex_id)
         return jsonify({"success": True, "message": f"{updated_count} notificações marcadas como lidas."})
     except Exception as e:
         logger.error(f"Erro ao marcar notificações como lidas: {e}", exc_info=True)
@@ -47,7 +47,7 @@ def mark_all_notifications_as_read_route():
 def clear_all_notifications_route():
     try:
         target_plex_id = None if current_user.is_admin() else current_user.id
-        deleted_count = data_manager.delete_all_notifications(user_plex_id=target_plex_id)
+        deleted_count = data_manager.delete_all_notifications(media_user_id=target_plex_id)
         return jsonify({"success": True, "message": f"{deleted_count} notificações foram limpas com sucesso."})
     except Exception as e:
         logger.error(f"Erro ao limpar todas as notificações: {e}", exc_info=True)

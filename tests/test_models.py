@@ -75,7 +75,7 @@ class TestValoresPorOmissao:
         assert cupao.max_uses == 1
 
     def test_perfil_de_utilizador(self, db_session):
-        perfil = UserProfile(plex_user_id=1, username="ana")
+        perfil = UserProfile(media_user_id=1, username="ana")
         db_session.add(perfil)
         db_session.commit()
 
@@ -90,9 +90,9 @@ class TestValoresPorOmissao:
     def test_username_e_unico(self, db_session):
         from sqlalchemy.exc import IntegrityError
 
-        db_session.add(UserProfile(plex_user_id=1, username="ana"))
+        db_session.add(UserProfile(media_user_id=1, username="ana"))
         db_session.commit()
 
-        db_session.add(UserProfile(plex_user_id=2, username="ana"))
+        db_session.add(UserProfile(media_user_id=2, username="ana"))
         with pytest.raises(IntegrityError):
             db_session.commit()

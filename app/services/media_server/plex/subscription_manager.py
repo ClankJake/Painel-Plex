@@ -26,7 +26,7 @@ class PlexSubscriptionManager:
         self.scheduler = scheduler 
         self.plex_manager = None # Injetado pelo PlexManager após a inicialização
 
-    def add_days_to_subscription(self, plex_user_id, days):
+    def add_days_to_subscription(self, media_user_id, days):
         """
         Soma dias diretamente ao vencimento de um utilizador, sem passar pelo fluxo
         de renovação paga. Usado por recompensas (ex: sistema de indicações).
@@ -39,7 +39,7 @@ class PlexSubscriptionManager:
         if not days or int(days) <= 0:
             return None
 
-        profile = self.data_manager.get_user_profile(plex_user_id)
+        profile = self.data_manager.get_user_profile(media_user_id)
         if not profile:
             raise ValueError("Perfil de utilizador não encontrado.")
 
@@ -62,20 +62,20 @@ class PlexSubscriptionManager:
         new_expiration_date = base_date + timedelta(days=int(days))
 
         profile['expiration_date'] = new_expiration_date.isoformat()
-        self.data_manager.set_user_profile(plex_user_id, profile)
+        self.data_manager.set_user_profile(media_user_id, profile)
 
-        self._replace_expiration_job(profile, plex_user_id, new_expiration_date)
-        self._unblock_user_if_needed(plex_user_id)
+        self._replace_expiration_job(profile, media_user_id, new_expiration_date)
+        self._unblock_user_if_needed(media_user_id)
 
         logger.info(f"[Referral] {days} dia(s) somados a '{profile.get('username')}'. Novo vencimento: {new_expiration_date.strftime('%d/%m/%Y')}.")
         return new_expiration_date
 
-    def renew_subscription(self, plex_user_id, months_to_add, screens=None, base_mode='today', base_date_str=None, expiration_time_str=None, is_reactivation=False):
+    def renew_subscription(self, media_user_id, months_to_add, screens=None, base_mode='today', base_date_str=None, expiration_time_str=None, is_reactivation=False):
         """
         Renova a subscrição de um utilizador, calcula a nova data de vencimento
         e reagenda a sua tarefa de expiração.
         """
-        profile = self.data_manager.get_user_profile(plex_user_id)
+        profile = self.data_manager.get_user_profile(media_user_id)
         if not profile:
             raise ValueError("Perfil de utilizador não encontrado.")
 
@@ -92,13 +92,13 @@ class PlexSubscriptionManager:
         # amigo do servidor, em vez de confiar apenas na tabela interna de bloqueados.
         is_still_plex_friend = True
         if self.plex_manager:
-            is_still_plex_friend = self.plex_manager.get_user_by_id(plex_user_id) is not None
+            is_still_plex_friend = self.plex_manager.get_user_by_id(media_user_id) is not None
 
         if profile.get('status') == 'inactive' or not is_still_plex_friend:
             is_reactivation = True
 
         # 1. Atualizar o estado básico do perfil (Status e Limite de Telas)
-        self._update_basic_profile_state(profile, plex_user_id, screens, is_reactivation)
+        self._update_basic_profile_state(profile, media_user_id, screens, is_reactivation)
 
         # 2. Calcular as Datas de Renovação
         now = datetime.now(get_localzone())
@@ -116,23 +116,23 @@ class PlexSubscriptionManager:
         profile['billing_day'] = billing_day
 
         # 3. Limpar Testes (Trials) Anteriores e Reagendar Expiração
-        self._clear_trial_data(profile, plex_user_id)
-        self._replace_expiration_job(profile, plex_user_id, new_expiration_date)
+        self._clear_trial_data(profile, media_user_id)
+        self._replace_expiration_job(profile, media_user_id, new_expiration_date)
 
         # 4. Desbloquear Utilizador (Se estava bloqueado por falta de pagamento)
-        self._unblock_user_if_needed(plex_user_id)
+        self._unblock_user_if_needed(media_user_id)
 
         # 🛡️ ANTI-DUPLICAÇÃO: Marca o timestamp exato da reativação no perfil do utilizador
         if is_reactivation:
             profile['last_reactivation_time'] = time.time()
 
         # 5. Salvar na Base de Dados
-        self.data_manager.set_user_profile(plex_user_id, profile)
+        self.data_manager.set_user_profile(media_user_id, profile)
 
         # 6. Restauro de Acesso Seguro e Notificação de Reativação
         if is_reactivation and self.plex_manager and self.plex_manager.notifier_manager:
             try:
-                user_info = self.plex_manager.get_user_by_id(plex_user_id) or {'id': plex_user_id, 'username': profile.get('username')}
+                user_info = self.plex_manager.get_user_by_id(media_user_id) or {'id': media_user_id, 'username': profile.get('username')}
                 email = profile.get('email') or user_info.get('email')
                 
                 # Utiliza o método robusto do InviteManager para restaurar o acesso e readicionar o utilizador
@@ -149,7 +149,7 @@ class PlexSubscriptionManager:
                     invite_result = self.plex_manager.invites.send_invite(
                         identifier=email,
                         library_titles=libraries,
-                        plex_user_id=plex_user_id,
+                        media_user_id=media_user_id,
                         allow_sync=profile.get('allow_downloads', False)
                     )
                 
@@ -178,14 +178,14 @@ class PlexSubscriptionManager:
                 # exibir um botão de confirmação manual caso a ativação automática falhe.
                 # Só guardamos um link "real" quando temos um token válido (convite pendente);
                 # caso contrário, limpamos para não mostrar o botão à toa.
-                latest_profile = self.data_manager.get_user_profile(plex_user_id) or profile
+                latest_profile = self.data_manager.get_user_profile(media_user_id) or profile
                 latest_profile['pending_invite_link'] = invite_link if (invite_token and invite_token != "ACCEPTED") else None
-                self.data_manager.set_user_profile(plex_user_id, latest_profile)
+                self.data_manager.set_user_profile(media_user_id, latest_profile)
                 
                 # Dispara a notificação de reativação com o link embutido
                 self.plex_manager.notifier_manager.send_reactivation_notification(user_info, new_expiration_date, profile, invite_link)
             except Exception as e:
-                logger.error(f"Falha ao restaurar acesso ou enviar notificação de reativação para o usuário {plex_user_id}: {e}")
+                logger.error(f"Falha ao restaurar acesso ou enviar notificação de reativação para o usuário {media_user_id}: {e}")
 
         return new_expiration_date
 
@@ -193,10 +193,10 @@ class PlexSubscriptionManager:
     # --- MÉTODOS AUXILIARES (SRP) ---
     # ====================================================================
 
-    def _update_basic_profile_state(self, profile, plex_user_id, screens, is_reactivation):
+    def _update_basic_profile_state(self, profile, media_user_id, screens, is_reactivation):
         """Atualiza estado e limites de ecrã do perfil do utilizador."""
         if is_reactivation:
-            logger.info(f"A reativar o perfil do utilizador '{profile.get('username')}' (ID: {plex_user_id}).")
+            logger.info(f"A reativar o perfil do utilizador '{profile.get('username')}' (ID: {media_user_id}).")
             profile['status'] = 'active'
 
         if screens is not None and screens >= 0:
@@ -351,13 +351,13 @@ class PlexSubscriptionManager:
 
         return new_expiration_date
 
-    def _clear_trial_data(self, profile, plex_user_id):
+    def _clear_trial_data(self, profile, media_user_id):
         """Remove rastros de um período de teste (trial) anterior e cancela a sua tarefa."""
         if not profile.get('trial_end_date') and not profile.get('trial_job_id'):
             return
 
         profile['trial_end_date'] = None
-        logger.info(f"Data de fim de teste limpa para o utilizador {plex_user_id} devido à renovação.")
+        logger.info(f"Data de fim de teste limpa para o utilizador {media_user_id} devido à renovação.")
 
         job_id = profile.get('trial_job_id')
         if job_id and self.scheduler:
@@ -380,7 +380,7 @@ class PlexSubscriptionManager:
                         raise
             profile['trial_job_id'] = None
 
-    def _replace_expiration_job(self, profile, plex_user_id, new_expiration_date):
+    def _replace_expiration_job(self, profile, media_user_id, new_expiration_date):
         """Cancela a tarefa de suspensão antiga e agenda uma nova no APScheduler."""
         from ....scheduler import end_subscription_job
 
@@ -409,12 +409,12 @@ class PlexSubscriptionManager:
             profile['expiration_job_id'] = None
 
         # 2. Agendar a nova tarefa
-        new_job_id = f"sub_end_{plex_user_id}_{secrets.token_hex(4)}"
+        new_job_id = f"sub_end_{media_user_id}_{secrets.token_hex(4)}"
         try:
             self.scheduler.add_job(
                 id=new_job_id,
                 func=end_subscription_job,
-                args=[plex_user_id],
+                args=[media_user_id],
                 trigger='date',
                 run_date=new_expiration_date,
                 misfire_grace_time=3600 # 1 hora de tolerância
@@ -422,22 +422,22 @@ class PlexSubscriptionManager:
             profile['expiration_job_id'] = new_job_id
             logger.info(f"Tarefa de expiração '{new_job_id}' agendada para {new_expiration_date.strftime('%Y-%m-%d %H:%M:%S')}.")
         except Exception as e:
-            logger.error(f"Falha ao agendar tarefa de expiração para o utilizador {plex_user_id}: {e}")
+            logger.error(f"Falha ao agendar tarefa de expiração para o utilizador {media_user_id}: {e}")
 
-    def _unblock_user_if_needed(self, plex_user_id):
+    def _unblock_user_if_needed(self, media_user_id):
         """Desbloqueia o utilizador no Plex se ele estivesse inativo devido a falta de pagamento."""
-        blocked_user_info = self.data_manager.get_blocked_user(plex_user_id)
+        blocked_user_info = self.data_manager.get_blocked_user(media_user_id)
         if blocked_user_info and self.plex_manager:
             block_reason = blocked_user_info.get('block_reason')
             if block_reason in ['expired', 'trial_expired']:
-                self.plex_manager.unblock_user(plex_user_id)
+                self.plex_manager.unblock_user(media_user_id)
 
     # --- MÉTODOS PENDENTES (Mantidos para evitar quebrar interfaces externas) ---
-    def schedule_user_expiration(self, plex_user_id, expiration_date):
+    def schedule_user_expiration(self, media_user_id, expiration_date):
         pass
 
-    def end_user_trial(self, plex_user_id):
+    def end_user_trial(self, media_user_id):
         pass
 
-    def check_user_expiration(self, plex_user_id):
+    def check_user_expiration(self, media_user_id):
         pass

@@ -161,7 +161,7 @@ class TestGetLevelInfo:
 
 class TestSyncUserXp:
     def _handler(self, history=None, profiles=None, **kwargs):
-        dados = FakeDataManager(profiles=profiles or {1: {"plex_user_id": 1, "username": "ana"}})
+        dados = FakeDataManager(profiles=profiles or {1: {"media_user_id": 1, "username": "ana"}})
         return StatsHandler(FakeApiClient(history=history, **kwargs), data_manager=dados), dados
 
     def test_soma_xp_por_minuto_assistido(self, app_context, configurar):
@@ -187,7 +187,7 @@ class TestSyncUserXp:
         configurar()
         handler, dados = self._handler(
             history=[{"date": 1700000000, "duration": 600, "percent_complete": 0}],
-            profiles={1: {"plex_user_id": 1, "username": "ana", "xp": 100, "lifetime_xp": 500}},
+            profiles={1: {"media_user_id": 1, "username": "ana", "xp": 100, "lifetime_xp": 500}},
         )
 
         assert handler.sync_user_xp(1, "ana") == 110
@@ -197,7 +197,7 @@ class TestSyncUserXp:
         configurar()
         handler, _dados = self._handler(
             history=[{"date": 1700000000, "duration": 600, "percent_complete": 0}],
-            profiles={1: {"plex_user_id": 1, "username": "ana", "xp": 50, "xp_last_sync_at": 1700000000}},
+            profiles={1: {"media_user_id": 1, "username": "ana", "xp": 50, "xp_last_sync_at": 1700000000}},
         )
 
         # O item é do próprio instante da última sincronização: não conta de novo.
@@ -233,7 +233,7 @@ class TestSyncUserXp:
         configurar()
         handler, _dados = self._handler(
             history=[],
-            profiles={1: {"plex_user_id": 1, "username": "ana", "xp_last_sync_at": 1700000000}},
+            profiles={1: {"media_user_id": 1, "username": "ana", "xp_last_sync_at": 1700000000}},
         )
 
         handler.sync_user_xp(1, "ana")
@@ -244,13 +244,13 @@ class TestSyncUserXp:
         configurar()
         handler, dados = self._handler(
             history=[{"date": 1700000000, "duration": 60000, "percent_complete": 0}],
-            profiles={1: {"plex_user_id": 1, "username": "ana", "xp": 0}},
+            profiles={1: {"media_user_id": 1, "username": "ana", "xp": 0}},
         )
 
         handler.sync_user_xp(1, "ana")
 
         assert len(dados.notifications) == 1
-        assert dados.notifications[0]["user_plex_id"] == 1
+        assert dados.notifications[0]["media_user_id"] == 1
 
     def test_sem_subida_de_nivel_nao_notifica(self, app_context, configurar):
         configurar()
@@ -322,8 +322,8 @@ class TestResetSeason:
 
         monkeypatch.setattr(config_module, "save_app_config", lambda cfg: True)
         dados = FakeDataManager(profiles={
-            1: {"plex_user_id": 1, "xp": 500, "lifetime_xp": 500},
-            2: {"plex_user_id": 2, "xp": 100, "lifetime_xp": 100},
+            1: {"media_user_id": 1, "xp": 500, "lifetime_xp": 500},
+            2: {"media_user_id": 2, "xp": 100, "lifetime_xp": 100},
         })
         return StatsHandler(FakeApiClient(), data_manager=dados)
 
@@ -432,7 +432,7 @@ class TestAchievements:
         handler._calculate_achievements(self._stats(movie_count=5), 7, 1, "ana")
 
         assert len(handler.data_manager.notifications) == 1
-        assert handler.data_manager.notifications[0]["user_plex_id"] == 1
+        assert handler.data_manager.notifications[0]["media_user_id"] == 1
 
     def test_nao_notifica_duas_vezes_a_mesma_conquista(self, handler):
         handler._calculate_achievements(self._stats(movie_count=5), 7, 1, "ana")

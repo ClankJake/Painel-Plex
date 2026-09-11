@@ -400,7 +400,7 @@ class TestWebhook:
                 self.enviadas.append((perfil, dados))
 
         dados = FakeDataManager(profiles={
-            1: {"plex_user_id": 1, "username": "ana", "email": "ana@exemplo.com"},
+            1: {"media_user_id": 1, "username": "ana", "email": "ana@exemplo.com"},
         })
         notifier = NotifierEspiao()
         monkeypatch.setattr(extensions, "data_manager", dados)

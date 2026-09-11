@@ -126,7 +126,7 @@
 <script id="wrapped-script"
         type="module"
         src="{{ url_for('static', filename='js/wrapped.js') }}"
-        data-wrapped-url="{{ url_for('stats_api.get_wrapped_data_route', plex_user_id=current_user.id) }}"
+        data-wrapped-url="{{ url_for('stats_api.get_wrapped_data_route', media_user_id=current_user.id) }}"
         data-current-year="{{ now_year }}"
         data-i18n-hours-watched="{{ _('horas assistidas') }}"
         data-i18n-movies="{{ _('filmes') }}"

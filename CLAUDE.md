@@ -88,8 +88,29 @@ Cuidado com a diferença entre `users.list_users()` (leitura crua do servidor) e
 `media_server.get_all_users()` (a mesma lista tratada para a interface). Foram
 o mesmo nome em duas camadas durante muito tempo.
 
-Continuam acoplados ao Plex, por migrar: o `StreamManager` (sessões e listener
-SSE) e a coluna `user_plex_id` dos modelos.
+Continua acoplado ao Plex, por migrar: o `StreamManager` (sessões e listener
+SSE).
+
+### Identidade do utilizador: texto, não inteiro
+
+O Plex identifica as contas por um inteiro, o Jellyfin por um GUID. A coluna
+chama-se `media_user_id` e é `VARCHAR(64)` em todas as tabelas.
+
+A normalização vive no **tipo da coluna** (`UserId`, em `app/models.py`), e não
+nos métodos do `DataManager`: assim aplica-se sozinha ao que é gravado e ao que
+é comparado num `WHERE`, incluindo em consultas que ainda ninguém escreveu.
+Para comparar identidades em Python use `same_user()` / `normalize_user_id()`
+de `app/utils/identity.py` — nunca `==` directo nem `int()`.
+
+A armadilha que isto fecha: **no SQLite, uma consulta feita com o inteiro 123
+não encontra a linha guardada como `'123'`**, e o ID chega ao painel em
+formatos diferentes conforme a origem (inteiro da API do Plex, texto da sessão,
+texto de um URL). Quando um dicionário indexado por ID parece "não encontrar
+nada" sem dar erro, é quase sempre isto — foi assim que os utilizadores
+bloqueados deixaram de ser expulsos durante esta migração.
+
+O campo JSON de entrada chama-se `media_user_id`; `plex_user_id` continua a ser
+aceite em `user_lookup_by_id` para não partir integrações já feitas.
 
 `TautulliManager` segue o mesmo padrão sobre `app/services/tautulli/`
 (`api_client`, `stats_handler`, `recommendations_handler`).
@@ -114,7 +135,10 @@ memória até o próximo reinício.
 
 O estado relacional (perfis, pagamentos, cupões, convites, conquistas) fica no
 SQLite via `DataManager` (`app/services/data_manager.py`) e nos modelos de
-`app/models.py`. `User` é a exceção: não é uma tabela, é um objeto do
+`app/models.py`. As migrações que mexem no tipo ou no nome de colunas com
+chaves estrangeiras precisam de `PRAGMA legacy_alter_table=ON` no SQLite, e de
+repor a chave estrangeira numa segunda passagem depois da renomeação — ver
+`b7d4e82a16c9`, onde ambos os detalhes custaram uma tabela sem chaves. `User` é a exceção: não é uma tabela, é um objeto do
 Flask-Login reconstruído a partir da sessão (`load_user`).
 
 ### Blueprints

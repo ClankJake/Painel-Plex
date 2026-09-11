@@ -434,7 +434,7 @@
         src="{{ url_for('static', filename='js/statistics.js') }}"
         data-current-user='{{ current_user.to_json() }}'
         data-stats-url="{{ url_for('stats_api.get_statistics_data') }}"
-        data-user-stats-url="{{ url_for('stats_api.get_user_statistics', plex_user_id=0) }}"
+        data-user-stats-url="{{ url_for('stats_api.get_user_statistics', media_user_id=0) }}"
         data-recently-added-url="{{ url_for('stats_api.get_recently_added_route') }}"
         data-recommendations-url="{{ url_for('stats_api.get_recommendations_route') }}"
         data-i18n-loading-failed="{{ _('Falha ao comunicar com o servidor.') }}"

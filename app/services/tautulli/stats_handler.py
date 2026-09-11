@@ -139,7 +139,7 @@ class StatsHandler:
         self.api = api_client
         self.data_manager = data_manager
 
-    def sync_user_xp(self, plex_user_id: str, username: str) -> Optional[int]:
+    def sync_user_xp(self, media_user_id: str, username: str) -> Optional[int]:
         """
         Sincroniza o XP de um utilizador com o histórico do Tautulli desde a
         última sincronização (ou desde sempre, na primeira vez — o histórico
@@ -162,7 +162,7 @@ class StatsHandler:
             xp_bonus_completed = config.get("XP_BONUS_PER_COMPLETED_ITEM", 20)
             completion_threshold = config.get("XP_COMPLETION_THRESHOLD_PERCENT", 90)
 
-            profile = self.data_manager.get_user_profile(plex_user_id) or {}
+            profile = self.data_manager.get_user_profile(media_user_id) or {}
             last_sync_ts = profile.get('xp_last_sync_at')
             current_xp = profile.get('xp', 0) or 0
 
@@ -173,7 +173,7 @@ class StatsHandler:
                 # para que o nível já reflita o uso passado do utilizador.
                 after_date = None
 
-            params = {"user_id": plex_user_id}
+            params = {"user_id": media_user_id}
             if after_date:
                 params["after"] = after_date
             history_response = self.api.get_history(**params)
@@ -182,7 +182,7 @@ class StatsHandler:
             if not history:
                 # Nada de novo para processar, mas ainda assim marca a sincronização
                 # como feita agora para não ficar sempre a tentar reprocessar o vazio.
-                self.data_manager.set_user_profile(plex_user_id, {'xp_last_sync_at': datetime.now(timezone.utc).timestamp()})
+                self.data_manager.set_user_profile(media_user_id, {'xp_last_sync_at': datetime.now(timezone.utc).timestamp()})
                 return current_xp
 
             newest_ts = last_sync_ts or 0
@@ -208,7 +208,7 @@ class StatsHandler:
             current_lifetime = profile.get('lifetime_xp') or 0
             new_lifetime_xp = int(current_lifetime + xp_gained)
 
-            self.data_manager.set_user_profile(plex_user_id, {
+            self.data_manager.set_user_profile(media_user_id, {
                 'xp': new_total_xp,
                 'lifetime_xp': new_lifetime_xp,
                 'xp_last_sync_at': newest_ts or datetime.now(timezone.utc).timestamp(),
@@ -222,15 +222,15 @@ class StatsHandler:
                 if new_level['level_number'] > old_level['level_number']:
                     self.data_manager.create_notification(
                         message=_("Você subiu de nível: %(icon)s %(name)s!", icon=new_level['level_icon'], name=new_level['level_name']),
-                        category='success', link="/statistics", user_plex_id=plex_user_id
+                        category='success', link="/statistics", media_user_id=media_user_id
                     )
 
             return new_total_xp
         except RequestException as e:
-            logger.debug(f"Falha ao sincronizar XP para o utilizador {plex_user_id} (Tautulli indisponível): {e}")
+            logger.debug(f"Falha ao sincronizar XP para o utilizador {media_user_id} (Tautulli indisponível): {e}")
             return None
         except Exception as e:
-            logger.error(f"Erro inesperado ao sincronizar XP para o utilizador {plex_user_id}: {e}", exc_info=True)
+            logger.error(f"Erro inesperado ao sincronizar XP para o utilizador {media_user_id}: {e}", exc_info=True)
             return None
 
     def get_season_info(self) -> Optional[Dict[str, Any]]:
@@ -396,12 +396,12 @@ class StatsHandler:
             }
         }
 
-    def _calculate_achievements(self, stats: Dict[str, Any], days: int, plex_user_id: str, username: str) -> List[Dict[str, Any]]:
+    def _calculate_achievements(self, stats: Dict[str, Any], days: int, media_user_id: str, username: str) -> List[Dict[str, Any]]:
         if not self.data_manager: 
             return []
             
         achievement_definitions = self._get_achievement_definitions(days)
-        unlocked_in_db = self.data_manager.get_unlocked_achievements(plex_user_id)
+        unlocked_in_db = self.data_manager.get_unlocked_achievements(media_user_id)
         newly_unlocked = []
 
         for key, definition in achievement_definitions.items():
@@ -425,8 +425,8 @@ class StatsHandler:
                     })
         
         if newly_unlocked:
-            self.data_manager.add_unlocked_achievements(plex_user_id, username, newly_unlocked)
-            # 🐛 CORREÇÃO: notifica sempre o verdadeiro dono da conquista (plex_user_id),
+            self.data_manager.add_unlocked_achievements(media_user_id, username, newly_unlocked)
+            # 🐛 CORREÇÃO: notifica sempre o verdadeiro dono da conquista (media_user_id),
             # independentemente de quem tenha despoletado este cálculo (ex: um admin a
             # navegar pelo leaderboard). Antes, a notificação só era enviada se quem
             # estivesse a ver a página fosse o próprio dono — e como a deteção "newly
@@ -436,11 +436,11 @@ class StatsHandler:
             for ach in newly_unlocked:
                 self.data_manager.create_notification(
                     message=_("Nova conquista desbloqueada: %(title)s (%(level)s)!", title=ach['title'], level=ach['level']), 
-                    category='success', link="/statistics", user_plex_id=plex_user_id
+                    category='success', link="/statistics", media_user_id=media_user_id
                 )
 
         final_achievements = []
-        all_unlocked_ever = self.data_manager.get_unlocked_achievements(plex_user_id)
+        all_unlocked_ever = self.data_manager.get_unlocked_achievements(media_user_id)
         
         for ach_id in all_unlocked_ever:
             try:
@@ -508,7 +508,7 @@ class StatsHandler:
     # PLEX WRAPPED (RETROSPECTIVA ANUAL)
     # ==========================================================================
 
-    def get_wrapped_data(self, plex_user_id: str, username: str, year: Optional[int] = None) -> Dict[str, Any]:
+    def get_wrapped_data(self, media_user_id: str, username: str, year: Optional[int] = None) -> Dict[str, Any]:
         """
         Gera a retrospectiva anual "estilo Spotify Wrapped" de um utilizador,
         com base em todo o histórico do Tautulli daquele ano civil.
@@ -531,7 +531,7 @@ class StatsHandler:
             # em Python (por timestamp exato) em vez de confiar num parâmetro
             # 'before' da API do Tautulli que não está documentado/testado aqui.
             after_date_str = f"{year}-01-01"
-            history_response = self.api.get_history(after=after_date_str, user_id=plex_user_id)
+            history_response = self.api.get_history(after=after_date_str, user_id=media_user_id)
             all_history = history_response.get('data', []) if isinstance(history_response, dict) else []
             history = [item for item in all_history if start_ts <= item.get('date', 0) < end_ts]
 
@@ -589,7 +589,7 @@ class StatsHandler:
             # (calculado com as mesmas regras da sincronização normal, para bater
             # com o que o utilizador vê na página de estatísticas).
             if self.data_manager:
-                profile = self.data_manager.get_user_profile(plex_user_id) or {}
+                profile = self.data_manager.get_user_profile(media_user_id) or {}
                 level_table = normalize_level_table(config.get("XP_LEVEL_TABLE"))
                 wrapped_data["level_info"] = get_level_info(profile.get('xp', 0), level_table)
                 wrapped_data["lifetime_xp"] = profile.get('lifetime_xp') or 0
@@ -608,7 +608,7 @@ class StatsHandler:
         except RequestException as e:
             return {"success": False, "message": str(e)}
         except Exception as e:
-            logger.error(f"Erro inesperado ao gerar o Plex Wrapped para o utilizador {plex_user_id}: {e}", exc_info=True)
+            logger.error(f"Erro inesperado ao gerar o Plex Wrapped para o utilizador {media_user_id}: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
 
     def _determine_wrapped_personality(self, stats: Dict[str, Any]) -> Dict[str, str]:
@@ -633,12 +633,12 @@ class StatsHandler:
             return {"title": str(_("Maratonista de Séries")), "icon": "📺", "description": str(_("\"Só mais um episódio\" nunca foi só mais um episódio."))}
         return {"title": str(_("Espectador Equilibrado")), "icon": "🎭", "description": str(_("Filmes, séries, um pouco de tudo — sem exageros, do jeito certo."))}
 
-    def get_user_watch_details(self, plex_user_id: str, username: str, days: int = 7) -> Dict[str, Any]:
+    def get_user_watch_details(self, media_user_id: str, username: str, days: int = 7) -> Dict[str, Any]:
         """Devolve as métricas profundas de um utilizador específico."""
         try:
             days = int(days)
             after_date_str = (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%d')
-            history_response = self.api.get_history(after=after_date_str, user_id=plex_user_id)
+            history_response = self.api.get_history(after=after_date_str, user_id=media_user_id)
             history = history_response.get('data', [])
 
             # 🎮 XP/Níveis: sincroniza sempre que as estatísticas são (re)calculadas.
@@ -647,11 +647,11 @@ class StatsHandler:
             # Tautulli mais de uma vez a cada 5 minutos por utilizador, independentemente
             # de quantas pessoas diferentes vejam a página nesse intervalo.
             if self.data_manager:
-                self.sync_user_xp(plex_user_id, username)
+                self.sync_user_xp(media_user_id, username)
 
             level_info = None
             if self.data_manager:
-                profile = self.data_manager.get_user_profile(plex_user_id) or {}
+                profile = self.data_manager.get_user_profile(media_user_id) or {}
                 level_table = normalize_level_table(load_or_create_config().get("XP_LEVEL_TABLE"))
                 level_info = get_level_info(profile.get('xp', 0), level_table)
                 level_info['lifetime_xp'] = profile.get('lifetime_xp') or 0
@@ -669,7 +669,7 @@ class StatsHandler:
 
             self._finalize_stats(stats)
             
-            stats["achievements"] = self._calculate_achievements(stats, days, plex_user_id, username)
+            stats["achievements"] = self._calculate_achievements(stats, days, media_user_id, username)
             stats["level_info"] = level_info
             
             return {"success": True, "details": stats}
@@ -950,9 +950,9 @@ class StatsHandler:
             logger.error(f"Erro em get_recently_added: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
 
-    def get_user_devices(self, plex_user_id: str) -> Dict[str, Any]:
+    def get_user_devices(self, media_user_id: str) -> Dict[str, Any]:
         try:
-            history_response = self.api.get_history(user_id=plex_user_id, length=500)
+            history_response = self.api.get_history(user_id=media_user_id, length=500)
             history = history_response.get('data', [])
             if not history: return {"success": True, "devices": []}
             

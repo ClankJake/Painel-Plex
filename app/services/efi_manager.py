@@ -184,7 +184,7 @@ class EfiManager:
             # Salva o pagamento localmente como 'ATIVA'
             self.data_manager.create_pix_payment(
                 txid=txid,
-                plex_user_id=user_info.get('plex_user_id'),
+                media_user_id=user_info.get('media_user_id'),
                 username=username,
                 value=price,
                 provider='EFI',

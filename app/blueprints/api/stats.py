@@ -29,8 +29,8 @@ def get_statistics_data():
         return jsonify(tautulli_data)
 
     tautulli_user_ids = {user_stat['user_id'] for user_stat in tautulli_data.get("stats", [])}
-    plex_user_ids = {u['id'] for u in plex_users}
-    all_user_ids = list(tautulli_user_ids.union(plex_user_ids))
+    media_user_ids = {u['id'] for u in plex_users}
+    all_user_ids = list(tautulli_user_ids.union(media_user_ids))
 
     all_profiles = data_manager.get_user_profiles_by_id(all_user_ids)
     
@@ -52,20 +52,20 @@ def get_statistics_data():
     tautulli_data["stats"] = processed_stats
     return jsonify(tautulli_data)
 
-@stats_api_bp.route('/user/<plex_user_id>')
+@stats_api_bp.route('/user/<media_user_id>')
 @login_required
-def get_user_statistics(plex_user_id):
+def get_user_statistics(media_user_id):
     """
     Obtém as estatísticas detalhadas de um utilizador, respeitando as configurações de privacidade.
     """
-    profile = data_manager.get_user_profile(plex_user_id)
+    profile = data_manager.get_user_profile(media_user_id)
     is_private = profile.get('hide_from_leaderboard', False)
 
-    if not is_private or current_user.is_admin() or current_user.id == str(plex_user_id):
+    if not is_private or current_user.is_admin() or current_user.id == str(media_user_id):
         days = request.args.get('days', 7, type=int)
-        return jsonify(tautulli_manager.get_user_watch_details(plex_user_id=plex_user_id, days=days))
+        return jsonify(tautulli_manager.get_user_watch_details(media_user_id=media_user_id, days=days))
     else:
-        logger.warning(f"Acesso negado para '{current_user.username}' ao tentar ver as estatísticas privadas do utilizador ID '{plex_user_id}'.")
+        logger.warning(f"Acesso negado para '{current_user.username}' ao tentar ver as estatísticas privadas do utilizador ID '{media_user_id}'.")
         return jsonify({"success": False, "message": _("Este usuário prefere manter suas estatísticas privadas.")}), 403
 
 @stats_api_bp.route('/user/history')
@@ -148,23 +148,23 @@ def get_recommendations_route():
     return jsonify(result)
 
 
-@stats_api_bp.route('/wrapped/<plex_user_id>')
+@stats_api_bp.route('/wrapped/<media_user_id>')
 @login_required
-def get_wrapped_data_route(plex_user_id):
+def get_wrapped_data_route(media_user_id):
     """
     Retrospectiva anual estilo 'Plex Wrapped' de um utilizador. Respeita a
     mesma configuração de privacidade (hide_from_leaderboard) do restante
     das estatísticas.
     """
-    profile = data_manager.get_user_profile(plex_user_id)
+    profile = data_manager.get_user_profile(media_user_id)
     if not profile:
         return jsonify({"success": False, "message": _("Usuário não encontrado.")}), 404
 
     is_private = profile.get('hide_from_leaderboard', False)
-    if is_private and not current_user.is_admin() and current_user.id != str(plex_user_id):
-        logger.warning(f"Acesso negado para '{current_user.username}' ao tentar ver o Plex Wrapped privado do utilizador ID '{plex_user_id}'.")
+    if is_private and not current_user.is_admin() and current_user.id != str(media_user_id):
+        logger.warning(f"Acesso negado para '{current_user.username}' ao tentar ver o Plex Wrapped privado do utilizador ID '{media_user_id}'.")
         return jsonify({"success": False, "message": _("Este usuário prefere manter suas estatísticas privadas.")}), 403
 
     year = request.args.get('year', type=int)
-    return jsonify(tautulli_manager.get_wrapped_data(plex_user_id=plex_user_id, year=year))
+    return jsonify(tautulli_manager.get_wrapped_data(media_user_id=media_user_id, year=year))
 

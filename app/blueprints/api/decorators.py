@@ -11,30 +11,44 @@ from ...utils.identity import normalize_user_id
 
 logger = logging.getLogger(__name__)
 
+
+def _do_corpo(corpo, chave):
+    """Lê uma chave do corpo do pedido, tolerando um corpo ausente."""
+    return corpo.get(chave) if isinstance(corpo, dict) else None
+
+
 def user_lookup_by_id(f):
-    """Decorator para encontrar um utilizador pelo seu ID do Plex e injetá-lo na rota."""
+    """Encontra o utilizador pelo seu ID no servidor de média e injeta-o na rota."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        plex_user_id = kwargs.get('plex_user_id') or request.json.get('plex_user_id')
+        corpo = request.json if request.is_json else {}
+        # 'plex_user_id' é o nome antigo do campo. Continua a ser aceite para
+        # não partir integrações já feitas contra esta API (o painel tem uma
+        # API de convites usada por bots); o nome a usar é 'media_user_id'.
+        media_user_id = (
+            kwargs.get('media_user_id')
+            or _do_corpo(corpo, 'media_user_id')
+            or _do_corpo(corpo, 'plex_user_id')
+        )
 
-        if not plex_user_id:
+        if not media_user_id:
             logger.warning("Nenhum ID de utilizador do Plex fornecido no pedido.")
             return jsonify({"success": False, "message": _("ID do usuário não fornecido.")}), 400
         
         # A identidade é texto (o Plex usa inteiros, o Jellyfin GUIDs), por
         # isso o que se valida é que veio alguma coisa — não que é um número.
-        plex_user_id = normalize_user_id(plex_user_id)
-        if not plex_user_id:
+        media_user_id = normalize_user_id(media_user_id)
+        if not media_user_id:
             return jsonify({"success": False, "message": _("ID do usuário inválido.")}), 400
 
-        user = media_server.get_user_by_id(plex_user_id)
+        user = media_server.get_user_by_id(media_user_id)
         
         if not user:
-            logger.warning(f"Utilizador com ID '{plex_user_id}' não encontrado.")
+            logger.warning(f"Utilizador com ID '{media_user_id}' não encontrado.")
             return jsonify({"success": False, "message": _("Usuário não encontrado.")}), 404
         
-        if 'plex_user_id' in kwargs:
-             del kwargs['plex_user_id']
+        if 'media_user_id' in kwargs:
+             del kwargs['media_user_id']
 
         return f(user=user, *args, **kwargs)
     return decorated_function

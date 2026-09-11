@@ -52,7 +52,7 @@ def manager(app_context, configurar):
     """Gestor de subscrições com dados em memória e agendador falso."""
     configurar()
     dados = FakeDataManager(profiles={
-        1: {"plex_user_id": 1, "username": "ana", "screen_limit": 1},
+        1: {"media_user_id": 1, "username": "ana", "screen_limit": 1},
     })
     return PlexSubscriptionManager(data_manager=dados, scheduler=SchedulerEspiao())
 
@@ -358,7 +358,7 @@ class TestRenewSubscription:
     def test_sem_agendador_a_renovacao_nao_rebenta(self, app_context, configurar):
         configurar()
         gestor = PlexSubscriptionManager(
-            FakeDataManager(profiles={1: {"plex_user_id": 1, "username": "ana"}}), scheduler=None
+            FakeDataManager(profiles={1: {"media_user_id": 1, "username": "ana"}}), scheduler=None
         )
 
         assert gestor.renew_subscription(1, months_to_add=1) is not None
@@ -369,12 +369,12 @@ class TestUnblockUserIfNeeded:
         def __init__(self):
             self.desbloqueados = []
 
-        def unblock_user(self, plex_user_id):
-            self.desbloqueados.append(plex_user_id)
+        def unblock_user(self, media_user_id):
+            self.desbloqueados.append(media_user_id)
 
     @pytest.mark.parametrize("motivo", ["expired", "trial_expired"])
     def test_desbloqueia_quem_foi_bloqueado_por_vencimento(self, manager, motivo):
-        manager.data_manager.blocked[1] = {"user_plex_id": 1, "block_reason": motivo}
+        manager.data_manager.blocked[1] = {"media_user_id": 1, "block_reason": motivo}
         manager.plex_manager = self.PlexManagerEspiao()
 
         manager._unblock_user_if_needed(1)
@@ -383,7 +383,7 @@ class TestUnblockUserIfNeeded:
 
     def test_bloqueio_manual_do_administrador_e_mantido(self, manager):
         # Pagar não deve anular um bloqueio aplicado à mão pelo administrador.
-        manager.data_manager.blocked[1] = {"user_plex_id": 1, "block_reason": "manual"}
+        manager.data_manager.blocked[1] = {"media_user_id": 1, "block_reason": "manual"}
         manager.plex_manager = self.PlexManagerEspiao()
 
         manager._unblock_user_if_needed(1)

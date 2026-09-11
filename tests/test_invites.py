@@ -182,8 +182,8 @@ class _PlexManagerFalso:
     def __init__(self):
         self.limites = []
 
-    def update_screen_limit(self, plex_user_id, limite):
-        self.limites.append((plex_user_id, limite))
+    def update_screen_limit(self, media_user_id, limite):
+        self.limites.append((media_user_id, limite))
 
 
 class _ContaPlex:
@@ -357,7 +357,7 @@ class TestAbusoDeTestesPorIdDoPlex:
         Ignorá-los reabriria a mesma brecha para quem já está no histórico.
         """
         data_manager.add_invitation("ANTIGO", detalhes(trial_duration_minutes=60))
-        data_manager.increment_invitation_use("ANTIGO", "ana")  # sem plex_user_id
+        data_manager.increment_invitation_use("ANTIGO", "ana")  # sem media_user_id
         data_manager.add_invitation("TESTE-2", detalhes(trial_duration_minutes=60))
 
         resultado = self._gestor_trial(data_manager).claim_invitation(

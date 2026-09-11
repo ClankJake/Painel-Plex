@@ -74,17 +74,17 @@ class TestUserLookupById:
 
     def test_utilizador_injetado_a_partir_do_url(self, app):
         with app.test_request_context():
-            assert rota_com_utilizador(plex_user_id=42) == {"username": "ana"}
+            assert rota_com_utilizador(media_user_id=42) == {"username": "ana"}
 
     def test_utilizador_injetado_a_partir_do_corpo(self, app):
-        with app.test_request_context(json={"plex_user_id": 42}):
+        with app.test_request_context(json={"media_user_id": 42}):
             assert rota_com_utilizador() == {"username": "ana"}
 
     def test_id_em_texto_e_o_formato_nativo(self, app):
         # A identidade é texto: o 42 inteiro e o "42" em texto são o mesmo
         # utilizador, venham de onde vierem.
         with app.test_request_context():
-            assert rota_com_utilizador(plex_user_id="42") == {"username": "ana"}
+            assert rota_com_utilizador(media_user_id="42") == {"username": "ana"}
 
     def test_id_nao_numerico_e_valido(self, app):
         # Um GUID do Jellyfin não é um número. Antes, o decorador rejeitava-o
@@ -94,7 +94,7 @@ class TestUserLookupById:
             import app.blueprints.api.decorators as mod
             original, mod.media_server = mod.media_server, gestor
             try:
-                assert rota_com_utilizador(plex_user_id="38c3a1f0e4b2") == {"username": "bruno"}
+                assert rota_com_utilizador(media_user_id="38c3a1f0e4b2") == {"username": "bruno"}
             finally:
                 mod.media_server = original
 
@@ -108,13 +108,13 @@ class TestUserLookupById:
         # O que torna um ID inválido passou a ser estar vazio, não ser
         # não-numérico.
         with app.test_request_context():
-            _resposta, codigo = rota_com_utilizador(plex_user_id="   ")
+            _resposta, codigo = rota_com_utilizador(media_user_id="   ")
 
         assert codigo == 400
 
     def test_utilizador_inexistente(self, app):
         with app.test_request_context():
-            resposta, codigo = rota_com_utilizador(plex_user_id=999)
+            resposta, codigo = rota_com_utilizador(media_user_id=999)
 
         assert codigo == 404
         assert resposta.get_json()["success"] is False

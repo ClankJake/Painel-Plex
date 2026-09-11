@@ -101,32 +101,32 @@ def _run_payment_processing_in_thread(app, txid):
                 
                 extensions.db.session.commit()
                 
-                plex_user_id = payment['user_plex_id']
-                profile = extensions.data_manager.get_user_profile(plex_user_id)
+                media_user_id = payment['media_user_id']
+                profile = extensions.data_manager.get_user_profile(media_user_id)
                 is_reactivation = profile.get('status') == 'inactive'
 
                 if is_reactivation:
                     # Garante que existe um email ou username preenchido para o envio do convite no SubscriptionManager
                     if not profile.get('email'):
-                        plex_user = extensions.media_server.get_user_by_id(plex_user_id)
+                        plex_user = extensions.media_server.get_user_by_id(media_user_id)
                         profile['email'] = plex_user.get('email') if (plex_user and plex_user.get('email')) else profile.get('username')
-                        extensions.data_manager.set_user_profile(plex_user_id, profile)
+                        extensions.data_manager.set_user_profile(media_user_id, profile)
                         
-                    logger.info(f"A processar a reativação paga para o utilizador '{profile['username']}' (ID: {plex_user_id}).")
+                    logger.info(f"A processar a reativação paga para o utilizador '{profile['username']}' (ID: {media_user_id}).")
                     extensions.data_manager.create_notification(
                         message=_("O usuário %(username)s reativou a conta. Pagamento de %(value)s confirmado.", username=profile['username'], value=f"R$ {payment['value']:.2f}"),
                         category='success', link=url_for('main.users_page')
                     )
                     extensions.data_manager.create_notification(
                         message=_("A sua conta foi reativada com sucesso! Pagamento de %(value)s confirmado.", value=f"R$ {payment['value']:.2f}"),
-                        category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
+                        category='success', link=url_for('main.account_page'), media_user_id=media_user_id
                     )
                     if extensions.socketio:
                         extensions.socketio.emit('new_notification', namespace='/')
 
-                user_info_for_renewal = extensions.media_server.get_user_by_id(plex_user_id)
+                user_info_for_renewal = extensions.media_server.get_user_by_id(media_user_id)
                 if not user_info_for_renewal and is_reactivation:
-                    user_info_for_renewal = { 'id': plex_user_id, 'username': profile.get('username'), 'email': profile.get('email') }
+                    user_info_for_renewal = { 'id': media_user_id, 'username': profile.get('username'), 'email': profile.get('email') }
 
                 # 🔼 UPGRADE PRO-RATA: esta cobrança é apenas a DIFERENÇA de preço
                 # pelos dias que faltavam. NÃO é uma renovação — o vencimento tem de
@@ -134,11 +134,11 @@ def _run_payment_processing_in_thread(app, txid):
                 # utilizador ganharia um mês inteiro por uma fração do preço.
                 if payment.get('is_proration'):
                     novo_limite = payment.get('screens')
-                    profile_upgrade = extensions.data_manager.get_user_profile(plex_user_id)
+                    profile_upgrade = extensions.data_manager.get_user_profile(media_user_id)
                     if profile_upgrade and novo_limite is not None:
                         limite_anterior = profile_upgrade.get('screen_limit')
                         profile_upgrade['screen_limit'] = int(novo_limite)
-                        extensions.data_manager.set_user_profile(plex_user_id, profile_upgrade)
+                        extensions.data_manager.set_user_profile(media_user_id, profile_upgrade)
                         logger.info(
                             f"Upgrade pro-rata concluído para '{profile_upgrade.get('username')}': "
                             f"{limite_anterior} -> {novo_limite} telas. Vencimento inalterado "
@@ -146,7 +146,7 @@ def _run_payment_processing_in_thread(app, txid):
                         )
                         extensions.data_manager.create_notification(
                             message=_("O seu plano foi atualizado para %(screens)d tela(s)!", screens=int(novo_limite)),
-                            category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
+                            category='success', link=url_for('main.account_page'), media_user_id=media_user_id
                         )
                         extensions.data_manager.create_notification(
                             message=_("%(username)s fez upgrade para %(screens)d tela(s). Pagamento de %(value)s confirmado.",
@@ -168,22 +168,22 @@ def _run_payment_processing_in_thread(app, txid):
                     
                     # O SubscriptionManager agora trata do envio do convite e notificação com link de token
                     new_expiration_date = extensions.media_server.renew_subscription(
-                        plex_user_id, 1, screens=payment.get('screens'), base_mode=renewal_base_mode,
+                        media_user_id, 1, screens=payment.get('screens'), base_mode=renewal_base_mode,
                         expiration_time_str=expiration_time, is_reactivation=is_reactivation
                     )
                     
                     # Trata o Status Inativo caso o utilizador ainda não tenha aceite o convite no e-mail/notificação
                     if is_reactivation:
-                        user_found_in_plex = extensions.media_server.get_user_by_id(plex_user_id) is not None
+                        user_found_in_plex = extensions.media_server.get_user_by_id(media_user_id) is not None
                         if not user_found_in_plex:
-                            post_renewal_profile = extensions.data_manager.get_user_profile(plex_user_id)
+                            post_renewal_profile = extensions.data_manager.get_user_profile(media_user_id)
                             if post_renewal_profile.get('status') == 'active':
                                 post_renewal_profile['status'] = 'inactive'
-                                extensions.data_manager.set_user_profile(plex_user_id, post_renewal_profile)
+                                extensions.data_manager.set_user_profile(media_user_id, post_renewal_profile)
                                 logger.info(f"Utilizador '{profile.get('username')}' ainda não está na lista de amigos (convite pendente). Status local mantido como 'inactive'.")
 
                     try:
-                        refreshed_profile = extensions.data_manager.get_user_profile(plex_user_id)
+                        refreshed_profile = extensions.data_manager.get_user_profile(media_user_id)
                         extensions.media_server.notifier_manager.send_renewal_notification(user_info_for_renewal, new_expiration_date, refreshed_profile)
                     except Exception as e:
                         logger.error(f"Erro ao enviar notificação final para '{profile['username']}': {e}")
@@ -195,7 +195,7 @@ def _run_payment_processing_in_thread(app, txid):
                     # renovado, e a transação sumia do relatório financeiro.
                     if payment.get('coupon_code'):
                         try:
-                            extensions.data_manager.record_coupon_usage(payment['coupon_code'], plex_user_id)
+                            extensions.data_manager.record_coupon_usage(payment['coupon_code'], media_user_id)
                         except Exception as e:
                             logger.error(
                                 f"Erro ao registar o uso do cupão no pagamento {mask_token(txid)}: {e}",
@@ -209,7 +209,7 @@ def _run_payment_processing_in_thread(app, txid):
                     credit_reserved = float(payment.get('referral_credit_used') or 0)
                     if credit_reserved > 0:
                         try:
-                            consumed = extensions.referral_manager.consume_credit(plex_user_id, credit_reserved)
+                            consumed = extensions.referral_manager.consume_credit(media_user_id, credit_reserved)
                             logger.info(f"Pagamento {mask_token(txid)}: R$ {consumed:.2f} de crédito de indicações consumido por '{profile.get('username')}'.")
                         except Exception as e:
                             logger.error(f"Erro ao consumir o crédito de indicações no pagamento {mask_token(txid)}: {e}", exc_info=True)
@@ -219,9 +219,9 @@ def _run_payment_processing_in_thread(app, txid):
                     # Envolvido em try/except por princípio: uma falha no programa de
                     # indicações nunca pode comprometer a confirmação de um pagamento.
                     try:
-                        extensions.referral_manager.reward_referrer_on_payment(plex_user_id)
+                        extensions.referral_manager.reward_referrer_on_payment(media_user_id)
                     except Exception as e:
-                        logger.error(f"Erro ao processar a recompensa de indicação para o utilizador {plex_user_id}: {e}", exc_info=True)
+                        logger.error(f"Erro ao processar a recompensa de indicação para o utilizador {media_user_id}: {e}", exc_info=True)
                         
                     if not is_reactivation:
                         extensions.data_manager.create_notification(
@@ -230,7 +230,7 @@ def _run_payment_processing_in_thread(app, txid):
                         )
                         extensions.data_manager.create_notification(
                             message=_("A sua renovação de %(value)s foi confirmada.", value=f"R$ {payment['value']:.2f}"), 
-                            category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
+                            category='success', link=url_for('main.account_page'), media_user_id=media_user_id
                         )
                         if extensions.socketio:
                             extensions.socketio.emit('new_notification', namespace='/')
@@ -334,24 +334,24 @@ def validate_coupon_route():
     if not token and request.referrer and '/pay/' in request.referrer:
         token = request.referrer.split('/pay/')[-1].split('?')[0].split('/')[0]
         
-    plex_user_id = None
+    media_user_id = None
     
     if token:
         profile = UserProfile.query.filter_by(payment_token=token).first()
         if profile:
-            plex_user_id = profile.plex_user_id
+            media_user_id = profile.media_user_id
             
-    if not plex_user_id and current_user.is_authenticated:
-        plex_user_id = normalize_user_id(current_user.id)
+    if not media_user_id and current_user.is_authenticated:
+        media_user_id = normalize_user_id(current_user.id)
         
-    if not plex_user_id:
+    if not media_user_id:
         return jsonify({"success": False, "message": _("Usuário não autorizado ou token inválido.")}), 404
 
     if not data.get('code') or data.get('screens') is None:
         return jsonify({"success": False, "message": "Código e plano são obrigatórios."}), 400
 
     return jsonify(extensions.pricing_manager.calculate_price(
-        screens=data.get('screens'), coupon_code=data.get('code'), plex_user_id=plex_user_id
+        screens=data.get('screens'), coupon_code=data.get('code'), media_user_id=media_user_id
     ))
 
 @payments_api_bp.route('/upgrade-quote', methods=['POST'])
@@ -391,33 +391,33 @@ def create_charge_route():
     except (ValueError, TypeError):
         return jsonify({"success": False, "message": _("Número de telas inválido.")}), 400
 
-    plex_user_id, username = None, None
+    media_user_id, username = None, None
 
     if token:
         profile_model = UserProfile.query.filter_by(payment_token=token).first()
         if profile_model:
-            plex_user_id, username = profile_model.plex_user_id, profile_model.username
+            media_user_id, username = profile_model.media_user_id, profile_model.username
             
-    if not plex_user_id and current_user.is_authenticated:
-        plex_user_id, username = normalize_user_id(current_user.id), current_user.username
+    if not media_user_id and current_user.is_authenticated:
+        media_user_id, username = normalize_user_id(current_user.id), current_user.username
     
-    if not plex_user_id:
+    if not media_user_id:
         return jsonify({"success": False, "message": _("Usuário não especificado ou token inválido.")}), 400
 
-    profile = extensions.data_manager.get_user_profile(plex_user_id)
+    profile = extensions.data_manager.get_user_profile(media_user_id)
     if not profile:
         return jsonify({"success": False, "message": _("Perfil não encontrado.")}), 404
 
     user_email = profile.get('email')
     if not user_email:
         try:
-            if plex_user := extensions.media_server.get_user_by_id(plex_user_id):
+            if plex_user := extensions.media_server.get_user_by_id(media_user_id):
                 user_email = plex_user.get('email')
         except:
             pass
 
     user_info = {
-        "plex_user_id": plex_user_id, "username": username,
+        "media_user_id": media_user_id, "username": username,
         "name": profile.get('name', username), "email": user_email
     }
 
@@ -427,17 +427,17 @@ def create_charge_route():
     is_proration_request = bool(data.get('proration'))
     proration_quote = None
     if is_proration_request:
-        proration_quote = extensions.pricing_manager.calculate_upgrade_proration(plex_user_id, screens)
+        proration_quote = extensions.pricing_manager.calculate_upgrade_proration(media_user_id, screens)
         if not proration_quote.get('eligible'):
             return jsonify({"success": False, "message": proration_quote.get('reason') or _("Upgrade não disponível.")}), 400
 
         # Valor abaixo do mínimo cobrável: aplica-se de imediato, sem gerar cobrança
         # (cobrar cêntimos custaria mais em taxas do que o próprio valor).
         if proration_quote.get('is_free'):
-            profile_free = extensions.data_manager.get_user_profile(plex_user_id)
+            profile_free = extensions.data_manager.get_user_profile(media_user_id)
             anterior = profile_free.get('screen_limit')
             profile_free['screen_limit'] = screens
-            extensions.data_manager.set_user_profile(plex_user_id, profile_free)
+            extensions.data_manager.set_user_profile(media_user_id, profile_free)
             logger.info(f"Upgrade gratuito (abaixo do mínimo) para '{username}': {anterior} -> {screens} telas.")
             return jsonify({
                 "success": True, "free_upgrade": True,
@@ -455,7 +455,7 @@ def create_charge_route():
             # fosse elegível (valor abaixo do mínimo sem oferta gratuita, dias
             # insuficientes, preço em falta...) ficava sem qualquer forma de subir
             # de plano: a renovação normal bloqueada e o pro-rata indisponível.
-            alternativa = extensions.pricing_manager.calculate_upgrade_proration(plex_user_id, screens)
+            alternativa = extensions.pricing_manager.calculate_upgrade_proration(media_user_id, screens)
             if alternativa.get('eligible'):
                 return jsonify({
                     "success": False,
@@ -468,7 +468,7 @@ def create_charge_route():
             )
 
     price_calculation = extensions.pricing_manager.calculate_price(
-        screens_str, coupon_code, plex_user_id, apply_referral_credit=True
+        screens_str, coupon_code, media_user_id, apply_referral_credit=True
     )
     if not price_calculation.get("success"):
         return jsonify(price_calculation), 400
@@ -507,16 +507,16 @@ def create_charge_route():
     # acontecia ao usar um cupão de 100% para subir de telas.
     if is_proration_request and final_price <= 0:
         try:
-            profile_up = extensions.data_manager.get_user_profile(plex_user_id)
+            profile_up = extensions.data_manager.get_user_profile(media_user_id)
             anterior = profile_up.get('screen_limit')
             profile_up['screen_limit'] = screens
-            extensions.data_manager.set_user_profile(plex_user_id, profile_up)
+            extensions.data_manager.set_user_profile(media_user_id, profile_up)
 
             # O plano JÁ foi alterado acima: uma falha a registar o cupão não pode
             # transformar isto num erro para o utilizador.
             if coupon_code:
                 try:
-                    extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id)
+                    extensions.data_manager.record_coupon_usage(coupon_code, media_user_id)
                 except Exception as e:
                     logger.error(f"Erro ao registar o uso do cupão '{coupon_code}' no upgrade sem custo: {e}", exc_info=True)
 
@@ -526,7 +526,7 @@ def create_charge_route():
             )
             extensions.data_manager.create_notification(
                 message=_("O seu plano foi atualizado para %(screens)d tela(s)!", screens=screens),
-                category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
+                category='success', link=url_for('main.account_page'), media_user_id=media_user_id
             )
             if extensions.socketio:
                 extensions.socketio.emit('new_notification', namespace='/')
@@ -547,9 +547,9 @@ def create_charge_route():
             if is_reactivation:
                 # Previne o envio sem e-mail ou identificador no SubscriptionManager
                 if not profile.get('email'):
-                    plex_user = extensions.media_server.get_user_by_id(plex_user_id)
+                    plex_user = extensions.media_server.get_user_by_id(media_user_id)
                     profile['email'] = plex_user.get('email') if (plex_user and plex_user.get('email')) else profile.get('username')
-                    extensions.data_manager.set_user_profile(plex_user_id, profile)
+                    extensions.data_manager.set_user_profile(media_user_id, profile)
                     
                 extensions.data_manager.create_notification(
                     message=_("O usuário %(username)s reativou a conta com um cupão de 100%%.", username=username),
@@ -557,7 +557,7 @@ def create_charge_route():
                 )
                 extensions.data_manager.create_notification(
                     message=_("A sua conta foi reativada gratuitamente com sucesso!"),
-                    category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
+                    category='success', link=url_for('main.account_page'), media_user_id=media_user_id
                 )
             else:
                 extensions.data_manager.create_notification(
@@ -566,7 +566,7 @@ def create_charge_route():
                 )
                 extensions.data_manager.create_notification(
                     message=_("A sua renovação com cupão foi confirmada com sucesso."),
-                    category='success', link=url_for('main.account_page'), user_plex_id=plex_user_id
+                    category='success', link=url_for('main.account_page'), media_user_id=media_user_id
                 )
 
             # 2. Renovação exata baseada nas telas escolhidas (Trata também o Convite)
@@ -575,24 +575,24 @@ def create_charge_route():
             expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
             
             new_expiration_date = extensions.media_server.renew_subscription(
-                plex_user_id, 1, screens=screens, base_mode=renewal_base_mode,
+                media_user_id, 1, screens=screens, base_mode=renewal_base_mode,
                 expiration_time_str=expiration_time, is_reactivation=is_reactivation
             )
             
             # 3. Tratamento de Reativação Pendente (Retorna o status a 'inactive' se ainda não aceitou)
             if is_reactivation:
-                user_found_in_plex = extensions.media_server.get_user_by_id(plex_user_id) is not None
+                user_found_in_plex = extensions.media_server.get_user_by_id(media_user_id) is not None
                 if not user_found_in_plex:
-                    post_renewal_profile = extensions.data_manager.get_user_profile(plex_user_id)
+                    post_renewal_profile = extensions.data_manager.get_user_profile(media_user_id)
                     if post_renewal_profile.get('status') == 'active':
                         post_renewal_profile['status'] = 'inactive'
-                        extensions.data_manager.set_user_profile(plex_user_id, post_renewal_profile)
+                        extensions.data_manager.set_user_profile(media_user_id, post_renewal_profile)
                         logger.info(f"Utilizador '{username}' ainda não está na lista de amigos (convite pendente). Status local mantido como 'inactive'.")
 
             # Idem: a assinatura já foi renovada acima.
             if coupon_code:
                 try:
-                    extensions.data_manager.record_coupon_usage(coupon_code, plex_user_id)
+                    extensions.data_manager.record_coupon_usage(coupon_code, media_user_id)
                 except Exception as e:
                     logger.error(f"Erro ao registar o uso do cupão '{coupon_code}' na renovação gratuita: {e}", exc_info=True)
 
@@ -600,11 +600,11 @@ def create_charge_route():
             # valor, é AQUI que ele sai do saldo — este fluxo conclui na hora, sem
             # webhook, por isso o débito tem de acontecer neste ponto.
             if referral_credit_to_use > 0:
-                consumed = extensions.referral_manager.consume_credit(plex_user_id, referral_credit_to_use)
+                consumed = extensions.referral_manager.consume_credit(media_user_id, referral_credit_to_use)
                 logger.info(f"Crédito de indicações de R$ {consumed:.2f} usado por '{username}' numa renovação sem custo.")
 
             extensions.data_manager.add_manual_payment(
-                plex_user_id=plex_user_id, username=username, value=0.00,
+                media_user_id=media_user_id, username=username, value=0.00,
                 description=f"Renovação Cupão 100% ({coupon_code})",
                 payment_date_str=datetime.now(timezone.utc).isoformat()
             )
@@ -615,7 +615,7 @@ def create_charge_route():
                 extensions.socketio.emit('new_notification', namespace='/')
                 extensions.socketio.emit('user_list_updated', {'message': _("Renovação gratuita concluída.")}, namespace='/dashboard')
 
-            refreshed_profile = extensions.data_manager.get_user_profile(plex_user_id)
+            refreshed_profile = extensions.data_manager.get_user_profile(media_user_id)
             extensions.media_server.notifier_manager.send_renewal_notification(user_info, new_expiration_date, refreshed_profile)
             
             # 5. Retornar o estado do utilizador para o JS saber se mostra o botão do Plex
@@ -676,7 +676,7 @@ def get_payment_status_route(txid):
     
     if not payment: return jsonify({"success": False, "status": "NOT_FOUND"}), 404
     if payment.get('status') == 'CONCLUIDA':
-        profile = extensions.data_manager.get_user_profile(payment['user_plex_id'])
+        profile = extensions.data_manager.get_user_profile(payment['media_user_id'])
         return jsonify({
             "success": True,
             "status": "CONCLUIDA",
@@ -927,13 +927,13 @@ def get_financial_summary_route():
 @admin_required
 def add_manual_payment_route():
     data = request.json
-    plex_user_id, value, desc, payment_date = data.get('plex_user_id'), data.get('value'), data.get('description'), data.get('payment_date')
+    media_user_id, value, desc, payment_date = data.get('media_user_id'), data.get('value'), data.get('description'), data.get('payment_date')
     
-    if not all([plex_user_id, value, desc, payment_date]):
+    if not all([media_user_id, value, desc, payment_date]):
         return jsonify({"success": False, "message": _("Todos os campos são obrigatórios.")}), 400
         
     try:
-        user = extensions.media_server.get_user_by_id(plex_user_id)
+        user = extensions.media_server.get_user_by_id(media_user_id)
         if not user: return jsonify({"success": False, "message": "Utilizador não encontrado."}), 404
         
         current_time_str = datetime.now(timezone.utc).strftime('%H:%M:%S')
@@ -942,7 +942,7 @@ def add_manual_payment_route():
         except:
             payment_datetime_str = datetime.now(timezone.utc).isoformat()
 
-        payment = extensions.data_manager.add_manual_payment(plex_user_id, user['username'], value, desc, payment_datetime_str)
+        payment = extensions.data_manager.add_manual_payment(media_user_id, user['username'], value, desc, payment_datetime_str)
         extensions.db.session.commit()
         logger.info(f"Pagamento manual de R$ {value} adicionado com sucesso para '{user['username']}' pelo Admin.")
         return jsonify({"success": True, "message": _("Pagamento registado."), "payment": payment})

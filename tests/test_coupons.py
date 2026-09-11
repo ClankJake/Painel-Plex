@@ -100,7 +100,7 @@ class TestRegistoDeUsos:
         # pagamento e marcava como 'FALHOU' uma renovação já concretizada.
         from app.models import UserProfile
 
-        db_session.add(UserProfile(plex_user_id=7, username="ana"))
+        db_session.add(UserProfile(media_user_id=7, username="ana"))
         db_session.commit()
         data_manager.create_coupon({"code": "UNICO", "discount_type": "percentage",
                                     "value": 10, "max_uses": 5})
@@ -112,7 +112,7 @@ class TestRegistoDeUsos:
     def test_registo_aceita_o_codigo_em_minusculas(self, data_manager, db_session):
         from app.models import UserProfile
 
-        db_session.add(UserProfile(plex_user_id=8, username="bea"))
+        db_session.add(UserProfile(media_user_id=8, username="bea"))
         db_session.commit()
         data_manager.create_coupon({"code": "CAIXA", "discount_type": "fixed",
                                     "value": 5, "max_uses": 5})
@@ -124,22 +124,22 @@ class TestRegistoDeUsos:
 
 
 class TestReservasEmCobrancasAbertas:
-    def _cobranca(self, db_session, txid, codigo, plex_user_id=1, status="ATIVA", idade_horas=0):
+    def _cobranca(self, db_session, txid, codigo, media_user_id=1, status="ATIVA", idade_horas=0):
         from app.models import PixPayment, UserProfile
 
-        if not UserProfile.query.get(plex_user_id):
-            db_session.add(UserProfile(plex_user_id=plex_user_id, username=f"u{plex_user_id}"))
+        if not UserProfile.query.get(media_user_id):
+            db_session.add(UserProfile(media_user_id=media_user_id, username=f"u{media_user_id}"))
             db_session.flush()
         db_session.add(PixPayment(
-            txid=txid, user_plex_id=plex_user_id, username=f"u{plex_user_id}", value=10.0,
+            txid=txid, media_user_id=media_user_id, username=f"u{media_user_id}", value=10.0,
             status=status, provider="EFI", coupon_code=codigo,
             created_at=(datetime.now(timezone.utc) - timedelta(hours=idade_horas)).isoformat(),
         ))
         db_session.commit()
 
     def test_conta_cobrancas_por_pagar(self, data_manager, db_session):
-        self._cobranca(db_session, "t1", "PROMO", plex_user_id=1)
-        self._cobranca(db_session, "t2", "PROMO", plex_user_id=2)
+        self._cobranca(db_session, "t1", "PROMO", media_user_id=1)
+        self._cobranca(db_session, "t2", "PROMO", media_user_id=2)
 
         assert data_manager.get_reserved_coupon_uses("PROMO") == 2
 
@@ -159,7 +159,7 @@ class TestReservasEmCobrancasAbertas:
         assert data_manager.has_user_pending_coupon_charge(1, "PROMO") is False
 
     def test_deteta_cobranca_aberta_do_proprio_utilizador(self, data_manager, db_session):
-        self._cobranca(db_session, "t-ana", "PROMO", plex_user_id=3)
+        self._cobranca(db_session, "t-ana", "PROMO", media_user_id=3)
 
         assert data_manager.has_user_pending_coupon_charge(3, "promo") is True
         assert data_manager.has_user_pending_coupon_charge(4, "PROMO") is False
@@ -188,14 +188,14 @@ class TestLimiteDeUsosNaValidacao:
         # esgotado — mesmo que o 'use_count' ainda esteja a zero.
         gestor = self._gestor(reserved_coupons={"PROMO": 1})
 
-        resultado = gestor.calculate_price("1", coupon_code="PROMO", plex_user_id=5)
+        resultado = gestor.calculate_price("1", coupon_code="PROMO", media_user_id=5)
 
         assert resultado["success"] is False
 
     def test_cobranca_aberta_do_proprio_utilizador_bloqueia(self, precos, app_context):
         gestor = self._gestor(cupao={"max_uses": 100}, pending_coupon_charges=[(5, "PROMO")])
 
-        resultado = gestor.calculate_price("1", coupon_code="PROMO", plex_user_id=5)
+        resultado = gestor.calculate_price("1", coupon_code="PROMO", media_user_id=5)
 
         assert resultado["success"] is False
 

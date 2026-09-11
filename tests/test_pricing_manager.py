@@ -141,17 +141,17 @@ class TestCupoes:
             used_coupons=[(1, "PROMO")],
         ))
 
-        assert gestor.calculate_price("1", coupon_code="PROMO", plex_user_id=1)["success"] is False
+        assert gestor.calculate_price("1", coupon_code="PROMO", media_user_id=1)["success"] is False
 
 
 class TestCreditoDeIndicacoes:
     def _gestor(self, credito):
-        return PricingManager(FakeDataManager(profiles={1: {"plex_user_id": 1, "referral_credit": credito}}))
+        return PricingManager(FakeDataManager(profiles={1: {"media_user_id": 1, "referral_credit": credito}}))
 
     def test_nao_e_aplicado_sem_opt_in(self, app_context, configurar):
         configurar(REFERRAL_ENABLED=True, REFERRAL_REWARD_TYPE="credit")
 
-        resultado = self._gestor(5.0).calculate_price("2", plex_user_id=1)
+        resultado = self._gestor(5.0).calculate_price("2", media_user_id=1)
 
         assert resultado["discounted_price"] == 18.0
         assert resultado["referral_credit_applied"] == 0.0
@@ -159,7 +159,7 @@ class TestCreditoDeIndicacoes:
     def test_abate_o_credito_disponivel(self, app_context, configurar):
         configurar(REFERRAL_ENABLED=True, REFERRAL_REWARD_TYPE="credit")
 
-        resultado = self._gestor(5.0).calculate_price("2", plex_user_id=1, apply_referral_credit=True)
+        resultado = self._gestor(5.0).calculate_price("2", media_user_id=1, apply_referral_credit=True)
 
         assert resultado["referral_credit_available"] == 5.0
         assert resultado["referral_credit_applied"] == 5.0
@@ -168,7 +168,7 @@ class TestCreditoDeIndicacoes:
     def test_nunca_gera_troco(self, app_context, configurar):
         configurar(REFERRAL_ENABLED=True, REFERRAL_REWARD_TYPE="credit")
 
-        resultado = self._gestor(100.0).calculate_price("1", plex_user_id=1, apply_referral_credit=True)
+        resultado = self._gestor(100.0).calculate_price("1", media_user_id=1, apply_referral_credit=True)
 
         assert resultado["referral_credit_applied"] == 10.0
         assert resultado["discounted_price"] == 0.0
@@ -176,11 +176,11 @@ class TestCreditoDeIndicacoes:
     def test_aplicado_depois_do_cupao(self, app_context, configurar):
         configurar(REFERRAL_ENABLED=True, REFERRAL_REWARD_TYPE="credit")
         gestor = PricingManager(FakeDataManager(
-            profiles={1: {"plex_user_id": 1, "referral_credit": 5.0}},
+            profiles={1: {"media_user_id": 1, "referral_credit": 5.0}},
             coupons={"PROMO": cupao(value=50)},
         ))
 
-        resultado = gestor.calculate_price("3", coupon_code="PROMO", plex_user_id=1, apply_referral_credit=True)
+        resultado = gestor.calculate_price("3", coupon_code="PROMO", media_user_id=1, apply_referral_credit=True)
 
         # 25.00 -50% = 12.50, menos 5.00 de crédito = 7.50
         assert resultado["discounted_price"] == 7.5
@@ -192,7 +192,7 @@ class TestCreditoDeIndicacoes:
         """
         configurar(REFERRAL_ENABLED=True, REFERRAL_REWARD_TYPE="days")
 
-        resultado = self._gestor(5.0).calculate_price("2", plex_user_id=1, apply_referral_credit=True)
+        resultado = self._gestor(5.0).calculate_price("2", media_user_id=1, apply_referral_credit=True)
 
         assert resultado["referral_credit_applied"] == 5.0
         assert resultado["discounted_price"] == 13.0
@@ -204,11 +204,11 @@ class TestCreditoDeIndicacoes:
         """
         configurar(REFERRAL_ENABLED=True, REFERRAL_REWARD_TYPE="credit")
         gestor = PricingManager(FakeDataManager(
-            profiles={1: {"plex_user_id": 1, "referral_credit": 5.0}},
+            profiles={1: {"media_user_id": 1, "referral_credit": 5.0}},
             reserved_credit={1: 4.0},
         ))
 
-        resultado = gestor.calculate_price("2", plex_user_id=1, apply_referral_credit=True)
+        resultado = gestor.calculate_price("2", media_user_id=1, apply_referral_credit=True)
 
         assert resultado["referral_credit_available"] == 1.0
         assert resultado["referral_credit_applied"] == 1.0
@@ -217,15 +217,15 @@ class TestCreditoDeIndicacoes:
     def test_ignorado_com_o_sistema_desativado(self, app_context, configurar):
         configurar(REFERRAL_ENABLED=False, REFERRAL_REWARD_TYPE="credit")
 
-        resultado = self._gestor(5.0).calculate_price("2", plex_user_id=1, apply_referral_credit=True)
+        resultado = self._gestor(5.0).calculate_price("2", media_user_id=1, apply_referral_credit=True)
 
         assert resultado["discounted_price"] == 18.0
 
     def test_o_calculo_nunca_debita_o_saldo(self, app_context, configurar):
         configurar(REFERRAL_ENABLED=True, REFERRAL_REWARD_TYPE="credit")
-        dm = FakeDataManager(profiles={1: {"plex_user_id": 1, "referral_credit": 5.0}})
+        dm = FakeDataManager(profiles={1: {"media_user_id": 1, "referral_credit": 5.0}})
 
-        PricingManager(dm).calculate_price("2", plex_user_id=1, apply_referral_credit=True)
+        PricingManager(dm).calculate_price("2", media_user_id=1, apply_referral_credit=True)
 
         # Um PIX gerado e nunca pago não pode consumir o crédito de ninguém.
         assert dm.profiles[1]["referral_credit"] == 5.0
@@ -261,7 +261,7 @@ class TestRequiresProrationForUpgrade:
 class TestCalculateUpgradeProration:
     def _gestor(self, screens=1, dias=30):
         return PricingManager(FakeDataManager(profiles={
-            1: {"plex_user_id": 1, "screen_limit": screens, "expiration_date": em_dias(dias)}
+            1: {"media_user_id": 1, "screen_limit": screens, "expiration_date": em_dias(dias)}
         }))
 
     def test_desativado(self, app_context, configurar):
@@ -323,7 +323,7 @@ class TestCalculateUpgradeProration:
         configurar(PRORATION_ENABLED=True, PRORATION_MIN_DAYS=0, PRORATION_MIN_CHARGE=0)
         gestor = PricingManager(FakeDataManager(profiles={
             1: {
-                "plex_user_id": 1,
+                "media_user_id": 1,
                 "screen_limit": 1,
                 "expiration_date": (datetime.now(timezone.utc) + timedelta(hours=20)).isoformat(),
             }

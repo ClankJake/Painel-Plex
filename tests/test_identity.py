@@ -78,33 +78,33 @@ class TestPersistenciaComGuid:
 
         perfil = data_manager.get_user_profile(GUID)
 
-        assert perfil["plex_user_id"] == GUID
+        assert perfil["media_user_id"] == GUID
         assert perfil["username"] == "ana"
 
     def test_procura_por_username_devolve_o_guid_intacto(self, data_manager):
         data_manager.set_user_profile(GUID, {"username": "ana"})
 
-        assert data_manager.get_user_profile_by_username("ana")["plex_user_id"] == GUID
+        assert data_manager.get_user_profile_by_username("ana")["media_user_id"] == GUID
 
     def test_as_tabelas_que_apontam_para_o_perfil_aceitam_o_guid(self, data_manager):
         data_manager.set_user_profile(GUID, {"username": "ana"})
 
         data_manager.add_blocked_user(GUID, "ana", reason="expired")
-        data_manager.create_notification(message="olá", user_plex_id=GUID)
+        data_manager.create_notification(message="olá", media_user_id=GUID)
         data_manager.add_unlocked_achievements(GUID, "ana", [{"id": "primeiro"}])
         data_manager.log_stream_termination(GUID, "ana", "Filme", "Chrome", "limite")
         data_manager.create_pix_payment(
-            txid="tx-guid", plex_user_id=GUID, username="ana", value=30.0,
+            txid="tx-guid", media_user_id=GUID, username="ana", value=30.0,
             provider="efi", screens=1, external_reference="ref-guid",
         )
 
         assert data_manager.get_blocked_user(GUID) is not None
-        assert len(data_manager.get_notifications(user_plex_id=GUID)) == 1
+        assert len(data_manager.get_notifications(media_user_id=GUID)) == 1
         assert data_manager.get_unlocked_achievements(GUID) == {"primeiro"}
         # A cobrança nasce 'ATIVA' e `get_payments_by_user` só lista as
         # concluídas — o que se verifica aqui é a chave estrangeira, por isso a
         # leitura é feita direta à tabela.
-        assert PixPayment.query.filter_by(user_plex_id=GUID).count() == 1
+        assert PixPayment.query.filter_by(media_user_id=GUID).count() == 1
 
     def test_indicacoes_ligam_dois_guids(self, data_manager):
         data_manager.set_user_profile(GUID, {"username": "ana"})
@@ -167,4 +167,4 @@ class TestInteiroETextoSaoOMesmoUtilizador:
         ).isoformat()})
 
         assert list(data_manager.get_all_user_expirations()) == ["123456"]
-        assert data_manager.get_user_profile(123456)["plex_user_id"] == "123456"
+        assert data_manager.get_user_profile(123456)["media_user_id"] == "123456"

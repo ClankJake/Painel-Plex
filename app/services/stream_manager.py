@@ -352,19 +352,19 @@ class StreamManager:
 
     # --- MÉTODOS PÚBLICOS ---
 
-    def block_user_sessions(self, plex_user_id, reason):
+    def block_user_sessions(self, media_user_id, reason):
         if not self.conn.plex:
             return
             
         try:
             for session in self.conn.plex.sessions():
                 session_user_id = self._get_session_user_id(session)
-                if session_user_id and str(session_user_id) == str(plex_user_id):
+                if session_user_id and str(session_user_id) == str(media_user_id):
                     self._terminate_session(session, reason)
         except NETWORK_ERRORS as e:
-            logger.warning(f"Não foi possível bloquear as sessões do utilizador ID {plex_user_id}: {describe(e)}")
+            logger.warning(f"Não foi possível bloquear as sessões do utilizador ID {media_user_id}: {describe(e)}")
         except Exception as e:
-            logger.error(f"Erro ao bloquear as sessões do utilizador ID {plex_user_id}: {describe(e)}", exc_info=True)
+            logger.error(f"Erro ao bloquear as sessões do utilizador ID {media_user_id}: {describe(e)}", exc_info=True)
 
     def check_and_enforce_streams(self, from_event=False):
         # Reinicia o listener SSE se ele morreu OU se ficou agarrado a uma ligação
@@ -768,7 +768,7 @@ class StreamManager:
             db_log_key = f"db_log_block_{user_id}_{media_title}"
             if not cache.get(db_log_key):
                 self.data_manager.log_stream_termination(
-                    plex_user_id=user_id, username=username,
+                    media_user_id=user_id, username=username,
                     media_title=media_title,
                     platform=self._get_platform_info(session), 
                     reason=f'blocked_{block_reason}'
@@ -820,7 +820,7 @@ class StreamManager:
                 db_log_key = f"db_log_limit_{user_id}_{media_title}"
                 if not cache.get(db_log_key):
                     self.data_manager.log_stream_termination(
-                        plex_user_id=user_id, username=username,
+                        media_user_id=user_id, username=username,
                         media_title=media_title,
                         platform=self._get_platform_info(session_to_terminate),
                         reason='limit_exceeded'

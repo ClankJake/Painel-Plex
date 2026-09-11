@@ -279,13 +279,13 @@ def check_user_active_status():
         return
 
     try:
-        plex_user_id = normalize_user_id(current_user.id)
-        user_profile = data_manager.get_user_profile(plex_user_id)
+        media_user_id = normalize_user_id(current_user.id)
+        user_profile = data_manager.get_user_profile(media_user_id)
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/api/')
 
         # CASO 1: Utilizador foi apagado do banco de dados
         if not user_profile:
-            logger.warning(f"Sessão encerrada: Perfil do utilizador '{current_user.username}' (ID: {plex_user_id}) não encontrado.")
+            logger.warning(f"Sessão encerrada: Perfil do utilizador '{current_user.username}' (ID: {media_user_id}) não encontrado.")
             logout_user()
             session.clear()
             
@@ -486,7 +486,7 @@ def check_plex_pin(client_id, pin_id):
             if not user_profile:
                 logger.info(f"Novo utilizador detetado '{account.username}' (ID: {account.id}). Criando perfil local.")
                 new_profile = {
-                    'plex_user_id': normalize_user_id(account.id),
+                    'media_user_id': normalize_user_id(account.id),
                     'username': account.username,
                     'email': account.email,
                     'status': 'active',
@@ -500,7 +500,7 @@ def check_plex_pin(client_id, pin_id):
             if user_profile and user_profile.get('status') == 'inactive':
                 logger.info(f"Utilizador '{account.username}' está ativo no Plex mas inativo localmente. A atualizar para 'ativo'.")
                 user_profile['status'] = 'active'
-                data_manager.set_user_profile(user_profile['plex_user_id'], user_profile)
+                data_manager.set_user_profile(user_profile['media_user_id'], user_profile)
 
             return _login_user_session(account, 'user', 'main.statistics_page')
         else:
@@ -514,14 +514,14 @@ def check_plex_pin(client_id, pin_id):
                 # Garante que o token de pagamento existe
                 if not user_profile.get('payment_token'):
                     user_profile['payment_token'] = secrets.token_urlsafe(16)
-                    data_manager.set_user_profile(user_profile['plex_user_id'], user_profile)
+                    data_manager.set_user_profile(user_profile['media_user_id'], user_profile)
                 
                 flash(_("A sua conta está inativa. Por favor, efetue o pagamento para reativar o seu acesso."), "info")
                 reactivation_url = url_for('main.payment_page', token=user_profile.get('payment_token'), _external=False)
                 return jsonify({"success": True, "action": "reactivate", "redirect_url": reactivation_url})
             
             if user_profile.get('status') == 'active':
-                latest_payment = data_manager.get_latest_completed_payment(user_profile['plex_user_id'])
+                latest_payment = data_manager.get_latest_completed_payment(user_profile['media_user_id'])
                 is_recently_paid = False
                 if latest_payment and latest_payment.get('created_at'):
                     try:
@@ -542,7 +542,7 @@ def check_plex_pin(client_id, pin_id):
                     
                     if not user_profile.get('payment_token'):
                         user_profile['payment_token'] = secrets.token_urlsafe(16)
-                        data_manager.set_user_profile(user_profile['plex_user_id'], user_profile)
+                        data_manager.set_user_profile(user_profile['media_user_id'], user_profile)
                         
                     flash(_("A sua conta está num estado inconsistente. Por favor, efetue o pagamento para garantir o seu acesso."), "warning")
                     reactivation_url = url_for('main.payment_page', token=user_profile.get('payment_token'), _external=False)

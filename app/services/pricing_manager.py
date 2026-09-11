@@ -23,7 +23,7 @@ class PricingManager:
 
     # --- CÁLCULO E VALIDAÇÃO DE PREÇOS ---
 
-    def calculate_price(self, screens, coupon_code=None, plex_user_id=None, apply_referral_credit=False):
+    def calculate_price(self, screens, coupon_code=None, media_user_id=None, apply_referral_credit=False):
         """
         Calcula o preço final de um plano, aplicando um cupão se for válido e,
         opcionalmente, o crédito de indicações do utilizador.
@@ -51,7 +51,7 @@ class PricingManager:
 
         # 1. Cupão (se houver)
         if coupon_code:
-            is_valid, validation_result = self._validate_coupon(coupon_code, plex_user_id)
+            is_valid, validation_result = self._validate_coupon(coupon_code, media_user_id)
             if not is_valid:
                 return {"success": False, "message": validation_result}
 
@@ -61,15 +61,15 @@ class PricingManager:
             result["message"] = _("Cupão aplicado com sucesso!")
 
         # 2. Crédito de indicações (aplicado DEPOIS do cupão, sobre o valor já com desconto)
-        if apply_referral_credit and plex_user_id:
-            credit_info = self._calculate_referral_credit(result["discounted_price"], plex_user_id)
+        if apply_referral_credit and media_user_id:
+            credit_info = self._calculate_referral_credit(result["discounted_price"], media_user_id)
             result["referral_credit_available"] = credit_info["available"]
             result["referral_credit_applied"] = credit_info["applied"]
             result["discounted_price"] = credit_info["final_price"]
 
         return result
 
-    def _calculate_referral_credit(self, current_price, plex_user_id):
+    def _calculate_referral_credit(self, current_price, media_user_id):
         """
         Determina quanto do crédito de indicações pode ser abatido do preço atual.
         Nunca debita — só calcula. O crédito aplicado está sempre limitado tanto
@@ -89,7 +89,7 @@ class PricingManager:
             return empty
 
         try:
-            profile = self.data_manager.get_user_profile(plex_user_id)
+            profile = self.data_manager.get_user_profile(media_user_id)
         except Exception:
             return empty
 
@@ -104,7 +104,7 @@ class PricingManager:
         # gerar duas cobranças ao mesmo tempo dava o desconto completo nas duas e
         # o utilizador gastava o mesmo saldo a dobrar.
         try:
-            reserved = round(float(self.data_manager.get_reserved_referral_credit(plex_user_id) or 0), 2)
+            reserved = round(float(self.data_manager.get_reserved_referral_credit(media_user_id) or 0), 2)
         except Exception:
             reserved = 0.0
 
@@ -167,7 +167,7 @@ class PricingManager:
         # Dentro da janela de renovação, a renovação normal já é o caminho natural.
         return days_left > renewal_window
 
-    def calculate_upgrade_proration(self, plex_user_id, new_screens):
+    def calculate_upgrade_proration(self, media_user_id, new_screens):
         """
         Calcula quanto custa fazer um UPGRADE de plano a meio do ciclo (pro-rata):
         o utilizador paga apenas a DIFERENÇA de preço pelos dias que ainda faltam,
@@ -196,7 +196,7 @@ class PricingManager:
             return result
 
         try:
-            profile = self.data_manager.get_user_profile(plex_user_id)
+            profile = self.data_manager.get_user_profile(media_user_id)
         except Exception:
             profile = None
 
@@ -289,12 +289,12 @@ class PricingManager:
         except (ValueError, TypeError):
             return None
 
-    def _validate_coupon(self, coupon_code, plex_user_id):
+    def _validate_coupon(self, coupon_code, media_user_id):
         """
         Verifica se um cupão é válido para ser utilizado.
         Retorna um tuplo (bool, cupão_ou_mensagem_erro).
         """
-        if plex_user_id and self.data_manager.has_user_used_coupon(plex_user_id, coupon_code):
+        if media_user_id and self.data_manager.has_user_used_coupon(media_user_id, coupon_code):
             return False, _("Você já usou este cupão.")
 
         coupon = self.data_manager.get_coupon_by_code(coupon_code)
@@ -307,7 +307,7 @@ class PricingManager:
         # 🛡️ O registo do uso só acontece quando o pagamento é confirmado. Sem
         # olhar também para as cobranças ABERTAS, a mesma pessoa gerava duas
         # cobranças com o mesmo cupão e pagava as duas com desconto.
-        if plex_user_id and self._tem_cobranca_aberta_com_cupao(plex_user_id, coupon_code):
+        if media_user_id and self._tem_cobranca_aberta_com_cupao(media_user_id, coupon_code):
             return False, _("Já existe um pagamento pendente com este cupão. Conclua-o ou aguarde que expire.")
 
         # Um tipo de desconto desconhecido não pode ser tratado como válido: antes,
@@ -379,9 +379,9 @@ class PricingManager:
         except Exception:
             return 0
 
-    def _tem_cobranca_aberta_com_cupao(self, plex_user_id, coupon_code):
+    def _tem_cobranca_aberta_com_cupao(self, media_user_id, coupon_code):
         try:
-            return bool(self.data_manager.has_user_pending_coupon_charge(plex_user_id, coupon_code))
+            return bool(self.data_manager.has_user_pending_coupon_charge(media_user_id, coupon_code))
         except AttributeError:
             return False
         except Exception:

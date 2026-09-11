@@ -158,18 +158,18 @@ class FakeDataManager:
         self.terminations = []
 
     # --- Perfis ---
-    def get_user_profile(self, plex_user_id):
-        return self.profiles.get(int(plex_user_id))
+    def get_user_profile(self, media_user_id):
+        return self.profiles.get(int(media_user_id))
 
-    def set_user_profile(self, plex_user_id, profile_data):
-        profile = self.profiles.setdefault(int(plex_user_id), {"plex_user_id": int(plex_user_id)})
+    def set_user_profile(self, media_user_id, profile_data):
+        profile = self.profiles.setdefault(int(media_user_id), {"media_user_id": int(media_user_id)})
         profile.update(profile_data)
         return profile
 
-    def get_user_profiles_by_id(self, plex_user_ids):
+    def get_user_profiles_by_id(self, media_user_ids):
         return {
             int(user_id): self.profiles[int(user_id)]
-            for user_id in plex_user_ids
+            for user_id in media_user_ids
             if int(user_id) in self.profiles
         }
 
@@ -188,26 +188,26 @@ class FakeDataManager:
                 return profile
         return None
 
-    def get_users_referred_by(self, plex_user_id):
-        return [p for p in self.profiles.values() if p.get("referred_by") == int(plex_user_id)]
+    def get_users_referred_by(self, media_user_id):
+        return [p for p in self.profiles.values() if p.get("referred_by") == int(media_user_id)]
 
     # --- Indicações (equivalentes em memória das operações atómicas) ---
-    def set_user_referral_code(self, plex_user_id, code):
-        profile = self.profiles.setdefault(int(plex_user_id), {"plex_user_id": int(plex_user_id)})
+    def set_user_referral_code(self, media_user_id, code):
+        profile = self.profiles.setdefault(int(media_user_id), {"media_user_id": int(media_user_id)})
         if not profile.get("referral_code"):
             profile["referral_code"] = code
         return profile["referral_code"]
 
-    def add_referral_credit(self, plex_user_id, amount):
+    def add_referral_credit(self, media_user_id, amount):
         valor = round(float(amount or 0), 2)
         if valor <= 0:
             return 0.0
-        profile = self.profiles.setdefault(int(plex_user_id), {"plex_user_id": int(plex_user_id)})
+        profile = self.profiles.setdefault(int(media_user_id), {"media_user_id": int(media_user_id)})
         profile["referral_credit"] = round(float(profile.get("referral_credit") or 0) + valor, 2)
         return valor
 
-    def consume_referral_credit(self, plex_user_id, amount):
-        profile = self.profiles.get(int(plex_user_id))
+    def consume_referral_credit(self, media_user_id, amount):
+        profile = self.profiles.get(int(media_user_id))
         if not profile:
             return 0.0
         disponivel = float(profile.get("referral_credit") or 0)
@@ -216,31 +216,31 @@ class FakeDataManager:
             profile["referral_credit"] = round(disponivel - usado, 2)
         return usado
 
-    def get_reserved_referral_credit(self, plex_user_id, exclude_txid=None):
-        return float(self.reserved_credit.get(int(plex_user_id), 0.0))
+    def get_reserved_referral_credit(self, media_user_id, exclude_txid=None):
+        return float(self.reserved_credit.get(int(media_user_id), 0.0))
 
-    def claim_referral_reward(self, plex_user_id):
-        profile = self.profiles.get(int(plex_user_id))
+    def claim_referral_reward(self, media_user_id):
+        profile = self.profiles.get(int(media_user_id))
         if not profile or not profile.get("referred_by") or profile.get("referral_rewarded"):
             return False
         profile["referral_rewarded"] = True
         return True
 
-    def release_referral_reward(self, plex_user_id):
-        profile = self.profiles.get(int(plex_user_id))
+    def release_referral_reward(self, media_user_id):
+        profile = self.profiles.get(int(media_user_id))
         if not profile:
             return False
         profile["referral_rewarded"] = False
         return True
 
-    def count_rewarded_referrals(self, plex_user_id):
+    def count_rewarded_referrals(self, media_user_id):
         return len([
             p for p in self.profiles.values()
-            if p.get("referred_by") == int(plex_user_id) and p.get("referral_rewarded")
+            if p.get("referred_by") == int(media_user_id) and p.get("referral_rewarded")
         ])
 
-    def user_has_completed_payment(self, plex_user_id):
-        return int(plex_user_id) in self.paid_users
+    def user_has_completed_payment(self, media_user_id):
+        return int(media_user_id) in self.paid_users
 
     def reset_all_users_xp(self):
         for profile in self.profiles.values():
@@ -248,43 +248,43 @@ class FakeDataManager:
         return len(self.profiles)
 
     # --- Bloqueios ---
-    def get_blocked_user(self, plex_user_id):
-        return self.blocked.get(int(plex_user_id))
+    def get_blocked_user(self, media_user_id):
+        return self.blocked.get(int(media_user_id))
 
     # --- Conquistas ---
-    def get_unlocked_achievements(self, plex_user_id):
-        return set(self.achievements.get(int(plex_user_id), set()))
+    def get_unlocked_achievements(self, media_user_id):
+        return set(self.achievements.get(int(media_user_id), set()))
 
-    def add_unlocked_achievements(self, plex_user_id, username, achievements_to_add):
-        atuais = self.achievements.setdefault(int(plex_user_id), set())
+    def add_unlocked_achievements(self, media_user_id, username, achievements_to_add):
+        atuais = self.achievements.setdefault(int(media_user_id), set())
         atuais.update(ach["id"] for ach in achievements_to_add)
 
     # --- Cupões ---
     def get_coupon_by_code(self, code):
         return self.coupons.get(code)
 
-    def has_user_used_coupon(self, plex_user_id, code):
-        return (int(plex_user_id), code) in self.used_coupons
+    def has_user_used_coupon(self, media_user_id, code):
+        return (int(media_user_id), code) in self.used_coupons
 
     def get_reserved_coupon_uses(self, code):
         return int(self.reserved_coupons.get(code, 0))
 
-    def has_user_pending_coupon_charge(self, plex_user_id, code):
-        return (int(plex_user_id), code) in self.pending_coupon_charges
+    def has_user_pending_coupon_charge(self, media_user_id, code):
+        return (int(media_user_id), code) in self.pending_coupon_charges
 
     # --- Auditoria ---
-    def log_stream_termination(self, plex_user_id, username, media_title, platform, reason):
+    def log_stream_termination(self, media_user_id, username, media_title, platform, reason):
         registo = {
-            "plex_user_id": plex_user_id, "username": username, "media_title": media_title,
+            "media_user_id": media_user_id, "username": username, "media_title": media_title,
             "platform": platform, "reason": reason,
         }
         self.terminations.append(registo)
         return registo
 
     # --- Notificações ---
-    def create_notification(self, message, category="info", link=None, user_plex_id=None):
+    def create_notification(self, message, category="info", link=None, media_user_id=None):
         self.notifications.append(
-            {"message": message, "category": category, "link": link, "user_plex_id": user_plex_id}
+            {"message": message, "category": category, "link": link, "media_user_id": media_user_id}
         )
         return True
 

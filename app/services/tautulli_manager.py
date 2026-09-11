@@ -101,7 +101,7 @@ class TautulliManager:
         return self.stats.get_watch_stats(days, plex_users_info)
 
     @cache.memoize(timeout=300)
-    def get_user_watch_details(self, plex_user_id: Union[int, str], days: int = 7) -> Dict[str, Any]:
+    def get_user_watch_details(self, media_user_id: Union[int, str], days: int = 7) -> Dict[str, Any]:
         """
         Obtém os detalhes aprofundados de um utilizador específico (Gráficos, Géneros, Conquistas, XP/Nível).
 
@@ -111,7 +111,7 @@ class TautulliManager:
         com um endereço de memória diferente, tornando a chave de cache instável e
         imprevisível (o resultado dependia de forma não-determinística de quem
         tinha visto a página primeiro). Agora a chave de cache é só
-        (plex_user_id, days), estável e correta — os efeitos que dependiam de
+        (media_user_id, days), estável e correta — os efeitos que dependiam de
         "quem está a ver" (sincronizar XP, notificar conquistas) deixaram de
         depender do utilizador atual: a sincronização de XP corre sempre (é
         barata e já está protegida pela cache de 5 minutos) e as notificações de
@@ -121,15 +121,15 @@ class TautulliManager:
         if not self.api_client.is_configured:
             return {"success": True, "details": {}}
             
-        logger.debug(f"Tautulli: A buscar detalhes de visualização (cache miss) para ID '{plex_user_id}' e '{days}' dias.")
+        logger.debug(f"Tautulli: A buscar detalhes de visualização (cache miss) para ID '{media_user_id}' e '{days}' dias.")
         
-        profile = self.data_manager.get_user_profile(plex_user_id)
+        profile = self.data_manager.get_user_profile(media_user_id)
         if not profile or not profile.get('username'):
-            logger.warning(f"Tautulli: Não foi possível encontrar o perfil para o ID '{plex_user_id}'. Detalhes de visualização vazios.")
+            logger.warning(f"Tautulli: Não foi possível encontrar o perfil para o ID '{media_user_id}'. Detalhes de visualização vazios.")
             return {"success": True, "details": {}}
 
         username = profile.get('username')
-        return self.stats.get_user_watch_details(str(plex_user_id), username, days=days)
+        return self.stats.get_user_watch_details(str(media_user_id), username, days=days)
 
     def get_user_watch_history(self, user_id: Union[int, str], page: int = 1, length: int = 25, search: str = "") -> Dict[str, Any]:
         """Busca o histórico paginado de um utilizador (Sem Cache para permitir pesquisa real-time)."""
@@ -148,20 +148,20 @@ class TautulliManager:
         return self.stats.get_recently_added(days)
 
     @cache.memoize(timeout=300)
-    def get_user_devices(self, plex_user_id: Union[int, str]) -> Dict[str, Any]:
+    def get_user_devices(self, media_user_id: Union[int, str]) -> Dict[str, Any]:
         """Busca os dispositivos (players) que o utilizador já usou."""
         if not self.api_client.is_configured:
             return {"success": True, "devices": []}
             
-        logger.debug(f"Tautulli: A buscar dispositivos do utilizador (cache miss) para o ID '{plex_user_id}'.")
-        return self.stats.get_user_devices(str(plex_user_id))
+        logger.debug(f"Tautulli: A buscar dispositivos do utilizador (cache miss) para o ID '{media_user_id}'.")
+        return self.stats.get_user_devices(str(media_user_id))
 
     # ==========================================
     # PLEX WRAPPED (RETROSPECTIVA ANUAL)
     # ==========================================
 
     @cache.memoize(timeout=1800)
-    def get_wrapped_data(self, plex_user_id: Union[int, str], year: Optional[int] = None) -> Dict[str, Any]:
+    def get_wrapped_data(self, media_user_id: Union[int, str], year: Optional[int] = None) -> Dict[str, Any]:
         """
         Retrospectiva anual de um utilizador. Cache mais longa (30 min) do que as
         estatísticas normais porque agrega um ANO inteiro de histórico — é a
@@ -170,11 +170,11 @@ class TautulliManager:
         if not self.api_client.is_configured:
             return {"success": True, "has_data": False, "wrapped": None}
 
-        profile = self.data_manager.get_user_profile(plex_user_id)
+        profile = self.data_manager.get_user_profile(media_user_id)
         if not profile or not profile.get('username'):
             return {"success": True, "has_data": False, "wrapped": None}
 
-        return self.stats.get_wrapped_data(str(plex_user_id), profile.get('username'), year=year)
+        return self.stats.get_wrapped_data(str(media_user_id), profile.get('username'), year=year)
 
     # ==========================================
     # RECOMENDAÇÕES ("PORQUE ASSISTIU X...")
@@ -193,7 +193,7 @@ class TautulliManager:
         return self.recommendations.build_index(days=days)
 
     @cache.memoize(timeout=900)
-    def _get_recommendations_cached(self, plex_user_id: str, days: Optional[int] = None) -> Dict[str, Any]:
+    def _get_recommendations_cached(self, media_user_id: str, days: Optional[int] = None) -> Dict[str, Any]:
         """
         Parte com cache do cálculo por utilizador.
 
@@ -203,9 +203,9 @@ class TautulliManager:
         deixava o utilizador sem recomendações durante os 15 minutos seguintes.
         """
         index = self.get_recommendation_index(days=days)
-        return self.recommendations.recommend(index, plex_user_id)
+        return self.recommendations.recommend(index, media_user_id)
 
-    def get_recommendations(self, plex_user_id: Union[int, str], days: Optional[int] = None) -> Dict[str, Any]:
+    def get_recommendations(self, media_user_id: Union[int, str], days: Optional[int] = None) -> Dict[str, Any]:
         """Secções "Porque assistiu X, pode gostar de Y" de um utilizador."""
         config = load_or_create_config()
         if not config.get("RECOMMENDATIONS_ENABLED", RECOMMENDATION_DEFAULTS["RECOMMENDATIONS_ENABLED"]):
@@ -215,12 +215,12 @@ class TautulliManager:
             return {"success": True, "sections": [], "reason": "not_configured"}
 
         try:
-            return self._get_recommendations_cached(str(plex_user_id), days)
+            return self._get_recommendations_cached(str(media_user_id), days)
         except RequestException as e:
             logger.warning(f"Recomendações indisponíveis (falha no Tautulli): {e}")
             return {"success": False, "message": str(e)}
         except Exception as e:
-            logger.error(f"Erro inesperado ao gerar recomendações para o ID '{plex_user_id}': {e}", exc_info=True)
+            logger.error(f"Erro inesperado ao gerar recomendações para o ID '{media_user_id}': {e}", exc_info=True)
             return {"success": False, "message": str(e)}
 
     # ==========================================

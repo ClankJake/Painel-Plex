@@ -210,28 +210,28 @@ class PlexManager:
         return None, {}
 
     # --- DELEGAÇÕES SIMPLES ---
-    def get_user_by_id(self, plex_user_id):
-        return self.users.get_user_by_id(plex_user_id)
+    def get_user_by_id(self, media_user_id):
+        return self.users.get_user_by_id(media_user_id)
         
-    def update_screen_limit(self, plex_user_id, screens):
-        profile = self.data_manager.get_user_profile(plex_user_id)
+    def update_screen_limit(self, media_user_id, screens):
+        profile = self.data_manager.get_user_profile(media_user_id)
         if profile:
             profile['screen_limit'] = screens
-            self.data_manager.set_user_profile(plex_user_id, profile)
-            logger.info(f"Limite de telas para o utilizador ID '{plex_user_id}' atualizado para {screens}.")
+            self.data_manager.set_user_profile(media_user_id, profile)
+            logger.info(f"Limite de telas para o utilizador ID '{media_user_id}' atualizado para {screens}.")
 
-    def block_user(self, plex_user_id, reason='manual'):
+    def block_user(self, media_user_id, reason='manual'):
         if self.stream_manager and not self.users.stream_manager:
             self.users.stream_manager = self.stream_manager
-        return self.users.block_user(plex_user_id, reason)
+        return self.users.block_user(media_user_id, reason)
 
-    def unblock_user(self, plex_user_id):
-        return self.users.unblock_user(plex_user_id)
+    def unblock_user(self, media_user_id):
+        return self.users.unblock_user(media_user_id)
 
-    def remove_user(self, plex_user_id):
+    def remove_user(self, media_user_id):
         if self.stream_manager and not getattr(self.users, 'stream_manager', None):
             self.users.stream_manager = self.stream_manager
-        return self.users.remove_user(plex_user_id)
+        return self.users.remove_user(media_user_id)
 
     # --- SESSÕES E STREAMING ---
     def get_active_sessions(self):
@@ -277,7 +277,7 @@ class PlexManager:
         for utilizador in utilizadores_plex:
             resumo["verificados"] += 1
             try:
-                plex_user_id = normalize_user_id(utilizador.get('id'))
+                media_user_id = normalize_user_id(utilizador.get('id'))
                 email = (utilizador.get('email') or '').strip()
                 username = (utilizador.get('username') or '').strip()
 
@@ -287,7 +287,7 @@ class PlexManager:
                     resumo["sem_email_no_plex"] += 1
                     continue
 
-                perfil = self.data_manager.get_user_profile(plex_user_id)
+                perfil = self.data_manager.get_user_profile(media_user_id)
                 if not perfil:
                     continue
 
@@ -300,7 +300,7 @@ class PlexManager:
                 perfil['email'] = email
                 if username:
                     perfil['username'] = username
-                self.data_manager.set_user_profile(plex_user_id, perfil)
+                self.data_manager.set_user_profile(media_user_id, perfil)
                 resumo["atualizados"] += 1
                 logger.info(f"Perfil de '{username}' sincronizado a partir do Plex (email preenchido).")
             except Exception as e:
@@ -370,10 +370,10 @@ class PlexManager:
 
         return processed_users
 
-    def get_user_libraries(self, plex_user_id): return self.users.get_user_libraries(plex_user_id)
-    def update_user_libraries(self, plex_user_id, library_titles, allow_sync=None): return self.users.update_user_libraries(plex_user_id, library_titles, allow_sync=allow_sync)
+    def get_user_libraries(self, media_user_id): return self.users.get_user_libraries(media_user_id)
+    def update_user_libraries(self, media_user_id, library_titles, allow_sync=None): return self.users.update_user_libraries(media_user_id, library_titles, allow_sync=allow_sync)
     def update_all_users_libraries(self, library_titles): return self.users.update_all_users_libraries(library_titles)
-    def toggle_overseerr_access(self, plex_user_id, access: bool): return self.users.toggle_overseerr_access(plex_user_id, access)
+    def toggle_overseerr_access(self, media_user_id, access: bool): return self.users.toggle_overseerr_access(media_user_id, access)
     
     # --- CONVITES E TOKENS ---
     def create_invitation(self, **kwargs): return self.invites.create_invitation(**kwargs)
@@ -384,9 +384,9 @@ class PlexManager:
     def reactivate_invitation(self, code): return self.invites.reactivate_invitation(code)
 
     # --- ASSINATURAS E RENOVAÇÕES ---
-    def renew_subscription(self, plex_user_id, months_to_add, screens=None, base_mode='today', base_date_str=None, expiration_time_str=None, is_reactivation=False):
+    def renew_subscription(self, media_user_id, months_to_add, screens=None, base_mode='today', base_date_str=None, expiration_time_str=None, is_reactivation=False):
         return self.subscriptions.renew_subscription(
-            plex_user_id, months_to_add, screens=screens, base_mode=base_mode, 
+            media_user_id, months_to_add, screens=screens, base_mode=base_mode, 
             base_date_str=base_date_str, expiration_time_str=expiration_time_str, 
             is_reactivation=is_reactivation
         )
@@ -425,8 +425,8 @@ class PlexManager:
         return users_to_check
 
     def send_expiration_notification_if_needed(self, user_info):
-        plex_user_id = user_info['id']
-        profile = self.data_manager.get_user_profile(plex_user_id)
+        media_user_id = user_info['id']
+        profile = self.data_manager.get_user_profile(media_user_id)
         if not profile:
             return
         
@@ -467,7 +467,7 @@ class PlexManager:
                     return
 
                 self.notifier_manager.send_expiration_notification(user_info, days_left, profile)
-                self.data_manager.update_user_notification_timestamp(plex_user_id)
+                self.data_manager.update_user_notification_timestamp(media_user_id)
             except (ValueError, TypeError) as e:
                 logger.error(f"Erro ao processar data de expiração para '{user_info['username']}': {e}")
         

@@ -46,12 +46,12 @@ class TestPerfis:
     def test_procura_por_username_ignora_maiusculas(self, data_manager):
         data_manager.set_user_profile(1, {"username": "Ana"})
 
-        assert data_manager.get_user_profile_by_username("ana")["plex_user_id"] == "1"
+        assert data_manager.get_user_profile_by_username("ana")["media_user_id"] == "1"
 
     def test_procura_por_email_ignora_maiusculas_e_espacos(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana", "email": "Ana@Exemplo.com"})
 
-        assert data_manager.get_user_profile_by_email("  ana@exemplo.com ")["plex_user_id"] == "1"
+        assert data_manager.get_user_profile_by_email("  ana@exemplo.com ")["media_user_id"] == "1"
 
     def test_procura_por_email_vazio(self, data_manager):
         assert data_manager.get_user_profile_by_email(None) is None
@@ -60,8 +60,8 @@ class TestPerfis:
         # A coluna do perfil chama-se 'telegram_user' (não 'telegram_id').
         data_manager.set_user_profile(1, {"username": "ana", "telegram_user": "123456"})
 
-        assert data_manager.get_user_profile_by_telegram(123456)["plex_user_id"] == "1"
-        assert data_manager.get_user_profile_by_telegram(" 123456 ")["plex_user_id"] == "1"
+        assert data_manager.get_user_profile_by_telegram(123456)["media_user_id"] == "1"
+        assert data_manager.get_user_profile_by_telegram(" 123456 ")["media_user_id"] == "1"
 
     @pytest.mark.parametrize("valor", [None, "", "   "])
     def test_procura_por_telegram_vazio(self, data_manager, valor):
@@ -70,7 +70,7 @@ class TestPerfis:
     def test_procura_por_codigo_de_indicacao(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana", "referral_code": "ABCD2345"})
 
-        assert data_manager.get_user_profile_by_referral_code("abcd2345")["plex_user_id"] == "1"
+        assert data_manager.get_user_profile_by_referral_code("abcd2345")["media_user_id"] == "1"
         assert data_manager.get_user_profile_by_referral_code("ZZZZ") is None
 
     def test_lista_de_indicados(self, data_manager):
@@ -419,11 +419,11 @@ class TestPagamentos:
     def test_limpeza_apaga_apenas_pendentes_antigas(self, db_session, data_manager):
         data_manager.set_user_profile(1, {"username": "ana"})
         db_session.add_all([
-            PixPayment(txid="antiga", user_plex_id=1, username="ana", value=10.0,
+            PixPayment(txid="antiga", media_user_id=1, username="ana", value=10.0,
                        status="ATIVA", created_at=iso(-10)),
-            PixPayment(txid="recente", user_plex_id=1, username="ana", value=10.0,
+            PixPayment(txid="recente", media_user_id=1, username="ana", value=10.0,
                        status="ATIVA", created_at=iso(-1)),
-            PixPayment(txid="paga", user_plex_id=1, username="ana", value=10.0,
+            PixPayment(txid="paga", media_user_id=1, username="ana", value=10.0,
                        status="CONCLUIDA", created_at=iso(-10)),
         ])
         db_session.commit()
@@ -448,18 +448,18 @@ class TestPagamentos:
 class TestNotificacoes:
     def test_criar_e_contar_por_utilizador(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana"})
-        data_manager.create_notification("Bem-vindo", user_plex_id=1)
+        data_manager.create_notification("Bem-vindo", media_user_id=1)
         data_manager.create_notification("Aviso global")
 
         assert data_manager.get_unread_notification_count(1) == 1
-        # Sem user_plex_id ficam as notificações do administrador.
+        # Sem media_user_id ficam as notificações do administrador.
         assert data_manager.get_unread_notification_count() == 1
         assert data_manager.get_notifications(1)[0]["message"] == "Bem-vindo"
 
     def test_marcar_todas_como_lidas(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana"})
-        data_manager.create_notification("A", user_plex_id=1)
-        data_manager.create_notification("B", user_plex_id=1)
+        data_manager.create_notification("A", media_user_id=1)
+        data_manager.create_notification("B", media_user_id=1)
 
         assert data_manager.mark_all_as_read(1) == 2
         assert data_manager.get_unread_notification_count(1) == 0
@@ -468,7 +468,7 @@ class TestNotificacoes:
 
     def test_apagar_todas(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana"})
-        data_manager.create_notification("A", user_plex_id=1)
+        data_manager.create_notification("A", media_user_id=1)
 
         assert data_manager.delete_all_notifications(1) == 1
         assert data_manager.get_notifications(1, include_read=True) == []
@@ -476,7 +476,7 @@ class TestNotificacoes:
     def test_limite_de_resultados(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana"})
         for i in range(5):
-            data_manager.create_notification(f"Aviso {i}", user_plex_id=1)
+            data_manager.create_notification(f"Aviso {i}", media_user_id=1)
 
         assert len(data_manager.get_notifications(1, limit=3)) == 3
 
