@@ -49,6 +49,8 @@ export const fieldMap = {
     'plex_url_display': { type: 'text', readonly: true, key: 'PLEX_URL' },
     'TAUTULLI_URL': { type: 'text', default: '' },
     'TAUTULLI_API_KEY': { type: 'password', default: '' },
+    'JELLYFIN_URL': { type: 'text', default: '' },
+    'JELLYFIN_API_KEY': { type: 'password', default: '' },
     'EFI_ENABLED': { type: 'checkbox', default: false },
     'MERCADOPAGO_ENABLED': { type: 'checkbox', default: false },
     'GATES2B_ENABLED': { type: 'checkbox', default: false },

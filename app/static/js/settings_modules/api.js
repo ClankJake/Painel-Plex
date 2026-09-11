@@ -11,6 +11,7 @@ export const saveSettings = (config) => fetchAPI(urls.apiSettings, 'POST', confi
 export const clearLogs = () => fetchAPI(urls.clearLogs, 'POST');
 export const getLogs = () => fetchAPI(urls.getLogs);
 export const testTautulli = (payload) => fetchAPI(urls.testTautulli, 'POST', payload);
+export const testJellyfin = (payload) => fetchAPI(urls.testJellyfin, 'POST', payload);
 export const testOverseerr = (payload) => fetchAPI(urls.testOverseerr, 'POST', payload);
 export const getPlexAuthContext = () => fetchAPI(`${urls.getPlexAuthContext}?from_settings=true`);
 export const checkPlexPin = (clientId, pinId) => fetchAPI(buildPinCheckUrl(urls.checkPlexPin, clientId, pinId));

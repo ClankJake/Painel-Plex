@@ -165,6 +165,18 @@ class PlexManager:
     # uma imagem em plex.tv e que a autenticação se faz com o X-Plex-Token.
     IMAGE_SOURCES = ('plex', 'plex_account')
 
+    def get_owner_account(self):
+        """O dono do servidor, tal como a plexapi o descreve.
+
+        🐛 A Fase 0.5 removeu o espelho `self.account` da fachada e este ponto
+        ficou sem nada: o assistente de instalação deixou de encontrar a conta e
+        caía no ramo de recurso, que grava o USERNAME como identificador da
+        sessão. Numa reconfiguração isso atirava o administrador de volta para o
+        ecrã de login logo no pedido seguinte, mesmo tendo acabado de concluir o
+        assistente com sucesso.
+        """
+        return getattr(self.conn, 'account', None)
+
     def get_base_url(self):
         """O endereço HTTP do servidor, tal como está configurado.
 

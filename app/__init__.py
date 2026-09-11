@@ -314,10 +314,22 @@ def create_app() -> Flask:
 
     @app.context_processor
     def inject_global_vars():
+        # Os templates perguntam pelas CAPACIDADES do servidor, não pela marca:
+        # `{% if media_server.capabilities.fontes_media_online %}`. É o que
+        # permite esconder uma secção que não se aplica em vez de a mostrar
+        # partida — e evita uma cascata de `{% if tipo == 'plex' %}`.
+        backend = extensions.media_server
+        info_servidor = {
+            'type': getattr(backend, 'SERVER_TYPE', 'plex'),
+            'name': getattr(backend, 'DISPLAY_NAME', 'Plex Media Server'),
+            'capabilities': getattr(backend, 'capabilities', None),
+        }
+
         return {
             'current_locale': get_locale(),
             'app_title': app.config.get('APP_TITLE', 'Painel Plex'),
-            'cache_buster': int(datetime.now().timestamp())
+            'cache_buster': int(datetime.now().timestamp()),
+            'media_server': info_servidor,
         }
 
     @app.errorhandler(429)
@@ -343,6 +355,10 @@ def create_app() -> Flask:
             'main.referral_landing',
             'system_api.test_tautulli_connection', 'system_api.test_overseerr_connection',
             'system_api.get_plex_servers',
+            # O assistente tem de poder validar um servidor Jellyfin antes de
+            # existir configuração — ambas as rotas se fecham sozinhas assim que
+            # o sistema fica configurado.
+            'system_api.test_jellyfin_connection', 'system_api.get_jellyfin_users_for_setup',
             'auth.get_plex_auth_context', 'auth.check_plex_pin', 
             'auth.check_plex_pin_for_token', 'auth.auth_status'
         }

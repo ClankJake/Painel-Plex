@@ -148,6 +148,22 @@ class SubscriptionScheduler(Protocol):
 
 
 
+
+@dataclass
+class OwnerAccount:
+    """A conta que administra o servidor, no mínimo que o painel precisa.
+
+    Existe para que a criação da sessão de administrador não tenha de receber
+    um objeto da biblioteca do Plex. O `PlexManager` devolve a conta do plexapi
+    (que já tem estes atributos) e o Jellyfin monta este objeto; quem consome
+    só lê id, username, email e thumb.
+    """
+
+    id: str
+    username: str
+    email: Optional[str] = None
+    thumb: Optional[str] = None
+
 @dataclass
 class MediaSession:
     """Uma reprodução a decorrer, já traduzida do vocabulário do servidor.
@@ -281,6 +297,13 @@ class MediaServerBackend(Protocol):
 
     def get_base_url(self) -> Optional[str]: ...
 
+    def get_owner_account(self) -> Optional[Any]:
+        """A conta de administrador do servidor (ver `OwnerAccount`).
+
+        None quando não há ligação ou o servidor não a sabe identificar — quem
+        chama deve tratar isso como "ainda não sei quem é", não como erro.
+        """
+
     def is_connected(self) -> bool: ...
 
     # --- Utilizadores ---
@@ -321,6 +344,7 @@ __all__ = [
     'MediaServerBackend',
     'MediaServerCapabilities',
     'MediaSession',
+    'OwnerAccount',
     'SessionsProvider',
     'SubscriptionScheduler',
     'UserDirectory',

@@ -128,6 +128,29 @@ class JellyfinManager:
     def get_base_url(self):
         return self.conn.api.base_url
 
+    def get_owner_account(self):
+        """A conta de administrador configurada no painel.
+
+        O Jellyfin não tem "dono" como o Plex: qualquer conta com
+        `IsAdministrator` administra o servidor. O painel guarda qual escolheu
+        no assistente (ADMIN_USER_ID) e é essa que devolve aqui.
+        """
+        from app.config import load_or_create_config
+        from ..base import OwnerAccount
+
+        config = load_or_create_config()
+        admin_id = normalize_user_id(config.get('ADMIN_USER_ID'))
+        if not admin_id:
+            return None
+
+        utilizador = self.users.get_user_by_id(admin_id)
+        return OwnerAccount(
+            id=admin_id,
+            username=(utilizador or {}).get('username') or config.get('ADMIN_USER') or '',
+            email=None,
+            thumb=(utilizador or {}).get('thumb'),
+        )
+
     def authorize_image_url(self, source, image_path):
         """Monta o URL autenticado de uma imagem do Jellyfin.
 

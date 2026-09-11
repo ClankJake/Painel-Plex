@@ -136,3 +136,70 @@ class JellyfinApiClient:
 
     def delete(self, endpoint, **kwargs):
         return self.request('DELETE', endpoint, **kwargs)
+
+
+def test_connection(url: str, api_key: str) -> Dict[str, Any]:
+    """Testa um par URL + chave de API sem tocar na configuração guardada.
+
+    Usado pelo assistente de instalação e pelo botão "Testar" das definições,
+    que precisam de validar credenciais que ainda não foram gravadas.
+    """
+    cliente = JellyfinApiClient()
+    cliente.base_url = (url or '').strip().rstrip('/')
+    cliente.api_key = (api_key or '').strip()
+    cliente.is_configured = bool(cliente.base_url and cliente.api_key)
+
+    if not cliente.is_configured:
+        return {"success": False, "message": _("URL e chave de API são obrigatórios.")}
+
+    try:
+        info = cliente.get('/System/Info') or {}
+        return {
+            "success": True,
+            "message": _("Ligado a '%(nome)s' (versão %(versao)s).",
+                         nome=info.get('ServerName', 'Jellyfin'),
+                         versao=info.get('Version', '?')),
+            "server_name": info.get('ServerName'),
+            "version": info.get('Version'),
+        }
+    except JellyfinApiError as e:
+        if e.status_code in (401, 403):
+            return {"success": False, "message": _("O Jellyfin recusou a chave de API. Gere uma nova em Painel de Controlo → Chaves de API.")}
+        return {"success": False, "message": str(e)}
+    except Exception as e:
+        return {"success": False, "message": _("Não foi possível contactar o Jellyfin: %(erro)s", erro=describe(e))}
+
+
+def list_administrators(url: str, api_key: str) -> Dict[str, Any]:
+    """Lista as contas do servidor, marcando quais são administradores.
+
+    O assistente usa-a para o administrador se identificar: quem detém a chave
+    de API do Jellyfin já tem controlo total do servidor, por isso escolher a
+    conta aqui não concede nada que a chave não conceda.
+    """
+    cliente = JellyfinApiClient()
+    cliente.base_url = (url or '').strip().rstrip('/')
+    cliente.api_key = (api_key or '').strip()
+    cliente.is_configured = bool(cliente.base_url and cliente.api_key)
+
+    if not cliente.is_configured:
+        return {"success": False, "message": _("URL e chave de API são obrigatórios."), "users": []}
+
+    try:
+        utilizadores = cliente.get('/Users') or []
+    except JellyfinApiError as e:
+        return {"success": False, "message": str(e), "users": []}
+    except Exception as e:
+        return {"success": False, "message": _("Não foi possível contactar o Jellyfin: %(erro)s", erro=describe(e)), "users": []}
+
+    return {
+        "success": True,
+        "users": [
+            {
+                "id": u.get('Id'),
+                "name": u.get('Name'),
+                "is_admin": bool((u.get('Policy') or {}).get('IsAdministrator')),
+            }
+            for u in utilizadores if u.get('Id')
+        ],
+    }

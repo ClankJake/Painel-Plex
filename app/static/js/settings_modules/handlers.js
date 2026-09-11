@@ -544,6 +544,13 @@ export function initializeEventListeners() {
         })));
     }
     
+    if (dom.testJellyfinButton) {
+        dom.testJellyfinButton.addEventListener('click', () => handleTestConnection(dom.testJellyfinButton, 'testJellyfin', () => ({
+            url: document.getElementById('JELLYFIN_URL')?.value,
+            api_key: document.getElementById('JELLYFIN_API_KEY')?.value
+        })));
+    }
+
     if (dom.testOverseerrButton) {
         dom.testOverseerrButton.addEventListener('click', () => handleTestConnection(dom.testOverseerrButton, 'testOverseerr', () => ({ 
             url: document.getElementById('OVERSEERR_URL')?.value, 

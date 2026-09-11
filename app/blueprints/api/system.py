@@ -3,6 +3,8 @@
 import logging
 import secrets
 import os
+import signal
+import threading
 import pytz
 from collections import deque
 from datetime import datetime
@@ -583,18 +585,62 @@ def setup_restore_backup():
         logger.error(f"Erro crítico ao restaurar backup durante o setup: {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Erro inesperado ao restaurar o backup: %(error)s", error=str(e))}), 500
 
-    logger.warning("⚠️ RESTAURO DE BACKUP concluído a partir do assistente de configuração. A aplicação vai reiniciar...")
-
-    def _delayed_restart():
-        import time as _time
-        _time.sleep(2)  # dá tempo à resposta HTTP de chegar ao navegador
-        os.kill(os.getpid(), signal.SIGTERM)
-
-    threading.Thread(target=_delayed_restart, daemon=True).start()
+    _agendar_reinicio("RESTAURO DE BACKUP concluído a partir do assistente de configuração.")
 
     return jsonify({
         "success": True,
         "message": _("Backup restaurado com sucesso! A aplicação será reiniciada — aguarde e recarregue a página.")
+    })
+
+
+def _agendar_reinicio(motivo: str):
+    """Pede ao processo que termine, para o supervisor o voltar a levantar.
+
+    O Docker (ou o systemd) reinicia o serviço; o atraso dá tempo à resposta
+    HTTP de chegar ao navegador antes de o processo morrer. Estava copiado em
+    três sítios — o restauro de backup no assistente, o restauro nas
+    definições e a troca de servidor de média.
+    """
+    logger.warning(f"⚠️ {motivo} A aplicação vai reiniciar...")
+
+    def _reinicio_adiado():
+        import time as _time
+        _time.sleep(2)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=_reinicio_adiado, daemon=True).start()
+
+
+def _concluir_com_reinicio(config, backend):
+    """Fecha a instalação quando o TIPO de servidor mudou.
+
+    A sessão de administrador é criada aqui e sobrevive ao reinício (vive num
+    cookie), por isso o administrador volta já autenticado. Os serviços de fundo
+    não são arrancados neste processo: quem os arranca é o `create_app()` do
+    processo novo, que já vem com o backend certo.
+    """
+    conta = backend.get_owner_account()
+    if conta is not None and str(config.get('ADMIN_USER_ID', '') or '') != str(conta.id):
+        config['ADMIN_USER_ID'] = str(conta.id)
+        save_app_config(config)
+
+    _agendar_reinicio(
+        f"O tipo de servidor de média mudou para '{backend.SERVER_TYPE}', e todo o painel "
+        "tem de passar a falar com o servidor novo."
+    )
+
+    if conta is not None:
+        from ..auth import _login_user_session
+        resposta = _login_user_session(conta, 'admin', 'main.index')
+        corpo = resposta.get_json()
+        corpo['restarting'] = True
+        corpo['message'] = _("Configuração guardada. A aplicação vai reiniciar — aguarde alguns segundos e recarregue a página.")
+        return jsonify(corpo)
+
+    return jsonify({
+        "success": True, "restarting": True,
+        "redirect_url": url_for('main.index', _external=False),
+        "message": _("Configuração guardada. A aplicação vai reiniciar — aguarde alguns segundos e recarregue a página."),
     })
 
 
@@ -639,11 +685,23 @@ def save_setup():
     # um pedido incompleto era gravado à mesma no config.json (com IS_CONFIGURED a
     # True) e só depois falhava na ligação ao Plex, deixando o ficheiro sujo com
     # valores vazios ou nulos.
-    obrigatorios = {
-        'plex_url': _("Servidor Plex"),
-        'plex_token': _("Token do Plex"),
-        'admin_user': _("Conta do administrador"),
-    }
+    from ...services.media_server import resolve_media_server_type
+
+    tipo_servidor = resolve_media_server_type(data.get('media_server_type'))
+    data['media_server_type'] = tipo_servidor
+
+    if tipo_servidor == 'jellyfin':
+        obrigatorios = {
+            'jellyfin_url': _("URL do Jellyfin"),
+            'jellyfin_api_key': _("Chave de API do Jellyfin"),
+            'admin_user': _("Conta do administrador"),
+        }
+    else:
+        obrigatorios = {
+            'plex_url': _("Servidor Plex"),
+            'plex_token': _("Token do Plex"),
+            'admin_user': _("Conta do administrador"),
+        }
     em_falta = [
         rotulo for campo, rotulo in obrigatorios.items()
         if not str(data.get(campo) or '').strip()
@@ -652,8 +710,8 @@ def save_setup():
         return jsonify({
             "success": False,
             "message": _(
-                "Faltam dados obrigatórios: %(campos)s. Volte atrás e conclua a autenticação "
-                "e a escolha do servidor.",
+                "Faltam dados obrigatórios: %(campos)s. Volte atrás e conclua a ligação "
+                "ao servidor e a escolha da conta de administrador.",
                 campos=", ".join(em_falta)
             )
         }), 400
@@ -701,13 +759,35 @@ def save_setup():
     if config.get("EFI_ENABLED"):
         efi_manager.configure_webhook()
 
-    success, message = media_server.reload_connections()
+    # ⚠️ O backend do servidor de média é escolhido no arranque, e os blueprints
+    # guardam a referência POR VALOR (`from ..extensions import media_server`).
+    # Trocar o objeto em memória deixaria metade do painel a falar com o servidor
+    # antigo, por isso uma mudança de tipo obriga a reiniciar — como no restauro
+    # de backup. A ligação é validada ANTES, com um backend temporário, para não
+    # reiniciar para uma configuração que não funciona.
+    trocou_de_servidor = tipo_servidor != media_server.SERVER_TYPE
+
+    if trocou_de_servidor:
+        from ...services.media_server import create_media_server
+
+        temporario = create_media_server(
+            tipo_servidor,
+            data_manager=data_manager, stats_manager=tautulli_manager,
+            notifier_manager=notifier_manager, requests_manager=overseerr_manager,
+        )
+        success, message = temporario.reload_connections()
+    else:
+        success, message = media_server.reload_connections()
+
     if not success:
         config['IS_CONFIGURED'] = False
         save_app_config(config)
         return jsonify({"success": False, "message": _("Configuração salva, mas falha ao conectar: %(message)s", message=message)})
 
-    account = getattr(media_server, 'account', None)
+    if trocou_de_servidor:
+        return _concluir_com_reinicio(config, temporario)
+
+    account = media_server.get_owner_account()
 
     # 🛡️ Regista já o ID Plex do administrador (imutável), em vez de esperar pelo
     # seu próximo login. Sem ele, o 'removal_job' e a revalidação da sessão de
@@ -784,6 +864,61 @@ def test_tautulli_connection():
         return jsonify({'success': False, 'message': _('Chave da API é obrigatória.')}), 400
 
     return jsonify(tautulli_manager.test_connection(url, api_key))
+
+def _credencial_com_placeholder(recebida, chave_guardada):
+    """Devolve a credencial a usar no teste.
+
+    A interface nunca mostra segredos guardados: envia asteriscos. Quando é
+    isso que chega, testa-se com a chave que já está na configuração — senão o
+    botão "Testar" falhava sempre numa instalação a funcionar.
+    """
+    if recebida and all(c == '*' for c in recebida):
+        return chave_guardada
+    return recebida
+
+
+@system_api_bp.route('/test/jellyfin-connection', methods=['POST'])
+def test_jellyfin_connection():
+    if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
+        return jsonify({'success': False, 'message': _('Acesso não autorizado.')}), 403
+
+    from ...services.media_server.jellyfin.api_client import test_connection
+
+    dados = request.get_json(silent=True) or {}
+    url = (dados.get('url') or '').strip()
+    api_key = _credencial_com_placeholder(dados.get('api_key'), load_or_create_config().get('JELLYFIN_API_KEY'))
+
+    if not url:
+        return jsonify({'success': False, 'message': _('URL é obrigatória.')}), 400
+    if not api_key:
+        return jsonify({'success': False, 'message': _('Chave da API é obrigatória.')}), 400
+
+    return jsonify(test_connection(url, api_key))
+
+
+@system_api_bp.route('/setup/jellyfin-users', methods=['POST'])
+@limiter.limit("20 per hour")
+def get_jellyfin_users_for_setup():
+    """Contas do servidor Jellyfin, para o administrador se identificar.
+
+    🔒 Como a rota irmã `/setup/servers`, tem de funcionar ANTES de existir um
+    administrador — e por isso fecha-se assim que o sistema esteja configurado,
+    para não se tornar uma forma de listar utilizadores sem sessão.
+    """
+    if is_configured() and not (current_user.is_authenticated and current_user.is_admin()):
+        return jsonify({'success': False, 'message': _('Acesso não autorizado.'), 'users': []}), 403
+
+    from ...services.media_server.jellyfin.api_client import list_administrators
+
+    dados = request.get_json(silent=True) or {}
+    url = (dados.get('url') or '').strip()
+    api_key = _credencial_com_placeholder(dados.get('api_key'), load_or_create_config().get('JELLYFIN_API_KEY'))
+
+    if not url or not api_key:
+        return jsonify({'success': False, 'message': _('URL e chave de API são obrigatórios.'), 'users': []}), 400
+
+    return jsonify(list_administrators(url, api_key))
+
 
 @system_api_bp.route('/test/overseerr-connection', methods=['POST'])
 def test_overseerr_connection():
@@ -1221,14 +1356,7 @@ def backup_restore():
         logger.error(f"Erro crítico ao restaurar backup: {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Erro inesperado ao restaurar o backup: %(error)s", error=str(e))}), 500
 
-    logger.warning(f"⚠️ RESTAURO DE BACKUP CONCLUÍDO por '{current_user.username}'. A aplicação vai reiniciar em instantes...")
-
-    def _delayed_restart():
-        import time as _time
-        _time.sleep(2)  # dá tempo da resposta HTTP chegar ao navegador antes do processo terminar
-        os.kill(os.getpid(), signal.SIGTERM)
-
-    threading.Thread(target=_delayed_restart, daemon=True).start()
+    _agendar_reinicio(f"RESTAURO DE BACKUP CONCLUÍDO por '{current_user.username}'.")
 
     return jsonify({
         "success": True,

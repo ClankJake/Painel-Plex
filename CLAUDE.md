@@ -64,12 +64,23 @@ média**, escolhido por `MEDIA_SERVER_TYPE` no config.json.
 - `app/services/media_server/factory.py` — o **único** sítio que sabe que existe
   mais do que um servidor possível. Registar um backend novo é uma entrada em
   `_BACKENDS`.
+
+⚠️ **Trocar de servidor obriga a reiniciar a aplicação.** O backend é escolhido
+no arranque e os blueprints guardam a referência POR VALOR
+(`from ..extensions import media_server`): substituir o objeto em memória
+deixaria metade do painel a falar com o servidor antigo. O assistente valida a
+ligação com um backend temporário, grava, cria a sessão (que vive num cookie e
+sobrevive) e reinicia com `_agendar_reinicio()`.
 - `app/services/media_server/plex/` — o backend do Plex, e o único sítio onde
   vive conhecimento sobre a API do Plex.
 - `app/services/media_server/jellyfin/` — o mesmo para o Jellyfin.
 - `app/services/media_server/invitations.py` — o ciclo de vida de um convite
   (código, vagas, validade), que é igual em todos os servidores e por isso não
   vive em nenhum deles.
+
+Nos templates, o contexto global expõe `media_server.type`, `.name` e
+`.capabilities` — use-os para esconder o que não se aplica
+(`{% if media_server.capabilities.fontes_media_online %}`).
 
 Quando uma funcionalidade não existe em todos os servidores (convites nativos,
 Fontes de Mídia Online, login delegado), pergunte pelas

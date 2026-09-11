@@ -1,8 +1,14 @@
-import { showToast, buildPinCheckUrl } from './utils.js';
+import { showToast, buildPinCheckUrl, escapeHTML } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- ESTADO E DADOS GLOBAIS ---
-    const setupData = { plex_url: null, plex_token: null, admin_user: null };
+    const setupData = {
+        media_server_type: 'plex',
+        plex_url: null, plex_token: null, admin_user: null,
+        jellyfin_url: null, jellyfin_api_key: null, admin_user_id: null,
+    };
+
+    const ehJellyfin = () => setupData.media_server_type === 'jellyfin';
     let pinCheckInterval = null;
     let currentStep = 0;
     
@@ -271,6 +277,103 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // --- Escolha do servidor de média ---
+    function selecionarTipoDeServidor(tipo) {
+        setupData.media_server_type = tipo;
+
+        document.querySelectorAll('.server-type-option').forEach(botao => {
+            const ativo = botao.dataset.serverType === tipo;
+            botao.classList.toggle('border-yellow-500', ativo && tipo === 'plex');
+            botao.classList.toggle('bg-yellow-50', ativo && tipo === 'plex');
+            botao.classList.toggle('border-purple-500', ativo && tipo === 'jellyfin');
+            botao.classList.toggle('bg-purple-50', ativo && tipo === 'jellyfin');
+            botao.classList.toggle('border-gray-300', !ativo);
+        });
+
+        document.getElementById('server-setup-plex')?.classList.toggle('hidden', tipo !== 'plex');
+        document.getElementById('server-setup-jellyfin')?.classList.toggle('hidden', tipo !== 'jellyfin');
+    }
+
+    document.querySelectorAll('.server-type-option').forEach(botao => {
+        botao.addEventListener('click', () => selecionarTipoDeServidor(botao.dataset.serverType));
+    });
+
+    // --- Jellyfin: ligar e escolher a conta de administrador ---
+    document.getElementById('connect-jellyfin')?.addEventListener('click', async () => {
+        const botao = document.getElementById('connect-jellyfin');
+        const resultado = document.getElementById('jellyfin-connect-result');
+        const url = document.getElementById('jellyfin_url').value.trim();
+        const apiKey = document.getElementById('jellyfin_api_key').value.trim();
+
+        if (!url || !apiKey) {
+            resultado.textContent = i18n.missingSetupData || '';
+            resultado.className = 'text-sm mt-3 text-center text-red-500';
+            return;
+        }
+
+        botao.disabled = true;
+        botao.textContent = i18n.jellyfinConnecting || 'A ligar...';
+        resultado.textContent = '';
+
+        try {
+            const resposta = await fetch(urls.jellyfinUsers, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url, api_key: apiKey }),
+            });
+            const dados = await resposta.json();
+
+            if (!dados.success) throw new Error(dados.message || i18n.unknownError);
+            if (!dados.users.length) throw new Error(i18n.noAdminFound || 'Nenhuma conta encontrada.');
+
+            setupData.jellyfin_url = url;
+            setupData.jellyfin_api_key = apiKey;
+            mostrarContasJellyfin(dados.users);
+            navigateToStep(2);
+        } catch (erro) {
+            resultado.textContent = erro.message;
+            resultado.className = 'text-sm mt-3 text-center text-red-500';
+        } finally {
+            botao.disabled = false;
+            botao.textContent = i18n.jellyfinConnect || 'Ligar ao Jellyfin';
+        }
+    });
+
+    function mostrarContasJellyfin(contas) {
+        const lista = document.getElementById('server-list');
+        const titulo = document.getElementById('step2-title');
+        const subtitulo = document.getElementById('step2-subtitle');
+        const proximo = document.getElementById('next-2');
+
+        if (titulo) titulo.textContent = i18n.selectAdminTitle || 'Conta de Administrador';
+        if (subtitulo) subtitulo.textContent = i18n.selectAdmin || '';
+
+        // Nenhuma conta escolhida ainda: o botão só abre depois da escolha.
+        setupData.admin_user = null;
+        setupData.admin_user_id = null;
+        if (proximo) proximo.disabled = true;
+
+        // As contas com privilégios de administrador aparecem primeiro.
+        const ordenadas = [...contas].sort((a, b) => Number(b.is_admin) - Number(a.is_admin));
+
+        lista.innerHTML = ordenadas.map((conta, indice) => `
+            <label for="admin-${indice}" class="flex items-center p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg border-2 border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer transition-colors">
+                <input type="radio" id="admin-${indice}" name="jellyfin_admin" value="${escapeHTML(conta.id)}" data-name="${escapeHTML(conta.name)}" class="form-radio h-4 w-4 text-purple-500">
+                <span class="ml-3 text-sm text-gray-800 dark:text-gray-200">${escapeHTML(conta.name)}</span>
+                ${conta.is_admin ? `<span class="ml-auto text-xs font-medium px-2 py-1 rounded-full bg-purple-200 text-purple-800 dark:bg-purple-900 dark:text-purple-200">admin</span>` : ''}
+            </label>
+        `).join('');
+
+        lista.querySelectorAll('input[name="jellyfin_admin"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (!e.target.checked) return;
+                setupData.admin_user_id = e.target.value;
+                setupData.admin_user = e.target.dataset.name;
+                if (proximo) proximo.disabled = false;
+            });
+        });
+    }
+
     // Event Listeners
     document.getElementById('start-setup').addEventListener('click', () => navigateToStep(1));
     document.getElementById('login-with-plex').addEventListener('click', loginWithPlex);
@@ -359,8 +462,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Barreira de segurança: o servidor recusa (com 400) um pedido sem estes
         // dados, mas aqui a mensagem é imediata e diz para onde voltar.
-        if (!setupData.plex_url || !setupData.plex_token || !setupData.admin_user) {
-            showToast(i18n.missingSetupData || 'Conclua a autenticação e escolha um servidor Plex antes de finalizar.', 'error');
+        const completo = ehJellyfin()
+            ? setupData.jellyfin_url && setupData.jellyfin_api_key && setupData.admin_user
+            : setupData.plex_url && setupData.plex_token && setupData.admin_user;
+
+        if (!completo) {
+            showToast(i18n.missingSetupData || 'Conclua a ligação ao servidor antes de finalizar.', 'error');
             navigateToStep(1);
             return;
         }
@@ -383,6 +490,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const result = await response.json();
             if (result.success) {
+                // Mudar de tipo de servidor obriga a reiniciar a aplicação (os
+                // blueprints guardam a referência ao backend). A sessão vive
+                // num cookie e sobrevive, por isso basta esperar e recarregar.
+                if (result.restarting) {
+                    showToast(result.message || i18n.restarting, 'success');
+                    finishButton.textContent = i18n.restarting || '';
+                    setTimeout(() => { window.location.href = result.redirect_url || '/'; }, 8000);
+                    return;
+                }
                 window.location.href = result.redirect_url;
             } else { throw new Error(result.message || i18n.unknownError); }
         } catch (error) {

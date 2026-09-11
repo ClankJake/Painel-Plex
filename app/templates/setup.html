@@ -67,12 +67,44 @@
 
             <!-- PASSO 1: Autenticação -->
             <div data-step="1" class="wizard-step hidden opacity-0 transition-opacity duration-500 ease-in-out text-center">
-                <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-2">{{ _('Autenticação do Administrador') }}</h2>
-                <p class="text-gray-500 dark:text-gray-400 mb-8 max-w-md mx-auto text-sm">{{ _('Faça login com a sua conta principal do Plex. Esta conta será usada para administrar a aplicação.') }}</p>
+                <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-2">{{ _('O seu servidor de média') }}</h2>
+                <p class="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto text-sm">{{ _('Escolha o servidor que este painel vai administrar.') }}</p>
+
+                <div class="flex gap-3 justify-center mb-8">
+                    <button type="button" data-server-type="plex" class="server-type-option btn border-2 border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 text-gray-900 dark:text-white px-6 py-3 font-bold">
+                        {{ _('Plex') }}
+                    </button>
+                    <button type="button" data-server-type="jellyfin" class="server-type-option btn border-2 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-6 py-3 font-bold">
+                        {{ _('Jellyfin') }}
+                    </button>
+                </div>
+
+                <!-- Plex: autenticação delegada ao plex.tv -->
+                <div id="server-setup-plex" class="server-setup-pane">
+                    <p class="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto text-sm">{{ _('Faça login com a sua conta principal do Plex. Esta conta será usada para administrar a aplicação.') }}</p>
                 <button type="button" id="login-with-plex" class="btn bg-[#e5a00d] hover:bg-[#c98c0b] text-white px-6 py-3 font-bold shadow-lg shadow-[#e5a00d]/30 inline-flex items-center gap-3">
                     <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02L9.36,7.66L9.35,7.63L11.64,12L9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
                     {{ _('Login com Plex') }}
                 </button>
+                </div>
+
+                <!-- Jellyfin: contas locais, ligação por chave de API -->
+                <div id="server-setup-jellyfin" class="server-setup-pane hidden text-left max-w-md mx-auto">
+                    <div class="mb-4">
+                        <label for="jellyfin_url" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('URL do Jellyfin') }}</label>
+                        <input type="text" id="jellyfin_url" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" placeholder="http://192.168.1.10:8096">
+                    </div>
+                    <div class="mb-4">
+                        <label for="jellyfin_api_key" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Chave da API') }}</label>
+                        <input type="password" id="jellyfin_api_key" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" placeholder="••••••••">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Gere-a no Jellyfin em Painel de Controlo → Chaves de API.') }}</p>
+                    </div>
+                    <button type="button" id="connect-jellyfin" class="btn w-full bg-purple-600 hover:bg-purple-500 text-white px-6 py-3 font-bold">
+                        {{ _('Ligar ao Jellyfin') }}
+                    </button>
+                    <p id="jellyfin-connect-result" class="text-sm mt-3 text-center"></p>
+                </div>
+
                 <div class="mt-8">
                     <button class="btn-prev btn bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 px-4 py-2 text-sm">&larr; {{ _('Anterior') }}</button>
                 </div>
@@ -80,8 +112,8 @@
 
             <!-- PASSO 2: Seleção do servidor -->
             <div data-step="2" class="wizard-step hidden opacity-0 transition-opacity duration-500 ease-in-out">
-                <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">{{ _('Selecionar Servidor Plex') }}</h2>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('Escolha qual servidor este painel vai gerir.') }}</p>
+                <h2 id="step2-title" class="text-xl font-bold text-gray-900 dark:text-white mb-1">{{ _('Selecionar Servidor Plex') }}</h2>
+                <p id="step2-subtitle" class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('Escolha qual servidor este painel vai gerir.') }}</p>
                 <div id="server-list" class="space-y-3 max-h-72 overflow-y-auto pr-1 text-left">
                     <p class="text-center p-8 text-gray-400 dark:text-gray-500 text-sm">{{ _('Aguardando autenticação...') }}</p>
                 </div>
@@ -205,6 +237,14 @@
     data-urls-check-plex-pin="{{ url_for('auth.check_plex_pin', client_id='__CLIENT_ID__', pin_id=999999) }}"
     data-urls-save-setup="{{ url_for('system_api.save_setup') }}"
     data-urls-get-plex-servers="{{ url_for('system_api.get_plex_servers') }}"
+    data-urls-test-jellyfin="{{ url_for('system_api.test_jellyfin_connection') }}"
+    data-urls-jellyfin-users="{{ url_for('system_api.get_jellyfin_users_for_setup') }}"
+    data-i18n-jellyfin-connecting="{{ _('A ligar...') }}"
+    data-i18n-jellyfin-connect="{{ _('Ligar ao Jellyfin') }}"
+    data-i18n-select-admin="{{ _('Escolha a conta que vai administrar o painel.') }}"
+    data-i18n-select-admin-title="{{ _('Conta de Administrador') }}"
+    data-i18n-no-admin-found="{{ _('O Jellyfin não devolveu nenhuma conta.') }}"
+    data-i18n-restarting="{{ _('Configuração guardada. A aplicação está a reiniciar — aguarde e recarregue a página.') }}"
     data-urls-test-tautulli="{{ url_for('system_api.test_tautulli_connection') }}"
     data-urls-test-overseerr="{{ url_for('system_api.test_overseerr_connection') }}"
     data-urls-restore-backup="{{ url_for('system_api.setup_restore_backup') }}"
@@ -236,7 +276,7 @@
     data-i18n-invalid-file-type="{{ _('Selecione um arquivo .zip válido.') }}"
     data-i18n-unknown-error="{{ _('Erro desconhecido.') }}"
     data-i18n-popup-blocked="{{ _('Não foi possível abrir a janela do Plex. Autorize os pop-ups deste site e tente novamente.') }}"
-    data-i18n-missing-setup-data="{{ _('Conclua a autenticação no Plex e escolha um servidor antes de finalizar.') }}"
+    data-i18n-missing-setup-data="{{ _('Conclua a ligação ao servidor e escolha a conta de administrador antes de finalizar.') }}"
 ></script>
 
 </body>
