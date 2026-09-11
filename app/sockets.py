@@ -29,13 +29,13 @@ _force_next_emit = False
 def _safe_get_active_sessions():
     """Busca as sessões com tratamento seguro de erros de rede."""
     try:
-        if not extensions.plex_manager.conn.plex:
-            success, _ = extensions.plex_manager.reload_connections(from_job=True)
+        if not extensions.media_server.is_connected():
+            success, _ = extensions.media_server.reload_connections(from_job=True)
             if not success:
-                logger.debug("Socket: Plex inacessível. A saltar verificação de streams.")
+                logger.debug("Socket: servidor de média inacessível. A saltar verificação de streams.")
                 return 0, []
 
-        streams_data = extensions.plex_manager.get_active_sessions()
+        streams_data = extensions.media_server.get_active_sessions()
         if streams_data and streams_data.get('success'):
             return streams_data.get('stream_count', 0), streams_data.get('sessions', [])
             
@@ -47,7 +47,7 @@ def _safe_get_active_sessions():
 def _build_summary_data(active_streams_count):
     """Constrói o objeto de sumário com os dados da Base de Dados."""
     try:
-        all_users = extensions.plex_manager.get_all_plex_users()
+        all_users = extensions.media_server.get_all_users()
         total_users = len(all_users) if all_users else 0
         
         blocked_users = extensions.data_manager.count_blocked_users()

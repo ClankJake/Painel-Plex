@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 from flask_babel import gettext as _
 
-from ...extensions import plex_manager, tautulli_manager, data_manager
+from ...extensions import media_server, tautulli_manager, data_manager
 
 logger = logging.getLogger(__name__)
 stats_api_bp = Blueprint('stats_api', __name__)
@@ -20,7 +20,7 @@ def _obfuscate_username(username):
 def get_statistics_data():
     days = request.args.get('days', 7, type=int)
     
-    plex_users = plex_manager.get_all_plex_users() or []
+    plex_users = media_server.get_all_users() or []
     plex_users_info = {u['id']: u['thumb'] for u in plex_users}
     tautulli_data = tautulli_manager.get_watch_stats(days=days, plex_users_info=plex_users_info)
 
@@ -135,7 +135,7 @@ def get_recommendations_route():
 
     machine_identifier = None
     try:
-        machine_identifier = plex_manager.get_machine_identifier()
+        machine_identifier = media_server.get_server_identifier()
     except Exception:
         logger.debug("Plex indisponível: as recomendações seguem sem links profundos.")
 

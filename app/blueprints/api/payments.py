@@ -107,7 +107,7 @@ def _run_payment_processing_in_thread(app, txid):
                 if is_reactivation:
                     # Garante que existe um email ou username preenchido para o envio do convite no SubscriptionManager
                     if not profile.get('email'):
-                        plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
+                        plex_user = extensions.media_server.get_user_by_id(plex_user_id)
                         profile['email'] = plex_user.get('email') if (plex_user and plex_user.get('email')) else profile.get('username')
                         extensions.data_manager.set_user_profile(plex_user_id, profile)
                         
@@ -123,7 +123,7 @@ def _run_payment_processing_in_thread(app, txid):
                     if extensions.socketio:
                         extensions.socketio.emit('new_notification', namespace='/')
 
-                user_info_for_renewal = extensions.plex_manager.get_user_by_id(plex_user_id)
+                user_info_for_renewal = extensions.media_server.get_user_by_id(plex_user_id)
                 if not user_info_for_renewal and is_reactivation:
                     user_info_for_renewal = { 'id': plex_user_id, 'username': profile.get('username'), 'email': profile.get('email') }
 
@@ -166,14 +166,14 @@ def _run_payment_processing_in_thread(app, txid):
                     renewal_base_mode = 'today' if is_reactivation else 'expiry_date'
                     
                     # O SubscriptionManager agora trata do envio do convite e notificação com link de token
-                    new_expiration_date = extensions.plex_manager.renew_subscription(
+                    new_expiration_date = extensions.media_server.renew_subscription(
                         plex_user_id, 1, screens=payment.get('screens'), base_mode=renewal_base_mode,
                         expiration_time_str=expiration_time, is_reactivation=is_reactivation
                     )
                     
                     # Trata o Status Inativo caso o utilizador ainda não tenha aceite o convite no e-mail/notificação
                     if is_reactivation:
-                        user_found_in_plex = extensions.plex_manager.get_user_by_id(plex_user_id) is not None
+                        user_found_in_plex = extensions.media_server.get_user_by_id(plex_user_id) is not None
                         if not user_found_in_plex:
                             post_renewal_profile = extensions.data_manager.get_user_profile(plex_user_id)
                             if post_renewal_profile.get('status') == 'active':
@@ -183,7 +183,7 @@ def _run_payment_processing_in_thread(app, txid):
 
                     try:
                         refreshed_profile = extensions.data_manager.get_user_profile(plex_user_id)
-                        extensions.plex_manager.notifier_manager.send_renewal_notification(user_info_for_renewal, new_expiration_date, refreshed_profile)
+                        extensions.media_server.notifier_manager.send_renewal_notification(user_info_for_renewal, new_expiration_date, refreshed_profile)
                     except Exception as e:
                         logger.error(f"Erro ao enviar notificação final para '{profile['username']}': {e}")
 
@@ -410,7 +410,7 @@ def create_charge_route():
     user_email = profile.get('email')
     if not user_email:
         try:
-            if plex_user := extensions.plex_manager.get_user_by_id(plex_user_id):
+            if plex_user := extensions.media_server.get_user_by_id(plex_user_id):
                 user_email = plex_user.get('email')
         except:
             pass
@@ -546,7 +546,7 @@ def create_charge_route():
             if is_reactivation:
                 # Previne o envio sem e-mail ou identificador no SubscriptionManager
                 if not profile.get('email'):
-                    plex_user = extensions.plex_manager.get_user_by_id(plex_user_id)
+                    plex_user = extensions.media_server.get_user_by_id(plex_user_id)
                     profile['email'] = plex_user.get('email') if (plex_user and plex_user.get('email')) else profile.get('username')
                     extensions.data_manager.set_user_profile(plex_user_id, profile)
                     
@@ -573,14 +573,14 @@ def create_charge_route():
             config = load_or_create_config()
             expiration_time = config.get("UNIVERSAL_EXPIRATION_TIME", "23:59") if config.get("UNIVERSAL_EXPIRATION_ENABLED") else None
             
-            new_expiration_date = extensions.plex_manager.renew_subscription(
+            new_expiration_date = extensions.media_server.renew_subscription(
                 plex_user_id, 1, screens=screens, base_mode=renewal_base_mode,
                 expiration_time_str=expiration_time, is_reactivation=is_reactivation
             )
             
             # 3. Tratamento de Reativação Pendente (Retorna o status a 'inactive' se ainda não aceitou)
             if is_reactivation:
-                user_found_in_plex = extensions.plex_manager.get_user_by_id(plex_user_id) is not None
+                user_found_in_plex = extensions.media_server.get_user_by_id(plex_user_id) is not None
                 if not user_found_in_plex:
                     post_renewal_profile = extensions.data_manager.get_user_profile(plex_user_id)
                     if post_renewal_profile.get('status') == 'active':
@@ -615,7 +615,7 @@ def create_charge_route():
                 extensions.socketio.emit('user_list_updated', {'message': _("Renovação gratuita concluída.")}, namespace='/dashboard')
 
             refreshed_profile = extensions.data_manager.get_user_profile(plex_user_id)
-            extensions.plex_manager.notifier_manager.send_renewal_notification(user_info, new_expiration_date, refreshed_profile)
+            extensions.media_server.notifier_manager.send_renewal_notification(user_info, new_expiration_date, refreshed_profile)
             
             # 5. Retornar o estado do utilizador para o JS saber se mostra o botão do Plex
             return jsonify({
@@ -932,7 +932,7 @@ def add_manual_payment_route():
         return jsonify({"success": False, "message": _("Todos os campos são obrigatórios.")}), 400
         
     try:
-        user = extensions.plex_manager.get_user_by_id(plex_user_id)
+        user = extensions.media_server.get_user_by_id(plex_user_id)
         if not user: return jsonify({"success": False, "message": "Utilizador não encontrado."}), 404
         
         current_time_str = datetime.now(timezone.utc).strftime('%H:%M:%S')

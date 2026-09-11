@@ -146,7 +146,7 @@ class PlexSubscriptionManager:
                         except:
                             libraries = []
                             
-                    invite_result = self.plex_manager.invites.send_plex_invite(
+                    invite_result = self.plex_manager.invites.send_invite(
                         identifier=email,
                         library_titles=libraries,
                         plex_user_id=plex_user_id,

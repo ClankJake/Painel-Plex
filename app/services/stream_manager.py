@@ -79,8 +79,8 @@ class StreamManager:
     # estado, por isso nunca atrasa um play/pausa que o utilizador acabou de dar.
     NOW_PLAYING_CACHE_SECONDS = 2.0
 
-    def __init__(self, plex_connection, data_manager, user_manager):
-        self.conn = plex_connection
+    def __init__(self, connection, data_manager, user_manager):
+        self.conn = connection
         self.data_manager = data_manager
         self.user_manager = user_manager
         self._listener = None
@@ -511,7 +511,7 @@ class StreamManager:
                 clean_sessions_list.extend(self._filter_duplicate_cast_sessions(s_list))
 
             now_playing_sessions = []
-            all_users = self.user_manager.get_all_plex_users() or []
+            all_users = self.user_manager.list_users() or []
             id_to_username_map = {u['id']: u['username'] for u in all_users}
             user_thumb_map = {u['id']: u['thumb'] for u in all_users}
             
@@ -999,7 +999,7 @@ class StreamManager:
         return user_sessions_by_id
 
     def _build_user_maps(self):
-        all_users = self.user_manager.get_all_plex_users() or []
+        all_users = self.user_manager.list_users() or []
         admin_account = self.conn.account
         admin_user_id = getattr(admin_account, 'id', None)
 

@@ -121,7 +121,7 @@ def referral_landing(ref_code):
     invite_code = str(config.get("REFERRAL_DEFAULT_INVITE_CODE", "") or "").strip()
     invite_available = False
     if invite_code:
-        invitation, invite_msg = extensions.plex_manager.invites.get_invitation_by_code(invite_code)
+        invitation, invite_msg = extensions.media_server.invites.get_invitation_by_code(invite_code)
         invite_available = invitation is not None
         if not invite_available:
             logger.warning(

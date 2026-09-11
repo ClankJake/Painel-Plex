@@ -16,7 +16,7 @@ from flask_babel import gettext as _
 
 from ..models import User
 from ..config import is_configured, load_or_create_config, save_app_config
-from ..extensions import plex_manager, data_manager, limiter
+from ..extensions import media_server, data_manager, limiter
 
 # --- Configurações e Constantes ---
 logger = logging.getLogger(__name__)
@@ -435,7 +435,7 @@ def check_plex_pin(client_id, pin_id):
             )
         
         # --- LÓGICA DE LOGIN PARA UTILIZADORES NORMAIS ---
-        plex_users = plex_manager.get_all_plex_users()
+        plex_users = media_server.get_all_users()
         user_profile = data_manager.get_user_profile(int(account.id))
         
         # Sincronização Local

@@ -174,7 +174,7 @@ class _UserManagerFalso:
     def invalidate_user_cache(self):
         pass
 
-    def get_all_plex_users(self):
+    def list_users(self):
         return [{"id": i} for i in self.ids_no_plex]
 
 
@@ -208,7 +208,7 @@ def _gestor(data_manager, envio, aceite=None):
         overseerr_manager=None,
         notifier_manager=None,
     )
-    gestor.send_plex_invite = lambda **kwargs: envio
+    gestor.send_invite = lambda **kwargs: envio
     gestor._accept_invite_v2 = lambda conta: aceite or {"success": True}
     gestor._apply_online_media_preferences = lambda conta: None
     gestor._setup_local_profile_and_integrations = lambda *a, **k: {"username": "ana"}
@@ -295,7 +295,7 @@ class TestResgateContabilizaUmaSoVez:
             return {"success": True}
 
         primeiro_gestor = _gestor(data_manager, envio={"success": True})
-        primeiro_gestor.send_plex_invite = envio_que_intercala
+        primeiro_gestor.send_invite = envio_que_intercala
 
         resultados["primeiro"] = primeiro_gestor.claim_invitation(
             "UNICO", _ContaPlex(10, "ana", "ana@exemplo.pt")

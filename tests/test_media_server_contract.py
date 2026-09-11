@@ -107,7 +107,7 @@ class TestContrato:
 
 
 class TestSuperficieAgnostica:
-    """Os nomes sem marca têm de apontar para o mesmo comportamento dos antigos."""
+    """A fachada é a fronteira: daqui para fora ninguém sabe que por baixo é Plex."""
 
     def test_is_connected_reflete_a_ligacao(self, backend):
         assert backend.is_connected() is False
@@ -115,32 +115,114 @@ class TestSuperficieAgnostica:
         backend.conn.plex = object()
         assert backend.is_connected() is True
 
-    def test_get_server_identifier_delega_no_nome_antigo(self, backend, monkeypatch):
-        monkeypatch.setattr(backend, 'get_machine_identifier', lambda: 'abc123')
+    def test_get_server_identifier_le_a_ligacao(self, backend, monkeypatch):
+        monkeypatch.setattr(backend.conn, 'get_server_identifier', lambda: 'abc123')
         assert backend.get_server_identifier() == 'abc123'
 
-    def test_get_all_users_delega_no_nome_antigo(self, backend, monkeypatch):
+    def test_invalidate_user_cache_delega_no_diretorio(self, backend, monkeypatch):
         chamadas = []
-        monkeypatch.setattr(
-            backend, 'get_all_plex_users',
-            lambda force_refresh=False: chamadas.append(force_refresh) or ['ana'],
-        )
+        monkeypatch.setattr(backend.users, 'invalidate_user_cache', lambda: chamadas.append(True))
 
-        assert backend.get_all_users() == ['ana']
-        assert backend.get_all_users(force_refresh=True) == ['ana']
-        assert chamadas == [False, True]
+        backend.invalidate_user_cache()
+        assert chamadas == [True]
+
+    def test_a_fachada_trata_a_lista_crua_do_diretorio(self, backend, monkeypatch):
+        # A fachada consome `users.list_users()` — a leitura crua — e devolve-a
+        # tratada para a interface. São duas camadas com responsabilidades
+        # distintas que, durante muito tempo, tiveram o mesmo nome.
+        monkeypatch.setattr(backend.users, 'list_users', lambda: [{'id': 1, 'username': 'ana', 'thumb': None}])
+        monkeypatch.setattr(backend.users, 'invalidate_user_cache', lambda: None)
+
+        utilizadores = backend.get_all_users(force_refresh=True)
+
+        assert [u['username'] for u in utilizadores] == ['ana']
+
+    def test_nenhum_nome_com_marca_sobra_na_fachada(self, backend):
+        # Se um método com 'plex' no nome reaparecer aqui, é sinal de que o
+        # painel voltou a ter de saber com que servidor está a falar.
+        publicos = [nome for nome in dir(backend) if not nome.startswith('_')]
+        com_marca = sorted(nome for nome in publicos if 'plex' in nome.lower())
+
+        # 'plex' e 'account' são os objetos da biblioteca plexapi, ainda lidos
+        # pelo proxy de imagens para injetar o X-Plex-Token. Não têm 'plex' no
+        # nome do atributo por acaso — ficam documentados como dívida da Fase 1.
+        assert com_marca == []
+
+
+class TestAutorizacaoDeImagensDoPlex:
+    """A injeção do X-Plex-Token, agora que vive no backend e não no proxy.
+
+    Estes testes vieram de `test_image_security.py`: seguiram a lógica quando
+    ela mudou de sítio. O proxy continua a ser testado lá, mas sobre a
+    *delegação* — que é tudo o que ele passa a saber.
+    """
+
+    class _PlexFalso:
+        _token = 'token-plex'
+        _baseurl = 'http://plex.local:32400'
+
+        def url(self, path, includeToken=False):
+            return f'http://plex.local:32400{path}'
+
+    class _ContaFalsa:
+        _token = 'token-conta'
+
+    def test_fonte_plex_injeta_o_token(self, backend):
+        backend.conn.plex = self._PlexFalso()
+
+        url, params = backend.authorize_image_url('plex', '/library/metadata/1/thumb')
+
+        assert url == 'http://plex.local:32400/library/metadata/1/thumb'
+        assert params['X-Plex-Token'] == 'token-plex'
+
+    def test_plex_account_aceita_caminho_relativo(self, backend):
+        backend.conn.account = self._ContaFalsa()
+
+        url, params = backend.authorize_image_url('plex_account', 'users/avatar.png')
+
+        assert url == 'https://plex.tv/users/avatar.png'
+        assert params['X-Plex-Token'] == 'token-conta'
+
+    def test_plex_account_aceita_url_absoluto_do_plex(self, backend):
+        backend.conn.account = self._ContaFalsa()
+
+        url, _params = backend.authorize_image_url('plex_account', 'https://plex.tv/users/avatar.png?w=100')
+
+        assert url == 'https://plex.tv/users/avatar.png?w=100'
+
+    def test_plex_account_recusa_dominios_estranhos(self, backend):
+        # 🛡️ Sem esta verificação, o token da conta Plex seria enviado a
+        # terceiros. `'plex.tv' in netloc` aceitava 'plex.tv.atacante.com'.
+        backend.conn.account = self._ContaFalsa()
+
+        with pytest.raises(ValueError):
+            backend.authorize_image_url('plex_account', 'https://atacante.exemplo/roubar.png')
+
+    def test_sem_ligacao_nao_ha_url(self, backend):
+        assert backend.authorize_image_url('plex', '/x') == (None, {})
+        assert backend.authorize_image_url('plex_account', '/x') == (None, {})
+
+    def test_fonte_desconhecida_nao_ha_url(self, backend):
+        assert backend.authorize_image_url('outra-coisa', '/x') == (None, {})
+
+    def test_get_base_url_alimenta_a_allowlist_do_proxy(self, backend):
+        # 🐛 Ao tirar o objeto plexapi de dentro do proxy, o endereço do servidor
+        # quase ficou fora da allowlist — e as capas passariam a ser bloqueadas.
+        assert backend.get_base_url() is None
+
+        backend.conn.plex = self._PlexFalso()
+        assert backend.get_base_url() == 'http://plex.local:32400'
 
 
 @pytest.mark.integration
 class TestLigacaoNaAplicacao:
-    def test_o_alias_herdado_aponta_para_o_mesmo_objeto(self, app):
-        # 'plex_manager' existe só para os pontos de chamada ainda não migrados.
-        # No dia em que deixarem de ser o mesmo objeto, metade do painel passa a
-        # falar com um backend e a outra metade com outro.
+    def test_o_painel_expoe_um_unico_nome_para_o_servidor(self, app):
+        # O alias 'plex_manager' foi eliminado na Fase 0.5: dois nomes para o
+        # mesmo objeto são dois sítios por onde um backend errado pode entrar.
         from app import extensions
 
         assert extensions.media_server is not None
-        assert extensions.plex_manager is extensions.media_server
+        assert not hasattr(extensions, 'plex_manager')
 
     def test_a_configuracao_declara_o_tipo_de_servidor(self, app):
         assert app.config.get('MEDIA_SERVER_TYPE') == 'plex'

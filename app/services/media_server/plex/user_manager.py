@@ -31,12 +31,12 @@ class PlexUserManager:
 
     def invalidate_user_cache(self):
         """Invalida a cache de utilizadores."""
-        cache.delete_memoized(self.get_all_plex_users)
+        cache.delete_memoized(self.list_users)
         logger.info(_("Cache de usuários do Plex invalidado."))
 
     def get_user_by_id(self, plex_user_id):
         """Busca um único utilizador pelo seu ID do Plex, utilizando a cache."""
-        all_users = self.get_all_plex_users()
+        all_users = self.list_users()
         if not all_users:
             return None
         return next((u for u in all_users if str(u['id']) == str(plex_user_id)), None)
@@ -53,7 +53,7 @@ class PlexUserManager:
         return None
 
     @cache.memoize(timeout=300)
-    def get_all_plex_users(self, force_refresh_signal=None):
+    def list_users(self, force_refresh_signal=None):
         if not self.conn.account or not self.conn.plex:
             return None
 
@@ -317,7 +317,7 @@ class PlexUserManager:
 
     def update_all_users_libraries(self, library_titles):
         """Atualiza bibliotecas em massa de forma paralela, evitando timeouts do servidor web."""
-        all_users = self.get_all_plex_users()
+        all_users = self.list_users()
         if not all_users: 
             return {"success": False, "message": _("Falha ao ler usuários.")}
 

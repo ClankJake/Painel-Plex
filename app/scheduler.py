@@ -84,14 +84,14 @@ def expiration_notification_job():
     if not _app: return
     with _app.test_request_context('/'):
         from . import extensions
-        users_to_check = extensions.plex_manager.get_users_within_notification_window()
+        users_to_check = extensions.media_server.get_users_within_notification_window()
         for plex_user_id in users_to_check:
-            user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+            user_info = extensions.media_server.get_user_by_id(plex_user_id)
             if user_info:
                 # 🛡️ ISOLAMENTO DE FALHA: uma notificação que falhe (ex: webhook fora do ar)
                 # não pode impedir que os demais usuários do lote sejam notificados.
                 _execute_with_retry(
-                    action=lambda u=user_info: extensions.plex_manager.send_expiration_notification_if_needed(u),
+                    action=lambda u=user_info: extensions.media_server.send_expiration_notification_if_needed(u),
                     description=f"notificar vencimento para '{user_info.get('username', plex_user_id)}'"
                 )
 
@@ -100,13 +100,13 @@ def end_trial_job(plex_user_id):
     if not _app: return
     with _app.test_request_context('/'):
         from . import extensions
-        user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+        user_info = extensions.media_server.get_user_by_id(plex_user_id)
         user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
         logger.info(f"Fim do período de teste para '{user_identifier}'. Acionando o bloqueio.")
         
         if user_info:
             success = _execute_with_retry(
-                action=lambda: extensions.plex_manager.block_user(plex_user_id, reason='trial_expired'),
+                action=lambda: extensions.media_server.block_user(plex_user_id, reason='trial_expired'),
                 description=f"bloquear usuário por fim de teste '{user_identifier}'"
             )
             if success:
@@ -123,7 +123,7 @@ def end_subscription_job(plex_user_id):
     if not _app: return
     with _app.app_context():
         from . import extensions
-        user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+        user_info = extensions.media_server.get_user_by_id(plex_user_id)
         user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
         logger.info(f"Fim da assinatura para '{user_identifier}'. Processando vencimento da conta.")
         
@@ -137,7 +137,7 @@ def end_subscription_job(plex_user_id):
 
         if user_info:
             _execute_with_retry(
-                action=lambda: extensions.plex_manager.block_user(plex_user_id, reason='expired'),
+                action=lambda: extensions.media_server.block_user(plex_user_id, reason='expired'),
                 description=f"bloquear usuário por assinatura expirada '{user_identifier}'"
             )
         else:
@@ -150,7 +150,7 @@ def removal_job():
         from . import extensions
         config = load_or_create_config()
         logger.info("Iniciando a tarefa 'removal_job' para remover usuários bloqueados.")
-        users_to_remove = extensions.plex_manager.get_users_to_remove()
+        users_to_remove = extensions.media_server.get_users_to_remove()
         
         if not users_to_remove:
             logger.info("Nenhum usuário atingiu o prazo para remoção.")
@@ -162,7 +162,7 @@ def removal_job():
 
         for plex_user_id in users_to_remove:
             is_admin = False
-            user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+            user_info = extensions.media_server.get_user_by_id(plex_user_id)
 
             # 🐛 CORREÇÃO IMPORTANTE: 'get_user_by_id' procura na lista de AMIGOS do
             # Plex — e o administrador é o DONO do servidor, por isso nunca aparece
@@ -219,7 +219,7 @@ def removal_job():
                 continue
 
             success = _execute_with_retry(
-                action=lambda pid=plex_user_id: extensions.plex_manager.remove_user(pid),
+                action=lambda pid=plex_user_id: extensions.media_server.remove_user(pid),
                 description=f"remover usuário '{user_identifier}'"
             )
             if success:
@@ -247,7 +247,7 @@ def cleanup_job():
         # diretamente no Plex) ficava sem email na base de dados, mesmo nunca
         # tendo iniciado sessão.
         try:
-            extensions.plex_manager.sync_profiles_from_plex(only_missing=True)
+            extensions.media_server.sync_profiles_from_server(only_missing=True)
         except Exception as e:
             logger.error(f"Falha ao sincronizar perfis a partir do Plex: {e}", exc_info=True)
 

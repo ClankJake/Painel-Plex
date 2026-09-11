@@ -43,7 +43,7 @@ class SessaoFalsa:
 
 @pytest.fixture()
 def manager(app_context):
-    return StreamManager(plex_connection=None, data_manager=FakeDataManager(), user_manager=None)
+    return StreamManager(connection=None, data_manager=FakeDataManager(), user_manager=None)
 
 
 @pytest.fixture()
@@ -402,13 +402,13 @@ class TestGetActiveStreamCount:
 
     def _manager(self, sessoes):
         conn = ConexaoFalsa(sessoes)
-        gestor = StreamManager(plex_connection=conn, data_manager=FakeDataManager(), user_manager=None)
+        gestor = StreamManager(connection=conn, data_manager=FakeDataManager(), user_manager=None)
         return gestor, conn
 
     def test_sem_ligacao_devolve_zero(self, app_context):
         conn = ConexaoFalsa([])
         conn.plex = None
-        gestor = StreamManager(plex_connection=conn, data_manager=FakeDataManager(), user_manager=None)
+        gestor = StreamManager(connection=conn, data_manager=FakeDataManager(), user_manager=None)
 
         assert gestor.get_active_stream_count() == 0
         assert conn.chamadas == 0
@@ -455,7 +455,7 @@ class TestNowPlayingCache:
 
     def _manager(self):
         conn = ConexaoFalsa([])
-        return StreamManager(plex_connection=conn, data_manager=FakeDataManager(), user_manager=None)
+        return StreamManager(connection=conn, data_manager=FakeDataManager(), user_manager=None)
 
     def test_pedidos_seguidos_partilham_uma_leitura(self, app_context, monkeypatch):
         gestor = self._manager()

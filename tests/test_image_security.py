@@ -109,19 +109,26 @@ class TestValidateExternalUrl:
 
 
 class TestBuildFinalUrl:
-    class PlexFalso:
-        _token = "token-plex"
+    class BackendFalso:
+        """Um backend qualquer, com o vocabulário de fontes que lhe apetecer.
 
-        def url(self, path, includeToken=False):
-            return f"http://plex.local:32400{path}"
+        O proxy não conhece 'plex' nem 'plex_account': pergunta ao backend que
+        prefixos entende e deixa-o autorizar o URL. É isso que este duplo
+        verifica — a delegação, não a lógica do Plex (essa é testada contra o
+        backend real em TestAutorizacaoDeImagensDoPlex).
+        """
 
-    class ContaFalsa:
-        _token = "token-conta"
+        IMAGE_SOURCES = ('servidor',)
 
-    class PlexManagerFalso:
-        def __init__(self, plex=None, account=None):
-            self.plex = plex
-            self.account = account
+        def __init__(self, url=None, params=None, erro=None):
+            self._url = url
+            self._params = params or {}
+            self._erro = erro
+
+        def authorize_image_url(self, source, image_path):
+            if self._erro:
+                raise self._erro
+            return self._url, dict(self._params)
 
     class TautulliFalso:
         class _Api:
@@ -131,43 +138,35 @@ class TestBuildFinalUrl:
 
         api_client = _Api()
 
-    def test_fonte_plex_injeta_o_token(self, monkeypatch):
+    def test_a_fonte_do_servidor_e_autorizada_pelo_backend(self, monkeypatch):
         monkeypatch.setattr(
-            image_module, "plex_manager", self.PlexManagerFalso(plex=self.PlexFalso())
+            image_module, "media_server",
+            self.BackendFalso(url="http://servidor.local/imagem.png", params={"X-Token": "abc"}),
         )
 
-        url, params = build_final_url("plex", "/library/metadata/1/thumb")
+        url, params = build_final_url("servidor", "/imagem.png")
 
-        assert url == "http://plex.local:32400/library/metadata/1/thumb"
-        assert params["X-Plex-Token"] == "token-plex"
+        assert url == "http://servidor.local/imagem.png"
+        assert params["X-Token"] == "abc"
 
-    def test_plex_account_aceita_caminho_relativo(self, monkeypatch):
+    def test_fonte_que_o_backend_nao_reconhece_nao_gera_url(self, monkeypatch):
+        # O proxy não deve inventar URLs para prefixos de um backend que não
+        # está ativo — é assim que 'plex_account' deixa de existir num painel
+        # ligado a outro servidor.
+        monkeypatch.setattr(image_module, "media_server", self.BackendFalso(url="http://x/"))
+
+        assert build_final_url("plex_account", "/x") == (None, {})
+
+    def test_o_bloqueio_do_backend_chega_ao_proxy(self, monkeypatch):
+        # O backend levanta ValueError quando o caminho não é de confiança; o
+        # proxy trata isso como bloqueio de segurança (devolve a imagem
+        # "Bloqueado" em vez do conteúdo).
         monkeypatch.setattr(
-            image_module, "plex_manager", self.PlexManagerFalso(account=self.ContaFalsa())
-        )
-
-        url, params = build_final_url("plex_account", "users/avatar.png")
-
-        assert url == "https://plex.tv/users/avatar.png"
-        assert params["X-Plex-Token"] == "token-conta"
-
-    def test_plex_account_aceita_url_absoluto_do_plex(self, monkeypatch):
-        monkeypatch.setattr(
-            image_module, "plex_manager", self.PlexManagerFalso(account=self.ContaFalsa())
-        )
-
-        url, _params = build_final_url("plex_account", "https://plex.tv/users/avatar.png?w=100")
-
-        assert url == "https://plex.tv/users/avatar.png?w=100"
-
-    def test_plex_account_recusa_dominios_estranhos(self, monkeypatch):
-        # Sem esta verificação, o token da conta Plex seria enviado a terceiros.
-        monkeypatch.setattr(
-            image_module, "plex_manager", self.PlexManagerFalso(account=self.ContaFalsa())
+            image_module, "media_server", self.BackendFalso(erro=ValueError("caminho não confiável"))
         )
 
         with pytest.raises(ValueError):
-            build_final_url("plex_account", "https://atacante.exemplo/roubar.png")
+            build_final_url("servidor", "https://atacante.exemplo/roubar.png")
 
     def test_fonte_url_passa_pela_validacao_ssrf(self, monkeypatch):
         with pytest.raises(ValueError):
@@ -203,10 +202,10 @@ class TestBuildFinalUrl:
     def test_fonte_desconhecida_nao_gera_url(self):
         assert build_final_url("outra-coisa", "/x") == (None, {})
 
-    def test_plex_nao_ligado(self, monkeypatch):
-        monkeypatch.setattr(image_module, "plex_manager", self.PlexManagerFalso())
+    def test_backend_sem_ligacao_nao_gera_url(self, monkeypatch):
+        monkeypatch.setattr(image_module, "media_server", self.BackendFalso(url=None))
 
-        assert build_final_url("plex", "/x") == (None, {})
+        assert build_final_url("servidor", "/x") == (None, {})
 
 
 class TestCacheFilepath:
@@ -266,16 +265,14 @@ class TestAllowlistDeDominios:
         assert is_allowed_image_host("outro.net") is True
         assert is_allowed_image_host("terceiro.org") is False
 
-    def test_o_host_do_plex_configurado_e_autorizado(self, monkeypatch):
-        class PlexFalso:
-            _baseurl = "https://plex.meudominio.com:32400"
+    def test_o_host_do_servidor_configurado_e_autorizado(self, monkeypatch):
+        class BackendFalso:
+            def get_base_url(self):
+                return "https://servidor.meudominio.com:32400"
 
-        class ManagerFalso:
-            plex = PlexFalso()
+        monkeypatch.setattr(image_module, "media_server", BackendFalso())
 
-        monkeypatch.setattr(image_module, "plex_manager", ManagerFalso())
-
-        assert is_allowed_image_host("plex.meudominio.com") is True
+        assert is_allowed_image_host("servidor.meudominio.com") is True
 
 
 class TestBuildAuthorizedImageUrl:
@@ -326,20 +323,18 @@ class TestBuildAuthorizedImageUrl:
         with pytest.raises(ValueError):
             build_authorized_image_url(f"https://plex.tv:{porta}/x.png")
 
-    def test_a_porta_do_plex_configurado_e_aceite(self, monkeypatch):
-        # Quem corre o Plex numa porta diferente da padrao nao precisa de configurar
-        # nada: a porta do PLEX_URL entra sozinha na lista.
-        class PlexFalso:
-            _baseurl = "https://plex.exemplo.com:32450"
+    def test_a_porta_do_servidor_configurado_e_aceite(self, monkeypatch):
+        # Quem corre o servidor numa porta diferente da padrao nao precisa de
+        # configurar nada: a porta do endereço configurado entra sozinha na lista.
+        class BackendFalso:
+            def get_base_url(self):
+                return "https://servidor.exemplo.com:32450"
 
-        class ManagerFalso:
-            plex = PlexFalso()
+        monkeypatch.setattr(image_module, "media_server", BackendFalso())
 
-        monkeypatch.setattr(image_module, "plex_manager", ManagerFalso())
+        url = build_authorized_image_url("https://servidor.exemplo.com:32450/photo/x.png")
 
-        url = build_authorized_image_url("https://plex.exemplo.com:32450/photo/x.png")
-
-        assert url == "https://plex.exemplo.com:32450/photo/x.png"
+        assert url == "https://servidor.exemplo.com:32450/photo/x.png"
 
     def test_admin_pode_acrescentar_portas(self, monkeypatch):
         # Escape hatch para quando as capas chegam noutra porta (por exemplo, a

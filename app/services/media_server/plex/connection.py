@@ -112,7 +112,7 @@ class PlexConnectionManager:
             self.account = None
             return False, _("Falha de autenticação ou configuração inválida: %(error)s", error=str(e))
 
-    def get_machine_identifier(self) -> Optional[str]:
+    def get_server_identifier(self) -> Optional[str]:
         """
         Identificador único do servidor, necessário para montar links profundos
         do tipo ``https://app.plex.tv/desktop#!/server/<id>/details?key=...``.

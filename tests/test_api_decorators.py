@@ -61,9 +61,9 @@ def rota_com_utilizador(user):
 
 class TestUserLookupById:
     @pytest.fixture(autouse=True)
-    def plex_manager(self, monkeypatch):
+    def media_server(self, monkeypatch):
         gestor = PlexManagerFalso({42: {"id": 42, "username": "ana"}})
-        monkeypatch.setattr(decorators_module, "plex_manager", gestor)
+        monkeypatch.setattr(decorators_module, "media_server", gestor)
         return gestor
 
     def test_utilizador_injetado_a_partir_do_url(self, app):

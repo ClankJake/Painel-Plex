@@ -41,7 +41,7 @@ def get_public_user_profile_by_token(token):
     username = profile.username
 
     if profile.status == 'active':
-        user = extensions.plex_manager.get_user_by_id(profile.plex_user_id)
+        user = extensions.media_server.get_user_by_id(profile.plex_user_id)
         if not user:
             logger.warning(f"Utilizador ativo '{username}' (ID: {profile.plex_user_id}) não encontrado no Plex. A tratar como inativo para a página pública.")
         else:
@@ -74,7 +74,7 @@ def finalize_reactivation_route():
     if not plex_token or not payment_token:
         return jsonify({"success": False, "message": _("Dados incompletos.")}), 400
 
-    result = extensions.plex_manager.invites.accept_invite_via_token(plex_token)
+    result = extensions.media_server.invites.accept_invite_via_token(plex_token)
     if not result.get('success'):
         return jsonify(result), 400
 
@@ -108,7 +108,7 @@ def finalize_reactivation_route():
         profile.status = 'active'
         profile.pending_invite_link = None
         extensions.db.session.commit()
-        extensions.plex_manager.users.invalidate_user_cache()
+        extensions.media_server.invalidate_user_cache()
         
         logger.info(f"Reativação finalizada com sucesso para o utilizador público: {profile.username}")
         return jsonify({"success": True, "message": _("Conta reativada com sucesso!"), "redirect_url": url_for('main.account_page')})
@@ -144,7 +144,7 @@ def get_account_details():
         except (ValueError, TypeError): 
             pass
 
-    libraries_data = extensions.plex_manager.get_user_libraries(plex_user_id)
+    libraries_data = extensions.media_server.get_user_libraries(plex_user_id)
     watch_data = extensions.tautulli_manager.get_user_watch_details(plex_user_id=plex_user_id)
 
     is_on_trial = False
@@ -248,18 +248,18 @@ def get_account_devices():
 @admin_required
 def get_status():
     """Rota principal do Dashboard Administrativo. Sincroniza dados e retorna a lista de utilizadores."""
-    if not extensions.plex_manager.conn.plex:
-        return jsonify({"error": _("Plex não configurado.")}), 500
+    if not extensions.media_server.is_connected():
+        return jsonify({"error": _("Servidor de média não configurado.")}), 500
 
     force_refresh = request.args.get('force', 'false').lower() == 'true'
-    all_plex_users_list = extensions.plex_manager.get_all_plex_users(force_refresh=force_refresh) or []
+    all_plex_users_list = extensions.media_server.get_all_users(force_refresh=force_refresh) or []
     
     config = load_or_create_config()
     all_users_to_return = _sync_plex_and_local_profiles(all_plex_users_list, config.get('ADMIN_USER'))
 
     return jsonify({
         'users': sorted(all_users_to_return, key=lambda u: (u.get('username') or '').lower()),
-        'libraries': extensions.plex_manager.conn.get_libraries(),
+        'libraries': extensions.media_server.get_libraries(),
         'telegram_enabled': config.get("TELEGRAM_ENABLED", False)
     })
 
@@ -269,7 +269,7 @@ def get_status():
 def get_user_list():
     """Retorna lista simplificada para Dropdowns (apenas utilizadores com contactos)."""
     try:
-        plex_users = extensions.plex_manager.get_all_plex_users() or []
+        plex_users = extensions.media_server.get_all_users() or []
         user_profiles = extensions.data_manager.get_all_user_profiles()
         profiles_map = {p['plex_user_id']: p for p in user_profiles}
 
@@ -293,7 +293,7 @@ def get_user_list():
 @admin_required
 def user_profile_route(plex_user_id):
     """Consulta ou edita diretamente as informações de um utilizador específico (Admin)."""
-    user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+    user_info = extensions.media_server.get_user_by_id(plex_user_id)
     if not user_info:
         return jsonify({"success": False, "message": _("Usuário não encontrado no Plex.")}), 404
 
@@ -394,7 +394,7 @@ def extend_trial_route(user, validated_data):
 
         blocked_info = extensions.data_manager.get_blocked_user(plex_user_id)
         if blocked_info and blocked_info.get('block_reason') in ['trial_expired', 'expired']:
-            extensions.plex_manager.unblock_user(plex_user_id)
+            extensions.media_server.unblock_user(plex_user_id)
 
         logger.info(f"Admin '{current_user.username}' estendeu/iniciou o período de teste de '{username}' por {extend_minutes} minutos.")
         return jsonify({"success": True, "message": _("Período de teste estendido/definido. Fim a %(date)s.", date=naive_run_date.strftime('%d/%m/%Y %H:%M'))})
@@ -424,7 +424,7 @@ def reactivate_user_route():
 
     try:
         logger.info(f"Admin '{current_user.username}' a iniciar reativação manual de '{username}'.")
-        invite_result = extensions.plex_manager.invites.send_plex_invite(identifier, libraries, plex_user_id=plex_user_id)
+        invite_result = extensions.media_server.invites.send_invite(identifier, libraries, plex_user_id=plex_user_id)
         
         if not invite_result.get('success'):
             logger.error(f"Falha ao enviar convite de reativação para '{username}': {invite_result.get('message')}")
@@ -453,7 +453,7 @@ def renew_user_subscription_route(user, validated_data):
         
         logger.info(f"Admin '{current_user.username}' solicitou a renovação manual de '{user['username']}' (ID: {user['id']}) por {data.months} mês/meses.")
 
-        new_expiration_date = extensions.plex_manager.renew_subscription(
+        new_expiration_date = extensions.media_server.renew_subscription(
             user['id'], data.months, base_mode=data.base,
             base_date_str=data.base_date, expiration_time_str=data.expiration_time
         )
@@ -514,7 +514,7 @@ def renew_user_subscription_route(user, validated_data):
         logger.info(f"Renovação manual processada. Nova data de expiração para '{user['username']}': {new_expiration_date.strftime('%Y-%m-%d')}. Valor registado: R$ {total_value:.2f}")
         
         try:
-            extensions.plex_manager.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
+            extensions.media_server.notifier_manager.send_renewal_notification(user, new_expiration_date, profile)
             logger.info(f"Notificação de renovação enviada para '{user['username']}'.")
         except Exception as notify_error:
             logger.error(f"Falha ao enviar notificação de renovação para '{user['username']}': {notify_error}")
@@ -555,7 +555,7 @@ def notify_user_route(user):
     local_tz = get_localzone()
     exp_date = datetime.fromisoformat(profile['expiration_date']).astimezone(local_tz).date()
     days_left = (exp_date - datetime.now(local_tz).date()).days
-    extensions.plex_manager.notifier_manager.send_expiration_notification(user, days_left, profile)
+    extensions.media_server.notifier_manager.send_expiration_notification(user, days_left, profile)
     
     logger.info(f"Admin '{current_user.username}' disparou uma notificação manual de vencimento para '{user['username']}'.")
     return jsonify({"success": True, "message": _("Notificação de vencimento enviada.")})
@@ -564,7 +564,7 @@ def notify_user_route(user):
 @login_required
 @admin_required
 @user_lookup_by_id
-def get_user_libraries_route(user): return jsonify(extensions.plex_manager.get_user_libraries(user['id']))
+def get_user_libraries_route(user): return jsonify(extensions.media_server.get_user_libraries(user['id']))
 
 @users_api_bp.route('/update-libraries', methods=['POST'])
 @login_required
@@ -574,7 +574,7 @@ def update_libraries_route(user):
     libs = request.json.get('libraries', [])
     allow_sync = request.json.get('allow_sync')
     
-    res = extensions.plex_manager.update_user_libraries(user['id'], libs, allow_sync=allow_sync)
+    res = extensions.media_server.update_user_libraries(user['id'], libs, allow_sync=allow_sync)
     if res.get('success'): 
         logger.info(f"Admin '{current_user.username}' atualizou as bibliotecas e permissões de '{user['username']}'.")
     return jsonify(res)
@@ -584,13 +584,13 @@ def update_libraries_route(user):
 @admin_required
 def update_all_libraries_route(): 
     logger.info(f"Admin '{current_user.username}' iniciou a atualização em massa de bibliotecas.")
-    return jsonify(extensions.plex_manager.update_all_users_libraries(request.json.get('libraries')))
+    return jsonify(extensions.media_server.update_all_users_libraries(request.json.get('libraries')))
 
 @users_api_bp.route('/remove', methods=['POST'])
 @login_required
 @admin_required
 def remove_user_route(): 
-    res = extensions.plex_manager.remove_user(request.json.get('plex_user_id'))
+    res = extensions.media_server.remove_user(request.json.get('plex_user_id'))
     if res.get('success'): logger.info(f"Admin '{current_user.username}' removeu/inativou um utilizador com sucesso.")
     return jsonify(res)
 
@@ -599,7 +599,7 @@ def remove_user_route():
 @admin_required
 @user_lookup_by_id
 def block_user_route(user): 
-    res = extensions.plex_manager.block_user(user['id'], reason='manual')
+    res = extensions.media_server.block_user(user['id'], reason='manual')
     if res.get('success'): logger.info(f"Admin '{current_user.username}' bloqueou manualmente '{user['username']}'.")
     return jsonify(res)
 
@@ -608,7 +608,7 @@ def block_user_route(user):
 @admin_required
 @user_lookup_by_id
 def unblock_user_route(user): 
-    res = extensions.plex_manager.unblock_user(user['id'])
+    res = extensions.media_server.unblock_user(user['id'])
     if res.get('success'): logger.info(f"Admin '{current_user.username}' desbloqueou manualmente '{user['username']}'.")
     return jsonify(res)
 
@@ -629,7 +629,7 @@ def update_limit_route(user):
 @admin_required
 def update_all_limits_route():
     screens = max(0, request.json.get('screens', -1))
-    all_users = extensions.plex_manager.get_all_plex_users() or []
+    all_users = extensions.media_server.get_all_users() or []
     for user in all_users:
         if user['id'] != int(current_user.id):
             if profile := extensions.data_manager.get_user_profile(user['id']):
@@ -644,7 +644,7 @@ def update_all_limits_route():
 @user_lookup_by_id
 def toggle_overseerr_access_route(user): 
     access = request.json.get('access', False)
-    res = extensions.plex_manager.toggle_overseerr_access(user['id'], access)
+    res = extensions.media_server.toggle_overseerr_access(user['id'], access)
     if res.get('success'): logger.info(f"Admin '{current_user.username}' alterou acesso Overseerr de '{user['username']}' para {access}.")
     return jsonify(res)
 
@@ -825,11 +825,11 @@ def _enforce_user_status_by_date(plex_user_id, username, profile_to_update):
     if new_status != 'active':
         current_block_info = extensions.data_manager.get_blocked_user(plex_user_id)
         if not current_block_info or current_block_info.get('block_reason') != new_status:
-            extensions.plex_manager.block_user(plex_user_id, reason=new_status)
+            extensions.media_server.block_user(plex_user_id, reason=new_status)
     elif is_blocked:
         block_reason = extensions.data_manager.get_blocked_user(plex_user_id).get('block_reason')
         if block_reason in ['expired', 'trial_expired']:
-            extensions.plex_manager.unblock_user(plex_user_id)
+            extensions.media_server.unblock_user(plex_user_id)
 
 
 # ==========================================

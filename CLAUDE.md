@@ -47,9 +47,7 @@ estatísticas vindas do Tautulli.
 `app/extensions.py` declara as extensões Flask **e** os `managers` a `None`.
 `create_app()` instancia cada um e atribui de volta ao módulo. O resto do código
 faz `from ..extensions import media_server` — nunca instancie um manager
-diretamente numa rota ou num job. (`plex_manager` é o nome herdado do mesmo
-objeto, mantido enquanto os pontos de chamada antigos não são migrados; código
-novo usa `media_server`.)
+diretamente numa rota ou num job.
 
 A ordem de construção importa: há injeções tardias porque as dependências são
 circulares. O `ReferralManager` só recebe o `subscription_manager` depois do
@@ -76,10 +74,22 @@ cresce por capacidades, não por uma cascata de exceções por marca.
 
 `PlexManager` (em `media_server/plex/backend.py`) é uma fachada sobre os
 submanagers: `.conn`, `.users`, `.invites`, `.subscriptions`, `.online_media`.
-Lógica nova de Plex vai no submanager correspondente, não na fachada. A fachada
-expõe também a superfície agnóstica do contrato (`get_all_users`,
-`is_connected`, `get_server_identifier`), que é a que código novo deve usar —
-os nomes com 'plex' continuam lá apenas para os pontos de chamada por migrar.
+Lógica nova de Plex vai no submanager correspondente, não na fachada.
+
+**A fachada é a fronteira.** Fora de `media_server/plex/` nada deve saber que o
+servidor é o Plex: não há objetos `plexapi` acessíveis a partir dela, e há um
+teste que falha se um método com 'plex' no nome reaparecer na sua superfície
+pública (`tests/test_media_server_contract.py`). Quando falta alguma coisa,
+acrescente-se um método ao contrato — foi assim que nasceram `is_connected()`,
+`get_base_url()` e `authorize_image_url()`, em vez de o painel ir buscar
+`.conn.plex`, `._baseurl` e `._token` por fora.
+
+Cuidado com a diferença entre `users.list_users()` (leitura crua do servidor) e
+`media_server.get_all_users()` (a mesma lista tratada para a interface). Foram
+o mesmo nome em duas camadas durante muito tempo.
+
+Continuam acoplados ao Plex, por migrar: o `StreamManager` (sessões e listener
+SSE) e a coluna `user_plex_id` dos modelos.
 
 `TautulliManager` segue o mesmo padrão sobre `app/services/tautulli/`
 (`api_client`, `stats_handler`, `recommendations_handler`).

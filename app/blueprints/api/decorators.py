@@ -6,7 +6,7 @@ from flask import jsonify, request
 from flask_babel import gettext as _
 from pydantic import ValidationError
 
-from ...extensions import plex_manager
+from ...extensions import media_server
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def user_lookup_by_id(f):
         except (ValueError, TypeError):
             return jsonify({"success": False, "message": _("ID do usuário inválido.")}), 400
 
-        user = plex_manager.get_user_by_id(plex_user_id)
+        user = media_server.get_user_by_id(plex_user_id)
         
         if not user:
             logger.warning(f"Utilizador com ID '{plex_user_id}' não encontrado.")

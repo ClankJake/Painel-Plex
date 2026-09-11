@@ -46,9 +46,9 @@ def plex_ligado(monkeypatch):
 
     conta = ContaPlexFalsa()
     monkeypatch.setattr(
-        extensions.plex_manager, "reload_connections", lambda *a, **k: (True, "ok"), raising=False
+        extensions.media_server, "reload_connections", lambda *a, **k: (True, "ok"), raising=False
     )
-    monkeypatch.setattr(extensions.plex_manager, "account", conta, raising=False)
+    monkeypatch.setattr(extensions.media_server, "account", conta, raising=False)
     return conta
 
 
@@ -58,7 +58,7 @@ def plex_offline(monkeypatch):
     from app import extensions
 
     monkeypatch.setattr(
-        extensions.plex_manager,
+        extensions.media_server,
         "reload_connections",
         lambda *a, **k: (False, "sem rede"),
         raising=False,

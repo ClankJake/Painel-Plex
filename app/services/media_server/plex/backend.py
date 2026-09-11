@@ -77,8 +77,6 @@ class PlexManager:
         self.notifier_manager = notifier_manager
         self.overseerr_manager = overseerr_manager
         self.app = None
-        self.plex = None
-        self.account = None
 
     def init_app(self, app):
         from app.config import is_configured
@@ -100,8 +98,6 @@ class PlexManager:
             pass
 
         if success:
-            self.plex = self.conn.plex
-            self.account = self.conn.account
             self.users.invalidate_user_cache()
 
             # 📡 A instância de PlexServer acabou de ser substituída: o listener SSE
@@ -145,17 +141,6 @@ class PlexManager:
                 return {"status": "OFFLINE", "message": _("Falha na comunicação com o servidor Plex.")}
         return {"status": "OFFLINE", "message": _("Não configurado ou falha na conexão inicial.")}
 
-    # =========================================================================
-    # SUPERFÍCIE AGNÓSTICA (contrato MediaServerBackend)
-    #
-    # Os métodos abaixo são os nomes DEFINITIVOS, sem marca. Os nomes antigos
-    # (get_all_plex_users, get_machine_identifier, ...) continuam a existir e a
-    # ser usados pelos ~100 pontos de chamada atuais: migrá-los é uma troca
-    # mecânica que fica para a fase seguinte, e fazê-la agora só tornaria este
-    # passo impossível de rever. Estes não são métodos novos — são o mesmo
-    # comportamento com o nome pelo qual o painel passará a pedi-lo.
-    # =========================================================================
-
     @property
     def capabilities(self):
         return self.CAPABILITIES
@@ -163,16 +148,65 @@ class PlexManager:
     def is_connected(self):
         """Há uma ligação utilizável neste momento?
 
-        Substitui os `if plex_manager.conn.plex:` espalhados pelo código, que
-        obrigam quem chama a saber que o objeto interno se chama 'plex'.
+        Substitui os `if plex_manager.conn.plex:` que existiam espalhados pelo
+        painel e obrigavam quem chamava a saber que o objeto interno da ligação
+        se chama 'plex'.
         """
         return bool(self.conn and self.conn.plex)
 
-    def get_server_identifier(self):
-        return self.get_machine_identifier()
+    def invalidate_user_cache(self):
+        return self.users.invalidate_user_cache()
 
-    def get_all_users(self, force_refresh=False):
-        return self.get_all_plex_users(force_refresh=force_refresh)
+    # Prefixos que este backend reconhece no proxy de imagens (`/image/?source=`).
+    # O vocabulário é do backend: é ele que sabe que 'plex_account' significa
+    # uma imagem em plex.tv e que a autenticação se faz com o X-Plex-Token.
+    IMAGE_SOURCES = ('plex', 'plex_account')
+
+    def get_base_url(self):
+        """O endereço HTTP do servidor, tal como está configurado.
+
+        O proxy de imagens precisa disto para pôr o servidor na allowlist em
+        tempo de execução: é dali que vêm as capas. Sem este método, quem
+        chamava tinha de ir buscar o `_baseurl` ao objeto da plexapi.
+        """
+        return getattr(self.conn.plex, '_baseurl', None) if self.conn.plex else None
+
+    def authorize_image_url(self, source, image_path):
+        """Constrói o URL e os parâmetros de autenticação de uma imagem do servidor.
+
+        Vive aqui, e não no proxy de imagens, porque injetar credenciais é
+        conhecimento do servidor: o proxy só precisa de saber que pediu um URL
+        autorizado e recebeu um. Levanta `ValueError` quando o caminho pedido
+        não é de confiança — quem chama trata isso como um bloqueio.
+        """
+        if source == 'plex':
+            if not self.conn.plex:
+                return None, {}
+            return (
+                self.conn.plex.url(image_path, includeToken=False),
+                {'X-Plex-Token': self.conn.plex._token},
+            )
+
+        if source == 'plex_account':
+            if not self.conn.account:
+                return None, {}
+
+            # 🛡️ FIX DE SEGURANÇA: obriga as imagens a serem relativas a plex.tv.
+            if image_path.startswith('http://') or image_path.startswith('https://'):
+                parsed = urlparse(image_path)
+                # `'plex.tv' in parsed.netloc` aceitava 'plex.tv.atacante.com' e
+                # entregava-lhe o token da conta Plex.
+                if is_plex_tv_host(parsed.hostname):
+                    image_path = parsed.path + ("?" + parsed.query if parsed.query else "")
+                else:
+                    raise ValueError("URL absoluto inválido para o prefixo plex_account.")
+
+            if not image_path.startswith('/'):
+                image_path = '/' + image_path
+
+            return f"https://plex.tv{image_path}", {'X-Plex-Token': self.conn.account._token}
+
+        return None, {}
 
     # --- DELEGAÇÕES SIMPLES ---
     def get_user_by_id(self, plex_user_id):
@@ -212,9 +246,9 @@ class PlexManager:
     # --- BIBLIOTECAS E ACESSOS ---
     def get_libraries(self): return self.conn.get_libraries()
 
-    def get_machine_identifier(self): return self.conn.get_machine_identifier()
+    def get_server_identifier(self): return self.conn.get_server_identifier()
     
-    def sync_profiles_from_plex(self, only_missing=True):
+    def sync_profiles_from_server(self, only_missing=True):
         """
         Preenche os perfis locais com os dados que o Plex já disponibiliza —
         sobretudo o EMAIL — sem que o utilizador tenha de iniciar sessão no painel.
@@ -234,7 +268,7 @@ class PlexManager:
         resumo = {"verificados": 0, "atualizados": 0, "sem_email_no_plex": 0, "erros": 0}
 
         try:
-            utilizadores_plex = self.users.get_all_plex_users() or []
+            utilizadores_plex = self.users.list_users() or []
         except Exception as e:
             logger.error(f"Não foi possível obter a lista de utilizadores do Plex: {e}", exc_info=True)
             return {"success": False, "message": str(e), **resumo}
@@ -278,7 +312,7 @@ class PlexManager:
         )
         return {"success": True, **resumo}
 
-    def get_all_plex_users(self, force_refresh=False): 
+    def get_all_users(self, force_refresh=False):
         from app.extensions import cache
         
         last_sync = cache.get('last_plex_user_sync')
@@ -292,7 +326,7 @@ class PlexManager:
             self.users.invalidate_user_cache()
             cache.set('last_plex_user_sync', current_time, timeout=86400)
             
-        cached_users = self.users.get_all_plex_users()
+        cached_users = self.users.list_users()
         
         if not cached_users:
             return []

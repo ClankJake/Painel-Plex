@@ -1285,7 +1285,7 @@ class NotifierManager:
         target_audience = payload.get('target_audience', 'active')
         target_user_ids = payload.get('user_ids', [])
         
-        all_plex_users = extensions.plex_manager.get_all_plex_users()
+        all_plex_users = extensions.media_server.get_all_users()
         if not all_plex_users: 
             raise ValueError(_("Não foi possível obter a lista de utilizadores do Plex."))
 

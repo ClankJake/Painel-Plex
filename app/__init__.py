@@ -283,21 +283,18 @@ def create_app() -> Flask:
         notifier_manager=extensions.notifier_manager,
         requests_manager=extensions.overseerr_manager,
     )
-    # Alias herdado: o MESMO objeto com o nome antigo, para não partir os pontos
-    # de chamada que ainda fazem `from ..extensions import plex_manager`.
-    extensions.plex_manager = extensions.media_server
     extensions.media_server.init_app(app)
     
     extensions.stream_manager = StreamManager(
-        plex_connection=extensions.media_server.conn,
+        connection=extensions.media_server.conn,
         data_manager=extensions.data_manager,
         user_manager=extensions.media_server.users
     )
     extensions.media_server.stream_manager = extensions.stream_manager
 
     # 🔗 Injeção tardia: o ReferralManager precisa do SubscriptionManager para
-    # somar dias grátis, mas este só existe depois do PlexManager ser construído.
-    extensions.referral_manager.subscription_manager = extensions.plex_manager.subscriptions
+    # somar dias grátis, mas este só existe depois do servidor de média ser construído.
+    extensions.referral_manager.subscription_manager = extensions.media_server.subscriptions
 
     # ==========================================
     # CONFIGURAÇÃO DO SCHEDULER

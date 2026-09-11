@@ -205,7 +205,7 @@ class PlexInviteManager:
         # A partir daqui, QUALQUER saída sem sucesso tem de devolver a vaga —
         # caso contrário uma tentativa falhada queimava uma utilização do convite.
         try:
-            invite_result = self.send_plex_invite(
+            invite_result = self.send_invite(
                 identifier=plex_user_account.email, 
                 library_titles=invitation['libraries'], 
                 plex_user_id=plex_user_account.id,
@@ -222,7 +222,7 @@ class PlexInviteManager:
             accept_result = self._accept_invite_v2(plex_user_account)
             if not accept_result.get("success"):
                 self.user_manager.invalidate_user_cache()
-                all_current_users = self.user_manager.get_all_plex_users()
+                all_current_users = self.user_manager.list_users()
                 if not any(str(u['id']) == str(plex_user_account.id) for u in all_current_users):
                     self.data_manager.release_invitation_use(code, username, plex_user_id)
                     return {"success": False, "message": accept_result.get('message')}
@@ -479,7 +479,7 @@ class PlexInviteManager:
     # =========================================================================
     # REATIVAÇÃO E ENVIO DE CONVITES REFORÇADOS
     # =========================================================================
-    def send_plex_invite(self, identifier, library_titles, plex_user_id=None, allow_sync=False):
+    def send_invite(self, identifier, library_titles, plex_user_id=None, allow_sync=False):
         """
         Envia o convite para a Plex.tv.
         A MELHORIA: Se o utilizador já for amigo, usa o user_manager blindado para atualizar as
@@ -634,7 +634,7 @@ class PlexInviteManager:
             
             if not accept_result.get('success'):
                 self.user_manager.invalidate_user_cache()
-                all_users = self.user_manager.get_all_plex_users()
+                all_users = self.user_manager.list_users()
                 if any(str(u['id']) == str(user_account.id) for u in all_users):
                     self._apply_online_media_preferences(user_account)
                     return {"success": True, "message": _("O usuário já está ativo no servidor."), "user": user_account}

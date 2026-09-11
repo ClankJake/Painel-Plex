@@ -14,7 +14,7 @@ from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 
-from ...extensions import plex_manager, tautulli_manager, efi_manager, mercado_pago_manager, gates2b_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager , notifier_manager
+from ...extensions import media_server, tautulli_manager, efi_manager, mercado_pago_manager, gates2b_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager , notifier_manager
 # 🐛 CORREÇÃO: 'backup_manager' NÃO pode ser importado por valor aqui. Ao contrário
 # dos outros gestores, ele é instanciado mais tarde no create_app() (depois deste
 # módulo já ter sido importado), por isso um "from ...extensions import backup_manager"
@@ -93,7 +93,7 @@ def get_dashboard_summary():
         # frontend carrega em separado.
         active_streams = stream_manager.get_active_stream_count()
 
-        all_users = plex_manager.get_all_plex_users()
+        all_users = media_server.get_all_users()
         total_users = len(all_users) if all_users else 0
         blocked_users = data_manager.count_blocked_users()
         active_users = total_users - blocked_users
@@ -136,7 +136,7 @@ def get_active_streams():
 def get_system_health():
     """Verifica e retorna o estado de todos os serviços integrados."""
     health_status = {
-        "plex": plex_manager.check_status(),
+        "plex": media_server.check_status(),
         "tautulli": tautulli_manager.check_status(),
         "efi": efi_manager.check_status(),
         "mercado_pago": mercado_pago_manager.check_status(),
@@ -452,7 +452,7 @@ def api_settings():
         # Só reconecta ao Plex (2 chamadas de rede + perda das caches de utilizadores
         # e bibliotecas) quando o URL ou o Token mudaram de facto.
         if plex_changed:
-            success, message = plex_manager.reload_connections()
+            success, message = media_server.reload_connections()
         else:
             success, message = True, _("Configurações salvas com sucesso.")
 
@@ -694,13 +694,13 @@ def save_setup():
     if config.get("EFI_ENABLED"):
         efi_manager.configure_webhook()
 
-    success, message = plex_manager.reload_connections()
+    success, message = media_server.reload_connections()
     if not success:
         config['IS_CONFIGURED'] = False
         save_app_config(config)
         return jsonify({"success": False, "message": _("Configuração salva, mas falha ao conectar: %(message)s", message=message)})
 
-    account = getattr(plex_manager, 'account', None)
+    account = getattr(media_server, 'account', None)
 
     # 🛡️ Regista já o ID Plex do administrador (imutável), em vez de esperar pelo
     # seu próximo login. Sem ele, o 'removal_job' e a revalidação da sessão de
@@ -811,7 +811,7 @@ def get_online_media_sources():
     painel, para acompanhar o que a Plex oferece em cada momento.
     """
     try:
-        return jsonify({"success": True, **plex_manager.online_media.get_catalog()})
+        return jsonify({"success": True, **media_server.online_media.get_catalog()})
     except Exception as e:
         logger.error(f"Falha ao listar as fontes de mídia online: {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Não foi possível obter as fontes de mídia online."), "sources": [], "account_read": False}), 500
@@ -1001,7 +1001,7 @@ def sync_profiles_route():
     # 'force=true' reescreve também os emails já preenchidos.
     only_missing = not bool(data.get('force'))
     try:
-        resultado = plex_manager.sync_profiles_from_plex(only_missing=only_missing)
+        resultado = media_server.sync_profiles_from_server(only_missing=only_missing)
         if resultado.get('success'):
             resultado['message'] = _(
                 "%(atualizados)d perfil(s) atualizado(s) de %(verificados)d verificado(s). "

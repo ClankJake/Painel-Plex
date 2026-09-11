@@ -71,21 +71,22 @@ class ConnectionBackend(Protocol):
 
     def get_libraries(self) -> List[Dict[str, str]]: ...
 
-    def get_machine_identifier(self) -> Optional[str]: ...
+    def get_server_identifier(self) -> Optional[str]: ...
 
 
 @runtime_checkable
 class UserDirectory(Protocol):
     """Os utilizadores com acesso ao servidor e as permissões de cada um.
 
-    ⚠️ Os nomes com 'plex' são herdados e mantêm-se nesta fase para que nenhum
-    dos ~100 pontos de chamada existentes tenha de mudar. A renomeação para
-    nomes agnósticos é mecânica e fica para a fase seguinte; o contrato que
-    conta para quem escreve um backend novo é o `MediaServerBackend` abaixo,
-    que já usa os nomes definitivos.
+    `list_users()` é a leitura CRUA do servidor — é o que o motor de streams e
+    o resto do painel interno consomem. Não confundir com o
+    `MediaServerBackend.get_all_users()` da fachada, que é a mesma lista já
+    tratada para a interface (avatares reescritos para o proxy de imagens,
+    sincronização periódica). Foram um único método com o mesmo nome em duas
+    camadas durante muito tempo, e era uma fonte de enganos.
     """
 
-    def get_all_plex_users(self, force_refresh_signal: Any = None) -> Optional[List[Dict[str, Any]]]: ...
+    def list_users(self, force_refresh_signal: Any = None) -> Optional[List[Dict[str, Any]]]: ...
 
     def get_user_by_id(self, plex_user_id: Any) -> Optional[Dict[str, Any]]: ...
 
@@ -112,6 +113,8 @@ class AccountProvisioning(Protocol):
     """
 
     def create_invitation(self, **kwargs: Any) -> Dict[str, Any]: ...
+
+    def send_invite(self, identifier: str, library_titles: List[str], plex_user_id: Any = None, allow_sync: bool = False) -> Dict[str, Any]: ...
 
     def get_invitation_by_code(self, code: str) -> Tuple[Optional[Dict[str, Any]], str]: ...
 
@@ -178,6 +181,8 @@ class MediaServerBackend(Protocol):
 
     def get_server_identifier(self) -> Optional[str]: ...
 
+    def get_base_url(self) -> Optional[str]: ...
+
     def is_connected(self) -> bool: ...
 
     # --- Utilizadores ---
@@ -196,6 +201,17 @@ class MediaServerBackend(Protocol):
     def remove_user(self, user_id: Any) -> Dict[str, Any]: ...
 
     def update_screen_limit(self, user_id: Any, screens: int) -> None: ...
+
+    def invalidate_user_cache(self) -> None: ...
+
+    # --- Imagens ---
+    # Os prefixos que este backend reconhece no proxy `/image/?source=`, e a
+    # construção do URL autenticado para cada um.
+    IMAGE_SOURCES: Tuple[str, ...]
+
+    def authorize_image_url(self, source: str, image_path: str) -> Tuple[Optional[str], Dict[str, Any]]: ...
+
+    def sync_profiles_from_server(self, only_missing: bool = True) -> Dict[str, Any]: ...
 
     # --- Sessões ---
     def get_active_sessions(self) -> Dict[str, Any]: ...
