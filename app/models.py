@@ -1,9 +1,37 @@
 # app/models.py
 from .extensions import db
+from .utils.identity import normalize_user_id
 from flask_login import UserMixin
 import json
 import uuid
 from datetime import datetime
+
+
+class UserId(db.TypeDecorator):
+    """A identidade de um utilizador no servidor de média, guardada como texto.
+
+    O Plex identifica as contas por um inteiro e o Jellyfin por um GUID, por
+    isso a coluna é texto. O problema é que o ID chega ao painel em formatos
+    diferentes conforme a origem — inteiro da API do Plex, string de um URL ou
+    da sessão, o que o gateway quiser de um webhook — e no SQLite uma consulta
+    feita com o inteiro 123 NÃO encontra a linha guardada como '123'.
+
+    A normalização vive aqui, no tipo da coluna, e não espalhada pelos métodos
+    do DataManager: assim aplica-se sozinha a tudo o que é gravado E a tudo o
+    que é comparado num WHERE, incluindo em consultas que ainda ninguém
+    escreveu. Era o 37.º método a esquecer-se dela que reintroduzia o bug.
+    """
+
+    impl = db.String(64)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        return normalize_user_id(value)
+
+    def process_result_value(self, value, dialect):
+        # Defensivo: uma instalação antiga pode ter linhas que escaparam ao
+        # CAST da migração e continuam guardadas como inteiro.
+        return normalize_user_id(value)
 
 class User(UserMixin):
     """
@@ -64,7 +92,7 @@ class Coupon(db.Model):
 class CouponUsage(db.Model):
     __tablename__ = 'coupon_usages'
     id = db.Column(db.Integer, primary_key=True)
-    user_plex_id = db.Column(db.Integer, db.ForeignKey('user_profiles.plex_user_id'), nullable=False, index=True)
+    user_plex_id = db.Column(UserId(), db.ForeignKey('user_profiles.plex_user_id'), nullable=False, index=True)
     coupon_id = db.Column(db.Integer, db.ForeignKey('coupons.id'), nullable=False)
     used_at = db.Column(db.DateTime, default=datetime.utcnow)
     __table_args__ = (db.UniqueConstraint('user_plex_id', 'coupon_id', name='_user_coupon_uc'),)
@@ -92,14 +120,22 @@ class Invitation(db.Model):
 
 class BlockedUser(db.Model):
     __tablename__ = 'blocked_users'
-    user_plex_id = db.Column(db.Integer, db.ForeignKey('user_profiles.plex_user_id'), primary_key=True)
+    user_plex_id = db.Column(UserId(), db.ForeignKey('user_profiles.plex_user_id'), primary_key=True)
     username = db.Column(db.String, nullable=False)
     blocked_at = db.Column(db.String)
     block_reason = db.Column(db.String(50), nullable=True)
 
 class UserProfile(db.Model):
     __tablename__ = 'user_profiles'
-    plex_user_id = db.Column(db.Integer, primary_key=True)
+    # A identidade vem do servidor de média e é TEXTO: o Plex usa um inteiro,
+    # o Jellyfin um GUID. Ver app/utils/identity.py — no SQLite uma consulta
+    # feita com um inteiro NÃO encontra a linha guardada como texto, e é por
+    # isso que o DataManager normaliza tudo o que recebe.
+    plex_user_id = db.Column(UserId(), primary_key=True)
+    # Que servidor de média criou este perfil. Um painel que troque de servidor
+    # não pode confundir o histórico de um ID Plex com o de um GUID do Jellyfin
+    # que por acaso coincida.
+    media_server_type = db.Column(db.String(20), nullable=True)
     username = db.Column(db.String, unique=True, nullable=False, index=True)
     email = db.Column(db.String, nullable=True)
     name = db.Column(db.String)
@@ -135,7 +171,7 @@ class UserProfile(db.Model):
     # 'referral_rewarded' evita pagar a recompensa mais do que uma vez pelo mesmo
     # indicado, mesmo que ele renove várias vezes.
     referral_code = db.Column(db.String(16), unique=True, nullable=True, index=True)
-    referred_by = db.Column(db.Integer, nullable=True, index=True)
+    referred_by = db.Column(UserId(), nullable=True, index=True)
     referral_rewarded = db.Column(db.Boolean, default=False, nullable=False)
     referral_credit = db.Column(db.Float, default=0.0, nullable=False)
     coupon_usages = db.relationship('CouponUsage', backref='user', lazy=True, cascade="all, delete-orphan")
@@ -145,7 +181,7 @@ class UserProfile(db.Model):
 class PixPayment(db.Model):
     __tablename__ = 'pix_payments'
     txid = db.Column(db.String, primary_key=True)
-    user_plex_id = db.Column(db.Integer, db.ForeignKey('user_profiles.plex_user_id'), nullable=False, index=True)
+    user_plex_id = db.Column(UserId(), db.ForeignKey('user_profiles.plex_user_id'), nullable=False, index=True)
     username = db.Column(db.String, nullable=False)
     value = db.Column(db.Float, nullable=False)
     status = db.Column(db.String, nullable=False, default='ATIVA')
@@ -172,7 +208,7 @@ class PixPayment(db.Model):
 class Notification(db.Model):
     __tablename__ = 'notifications'
     id = db.Column(db.Integer, primary_key=True)
-    user_plex_id = db.Column(db.Integer, db.ForeignKey('user_profiles.plex_user_id'), nullable=True, index=True)
+    user_plex_id = db.Column(UserId(), db.ForeignKey('user_profiles.plex_user_id'), nullable=True, index=True)
     message = db.Column(db.String, nullable=False)
     category = db.Column(db.String(20), nullable=False, default='info')
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
@@ -189,7 +225,7 @@ class ShortLink(db.Model):
 class UnlockedAchievement(db.Model):
     __tablename__ = 'unlocked_achievements'
     id = db.Column(db.Integer, primary_key=True)
-    user_plex_id = db.Column(db.Integer, db.ForeignKey('user_profiles.plex_user_id'), nullable=False, index=True)
+    user_plex_id = db.Column(UserId(), db.ForeignKey('user_profiles.plex_user_id'), nullable=False, index=True)
     username = db.Column(db.String, nullable=False)
     achievement_id = db.Column(db.String, nullable=False)
     unlocked_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -198,7 +234,7 @@ class UnlockedAchievement(db.Model):
 class StreamTerminationLog(db.Model):
     __tablename__ = 'stream_termination_logs'
     id = db.Column(db.Integer, primary_key=True)
-    user_plex_id = db.Column(db.Integer, db.ForeignKey('user_profiles.plex_user_id'), nullable=False, index=True)
+    user_plex_id = db.Column(UserId(), db.ForeignKey('user_profiles.plex_user_id'), nullable=False, index=True)
     username = db.Column(db.String, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     media_title = db.Column(db.String, nullable=False)

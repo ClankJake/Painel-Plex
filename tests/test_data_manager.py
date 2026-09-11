@@ -46,12 +46,12 @@ class TestPerfis:
     def test_procura_por_username_ignora_maiusculas(self, data_manager):
         data_manager.set_user_profile(1, {"username": "Ana"})
 
-        assert data_manager.get_user_profile_by_username("ana")["plex_user_id"] == 1
+        assert data_manager.get_user_profile_by_username("ana")["plex_user_id"] == "1"
 
     def test_procura_por_email_ignora_maiusculas_e_espacos(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana", "email": "Ana@Exemplo.com"})
 
-        assert data_manager.get_user_profile_by_email("  ana@exemplo.com ")["plex_user_id"] == 1
+        assert data_manager.get_user_profile_by_email("  ana@exemplo.com ")["plex_user_id"] == "1"
 
     def test_procura_por_email_vazio(self, data_manager):
         assert data_manager.get_user_profile_by_email(None) is None
@@ -60,8 +60,8 @@ class TestPerfis:
         # A coluna do perfil chama-se 'telegram_user' (não 'telegram_id').
         data_manager.set_user_profile(1, {"username": "ana", "telegram_user": "123456"})
 
-        assert data_manager.get_user_profile_by_telegram(123456)["plex_user_id"] == 1
-        assert data_manager.get_user_profile_by_telegram(" 123456 ")["plex_user_id"] == 1
+        assert data_manager.get_user_profile_by_telegram(123456)["plex_user_id"] == "1"
+        assert data_manager.get_user_profile_by_telegram(" 123456 ")["plex_user_id"] == "1"
 
     @pytest.mark.parametrize("valor", [None, "", "   "])
     def test_procura_por_telegram_vazio(self, data_manager, valor):
@@ -70,7 +70,7 @@ class TestPerfis:
     def test_procura_por_codigo_de_indicacao(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana", "referral_code": "ABCD2345"})
 
-        assert data_manager.get_user_profile_by_referral_code("abcd2345")["plex_user_id"] == 1
+        assert data_manager.get_user_profile_by_referral_code("abcd2345")["plex_user_id"] == "1"
         assert data_manager.get_user_profile_by_referral_code("ZZZZ") is None
 
     def test_lista_de_indicados(self, data_manager):
@@ -158,8 +158,8 @@ class TestPerfis:
         data_manager.set_user_profile(1, {"username": "ana", "expiration_date": iso(10)})
         data_manager.set_user_profile(2, {"username": "bruno", "trial_end_date": iso(1)})
 
-        assert list(data_manager.get_all_user_expirations()) == [1]
-        assert list(data_manager.get_all_trial_users()) == [2]
+        assert list(data_manager.get_all_user_expirations()) == ["1"]
+        assert list(data_manager.get_all_trial_users()) == ["2"]
 
 
 class TestCupoes:
@@ -297,7 +297,7 @@ class TestBloqueados:
 
         assert bloqueado["block_reason"] == "expired"
         assert data_manager.get_blocked_user(1) is not None
-        assert list(data_manager.get_blocked_users_dict()) == [1]
+        assert list(data_manager.get_blocked_users_dict()) == ["1"]
 
         assert data_manager.remove_blocked_user(1) is True
         assert data_manager.get_blocked_user(1) is None

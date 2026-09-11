@@ -19,6 +19,7 @@ from ...models import UserProfile, PixPayment
 from ...extensions import limiter
 from ...services.data_manager import get_app_timezone, normalize_coupon_code
 from ...utils.log_sanitizer import mask_token
+from ...utils.identity import normalize_user_id
 
 logger = logging.getLogger(__name__)
 payments_api_bp = Blueprint('payments_api', __name__)
@@ -300,7 +301,7 @@ def get_payment_options():
         if profile_from_token:
             user_profile = extensions.data_manager._row_to_dict(profile_from_token)
     elif current_user.is_authenticated:
-        user_profile = extensions.data_manager.get_user_profile(int(current_user.id))
+        user_profile = extensions.data_manager.get_user_profile(normalize_user_id(current_user.id))
     
     if not user_profile:
         return jsonify({"success": False, "message": _("Usuário não especificado ou token inválido.")}), 400
@@ -341,7 +342,7 @@ def validate_coupon_route():
             plex_user_id = profile.plex_user_id
             
     if not plex_user_id and current_user.is_authenticated:
-        plex_user_id = int(current_user.id)
+        plex_user_id = normalize_user_id(current_user.id)
         
     if not plex_user_id:
         return jsonify({"success": False, "message": _("Usuário não autorizado ou token inválido.")}), 404
@@ -367,7 +368,7 @@ def get_upgrade_quote():
     except (TypeError, ValueError):
         return jsonify({"success": False, "message": _("Número de telas inválido.")}), 400
 
-    quote = extensions.pricing_manager.calculate_upgrade_proration(int(current_user.id), new_screens)
+    quote = extensions.pricing_manager.calculate_upgrade_proration(normalize_user_id(current_user.id), new_screens)
     return jsonify({"success": True, **quote})
 
 
@@ -398,7 +399,7 @@ def create_charge_route():
             plex_user_id, username = profile_model.plex_user_id, profile_model.username
             
     if not plex_user_id and current_user.is_authenticated:
-        plex_user_id, username = int(current_user.id), current_user.username
+        plex_user_id, username = normalize_user_id(current_user.id), current_user.username
     
     if not plex_user_id:
         return jsonify({"success": False, "message": _("Usuário não especificado ou token inválido.")}), 400

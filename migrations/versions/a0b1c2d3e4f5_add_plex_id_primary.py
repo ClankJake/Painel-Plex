@@ -23,12 +23,18 @@ depends_on = None
 def get_plex_user_id_map():
     """Busca os dados dos utilizadores do Plex para mapear username para ID."""
     try:
+        # ⚠️ Esta migração histórica lê a aplicação viva, por isso tem de
+        # acompanhar as renomeações do código: quando 'plex_manager' passou a
+        # 'media_server', o import falhava, a função devolvia None e o
+        # `flask db upgrade` de uma INSTALAÇÃO NOVA abortava — o painel deixava
+        # de arrancar de todo. Se voltar a mexer nos nomes dos managers,
+        # confirme que este ficheiro continua a correr.
         from app import create_app
-        from app.extensions import plex_manager
+        from app.extensions import media_server
         app = create_app()
         with app.app_context():
-            plex_manager.reload_connections(from_job=True)
-            all_users = plex_manager.get_all_plex_users(force_refresh=True)
+            media_server.reload_connections(from_job=True)
+            all_users = media_server.get_all_users(force_refresh=True)
             if not all_users:
                 logger.warning("Nenhum utilizador encontrado no Plex. O mapeamento de ID estará vazio.")
                 return {}

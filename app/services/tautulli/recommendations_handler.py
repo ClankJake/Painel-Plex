@@ -45,6 +45,7 @@ from typing import Any, Dict, List, Optional, Set
 from flask import url_for
 
 from app.config import load_or_create_config
+from ...utils.identity import normalize_user_ids
 
 logger = logging.getLogger(__name__)
 
@@ -267,18 +268,17 @@ class RecommendationsHandler:
         if not self.data_manager or not _config_bool(config, "RECOMMENDATIONS_RESPECT_PRIVACY"):
             return set()
 
-        numeric_ids = []
-        for user_id in user_ids:
-            try:
-                numeric_ids.append(int(user_id))
-            except (TypeError, ValueError):
-                continue
+        # 🐛 Isto convertia cada ID para inteiro e descartava o que não coubesse.
+        # Com identidades em texto (um GUID do Jellyfin, por exemplo) descartava
+        # TODA a gente — e a privacidade deixava silenciosamente de ser
+        # respeitada, que é a pior forma de falhar numa funcionalidade destas.
+        ids_normalizados = normalize_user_ids(user_ids)
 
-        if not numeric_ids:
+        if not ids_normalizados:
             return set()
 
         try:
-            profiles = self.data_manager.get_user_profiles_by_id(numeric_ids) or {}
+            profiles = self.data_manager.get_user_profiles_by_id(ids_normalizados) or {}
         except Exception as e:  # pragma: no cover - defensivo
             logger.debug(f"Não foi possível ler os perfis para as recomendações: {e}")
             return set()

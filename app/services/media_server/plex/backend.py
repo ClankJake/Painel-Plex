@@ -22,6 +22,7 @@ from ..base import MediaServerCapabilities
 from ....extensions import scheduler as global_scheduler
 from ....extensions import cache
 from ....utils.url_safety import is_plex_tv_host
+from ....utils.identity import normalize_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -276,7 +277,7 @@ class PlexManager:
         for utilizador in utilizadores_plex:
             resumo["verificados"] += 1
             try:
-                plex_user_id = int(utilizador.get('id'))
+                plex_user_id = normalize_user_id(utilizador.get('id'))
                 email = (utilizador.get('email') or '').strip()
                 username = (utilizador.get('username') or '').strip()
 

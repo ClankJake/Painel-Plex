@@ -20,6 +20,7 @@ from .decorators import user_lookup_by_id, validate_json
 from .schemas import RenewSubscriptionSchema, UpdateProfileSchema, UpdateAccountProfileSchema
 from ...models import UserProfile
 from ...extensions import limiter
+from ...utils.identity import normalize_user_id, same_user
 
 logger = logging.getLogger(__name__)
 users_api_bp = Blueprint('users_api', __name__)
@@ -86,7 +87,7 @@ def finalize_reactivation_route():
              return jsonify({"success": False, "message": _("Perfil local não encontrado.")}), 404
 
         # Segurança: Verifica se o ID do Plex que aceitou o convite é o mesmo do perfil local
-        if int(profile.plex_user_id) != int(plex_user_obj.id):
+        if not same_user(profile.plex_user_id, plex_user_obj.id):
              logger.warning(f"Tentativa de reativação com conta incorreta. Token: {profile.plex_user_id}, Login: {plex_user_obj.id}")
              return jsonify({
                 "success": False, 
@@ -129,7 +130,7 @@ def finalize_reactivation_route():
 @login_required
 def get_account_details():
     config = load_or_create_config()
-    plex_user_id = int(current_user.id)
+    plex_user_id = normalize_user_id(current_user.id)
     profile = extensions.data_manager.get_user_profile(plex_user_id)
     
     is_blocked_info = extensions.data_manager.get_blocked_user(plex_user_id)
@@ -191,7 +192,7 @@ def get_account_details():
 def update_account_profile(validated_data):
     # Compatibilidade com Pydantic v1 e v2
     data = validated_data.dict(exclude_unset=True) if hasattr(validated_data, 'dict') else validated_data.model_dump(exclude_unset=True)
-    plex_user_id = int(current_user.id)
+    plex_user_id = normalize_user_id(current_user.id)
     profile = extensions.data_manager.get_user_profile(plex_user_id)
     profile.update(data)
     extensions.data_manager.set_user_profile(plex_user_id, profile)
@@ -204,7 +205,7 @@ def update_privacy_settings():
     if not isinstance(hide_setting, bool): 
         return jsonify({"success": False, "message": _("Valor inválido.")}), 400
     
-    plex_user_id = int(current_user.id)
+    plex_user_id = normalize_user_id(current_user.id)
     profile = extensions.data_manager.get_user_profile(plex_user_id)
     profile['hide_from_leaderboard'] = hide_setting
     extensions.data_manager.set_user_profile(plex_user_id, profile)
@@ -237,7 +238,7 @@ def get_account_requests():
 @users_api_bp.route('/account/devices')
 @login_required
 def get_account_devices():
-    return jsonify(extensions.tautulli_manager.get_user_devices(int(current_user.id)))
+    return jsonify(extensions.tautulli_manager.get_user_devices(normalize_user_id(current_user.id)))
 
 # ==========================================
 # ROTAS ADMIN (GERENCIAMENTO)
@@ -271,11 +272,14 @@ def get_user_list():
     try:
         plex_users = extensions.media_server.get_all_users() or []
         user_profiles = extensions.data_manager.get_all_user_profiles()
-        profiles_map = {p['plex_user_id']: p for p in user_profiles}
+        # 🐛 As chaves vêm da base de dados como TEXTO e o `user['id']` vem do
+        # servidor de média como INTEIRO: sem normalizar, este `.get()` devolvia
+        # sempre {} e a lista de contactos aparecia vazia, sem erro nenhum.
+        profiles_map = {normalize_user_id(p['plex_user_id']): p for p in user_profiles}
 
         filtered_users = []
         for user in plex_users:
-            profile = profiles_map.get(user['id'], {})
+            profile = profiles_map.get(normalize_user_id(user['id']), {})
             if profile.get('telegram_user') or profile.get('discord_user_id') or profile.get('phone_number'):
                 filtered_users.append({
                     'id': user['id'],
@@ -288,7 +292,7 @@ def get_user_list():
         logger.error(f"Erro ao listar utilizadores para seleção: {e}")
         return jsonify({"success": False, "message": _("Erro interno ao obter lista.")}), 500
 
-@users_api_bp.route('/profile/<int:plex_user_id>', methods=['GET', 'POST'])
+@users_api_bp.route('/profile/<plex_user_id>', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def user_profile_route(plex_user_id):
@@ -344,7 +348,7 @@ def user_profile_route(plex_user_id):
     logger.info(f"Admin '{current_user.username}' atualizou o perfil de '{username}'.")
     return jsonify({"success": True, "message": _("Perfil do usuário atualizado com sucesso.")})
 
-@users_api_bp.route('/extend-trial/<int:plex_user_id>', methods=['POST'])
+@users_api_bp.route('/extend-trial/<plex_user_id>', methods=['POST'])
 @login_required
 @admin_required
 @user_lookup_by_id
@@ -442,7 +446,7 @@ def reactivate_user_route():
         logger.error(f"Erro interno ao reativar {plex_user_id}: {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Erro interno ao processar reativação.")}), 500
 
-@users_api_bp.route('/renew/<int:plex_user_id>', methods=['POST'])
+@users_api_bp.route('/renew/<plex_user_id>', methods=['POST'])
 @login_required
 @admin_required
 @user_lookup_by_id
@@ -543,7 +547,7 @@ def delete_permanently_route():
         logger.error(f"Erro ao apagar utilizador {plex_user_id}: {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Erro interno ao excluir o usuário.")}), 500
 
-@users_api_bp.route('/notify/<int:plex_user_id>', methods=['POST'])
+@users_api_bp.route('/notify/<plex_user_id>', methods=['POST'])
 @login_required
 @admin_required
 @user_lookup_by_id
@@ -560,7 +564,7 @@ def notify_user_route(user):
     logger.info(f"Admin '{current_user.username}' disparou uma notificação manual de vencimento para '{user['username']}'.")
     return jsonify({"success": True, "message": _("Notificação de vencimento enviada.")})
 
-@users_api_bp.route('/libraries/<int:plex_user_id>')
+@users_api_bp.route('/libraries/<plex_user_id>')
 @login_required
 @admin_required
 @user_lookup_by_id
@@ -631,7 +635,7 @@ def update_all_limits_route():
     screens = max(0, request.json.get('screens', -1))
     all_users = extensions.media_server.get_all_users() or []
     for user in all_users:
-        if user['id'] != int(current_user.id):
+        if not same_user(user['id'], current_user.id):
             if profile := extensions.data_manager.get_user_profile(user['id']):
                 profile['screen_limit'] = screens
                 extensions.data_manager.set_user_profile(user['id'], profile)
@@ -648,7 +652,7 @@ def toggle_overseerr_access_route(user):
     if res.get('success'): logger.info(f"Admin '{current_user.username}' alterou acesso Overseerr de '{user['username']}' para {access}.")
     return jsonify(res)
 
-@users_api_bp.route('/payments/<int:plex_user_id>')
+@users_api_bp.route('/payments/<plex_user_id>')
 @login_required
 def get_user_payments_history(plex_user_id):
     # 🐛 CORREÇÃO DE SEGURANÇA: a verificação anterior era `not current_user.is_admin`.
@@ -848,7 +852,7 @@ def get_my_referral_info():
         return jsonify({"success": True, "enabled": False})
 
     try:
-        plex_user_id = int(current_user.id)
+        plex_user_id = normalize_user_id(current_user.id)
     except (TypeError, ValueError):
         return jsonify({"success": False, "message": _("Usuário inválido.")}), 400
 
@@ -875,7 +879,7 @@ def claim_referral_code():
     code = str(data.get('code', '')).strip()
 
     try:
-        plex_user_id = int(current_user.id)
+        plex_user_id = normalize_user_id(current_user.id)
     except (TypeError, ValueError):
         return jsonify({"success": False, "message": _("Usuário inválido.")}), 400
 

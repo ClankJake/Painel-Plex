@@ -123,7 +123,7 @@ class TautulliManager:
             
         logger.debug(f"Tautulli: A buscar detalhes de visualização (cache miss) para ID '{plex_user_id}' e '{days}' dias.")
         
-        profile = self.data_manager.get_user_profile(int(plex_user_id))
+        profile = self.data_manager.get_user_profile(plex_user_id)
         if not profile or not profile.get('username'):
             logger.warning(f"Tautulli: Não foi possível encontrar o perfil para o ID '{plex_user_id}'. Detalhes de visualização vazios.")
             return {"success": True, "details": {}}
@@ -170,7 +170,7 @@ class TautulliManager:
         if not self.api_client.is_configured:
             return {"success": True, "has_data": False, "wrapped": None}
 
-        profile = self.data_manager.get_user_profile(int(plex_user_id))
+        profile = self.data_manager.get_user_profile(plex_user_id)
         if not profile or not profile.get('username'):
             return {"success": True, "has_data": False, "wrapped": None}
 

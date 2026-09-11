@@ -17,6 +17,7 @@ from flask_babel import gettext as _
 from ..models import User
 from ..config import is_configured, load_or_create_config, save_app_config
 from ..extensions import media_server, data_manager, limiter
+from ..utils.identity import normalize_user_id
 
 # --- Configurações e Constantes ---
 logger = logging.getLogger(__name__)
@@ -278,7 +279,7 @@ def check_user_active_status():
         return
 
     try:
-        plex_user_id = int(current_user.id)
+        plex_user_id = normalize_user_id(current_user.id)
         user_profile = data_manager.get_user_profile(plex_user_id)
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/api/')
 
@@ -436,7 +437,7 @@ def check_plex_pin(client_id, pin_id):
         
         # --- LÓGICA DE LOGIN PARA UTILIZADORES NORMAIS ---
         plex_users = media_server.get_all_users()
-        user_profile = data_manager.get_user_profile(int(account.id))
+        user_profile = data_manager.get_user_profile(normalize_user_id(account.id))
         
         # Sincronização Local
         if user_profile:
@@ -450,7 +451,7 @@ def check_plex_pin(client_id, pin_id):
                 updates['email'] = account.email
             
             if updates:
-                data_manager.set_user_profile(int(account.id), updates)
+                data_manager.set_user_profile(normalize_user_id(account.id), updates)
                 user_profile.update(updates)
         else:
             # 🔒 O email é um identificador muito mais estável do que o username: o
@@ -485,7 +486,7 @@ def check_plex_pin(client_id, pin_id):
             if not user_profile:
                 logger.info(f"Novo utilizador detetado '{account.username}' (ID: {account.id}). Criando perfil local.")
                 new_profile = {
-                    'plex_user_id': int(account.id),
+                    'plex_user_id': normalize_user_id(account.id),
                     'username': account.username,
                     'email': account.email,
                     'status': 'active',
@@ -493,7 +494,7 @@ def check_plex_pin(client_id, pin_id):
                     'created_at': datetime.now(timezone.utc).isoformat(),
                     'libraries': '[]'
                 }
-                data_manager.set_user_profile(int(account.id), new_profile)
+                data_manager.set_user_profile(normalize_user_id(account.id), new_profile)
                 user_profile = new_profile
 
             if user_profile and user_profile.get('status') == 'inactive':

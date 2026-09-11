@@ -18,6 +18,7 @@ from plexapi.exceptions import NotFound
 from ..config import load_or_create_config
 from ..utils.log_formatting import NETWORK_ERRORS, ThrottledReporter, describe
 from ..utils.url_safety import is_plex_tv_host
+from ..utils.identity import normalize_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -512,11 +513,11 @@ class StreamManager:
 
             now_playing_sessions = []
             all_users = self.user_manager.list_users() or []
-            id_to_username_map = {u['id']: u['username'] for u in all_users}
-            user_thumb_map = {u['id']: u['thumb'] for u in all_users}
+            id_to_username_map = {normalize_user_id(u['id']): u['username'] for u in all_users}
+            user_thumb_map = {normalize_user_id(u['id']): u['thumb'] for u in all_users}
             
             if self.conn.account:
-                admin_id = getattr(self.conn.account, 'id', None)
+                admin_id = normalize_user_id(getattr(self.conn.account, 'id', None))
                 if admin_id and admin_id not in id_to_username_map:
                     id_to_username_map[admin_id] = getattr(self.conn.account, 'username', 'Admin')
                     user_thumb_map[admin_id] = getattr(self.conn.account, 'thumb', None)
@@ -959,14 +960,22 @@ class StreamManager:
         return 'default'
 
     def _get_session_user_id(self, session):
+        """A identidade do dono da sessão, normalizada.
+
+        🐛 O servidor devolve o ID no formato dele (o Plex, um inteiro) mas os
+        perfis e a lista de bloqueados vêm da base de dados como texto. Sem
+        normalizar aqui, `user_id in blocked_users_info` era SEMPRE falso e os
+        utilizadores bloqueados deixavam de ser expulsos — em silêncio, porque
+        um dicionário que não encontra a chave não dá erro nenhum.
+        """
         try:
             if hasattr(session, 'user') and session.user:
-                return getattr(session.user, 'id', None)
+                return normalize_user_id(getattr(session.user, 'id', None))
             if hasattr(session, 'userID'):
-                return session.userID
+                return normalize_user_id(session.userID)
             users = getattr(session, 'users', [])
             if users and hasattr(users[0], 'id'):
-                return users[0].id
+                return normalize_user_id(users[0].id)
         except Exception: pass
         return None
 
@@ -1001,9 +1010,9 @@ class StreamManager:
     def _build_user_maps(self):
         all_users = self.user_manager.list_users() or []
         admin_account = self.conn.account
-        admin_user_id = getattr(admin_account, 'id', None)
+        admin_user_id = normalize_user_id(getattr(admin_account, 'id', None))
 
-        id_to_username_map = {user['id']: user['username'] for user in all_users}
+        id_to_username_map = {normalize_user_id(user['id']): user['username'] for user in all_users}
         if admin_user_id and admin_account.username:
             id_to_username_map[admin_user_id] = admin_account.username
             

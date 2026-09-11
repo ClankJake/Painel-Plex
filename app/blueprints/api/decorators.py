@@ -7,6 +7,7 @@ from flask_babel import gettext as _
 from pydantic import ValidationError
 
 from ...extensions import media_server
+from ...utils.identity import normalize_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +21,10 @@ def user_lookup_by_id(f):
             logger.warning("Nenhum ID de utilizador do Plex fornecido no pedido.")
             return jsonify({"success": False, "message": _("ID do usuário não fornecido.")}), 400
         
-        try:
-            plex_user_id = int(plex_user_id)
-        except (ValueError, TypeError):
+        # A identidade é texto (o Plex usa inteiros, o Jellyfin GUIDs), por
+        # isso o que se valida é que veio alguma coisa — não que é um número.
+        plex_user_id = normalize_user_id(plex_user_id)
+        if not plex_user_id:
             return jsonify({"success": False, "message": _("ID do usuário inválido.")}), 400
 
         user = media_server.get_user_by_id(plex_user_id)

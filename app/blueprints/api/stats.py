@@ -7,6 +7,7 @@ from flask_login import login_required, current_user
 from flask_babel import gettext as _
 
 from ...extensions import media_server, tautulli_manager, data_manager
+from ...utils.identity import normalize_user_id
 
 logger = logging.getLogger(__name__)
 stats_api_bp = Blueprint('stats_api', __name__)
@@ -51,7 +52,7 @@ def get_statistics_data():
     tautulli_data["stats"] = processed_stats
     return jsonify(tautulli_data)
 
-@stats_api_bp.route('/user/<int:plex_user_id>')
+@stats_api_bp.route('/user/<plex_user_id>')
 @login_required
 def get_user_statistics(plex_user_id):
     """
@@ -79,7 +80,7 @@ def get_user_watch_history_route():
         search = bleach.clean(raw_search, strip=True)
 
         history_data = tautulli_manager.get_user_watch_history(
-            user_id=int(current_user.id),
+            user_id=normalize_user_id(current_user.id),
             page=page,
             length=length,
             search=search
@@ -147,7 +148,7 @@ def get_recommendations_route():
     return jsonify(result)
 
 
-@stats_api_bp.route('/wrapped/<int:plex_user_id>')
+@stats_api_bp.route('/wrapped/<plex_user_id>')
 @login_required
 def get_wrapped_data_route(plex_user_id):
     """

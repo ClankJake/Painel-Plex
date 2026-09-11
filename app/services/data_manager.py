@@ -178,7 +178,7 @@ class DataManager:
 
         ja_registado = db.session.query(CouponUsage.id).filter(
             CouponUsage.coupon_id == coupon.id,
-            CouponUsage.user_plex_id == int(plex_user_id)
+            CouponUsage.user_plex_id == plex_user_id
         ).first()
         if ja_registado:
             logger.info(
@@ -188,7 +188,7 @@ class DataManager:
             return False
 
         coupon.use_count += 1
-        new_usage = CouponUsage(user_plex_id=int(plex_user_id), coupon_id=coupon.id)
+        new_usage = CouponUsage(user_plex_id=plex_user_id, coupon_id=coupon.id)
         db.session.add(new_usage)
         logger.info(f"Uso do cupão '{coupon.code}' registado para o utilizador ID {plex_user_id}. Contagem: {coupon.use_count}.")
         return True
@@ -249,7 +249,7 @@ class DataManager:
         try:
             cutoff = (datetime.now(timezone.utc) - timedelta(minutes=int(max_age_minutes))).isoformat()
             existe = db.session.query(PixPayment.txid).filter(
-                PixPayment.user_plex_id == int(plex_user_id),
+                PixPayment.user_plex_id == plex_user_id,
                 func.upper(PixPayment.coupon_code) == normalizado,
                 PixPayment.status.in_(('ATIVA', 'PROCESSANDO')),
                 PixPayment.created_at >= cutoff
@@ -543,7 +543,7 @@ class DataManager:
     def get_users_referred_by(self, plex_user_id):
         """Lista os utilizadores indicados por alguém."""
         try:
-            profiles = UserProfile.query.filter(UserProfile.referred_by == int(plex_user_id)).all()
+            profiles = UserProfile.query.filter(UserProfile.referred_by == plex_user_id).all()
             return [self._row_to_dict(p) for p in profiles]
         except Exception:
             return []
@@ -571,7 +571,7 @@ class DataManager:
         Propaga IntegrityError se o código colidir com o de outro utilizador
         (há um índice único na coluna); quem chama deve gerar outro e tentar de novo.
         """
-        uid = int(plex_user_id)
+        uid = plex_user_id
         updated = UserProfile.query.filter(
             UserProfile.plex_user_id == uid,
             (UserProfile.referral_code.is_(None)) | (UserProfile.referral_code == '')
@@ -593,7 +593,7 @@ class DataManager:
         if value <= 0:
             return 0.0
         updated = UserProfile.query.filter(
-            UserProfile.plex_user_id == int(plex_user_id)
+            UserProfile.plex_user_id == plex_user_id
         ).update(
             {UserProfile.referral_credit: func.coalesce(UserProfile.referral_credit, 0.0) + value},
             synchronize_session=False
@@ -606,7 +606,7 @@ class DataManager:
         Abate crédito do saldo e devolve o valor efetivamente consumido. O saldo
         nunca fica negativo: se o pedido exceder o disponível, consome só o resto.
         """
-        uid = int(plex_user_id)
+        uid = plex_user_id
         wanted = round(max(0.0, float(amount or 0)), 2)
         if wanted <= 0:
             return 0.0
@@ -656,7 +656,7 @@ class DataManager:
             query = db.session.query(
                 func.coalesce(func.sum(PixPayment.referral_credit_used), 0.0)
             ).filter(
-                PixPayment.user_plex_id == int(plex_user_id),
+                PixPayment.user_plex_id == plex_user_id,
                 PixPayment.status.in_(('ATIVA', 'PROCESSANDO')),
                 PixPayment.referral_credit_used > 0,
                 PixPayment.created_at >= cutoff
@@ -678,7 +678,7 @@ class DataManager:
         processado duas vezes em simultâneo.
         """
         return bool(UserProfile.query.filter(
-            UserProfile.plex_user_id == int(plex_user_id),
+            UserProfile.plex_user_id == plex_user_id,
             UserProfile.referred_by.isnot(None),
             UserProfile.referral_rewarded.is_(False)
         ).update({UserProfile.referral_rewarded: True}, synchronize_session=False))
@@ -691,14 +691,14 @@ class DataManager:
         indicou nunca receberia nada.
         """
         return bool(UserProfile.query.filter(
-            UserProfile.plex_user_id == int(plex_user_id)
+            UserProfile.plex_user_id == plex_user_id
         ).update({UserProfile.referral_rewarded: False}, synchronize_session=False))
 
     def count_rewarded_referrals(self, plex_user_id):
         """Quantas indicações deste utilizador já foram efetivamente recompensadas."""
         try:
             return UserProfile.query.filter(
-                UserProfile.referred_by == int(plex_user_id),
+                UserProfile.referred_by == plex_user_id,
                 UserProfile.referral_rewarded.is_(True)
             ).count()
         except Exception:
@@ -708,7 +708,7 @@ class DataManager:
         """Indica se o utilizador já tem algum pagamento confirmado no histórico."""
         try:
             return bool(PixPayment.query.filter_by(
-                user_plex_id=int(plex_user_id), status='CONCLUIDA'
+                user_plex_id=plex_user_id, status='CONCLUIDA'
             ).first())
         except Exception:
             return False

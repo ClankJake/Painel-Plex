@@ -194,8 +194,14 @@ class TestGetMediaTitle:
 
 
 class TestSessionHelpers:
-    def test_id_do_utilizador(self, manager):
-        assert manager._get_session_user_id(SessaoFalsa(user_id=42)) == 42
+    def test_id_do_utilizador_vem_normalizado(self, manager):
+        # O Plex devolve um inteiro, a base de dados guarda texto. O motor de
+        # streams cruza os dois (perfis, bloqueios), por isso normaliza à
+        # entrada — ver o comentário 🐛 em _get_session_user_id.
+        assert manager._get_session_user_id(SessaoFalsa(user_id=42)) == "42"
+
+    def test_id_do_utilizador_aceita_um_guid(self, manager):
+        assert manager._get_session_user_id(SessaoFalsa(user_id="38c3a1f0")) == "38c3a1f0"
 
     def test_sessao_sem_utilizador(self, manager):
         sessao = SessaoFalsa()
@@ -213,8 +219,8 @@ class TestSessionHelpers:
 
         grupos = manager._group_sessions_by_user(sessoes)
 
-        assert len(grupos[1]) == 2
-        assert len(grupos[2]) == 1
+        assert len(grupos["1"]) == 2
+        assert len(grupos["2"]) == 1
 
     def test_sessoes_sem_utilizador_sao_descartadas(self, manager):
         sem_utilizador = SessaoFalsa()
