@@ -177,12 +177,12 @@ servidor confirma, e a reprodução continua — o leitor integrado da aplicaç�
 Android do Jellyfin (ExoPlayer) é um deles; pelo navegador o mesmo corte
 funciona.
 
-### O limite de telas é do painel, e não há alternativa no servidor
+### O limite de telas: do painel, e do servidor quando há plugin
 
-⚠️ **Nenhum dos servidores sabe limitar reproduções simultâneas.** O Plex não
-tem nada. O Jellyfin parece ter — `Policy.MaxActiveSessions`, que a interface
-dele chama "Número máximo de sessões de usuários simultâneas" — e **não é isso**:
-limita AUTENTICAÇÕES, não reproduções. Já foi tentado, e falha nos dois sentidos:
+⚠️ **Nenhum dos servidores sabe limitar reproduções simultâneas de origem.** O
+Plex não tem nada. O Jellyfin parece ter — `Policy.MaxActiveSessions`, que a
+interface dele chama "Número máximo de sessões de usuários simultâneas" — e
+**não é isso**: limita AUTENTICAÇÕES. Já foi tentado, e falha nos dois sentidos:
 
 * não corta ninguém. Só recusa entradas NOVAS, por isso quem já estava ligado
   continua a reproduzir à vontade — exatamente o caso que se queria travar;
@@ -190,10 +190,36 @@ limita AUTENTICAÇÕES, não reproduções. Já foi tentado, e falha nos dois se
   servidor e ocupa uma sessão, por isso quem tivesse os aparelhos ligados tinha
   de sair de um para conseguir entrar.
 
+**O plugin StreamLimiter resolve-o, e é a única coisa que resolve.** Não manda
+parar: intercepta o PEDIDO HTTP da mídia (um `IAsyncResourceFilter`) e recusa-o
+antes de servir um byte. Nenhum cliente pode ignorar um erro no pedido do
+próprio ficheiro — nem o leitor integrado da aplicação Android, que é onde tudo
+o resto falha. `stream_limit.py` escreve lá o que o painel decidiu
+(`POST /StreamLimit/SetUserStreamLimit`, tudo em query string), e o
+`cleanup_job` chama `sync_screen_limits()` para repor o que divergir: quem
+instala o plugin DEPOIS de já ter os limites no painel não tinha quem os
+escrevesse, e o painel é a fonte da verdade para esses valores.
+
+⚠️ **"0" quer dizer coisas diferentes dos dois lados.** No painel é ILIMITADO;
+no plugin apaga o limite próprio e passa a valer o `DefaultMaxStreams` do
+servidor — que, existindo, é um limite e não a ausência dele. Não há como dizer
+"sem limite para esta pessoa" enquanto o padrão existir: fica um WARNING a
+dizê-lo, em vez de o painel mostrar "Ilimitado" sobre alguém que não está.
+
+O corte do painel continua a ser preciso: o plugin trava o que COMEÇA, e não
+sabe nada de assinaturas vencidas nem de bloqueios — e é o painel quem envia a
+mensagem e regista a auditoria.
+
 `update_screen_limit()` na fachada é a **única porta** para mudar o limite de
-alguém, e grava só o perfil. Quem escrever `profile['screen_limit']` à mão
-espalha de novo por seis sítios uma decisão que é de um só (foi o que aconteceu:
-rotas de administração, upgrades pró-rata e renovações, cada uma à sua maneira).
+alguém: grava o perfil e leva-o ao plugin. Quem escrever
+`profile['screen_limit']` à mão espalha de novo por seis sítios uma decisão que
+é de um só (foi o que aconteceu: rotas de administração, upgrades pró-rata e
+renovações, cada uma à sua maneira).
+
+A deteção dos plugins do Jellyfin é partilhada em `plugins.py` (o StreamLimiter
+e o Playback Reporting precisam do mesmo), com cache de 10 minutos — instalar
+um plugin obriga a reiniciar o Jellyfin, por isso não muda sozinho. Procura-se
+pelo GUID **e** pelo nome: o GUID é estável, o nome é o que se lê no log.
 
 `clear_session_limits()` (no `cleanup_job`, guardado por
 `JELLYFIN_SESSION_LIMIT_CLEARED`) tira do servidor o `MaxActiveSessions` que o
@@ -207,8 +233,8 @@ fecha.** Cada entrada no painel deixava uma sessão órfã na lista do Jellyfin.
 QUEM CHAMA, por isso o pedido vai com o token do utilizador (`api.request(...,
 token=...)`) e não com a chave de API do painel.
 
-Sobrando o corte do painel como única defesa, e havendo clientes que o ignoram,
-o último recurso é `force_terminate()`: no Jellyfin revoga o acesso do APARELHO
+Sem o StreamLimiter, o corte do painel é a única defesa — e havendo clientes
+que o ignoram, o último recurso é `force_terminate()`: no Jellyfin revoga o acesso do APARELHO
 (`DELETE /Devices?id=`), o que invalida as credenciais dele e mata a reprodução
 obedeça o cliente ou não. Chega-se lá ao fim de `TENTATIVAS_ANTES_DE_FORCAR`
 pedidos à mesma `playback_key`, e só com `FORCE_STREAM_TERMINATION` ligado

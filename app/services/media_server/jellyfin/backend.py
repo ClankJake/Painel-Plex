@@ -18,6 +18,7 @@ from .api_client import JellyfinApiError
 from .connection import JellyfinConnectionManager
 from .history import JellyfinHistoryManager
 from .sessions import JellyfinSessionsProvider
+from .stream_limit import JellyfinStreamLimit
 from .user_manager import JellyfinUserManager
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ class JellyfinManager:
         self.users = JellyfinUserManager(self.conn, data_manager, stats_manager, requests_manager)
         self.sessions = JellyfinSessionsProvider(self.conn)
         self.history = JellyfinHistoryManager(self.conn)
+        self.stream_limit = JellyfinStreamLimit(self.conn)
         self.invites = JellyfinAccountManager(
             self.conn, self.users, data_manager, self, requests_manager, notifier_manager
         )
@@ -283,17 +285,26 @@ class JellyfinManager:
         return self.users.remove_user(user_id)
 
     def update_screen_limit(self, user_id, screens):
-        """O limite de telas é do painel — o Jellyfin não sabe impor nenhum.
+        """Grava o limite no perfil e, se houver quem o imponha, no servidor.
 
         ⚠️ Isto chegou a escrever `Policy.MaxActiveSessions`. Não serve: esse
         campo limita AUTENTICAÇÕES, não reproduções. Ver `clear_session_limits`
         no `user_manager` para o que isso partia.
+
+        Quem o impõe de verdade é o plugin StreamLimiter, quando está
+        instalado: recusa o PEDIDO HTTP da mídia antes de servir um byte, e
+        nenhum cliente pode ignorar isso. Sem ele, o limite continua a ser só
+        do painel — e continua a valer, porque é o painel que corta.
         """
         perfil = self.data_manager.get_user_profile(user_id)
         if perfil:
             perfil['screen_limit'] = screens
             self.data_manager.set_user_profile(user_id, perfil)
+        self.stream_limit.definir_limite(user_id, screens)
         logger.info(f"Limite de telas para o utilizador ID '{user_id}' atualizado para {screens}.")
+
+    def sync_screen_limits(self):
+        return self.stream_limit.sincronizar(self.data_manager.get_all_user_profiles() or [])
 
     def get_user_devices(self, user_id):
         return self.history.get_user_devices(user_id)

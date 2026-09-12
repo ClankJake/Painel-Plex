@@ -31,22 +31,19 @@ from typing import Any, Dict, List, Optional
 
 from flask_babel import gettext as _
 
-from ....extensions import cache
 from ....utils.log_formatting import describe
 from .api_client import JellyfinApiError
+from .plugins import plugin_instalado
 
 logger = logging.getLogger(__name__)
 
-# O nome do plugin na lista de `GET /Plugins`.
+# Como se reconhece o plugin em `GET /Plugins`.
+ID_DO_PLUGIN = '5c534381-91a3-43cb-907a-35aa02eb9d2c'
 NOME_DO_PLUGIN = 'playback reporting'
 
 # Um GUID do Jellyfin, com ou sem hífenes. Tudo o resto é recusado antes de
 # chegar perto do SQL.
 GUID_VALIDO = re.compile(r'^[0-9a-fA-F-]{8,64}$')
-
-# Quanto tempo se guarda a resposta a "o plugin está instalado?". Instalar ou
-# remover um plugin obriga a reiniciar o Jellyfin, por isso não muda sozinho.
-CACHE_DISPONIBILIDADE = 600
 
 TIPOS = ("Movie", "Episode")
 
@@ -73,46 +70,11 @@ class JellyfinPlaybackReporting:
     # =========================================================================
 
     def esta_disponivel(self) -> bool:
-        """O plugin está instalado neste servidor?
-
-        A resposta fica em cache: sem isso, cada página do histórico pagava uma
-        chamada extra só para descobrir o que já se sabia.
-        """
-        if not self.conn.connected:
-            return False
-
-        chave = f"jellyfin_playback_reporting_{self.conn.api.base_url}"
-        guardado = cache.get(chave)
-        if guardado is not None:
-            return guardado
-
-        disponivel = self._perguntar_ao_servidor()
-
-        # ⚠️ Só se guarda uma resposta que o servidor deu mesmo. Não saber não é
-        # o mesmo que não existir: gravar o "não" de uma falha de rede deixava o
-        # histórico dez minutos no registo do núcleo sem razão nenhuma.
-        if disponivel is not None:
-            cache.set(chave, disponivel, timeout=CACHE_DISPONIBILIDADE)
-            if disponivel:
-                logger.info("Plugin Playback Reporting encontrado: o histórico passa a ser por reprodução.")
-
-        return bool(disponivel)
-
-    def _perguntar_ao_servidor(self) -> Optional[bool]:
-        """True/False conforme o servidor respondeu; None se não respondeu."""
-        try:
-            plugins = self.conn.api.get('/Plugins')
-        except Exception as e:
-            logger.debug(f"Não foi possível listar os plugins do Jellyfin: {describe(e)}")
-            return None
-
-        if plugins is None:
-            return None
-
-        for plugin in plugins:
-            if NOME_DO_PLUGIN in str(plugin.get('Name') or '').lower():
-                return True
-        return False
+        """O plugin está instalado neste servidor? (com cache — ver `plugins.py`)"""
+        return plugin_instalado(
+            self.conn, ID_DO_PLUGIN, NOME_DO_PLUGIN, 'jellyfin_playback_reporting',
+            "Plugin Playback Reporting encontrado: o histórico passa a ser por reprodução.",
+        )
 
     # =========================================================================
     # HISTÓRICO

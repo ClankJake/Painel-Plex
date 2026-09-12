@@ -386,10 +386,19 @@ class MediaServerBackend(Protocol):
 
     def remove_user(self, user_id: Any) -> Dict[str, Any]: ...
 
-    # ⚠️ A ÚNICA porta para mudar o limite de telas de alguém. NENHUM servidor
-    # sabe impor um limite de reproduções simultâneas — nem o Plex, nem o
-    # Jellyfin — por isso este limite é do painel e só ele o faz cumprir.
+    # ⚠️ A ÚNICA porta para mudar o limite de telas de alguém. Grava o perfil e,
+    # onde houver quem o imponha (no Jellyfin, o plugin StreamLimiter), leva-o
+    # também ao servidor. Nenhum dos dois servidores sabe fazê-lo sozinho.
     def update_screen_limit(self, user_id: Any, screens: int) -> None: ...
+
+    def sync_screen_limits(self) -> Dict[str, Any]:
+        """Repõe no servidor os limites que divergirem do painel.
+
+        Serve o caso de quem instala o que impõe os limites DEPOIS de já os ter
+        definido no painel — nada os voltaria a escrever sozinho. Onde não há
+        ninguém a impô-los, não há nada a fazer.
+        """
+        return {"success": True, "corrigidos": 0}
 
     # --- Histórico e aparelhos do utilizador ---
     # De onde vêm muda por servidor: no Plex é o Tautulli que os guarda, no

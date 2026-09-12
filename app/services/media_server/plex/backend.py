@@ -264,6 +264,10 @@ class PlexManager:
             user_id=user_id, page=page, length=length, search=search
         )
 
+    def sync_screen_limits(self):
+        """Não há nada a repor: o Plex não sabe impor limites de telas."""
+        return {"success": True, "corrigidos": 0}
+
     def clear_session_limits(self):
         """Não há nada a limpar: o painel nunca escreveu limites no Plex."""
         return {"success": True, "limpos": 0}

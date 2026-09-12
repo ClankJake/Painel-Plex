@@ -293,6 +293,16 @@ def cleanup_job():
 
         limpar_limite_de_sessoes_do_servidor()
 
+        # 🛡️ Repõe no servidor os limites de telas que divergirem do painel.
+        # Serve quem instala o StreamLimiter DEPOIS de já ter os limites
+        # definidos aqui — nada os voltaria a escrever sozinho.
+        try:
+            resultado = extensions.media_server.sync_screen_limits()
+            if resultado.get('corrigidos'):
+                logger.info(f"Limites de telas repostos no servidor: {resultado['corrigidos']}.")
+        except Exception as e:
+            logger.error(f"Falha ao sincronizar os limites de telas: {e}", exc_info=True)
+
 @single_instance_job('cleanup_image_cache_job')
 def cleanup_image_cache_job():
     if not _app: return

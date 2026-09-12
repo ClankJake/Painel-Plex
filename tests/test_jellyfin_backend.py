@@ -76,6 +76,8 @@ class ApiFalsa:
 
     def post(self, endpoint, json=None, **kwargs):
         self.enviados.append(('POST', endpoint, json))
+        # Há endpoints que levam tudo no query string (o StreamLimiter é um).
+        self.ultimos_params[endpoint] = kwargs.get('params') or {}
         if endpoint in self.erros:
             raise self.erros[endpoint]
         resposta = self.respostas.get(endpoint)
