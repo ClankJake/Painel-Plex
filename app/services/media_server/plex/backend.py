@@ -165,6 +165,15 @@ class PlexManager:
     # uma imagem em plex.tv e que a autenticação se faz com o X-Plex-Token.
     IMAGE_SOURCES = ('plex', 'plex_account')
 
+    def authenticate(self, username, password):
+        """O Plex não autentica por palavra-passe a partir daqui.
+
+        A conta vive no plex.tv e o painel usa o fluxo de PIN (ver
+        `app/blueprints/auth.py`). Devolver None faz a página de login mostrar
+        o botão do Plex em vez de um formulário que não serviria para nada.
+        """
+        return None
+
     def get_owner_account(self):
         """O dono do servidor, tal como a plexapi o descreve.
 

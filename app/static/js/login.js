@@ -29,6 +29,51 @@ document.addEventListener('DOMContentLoaded', () => {
     let pinCheckInterval = null;
     let authWindow = null;
 
+    // --- LOGIN COM CREDENCIAIS (servidores de contas locais) ---
+    const credentialsForm = document.getElementById('credentials-form');
+
+    credentialsForm?.addEventListener('submit', async (evento) => {
+        evento.preventDefault();
+
+        const botao = document.getElementById('credentials-submit');
+        const textoBotao = document.getElementById('credentials-submit-text');
+        const erro = document.getElementById('credentials-error');
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value;
+
+        erro.textContent = '';
+
+        if (!username || !password) {
+            erro.textContent = i18n.credentialsRequired || '';
+            return;
+        }
+
+        botao.disabled = true;
+        if (textoBotao) textoBotao.textContent = i18n.signingIn || '';
+
+        try {
+            const resposta = await fetch(urls.loginCredentials, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password }),
+            });
+            const dados = await resposta.json();
+
+            if (dados.success && dados.redirect_url) {
+                window.location.href = dados.redirect_url;
+                return;
+            }
+            erro.textContent = dados.message || dados.error || '';
+        } catch (e) {
+            erro.textContent = i18n.authCheckError || '';
+        } finally {
+            // A palavra-passe não fica no campo depois de uma tentativa falhada.
+            document.getElementById('login-password').value = '';
+            botao.disabled = false;
+            if (textoBotao) textoBotao.textContent = i18n.signIn || '';
+        }
+    });
+
     // --- FUNÇÕES AUXILIARES ---
 
     function showFlashMessage(message, category = 'error') {

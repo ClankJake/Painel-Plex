@@ -524,3 +524,82 @@ class TestImagens:
 
     def test_o_backend_anuncia_as_suas_fontes(self):
         assert JellyfinManager(data_manager=None).IMAGE_SOURCES == ('jellyfin',)
+
+
+@pytest.mark.integration
+class TestAutenticacao:
+    def _backend(self, resultado=None, erro=None, data_manager=None):
+        return montar(
+            {'/Users/AuthenticateByName': resultado} if resultado else {},
+            erros={'/Users/AuthenticateByName': erro} if erro else None,
+            data_manager=data_manager,
+        )
+
+    def test_credenciais_certas_devolvem_a_conta(self, cache_limpa):
+        backend = self._backend({"User": {"Id": GUID, "Name": "ana"}, "AccessToken": "tok"})
+
+        conta = backend.authenticate("ana", "segredo")
+
+        assert conta.id == GUID
+        assert conta.username == "ana"
+        assert backend.conn.api.corpos_enviados('/Users/AuthenticateByName')[0] == {"Username": "ana", "Pw": "segredo"}
+
+    def test_o_token_de_sessao_do_servidor_nao_e_guardado(self, cache_limpa):
+        # O painel fala com o Jellyfin pela chave de API: guardar também o token
+        # do utilizador seria mais um segredo de terceiros a proteger sem motivo.
+        conta = self._backend({"User": {"Id": GUID, "Name": "ana"}, "AccessToken": "tok"}).authenticate("ana", "segredo")
+
+        assert not hasattr(conta, 'token')
+        assert "tok" not in repr(conta)
+
+    def test_credenciais_erradas_devolvem_none_sem_levantar(self, cache_limpa):
+        # 401 é o caso NORMAL, não um erro do painel.
+        backend = self._backend(erro=JellyfinApiError("unauthorized", status_code=401))
+
+        assert backend.authenticate("ana", "errada") is None
+
+    def test_uma_falha_do_servidor_tambem_devolve_none(self, cache_limpa):
+        backend = self._backend(erro=JellyfinApiError("boom", status_code=500))
+
+        assert backend.authenticate("ana", "segredo") is None
+
+    @pytest.mark.parametrize("username,password", [("", "x"), ("ana", ""), (None, None)])
+    def test_credenciais_vazias_nao_chegam_ao_servidor(self, cache_limpa, username, password):
+        backend = self._backend({"User": {"Id": GUID, "Name": "ana"}})
+
+        assert backend.authenticate(username, password) is None
+        assert backend.conn.api.corpos_enviados('/Users/AuthenticateByName') == []
+
+    def test_resposta_sem_utilizador_nao_abre_sessao(self, cache_limpa):
+        backend = self._backend({"AccessToken": "tok"})
+
+        assert backend.authenticate("ana", "segredo") is None
+
+    def test_o_endereco_do_servidor_so_vai_no_resgate_concluido(self, cache_limpa, data_manager):
+        # 🔒 Estava no HTML da página pública de convite: qualquer pessoa com o
+        # código ficava a saber onde está o servidor sem sequer o resgatar.
+        backend = montar({
+            '/Users': [],
+            '/Users/New': {"Id": GUID, "Name": "ana"},
+            '/Library/VirtualFolders': BIBLIOTECAS,
+            f'/Users/{GUID}': {"Id": GUID, "Name": "ana", "Policy": dict(POLITICA_BASE)},
+        }, data_manager=data_manager)
+        backend.create_invitation(library_titles=["Filmes"])
+        codigo = backend.list_invitations()[0]['code']
+
+        class Registo:
+            username, password, email = "ana", "segredo", ""
+
+        resultado = backend.claim_invitation(codigo, Registo())
+
+        assert resultado["user_data"]["server_url"] == "http://jellyfin.local:8096"
+
+
+@pytest.mark.integration
+class TestAutenticacaoNoPlex:
+    def test_o_plex_nao_autentica_por_palavra_passe(self):
+        # A conta vive no plex.tv e o painel usa o fluxo de PIN. Devolver None
+        # faz a página de login mostrar o botão em vez de um formulário inútil.
+        from app.services.media_server.plex import PlexManager
+
+        assert PlexManager(None, None, None, None).authenticate("ana", "segredo") is None

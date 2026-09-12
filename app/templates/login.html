@@ -100,12 +100,33 @@
                 {% endwith %}
                 </div>
 
+                {% if not media_server.capabilities.login_delegado %}
+                <!-- Servidor de contas locais: entra-se com as credenciais do próprio servidor. -->
+                <form id="credentials-form" class="mt-6 space-y-4">
+                    <div>
+                        <label for="login-username" class="block text-sm font-semibold mb-1 adaptive-label">{{ _('Utilizador') }}</label>
+                        <input type="text" id="login-username" name="username" autocomplete="username" required
+                               class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm">
+                    </div>
+                    <div>
+                        <label for="login-password" class="block text-sm font-semibold mb-1 adaptive-label">{{ _('Palavra-passe') }}</label>
+                        <input type="password" id="login-password" name="password" autocomplete="current-password" required
+                               class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm">
+                    </div>
+                    <button type="submit" id="credentials-submit"
+                            class="w-full flex justify-center items-center py-3 px-4 text-base font-semibold rounded-xl text-white bg-purple-600 hover:bg-purple-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-300 shadow-lg disabled:opacity-50">
+                        <span id="credentials-submit-text">{{ _('Entrar') }}</span>
+                    </button>
+                    <p id="credentials-error" class="text-sm text-red-500 text-center" role="alert"></p>
+                </form>
+                {% else %}
                 <div class="mt-6">
                     <button id="login-button" type="button" class="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-base font-semibold rounded-xl text-gray-900 bg-yellow-400 hover:bg-yellow-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 focus:ring-offset-gray-100 dark:focus:ring-offset-gray-800 transition-all duration-300 transform hover:scale-105 shadow-lg">
                         <svg class="w-6 h-6 mr-3 text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
                         <span id="login-button-text">{{ _('Entrar com a conta Plex') }}</span>
                     </button>
                 </div>
+                {% endif %}
             </div>
             <p class="mt-6 text-center text-xs adaptive-footer">
                 &copy; <span id="current-year"></span> {{ app_title }}. {{ _('Todos os direitos reservados.') }}
@@ -123,6 +144,10 @@
     data-i18n-auth-denied="{{ _('A autenticação com o Plex foi negada.') }}"
     data-i18n-login-with-plex="{{ _('Entrar com a conta Plex') }}"
     data-i18n-waiting-auth="{{ _('Aguardando autenticação...') }}"
+    data-urls-login-credentials="{{ url_for('auth.login_with_credentials') }}"
+    data-i18n-signing-in="{{ _('A entrar...') }}"
+    data-i18n-sign-in="{{ _('Entrar') }}"
+    data-i18n-credentials-required="{{ _('Indique o utilizador e a palavra-passe.') }}"
 ></script>
 
 <script>

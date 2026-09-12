@@ -14,6 +14,7 @@ from ....utils.log_formatting import describe
 from ..base import MediaServerCapabilities
 from ..plex.subscription_manager import PlexSubscriptionManager
 from .account_manager import JellyfinAccountManager
+from .api_client import JellyfinApiError
 from .connection import JellyfinConnectionManager
 from .sessions import JellyfinSessionsProvider
 from .user_manager import JellyfinUserManager
@@ -127,6 +128,46 @@ class JellyfinManager:
 
     def get_base_url(self):
         return self.conn.api.base_url
+
+    def authenticate(self, username, password):
+        """Valida as credenciais contra o próprio Jellyfin.
+
+        O servidor devolve também um `AccessToken` de sessão, que o painel NÃO
+        guarda: não precisa dele (fala com o servidor pela chave de API) e
+        guardá-lo seria mais um segredo de terceiros a proteger sem motivo.
+        """
+        from ..base import OwnerAccount
+
+        if not self.conn.connected or not username or not password:
+            return None
+
+        try:
+            resultado = self.conn.api.post(
+                '/Users/AuthenticateByName',
+                json={'Username': username, 'Pw': password},
+            ) or {}
+        except JellyfinApiError as e:
+            # 401 é o caso NORMAL de credenciais erradas, não um erro do painel.
+            if e.status_code in (401, 403):
+                return None
+            logger.warning(f"O Jellyfin recusou a autenticação de '{username}': {describe(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Falha ao autenticar '{username}' no Jellyfin: {describe(e)}", exc_info=True)
+            return None
+
+        utilizador = resultado.get('User') or {}
+        user_id = normalize_user_id(utilizador.get('Id'))
+        if not user_id:
+            return None
+
+        etiqueta = utilizador.get('PrimaryImageTag')
+        return OwnerAccount(
+            id=user_id,
+            username=utilizador.get('Name') or username,
+            email=None,
+            thumb=f"/Users/{user_id}/Images/Primary?tag={etiqueta}" if etiqueta else None,
+        )
 
     def get_owner_account(self):
         """A conta de administrador configurada no painel.

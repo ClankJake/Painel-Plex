@@ -2,6 +2,8 @@
 
 import logging
 import secrets
+from types import SimpleNamespace
+
 from flask import Blueprint, jsonify, request, url_for
 from plexapi.myplex import MyPlexAccount
 from flask_babel import gettext as _
@@ -163,6 +165,27 @@ def claim_invite_route():
     servia para testar códigos e tokens à vontade.
     """
     data = request.get_json(silent=True) or {}
+
+    # Num servidor de contas locais (Jellyfin), resgatar um convite é CRIAR a
+    # conta: em vez de um token de uma conta que já existe, chegam as
+    # credenciais que a pessoa acabou de escolher. Ver
+    # `JellyfinAccountManager.claim_invitation`.
+    if media_server.capabilities.cria_contas:
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+
+        if not username or not password:
+            return jsonify({"success": False, "message": _("Indique um nome de utilizador e uma palavra-passe.")}), 400
+
+        if len(password) < 6:
+            return jsonify({"success": False, "message": _("A palavra-passe tem de ter pelo menos 6 caracteres.")}), 400
+
+        registo = SimpleNamespace(
+            username=username, password=password,
+            email=(data.get('email') or '').strip(),
+        )
+        return jsonify(media_server.claim_invitation(data.get('code'), registo))
+
     try:
         plex_token = data.get('plex_token')
         if not plex_token:

@@ -90,7 +90,19 @@ capacidade em falta esconde a funcionalidade; nunca deve dar erro.
 
 **A diferença que não é técnica**: no Plex, o utilizador traz a conta dele e o
 painel convida-a. No Jellyfin as contas são **locais**, o painel CRIA-as e
-passa a ser responsável por entregar as credenciais. Isso muda o fluxo do
+passa a ser responsável por entregar as credenciais.
+
+Isso divide o login em dois: o que MUDA é apenas como se prova a identidade
+(PIN do plex.tv, ou `authenticate()` do backend contra o servidor). Tudo o que
+vem depois — é o administrador? tem acesso? o perfil está ativo? é preciso
+mandar pagar? — é partilhado em `_autorizar_e_iniciar_sessao`
+(`app/blueprints/auth.py`). Nunca duplique essa metade por backend.
+
+A rota `/auth/login/credentials` recusa-se a funcionar quando
+`capabilities.login_delegado` é verdade: no Plex, aceitar credenciais seria
+pedir a palavra-passe do plex.tv a quem entra — exatamente o que o fluxo de PIN
+existe para evitar. E está limitada a 10 por minuto, porque é a única rota do
+painel onde se podem testar palavras-passe. Isso muda o fluxo do
 convite (passa a pedir utilizador e palavra-passe) e enfraquece o anti-abuso de
 períodos de teste — uma conta nova não custa nada e nada a liga à mesma pessoa.
 Um convite de teste num servidor destes deve exigir um contacto verificável.

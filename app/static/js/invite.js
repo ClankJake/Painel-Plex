@@ -43,8 +43,12 @@ function formatTime(date) {
 // Mapeia os data-attributes para objetos para facilitar o acesso
 const urls = {};
 const i18n = {};
+const config = {};
 for (const key in scriptTag.dataset) {
-    if (key.startsWith('url')) {
+    if (key.startsWith('config')) {
+        const configKey = key.charAt(6).toLowerCase() + key.slice(7);
+        config[configKey] = scriptTag.dataset[key];
+    } else if (key.startsWith('url')) {
         const urlKey = key.charAt(3).toLowerCase() + key.slice(4);
         urls[urlKey] = scriptTag.dataset[key];
     } else if (key.startsWith('i18n')) {
@@ -149,15 +153,10 @@ function showImprovedOnboarding(welcomeMessage, userData) {
         <div class="mt-8 text-left border-t border-gray-200 dark:border-gray-700/50 pt-6">
             <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 text-center">${i18n.enjoyAnywhere}</h2>
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-center">
-                ${createAppCard('Desktop', 'https://www.plex.tv/pt-br/media-server-downloads/#plex-app', desktopIcon)}
-                ${createAppCard('Android', 'https://play.google.com/store/apps/details?id=com.plexapp.android', mobileIcon)}
-                ${createAppCard('Apple (iOS)', 'https://apps.apple.com/us/app/plex-movies-tv-music-more/id383457673', mobileIcon)}
-                ${createAppCard('Smart TVs', 'https://www.plex.tv/pt-br/apps-devices/#tv', tvIcon)}
-                ${createAppCard('Consoles', 'https://www.plex.tv/pt-br/apps-devices/#console', tvIcon)}
-                ${createAppCard(i18n.webBrowser, 'https://app.plex.tv/desktop/#!/', desktopIcon)}
+                ${cartoesDeAplicacoes(desktopIcon, mobileIcon, tvIcon, userData.server_url)}
             </div>
             <div class="text-center mt-6">
-                <a href="https://www.plex.tv/pt-br/apps-devices/" target="_blank" rel="noopener noreferrer" class="text-sm text-yellow-500 hover:underline">${i18n.allDevices} &rarr;</a>
+                <a href="${criaContas() ? 'https://jellyfin.org/downloads/clients' : 'https://www.plex.tv/pt-br/apps-devices/'}" target="_blank" rel="noopener noreferrer" class="text-sm text-yellow-500 hover:underline">${i18n.allDevices} &rarr;</a>
             </div>
         </div>
     `;
@@ -277,6 +276,140 @@ function loginWithPlexToClaim() {
     }
 }
 
+// Num servidor de contas locais o resgate CRIA a conta: em vez de autenticar
+// uma conta que já existe, pede-se as credenciais que a pessoa vai passar a
+// usar. Ver `JellyfinAccountManager.claim_invitation`.
+function criaContas() {
+    return config.createsAccounts === 'true';
+}
+
+function cartoesDeAplicacoes(desktopIcon, mobileIcon, tvIcon, serverUrl) {
+    // Enviar alguém para descarregar a aplicação ERRADA é pior do que não
+    // sugerir nenhuma: os links seguem o servidor que o painel administra.
+    if (criaContas()) {
+        return `
+            ${createAppCard('Desktop', 'https://jellyfin.org/downloads/clients', desktopIcon)}
+            ${createAppCard('Android', 'https://play.google.com/store/apps/details?id=org.jellyfin.mobile', mobileIcon)}
+            ${createAppCard('Apple (iOS)', 'https://apps.apple.com/app/jellyfin-mobile/id1480192618', mobileIcon)}
+            ${createAppCard('Smart TVs', 'https://jellyfin.org/downloads/clients', tvIcon)}
+            ${createAppCard(i18n.webBrowser, safeUrl(serverUrl) || 'https://jellyfin.org/downloads/clients', desktopIcon)}`;
+    }
+
+    return `
+        ${createAppCard('Desktop', 'https://www.plex.tv/pt-br/media-server-downloads/#plex-app', desktopIcon)}
+        ${createAppCard('Android', 'https://play.google.com/store/apps/details?id=com.plexapp.android', mobileIcon)}
+        ${createAppCard('Apple (iOS)', 'https://apps.apple.com/us/app/plex-movies-tv-music-more/id383457673', mobileIcon)}
+        ${createAppCard('Smart TVs', 'https://www.plex.tv/pt-br/apps-devices/#tv', tvIcon)}
+        ${createAppCard('Consoles', 'https://www.plex.tv/pt-br/apps-devices/#console', tvIcon)}
+        ${createAppCard(i18n.webBrowser, 'https://app.plex.tv/desktop/#!/', desktopIcon)}`;
+}
+
+function comoComecarPlex() {
+    return `
+        <div class="text-left mt-6 border-t border-gray-200 dark:border-gray-700/50 pt-6">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">${i18n.whatIsPlex}</h2>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">${i18n.plexDesc}</p>
+
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mt-4 mb-2">${i18n.howToStart}</h3>
+            <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-400 step-list">
+                <li>${i18n.step1Text} <a href="https://www.plex.tv/pt-br/sign-up/" target="_blank" rel="noopener noreferrer" class="text-yellow-500 hover:underline font-semibold">${i18n.step1Link}</a>${i18n.step1End}</li>
+                <li>${i18n.step2}</li>
+            </ol>
+        </div>`;
+}
+
+function comoComecarLocal() {
+    // Num servidor de contas locais não há conta externa para criar primeiro: a
+    // conta nasce aqui, e os passos são outros.
+    return `
+        <div class="text-left mt-6 border-t border-gray-200 dark:border-gray-700/50 pt-6">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">${i18n.howToStartLocal}</h3>
+            <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-400 step-list">
+                <li>${i18n.stepLocal1}</li>
+                <li>${i18n.stepLocal2}</li>
+            </ol>
+        </div>`;
+}
+
+function botaoDeLoginPlex() {
+    return `
+        <div class="mt-8">
+            <button id="login-button" type="button" class="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-gray-900 bg-yellow-500 hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 transition-transform transform hover:scale-105">
+                 <svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
+                ${i18n.loginToRedeem}
+            </button>
+        </div>`;
+}
+
+function formularioDeRegisto() {
+    const campo = 'block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm';
+    return `
+        <form id="register-form" class="mt-8 text-left space-y-4">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">${i18n.createAccount}</h2>
+            <p class="text-sm text-gray-600 dark:text-gray-400">${i18n.createAccountDesc}</p>
+
+            <div>
+                <label for="register-username" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">${i18n.username}</label>
+                <input type="text" id="register-username" autocomplete="username" required class="${campo}">
+            </div>
+            <div>
+                <label for="register-password" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">${i18n.password}</label>
+                <input type="password" id="register-password" autocomplete="new-password" minlength="6" required class="${campo}">
+            </div>
+            <div>
+                <label for="register-email" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">${i18n.emailOptional}</label>
+                <input type="email" id="register-email" autocomplete="email" class="${campo}">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${i18n.emailHelp}</p>
+            </div>
+
+            <button type="submit" id="register-submit" class="w-full flex justify-center items-center py-3 px-4 text-sm font-semibold rounded-md text-white bg-purple-600 hover:bg-purple-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-transform transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                ${i18n.createAndRedeem}
+            </button>
+            <p id="register-error" class="text-sm text-red-500 text-center" role="alert"></p>
+        </form>`;
+}
+
+async function registarEResgatar(evento) {
+    evento.preventDefault();
+
+    const botao = document.getElementById('register-submit');
+    const erro = document.getElementById('register-error');
+    const username = document.getElementById('register-username').value.trim();
+    const password = document.getElementById('register-password').value;
+    const email = document.getElementById('register-email').value.trim();
+
+    erro.textContent = '';
+
+    if (password.length < 6) {
+        erro.textContent = i18n.passwordTooShort || '';
+        return;
+    }
+
+    botao.disabled = true;
+    const textoOriginal = botao.textContent;
+    botao.textContent = i18n.creating || '';
+
+    try {
+        const resposta = await fetch(urls.claimInvite, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: inviteCode, username, password, email }),
+        });
+        const dados = await resposta.json();
+
+        if (dados.success) {
+            showImprovedOnboarding(dados.message, dados.user_data || {});
+            return;
+        }
+        erro.textContent = dados.message || i18n.claimFail;
+    } catch (e) {
+        erro.textContent = i18n.networkError || i18n.claimFail;
+    } finally {
+        botao.disabled = false;
+        botao.textContent = textoOriginal;
+    }
+}
+
 async function validateInvite() {
     try {
         const response = await fetch(urls.validateInvite);
@@ -289,26 +422,16 @@ async function validateInvite() {
             <svg class="w-16 h-16 text-yellow-400 mx-auto" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
             <h1 class="text-3xl font-bold text-gray-900 dark:text-white mt-4">${i18n.youAreInvited}</h1>
             
-            <div class="text-left mt-6 border-t border-gray-200 dark:border-gray-700/50 pt-6">
-                <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">${i18n.whatIsPlex}</h2>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">${i18n.plexDesc}</p>
-                
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mt-4 mb-2">${i18n.howToStart}</h3>
-                <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-400 step-list">
-                    <li>${i18n.step1Text} <a href="https://www.plex.tv/pt-br/sign-up/" target="_blank" rel="noopener noreferrer" class="text-yellow-500 hover:underline font-semibold">${i18n.step1Link}</a>${i18n.step1End}</li>
-                    <li>${i18n.step2}</li>
-                </ol>
-            </div>
+            ${criaContas() ? comoComecarLocal() : comoComecarPlex()}
             <div id="expiration-container"></div>
-            <div class="mt-8">
-                <button id="login-button" type="button" class="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-gray-900 bg-yellow-500 hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 transition-transform transform hover:scale-105">
-                     <svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
-                    ${i18n.loginToRedeem}
-                </button>
-            </div>
+            ${criaContas() ? formularioDeRegisto() : botaoDeLoginPlex()}
         `;
         
-        document.getElementById('login-button').onclick = loginWithPlexToClaim;
+        if (criaContas()) {
+            document.getElementById('register-form').addEventListener('submit', registarEResgatar);
+        } else {
+            document.getElementById('login-button').onclick = loginWithPlexToClaim;
+        }
         
         if (data.details && data.details.expires_at) {
             const expirationDate = new Date(data.details.expires_at);

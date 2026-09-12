@@ -297,6 +297,18 @@ class MediaServerBackend(Protocol):
 
     def get_base_url(self) -> Optional[str]: ...
 
+    def authenticate(self, username: str, password: str) -> Optional[Any]:
+        """Autentica um utilizador com credenciais próprias do servidor.
+
+        Só faz sentido quando `capabilities.login_delegado` é falso. Num
+        servidor que delega a autenticação (o Plex, pelo PIN do plex.tv) este
+        método devolve None e o painel usa o fluxo delegado.
+
+        Devolve um `OwnerAccount` (ou equivalente) em caso de sucesso e None
+        quando as credenciais não servem — nunca levanta exceção por credenciais
+        erradas, que é o caso normal e não um erro.
+        """
+
     def get_owner_account(self) -> Optional[Any]:
         """A conta de administrador do servidor (ver `OwnerAccount`).
 

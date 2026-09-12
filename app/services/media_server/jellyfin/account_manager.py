@@ -214,7 +214,14 @@ class JellyfinAccountManager(InvitationLifecycle):
             'status': 'active',
             'screen_limit': invitation.get('screen_limit', 0),
         })
-        return self.data_manager.set_user_profile(user_id, perfil)
+        gravado = self.data_manager.set_user_profile(user_id, perfil) or {}
+
+        # 🔒 O endereço do servidor vai APENAS na resposta de um resgate
+        # concluído — quem a recebe acabou de ganhar acesso. Estava a ser
+        # colocado no HTML da página de convite, que é pública: qualquer pessoa
+        # com o código, mesmo sem o resgatar, ficava a saber onde está o
+        # servidor.
+        return {**gravado, 'server_url': self.conn.api.base_url}
 
     # =========================================================================
     # NÃO APLICÁVEL A ESTE SERVIDOR
