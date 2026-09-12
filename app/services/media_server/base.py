@@ -258,6 +258,23 @@ class SessionsProvider(Protocol):
         feito.
         """
 
+    def force_terminate(self, session: MediaSession, reason: str) -> bool:
+        """Último recurso, para clientes que IGNORAM a ordem de parar.
+
+        `terminate()` pede educadamente — e há clientes que simplesmente não
+        obedecem (o leitor integrado da aplicação Android do Jellyfin é um
+        deles). Quando isso acontece, o painel fica a pedir para sempre e o
+        limite de telas deixa de valer alguma coisa.
+
+        Este método usa o que o servidor tiver de mais forte. É por natureza
+        AGRESSIVO — pode obrigar o utilizador a autenticar-se de novo naquele
+        aparelho — por isso só é chamado depois de a via educada ter falhado
+        várias vezes, e só se o administrador o tiver autorizado.
+
+        Devolve False quando o servidor não tem nada mais forte a oferecer.
+        """
+        return False
+
     def user_thumb_source(self, raw_thumb: Optional[str]) -> Optional[str]:
         """Converte o avatar cru do diretório num prefixo para o proxy de imagens."""
 

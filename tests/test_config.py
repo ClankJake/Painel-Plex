@@ -148,6 +148,32 @@ class TestMigracaoDeChaves:
         assert config["GATES2B_AUTH_TOKEN"] == "token-novo"
 
 
+class TestForcarEncerramento:
+    """A opção existe, chega a instalações antigas, e nasce desligada.
+
+    Revogar o acesso de um aparelho não se desfaz a partir do painel — ligar
+    isto tem de ser uma decisão do administrador, nunca um efeito secundário
+    de atualizar.
+    """
+
+    def test_nasce_desligada_numa_instalacao_nova(self, config_env):
+        assert config_module.load_or_create_config()["FORCE_STREAM_TERMINATION"] is False
+
+    def test_chega_desligada_a_uma_instalacao_antiga(self, config_env):
+        _write(config_env / "config.json", {"SECRET_KEY": "abc", "IS_CONFIGURED": True})
+
+        assert config_module.load_or_create_config()["FORCE_STREAM_TERMINATION"] is False
+
+    def test_quem_a_ligou_nao_a_perde_na_migracao(self, config_env):
+        _write(config_env / "config.json", {
+            "SECRET_KEY": "abc",
+            "IS_CONFIGURED": True,
+            "FORCE_STREAM_TERMINATION": True,
+        })
+
+        assert config_module.load_or_create_config()["FORCE_STREAM_TERMINATION"] is True
+
+
 class TestAutoCuraDosTemplates:
     def test_template_em_branco_e_restaurado(self, config_env):
         _write(config_env / "config.json", {

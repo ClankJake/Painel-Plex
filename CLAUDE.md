@@ -167,7 +167,26 @@ intacta.
 
 `terminate()` devolve `False` quando a reprodução ainda não pode ser encerrada
 (a carregar, sem identificador interno no servidor). Quem chama reagenda em vez
-de dar o corte por feito — não é um erro, é um "ainda não".
+de dar o corte por feito — não é um erro, é um "ainda não". Devolve `False`
+também quando o servidor RECUSA a ordem: durante muito tempo o backend do
+Jellyfin devolvia `True` em todos os casos, e a recusa desaparecia sem deixar
+rasto, porque quem chama trata `True` como "feito" e não volta a tentar.
+
+⚠️ **Aceitar a ordem não é obedecer-lhe.** Há clientes que recebem o `Stop`, o
+servidor confirma, e a reprodução continua — o leitor integrado da aplicação
+Android do Jellyfin (ExoPlayer) é um deles; pelo navegador o mesmo corte
+funciona. Sem contagem, o painel pedia educadamente para sempre e, de fora,
+parecia que o limite de telas simplesmente não funcionava. Ao fim de
+`TENTATIVAS_ANTES_DE_FORCAR` pedidos à mesma `playback_key`, o motor escala
+para `force_terminate()` — o último recurso do servidor, que no Jellyfin é
+revogar o acesso do APARELHO (`DELETE /Devices?id=`), invalidando-lhe as
+credenciais. O Plex não tem equivalente e devolve `False`, que é a resposta
+honesta: sem nada mais forte a oferecer, o motor volta a pedir.
+
+Esse último recurso está atrás de `FORCE_STREAM_TERMINATION`, **desligado por
+omissão**: obriga a pessoa a autenticar-se de novo naquele aparelho e não se
+desfaz a partir do painel. Desligado, fica um WARNING por reprodução a nomear a
+definição — desistir em silêncio seria o pior dos dois mundos.
 
 Os URLs de imagens passam todos por `app/utils/image_proxy.py`; o prefixo
 (`plex:`, `plex_account:`, `url:`) é escolhido pelo backend.

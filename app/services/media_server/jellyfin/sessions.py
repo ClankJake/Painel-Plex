@@ -286,6 +286,17 @@ class JellyfinSessionsProvider:
         if not session.session_key:
             return False
 
+        # 🔍 Um cliente que não aceita comandos nunca vai obedecer. Dizê-lo é
+        # melhor do que ficar a tentar em silêncio: é o caso do leitor
+        # integrado da aplicação Android, que reproduz mas não escuta.
+        bruta = session.raw if isinstance(session.raw, dict) else {}
+        if bruta.get('SupportsMediaControl') is False:
+            logger.warning(
+                "A sessão %s (%s) declara não aceitar comandos de reprodução: a ordem de "
+                "parar vai ser enviada na mesma, mas o cliente pode ignorá-la.",
+                session.session_key, session.player,
+            )
+
         # O comando de paragem do Jellyfin não leva motivo. Enviamos primeiro a
         # mensagem para que o utilizador perceba porque foi cortado — se ela
         # falhar, o corte faz-se na mesma: o motivo é um extra, não a operação.
@@ -304,11 +315,56 @@ class JellyfinSessionsProvider:
             # A sessão já não existe: para efeitos práticos está encerrada.
             if e.status_code == 404:
                 return True
-            logger.debug(f"O Jellyfin recusou encerrar a sessão {session.session_key}: {describe(e)}")
-            return True
+            # 🐛 Isto devolvia True em TODOS os casos, incluindo quando o
+            # servidor recusava a ordem. Quem chama trata True como "feito" e
+            # não volta a tentar — a recusa desaparecia sem deixar rasto.
+            logger.warning(
+                "O Jellyfin recusou a ordem de parar a sessão %s: %s",
+                session.session_key, describe(e),
+            )
+            return False
         except Exception as e:
-            logger.debug(f"Falha ao encerrar a sessão {session.session_key}: {describe(e)}")
-            return True
+            logger.warning(
+                "Falha ao mandar parar a sessão %s: %s", session.session_key, describe(e)
+            )
+            return False
+
+    def force_terminate(self, session: MediaSession, reason: str) -> bool:
+        """Revoga o acesso do APARELHO, para clientes que ignoram a ordem de parar.
+
+        Apagar o aparelho no Jellyfin invalida as credenciais dele: o pedido
+        seguinte do leitor recebe 401 e a reprodução morre, obedeça o cliente ou
+        não. Em troca, a pessoa tem de voltar a autenticar-se naquele aparelho —
+        por isso só se chega aqui depois de a via educada ter falhado várias
+        vezes e com autorização explícita do administrador.
+        """
+        bruta = session.raw if isinstance(session.raw, dict) else {}
+        device_id = bruta.get('DeviceId')
+
+        if not device_id:
+            logger.warning(
+                "Não é possível forçar o fim da sessão %s: o Jellyfin não indicou o aparelho.",
+                session.session_key,
+            )
+            return False
+
+        try:
+            self.conn.api.delete('/Devices', params={'id': device_id})
+        except JellyfinApiError as e:
+            logger.error(
+                "O Jellyfin recusou revogar o aparelho %s: %s", device_id, describe(e)
+            )
+            return False
+        except Exception as e:
+            logger.error("Falha ao revogar o aparelho %s: %s", device_id, describe(e))
+            return False
+
+        logger.warning(
+            "🔌 Acesso do aparelho %s revogado: o cliente '%s' ignorou repetidamente a ordem "
+            "de parar a reprodução. O utilizador terá de autenticar-se de novo nesse aparelho.",
+            device_id, session.player,
+        )
+        return True
 
     # =========================================================================
     # TEMPO REAL

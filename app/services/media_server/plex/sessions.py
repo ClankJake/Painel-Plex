@@ -459,6 +459,10 @@ class PlexSessionsProvider:
             logger.debug(f"Não foi possível encerrar a sessão {session.session_key}: {describe(e)}")
             return True
 
+    def force_terminate(self, session: MediaSession, reason: str) -> bool:
+        """O Plex obedece ao `stop()`: não há nada mais forte a acrescentar."""
+        return False
+
     # =========================================================================
     # TEMPO REAL
     # =========================================================================

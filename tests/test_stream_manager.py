@@ -50,6 +50,9 @@ class ProviderFalso:
         self._sessoes = sessoes or []
         self.chamadas = 0
         self.terminadas = {}
+        # O último recurso, para clientes que ignoram a ordem de parar.
+        self.forcadas = {}
+        self.forca_funciona = True
         self.ligado = True
         self.owner_id = owner_id
         self.avatares_pedidos = []
@@ -76,6 +79,10 @@ class ProviderFalso:
             return False
         self.terminadas[session.session_key] = reason
         return True
+
+    def force_terminate(self, session, reason):
+        self.forcadas[session.session_key] = reason
+        return self.forca_funciona
 
     def user_thumb_source(self, raw_thumb):
         self.avatares_pedidos.append(raw_thumb)
@@ -553,3 +560,87 @@ class TestGuardaContraCorteRepetido:
     def test_sem_chave_de_reproducao_usa_a_da_sessao(self):
         # Um servidor que não distinga os dois continua a funcionar como antes.
         assert sessao(session_key="abc").playback_key == "abc"
+
+
+class TestClienteQueIgnoraAOrdemDeParar:
+    """
+    🐛 REGRESSÃO REPORTADA (log de um painel real ligado ao Jellyfin): o painel
+    via as duas reproduções, mandava parar a cada volta, o servidor aceitava a
+    ordem — e o stream seguia à mesma. O leitor integrado da aplicação Android
+    (ExoPlayer) recebe o comando e ignora-o; pelo navegador o corte funcionava.
+
+    Sem contagem, o painel pedia educadamente para sempre. Ao fim de algumas
+    tentativas assume-se que o cliente não vai obedecer e escala para o último
+    recurso do servidor — que é agressivo (no Jellyfin revoga o acesso do
+    aparelho), e por isso só acontece com FORCE_STREAM_TERMINATION ativo.
+    """
+
+    @pytest.fixture()
+    def forcar(self, manager, monkeypatch):
+        """Liga/desliga o FORCE_STREAM_TERMINATION visto pelo motor."""
+        config = {}
+
+        def definir(ativo):
+            config['FORCE_STREAM_TERMINATION'] = ativo
+
+        monkeypatch.setattr(
+            "app.services.stream_manager.load_or_create_config", lambda: config
+        )
+        return definir
+
+    def _insistir(self, manager, sessao_alvo, voltas):
+        for _ in range(voltas):
+            manager._terminate_session(sessao_alvo, "limite")
+
+    def test_as_primeiras_tentativas_sao_sempre_o_pedido_normal(self, manager, cache_limpa, forcar):
+        forcar(True)
+        alvo = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+
+        self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR)
+
+        assert manager.sessions.terminadas == {"exoplayer": "limite"}
+        assert manager.sessions.forcadas == {}
+
+    def test_ao_fim_das_tentativas_escala_para_o_ultimo_recurso(self, manager, cache_limpa, forcar):
+        forcar(True)
+        alvo = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+
+        self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 1)
+
+        assert manager.sessions.forcadas == {"exoplayer": "limite"}
+
+    def test_desligado_por_omissao_avisa_mas_nao_forca(self, manager, cache_limpa, forcar):
+        # Revogar o acesso de um aparelho não se desfaz a partir do painel: o
+        # administrador tem de pedir explicitamente.
+        forcar(False)
+        alvo = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+
+        self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 3)
+
+        assert manager.sessions.forcadas == {}
+        # E continua a pedir — desistir em silêncio seria pior.
+        assert manager.sessions.terminadas == {"exoplayer": "limite"}
+
+    def test_se_o_ultimo_recurso_falhar_volta_a_pedir(self, manager, cache_limpa, forcar):
+        # Um servidor sem nada mais forte a oferecer (o Plex, por exemplo)
+        # devolve False; o motor não pode dar o corte por feito.
+        forcar(True)
+        manager.sessions.forca_funciona = False
+        alvo = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+
+        self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 1)
+
+        assert manager.sessions.forcadas == {"exoplayer": "limite"}
+        assert manager.sessions.terminadas == {"exoplayer": "limite"}
+
+    def test_a_contagem_e_por_reproducao_e_nao_por_aparelho(self, manager, cache_limpa, forcar):
+        # No Jellyfin a sessão é do APARELHO e sobrevive a parar e recomeçar.
+        # Quem recomeça merece outra vez o pedido educado.
+        forcar(True)
+        primeira = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+        self._insistir(manager, primeira, manager.TENTATIVAS_ANTES_DE_FORCAR)
+
+        recomecada = sessao(session_key="exoplayer", playback_key="exoplayer:repro-B")
+        manager._terminate_session(recomecada, "limite")
+
+        assert manager.sessions.forcadas == {}

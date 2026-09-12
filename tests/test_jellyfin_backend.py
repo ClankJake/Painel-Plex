@@ -30,6 +30,9 @@ class ApiFalsa:
         self.respostas = respostas or {}
         self.erros = erros or {}
         self.enviados = []
+        # Os DELETE com parâmetros de query (a revogação de um aparelho leva o
+        # id no query string, não no caminho).
+        self.apagados = []
         self.base_url = "http://jellyfin.local:8096"
         self.api_key = "chave"
         self.is_configured = True
@@ -58,6 +61,7 @@ class ApiFalsa:
         return self.respostas.get(endpoint)
 
     def delete(self, endpoint, **kwargs):
+        self.apagados.append((endpoint, kwargs.get('params')))
         return self._resolver('DELETE', endpoint)
 
     def reload_config(self):
@@ -414,6 +418,96 @@ class TestSessoes:
         assert backend.sessions.terminate(sessao, "motivo") is True
         assert ('POST', '/Sessions/sess-1/Playing/Stop', None) in backend.conn.api.enviados
 
+    def test_uma_recusa_do_servidor_nao_e_dada_por_feita(self, cache_limpa):
+        """
+        🐛 O `Stop` devolvia True em TODOS os casos. Quem chama trata True como
+        "encerrada" e não volta a tentar, por isso uma recusa do servidor
+        desaparecia sem deixar rasto — e o stream seguia.
+        """
+        backend = montar(
+            {'/Sessions': [self._sessao_bruta()]},
+            erros={'/Sessions/sess-1/Playing/Stop': JellyfinApiError("recusado", status_code=500)},
+        )
+        sessao = backend.sessions.list_sessions()[0]
+
+        assert backend.sessions.terminate(sessao, "motivo") is False
+
+    def test_a_sessao_que_ja_desapareceu_conta_como_encerrada(self, cache_limpa):
+        backend = montar(
+            {'/Sessions': [self._sessao_bruta()]},
+            erros={'/Sessions/sess-1/Playing/Stop': JellyfinApiError("não existe", status_code=404)},
+        )
+        sessao = backend.sessions.list_sessions()[0]
+
+        assert backend.sessions.terminate(sessao, "motivo") is True
+
+
+class TestClienteQueIgnoraOComando:
+    """
+    🐛 REGRESSÃO REPORTADA: com o leitor integrado da aplicação Android
+    (ExoPlayer), o painel mandava parar a cada volta, o Jellyfin aceitava — e a
+    reprodução continuava. Pelo navegador o mesmo corte funcionava.
+
+    Para esses clientes existe um último recurso: revogar o acesso do APARELHO.
+    Isso invalida as credenciais dele, e o pedido seguinte do leitor recebe 401
+    — a reprodução morre mesmo que o cliente não escute comandos.
+    """
+
+    def _sessao(self, backend):
+        return backend.sessions.list_sessions()[0]
+
+    def _bruta(self, **extra):
+        return TestSessoes()._sessao_bruta(**extra)
+
+    def test_revogar_o_aparelho_leva_o_id_do_aparelho(self, cache_limpa):
+        backend = montar({'/Sessions': [self._bruta(DeviceId="aparelho-abc")]})
+        sessao = self._sessao(backend)
+
+        assert backend.sessions.force_terminate(sessao, "limite") is True
+        assert ('/Devices', {'id': 'aparelho-abc'}) in backend.conn.api.apagados
+
+    def test_sem_aparelho_conhecido_nao_se_apaga_nada(self, cache_limpa):
+        # Nunca adivinhar: apagar o aparelho errado tira o acesso a quem não fez
+        # nada. Sem o DeviceId, o painel assume que não tem como forçar.
+        backend = montar({'/Sessions': [self._bruta()]})
+        sessao = self._sessao(backend)
+
+        assert backend.sessions.force_terminate(sessao, "limite") is False
+        assert backend.conn.api.apagados == []
+
+    def test_uma_recusa_do_servidor_nao_e_dada_por_feita(self, cache_limpa):
+        backend = montar(
+            {'/Sessions': [self._bruta(DeviceId="aparelho-abc")]},
+            erros={'/Devices': JellyfinApiError("sem permissão", status_code=403)},
+        )
+        sessao = self._sessao(backend)
+
+        assert backend.sessions.force_terminate(sessao, "limite") is False
+
+    def test_o_cliente_que_avisa_que_nao_aceita_comandos_e_terminado_na_mesma(self, cache_limpa):
+        # O `SupportsMediaControl` só serve para o log ficar a explicar porquê:
+        # a ordem vai sempre, porque nem todos os clientes que ignoram o
+        # comando declaram que o fazem.
+        backend = montar({'/Sessions': [self._bruta(SupportsMediaControl=False)]})
+        sessao = self._sessao(backend)
+
+        assert backend.sessions.terminate(sessao, "motivo") is True
+        assert ('POST', '/Sessions/sess-1/Playing/Stop', None) in backend.conn.api.enviados
+
+    def test_o_plex_nao_tem_nada_mais_forte_a_oferecer(self):
+        # O contrato exige a resposta honesta: sem um último recurso, False.
+        from app.services.media_server.plex.sessions import PlexSessionsProvider
+
+        provider = PlexSessionsProvider(None)
+        assert provider.force_terminate(MediaSession(
+            user_id="1", username_fallback="ana", user_email="", session_key="1",
+            media_title="Duna", title="Duna", subtitle="", media_type="movie",
+            state="playing", platform="chrome", player="Plex Web", progress=0.0,
+            view_offset=0, duration=0,
+        ), "limite") is False
+
+
+class TestPlataformas:
     @pytest.mark.parametrize("cliente,esperado", [
         ("Jellyfin Web", "chrome"),
         ("Findroid", "android"),

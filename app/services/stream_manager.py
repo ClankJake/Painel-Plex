@@ -492,8 +492,55 @@ class StreamManager:
 
                 self._terminate_session(session_to_terminate, reason_text)
 
+    # Quantas vezes se pede educadamente antes de assumir que o cliente não vai
+    # obedecer. Com a janela anti-repetição a 30s, são cerca de dois minutos.
+    TENTATIVAS_ANTES_DE_FORCAR = 3
+
+    def _contar_tentativa(self, session):
+        """Quantas vezes já mandámos parar ESTA reprodução."""
+        from app.extensions import cache
+
+        chave = f"stop_tentativas_{session.playback_key}"
+        tentativas = (cache.get(chave) or 0) + 1
+        # A contagem dura bem mais do que a janela anti-repetição: é isso que
+        # permite distinguir "ainda a obedecer" de "está a ignorar".
+        cache.set(chave, tentativas, timeout=600)
+        return tentativas
+
+    def _forcar_fim_da_reproducao(self, session, reason, tentativas):
+        """O cliente ignorou a ordem vezes de mais. Há algo mais forte a fazer?"""
+        from app.extensions import cache
+
+        config = load_or_create_config()
+
+        if not config.get('FORCE_STREAM_TERMINATION'):
+            # Um aviso por reprodução, para não encher o log de repetições.
+            chave_aviso = f"aviso_ignorou_{session.playback_key}"
+            if not cache.get(chave_aviso):
+                cache.set(chave_aviso, True, timeout=600)
+                logger.warning(
+                    "⚠️ O cliente '%s' ignorou %s ordens para parar '%s' e continua a "
+                    "reproduzir. O limite de telas não está a ser cumprido neste aparelho. "
+                    "Para o painel poder forçar o fim (revogando o acesso do aparelho, o que "
+                    "obriga a nova autenticação), ative FORCE_STREAM_TERMINATION.",
+                    session.player, tentativas, session.media_title,
+                )
+            return False
+
+        return self.sessions.force_terminate(session, reason)
+
     def _terminate_session(self, session, reason):
         from app.extensions import cache
+
+        # 🐛 Há clientes que recebem a ordem de parar e continuam a reproduzir
+        # (o leitor integrado da aplicação Android do Jellyfin é um deles).
+        # Sem esta contagem, o painel ficava a pedir para sempre — a cada volta
+        # mandava parar, o servidor aceitava, e o stream seguia. Do lado de fora
+        # parecia que o limite de telas simplesmente não funcionava.
+        tentativas = self._contar_tentativa(session)
+        if tentativas > self.TENTATIVAS_ANTES_DE_FORCAR:
+            if self._forcar_fim_da_reproducao(session, reason, tentativas):
+                return
 
         if self.sessions.terminate(session, reason):
             try:

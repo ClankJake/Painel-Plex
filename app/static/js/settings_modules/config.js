@@ -152,6 +152,7 @@ export const fieldMap = {
     'WEBHOOK_BULK_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
     'STREAM_CHECK_INTERVAL_SECONDS': { type: 'number', default: 15 },
     'SCREEN_LIMIT_TERMINATION_STRATEGY': { type: 'text', default: 'oldest' },
+    'FORCE_STREAM_TERMINATION': { type: 'checkbox', default: false },
     'BACKUP_ENABLED': { type: 'checkbox', default: false },
     'BACKUP_TIME': { type: 'text', default: '05:00' },
     'BACKUP_MAX_COUNT': { type: 'number', default: 7 },

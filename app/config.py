@@ -57,6 +57,12 @@ def load_or_create_config():
             "TAUTULLI_API_KEY": "",
             "STREAM_CHECK_INTERVAL_SECONDS": 15,
             "SCREEN_LIMIT_TERMINATION_STRATEGY": "oldest",
+            # Há clientes que recebem a ordem de parar e continuam a reproduzir.
+            # Com isto ativo, o painel passa a usar o meio mais forte que o
+            # servidor oferecer — no Jellyfin, revogar o acesso do aparelho, o
+            # que obriga a pessoa a autenticar-se lá de novo. Fica desligado por
+            # omissão porque é agressivo e não tem volta pelo painel.
+            "FORCE_STREAM_TERMINATION": False,
             "DAYS_TO_REMOVE_BLOCKED_USER": 0,
             "EXPIRATION_NOTIFICATION_TIME": "09:00",
             "BLOCK_REMOVAL_TIME": "02:00",
@@ -242,6 +248,7 @@ def load_or_create_config():
             _set_default("LOG_DEDUP_SECONDS", 60)
             _set_default("STREAM_CHECK_INTERVAL_SECONDS", 15)
             _set_default("SCREEN_LIMIT_TERMINATION_STRATEGY", "oldest")
+            _set_default("FORCE_STREAM_TERMINATION", False)
             _set_default("TERMINATION_MSG_BLOCKED_MANUAL", "O seu acesso ao servidor foi bloqueado pelo administrador.")
             _set_default("TERMINATION_MSG_BLOCKED_EXPIRED", "A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.")
             _set_default("TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED", "O seu período de teste para {username} terminou. Renove para continuar.")
