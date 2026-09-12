@@ -150,8 +150,9 @@ class JellyfinAccountManager(InvitationLifecycle):
                 allow_sync=invitation.get('allow_downloads', False),
             )
 
-            if invitation.get('screen_limit', 0) > 0:
-                self.user_manager.update_screen_limit(user_id, invitation['screen_limit'])
+            # O limite de telas do convite fica no perfil (é o painel que o
+            # impõe); não há nada a escrever no servidor — ver
+            # `user_manager.clear_session_limits`.
         except Exception:
             self.data_manager.release_invitation_use(code, username, None)
             raise

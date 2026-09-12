@@ -62,13 +62,6 @@ class MediaServerCapabilities:
     # profundos para o cliente web.
     links_profundos: bool
 
-    # O PRÓPRIO servidor sabe impor um limite de reproduções simultâneas
-    # (`Policy.MaxActiveSessions` no Jellyfin). Onde existe, é a defesa boa: o
-    # servidor recusa a reprodução a mais na origem, e nenhum leitor a pode
-    # ignorar — ao contrário da ordem de parar, que o cliente tem de obedecer.
-    # O Plex não tem equivalente.
-    limite_telas_no_servidor: bool
-
 
 @runtime_checkable
 class ConnectionBackend(Protocol):
@@ -387,21 +380,20 @@ class MediaServerBackend(Protocol):
 
     def remove_user(self, user_id: Any) -> Dict[str, Any]: ...
 
-    # ⚠️ A ÚNICA porta para mudar o limite de telas de alguém. Grava o perfil
-    # local E, onde o servidor saiba impor o limite, grava-o também lá. Quem
-    # escrever `profile['screen_limit']` à mão deixa o servidor com o valor
-    # antigo para sempre — foi assim que o limite do Jellyfin ficou preso no
-    # que valia à data do convite.
+    # ⚠️ A ÚNICA porta para mudar o limite de telas de alguém. NENHUM servidor
+    # sabe impor um limite de reproduções simultâneas — nem o Plex, nem o
+    # Jellyfin — por isso este limite é do painel e só ele o faz cumprir.
     def update_screen_limit(self, user_id: Any, screens: int) -> None: ...
 
-    def reconcile_screen_limits(self) -> Dict[str, Any]:
-        """Repõe no servidor os limites que divergem do que o painel tem.
+    def clear_session_limits(self) -> Dict[str, Any]:
+        """Reparação de uma vez: tira do servidor um limite que o painel lá pôs.
 
-        Existe para as instalações onde o limite já divergiu, e para o caso de
-        alguém o alterar diretamente no servidor. Num servidor sem
-        `limite_telas_no_servidor` não há nada a fazer.
+        O painel chegou a escrever o `MaxActiveSessions` do Jellyfin a pensar
+        que era um limite de telas. Não é — limita autenticações — e deixou
+        utilizadores sem conseguirem entrar no painel. Num servidor onde o
+        painel nunca escreveu nada disto, não há nada a fazer.
         """
-        return {"success": True, "corrigidos": 0}
+        return {"success": True, "limpos": 0}
 
     def invalidate_user_cache(self) -> None: ...
 

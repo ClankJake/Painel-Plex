@@ -33,6 +33,9 @@ class ApiFalsa:
         # Os DELETE com parâmetros de query (a revogação de um aparelho leva o
         # id no query string, não no caminho).
         self.apagados = []
+        # (endpoint, token) de cada pedido feito com um token diferente da
+        # chave de API — é assim que o `/Sessions/Logout` fecha a sessão certa.
+        self.tokens_usados = []
         self.base_url = "http://jellyfin.local:8096"
         self.api_key = "chave"
         self.is_configured = True
@@ -56,6 +59,13 @@ class ApiFalsa:
 
     def post(self, endpoint, json=None, **kwargs):
         self.enviados.append(('POST', endpoint, json))
+        if endpoint in self.erros:
+            raise self.erros[endpoint]
+        return self.respostas.get(endpoint)
+
+    def request(self, method, endpoint, *, params=None, json=None, timeout=None, token=None):
+        self.enviados.append((method.upper(), endpoint, json))
+        self.tokens_usados.append((endpoint, token))
         if endpoint in self.erros:
             raise self.erros[endpoint]
         return self.respostas.get(endpoint)
@@ -292,27 +302,31 @@ class TestBloqueio:
         assert ultima['IsDisabled'] is False
         assert backend.data_manager.get_blocked_user(GUID) is None
 
-    def test_o_limite_de_telas_tambem_vai_para_o_servidor(self, cache_limpa, data_manager):
-        # Assim o limite continua de pé mesmo com o painel em baixo.
+    def test_o_limite_de_telas_nao_toca_na_politica_do_servidor(self, cache_limpa, data_manager):
+        """
+        🐛 REGRESSÃO: isto escrevia `Policy.MaxActiveSessions`, a pensar que era
+        um limite de telas. Não é — limita AUTENTICAÇÕES — e saía caro: não
+        cortava quem já estava a ver (só recusa entradas novas) e trancava a
+        pessoa fora do PAINEL, porque entrar no painel autentica-se contra o
+        servidor e ocupa uma sessão.
+        """
         backend = self._backend(data_manager)
         backend.data_manager.set_user_profile(GUID, {"username": "ana"})
 
         backend.update_screen_limit(GUID, 3)
 
-        gravada = backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy')[0]
-        assert gravada['MaxActiveSessions'] == 3
+        assert backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy') == []
         assert backend.data_manager.get_user_profile(GUID)['screen_limit'] == 3
 
 
 @pytest.mark.integration
-class TestReconciliacaoDoLimiteDeTelas:
+class TestLimpezaDoLimiteDeSessoes:
     """
-    O `MaxActiveSessions` é a única defesa que um leitor NÃO pode ignorar: o
-    servidor recusa a reprodução a mais na origem. Por isso não pode ficar para
-    trás — e ficava: só era escrito ao resgatar o convite.
-
-    Esta reconciliação corre no `cleanup_job` e serve as instalações onde o
-    limite já divergiu, e o caso de alguém o alterar direto no servidor.
+    Reparação de uma vez. Quem já corria o painel tem no servidor um
+    `MaxActiveSessions` que o painel lá pôs por engano, e que o tranca fora do
+    próprio painel. A limpeza tira-o; depois disso o painel não volta a mexer
+    neste campo — repeti-la todos os dias desfaria, às escondidas, um limite
+    que o administrador tenha posto de propósito no Jellyfin.
     """
 
     def _montar(self, data_manager, politicas):
@@ -322,66 +336,56 @@ class TestReconciliacaoDoLimiteDeTelas:
         ]
         return montar({'/Users': utilizadores}, data_manager=data_manager)
 
-    def test_repoe_o_limite_que_divergiu(self, cache_limpa, data_manager):
-        backend = self._montar(data_manager, [(GUID, "ana", 1)])
-        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 3})
+    def test_tira_o_limite_que_o_painel_pos(self, cache_limpa, data_manager):
+        backend = self._montar(data_manager, [(GUID, "ana", 2)])
+        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 2})
 
-        resultado = backend.reconcile_screen_limits()
+        resultado = backend.clear_session_limits()
 
-        assert resultado == {"success": True, "corrigidos": 1}
-        assert backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy')[-1]['MaxActiveSessions'] == 3
+        assert resultado == {"success": True, "limpos": 1}
+        assert backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy')[-1]['MaxActiveSessions'] == 0
 
-    def test_quem_ja_esta_certo_nao_e_reescrito(self, cache_limpa, data_manager):
-        backend = self._montar(data_manager, [(GUID, "ana", 3)])
-        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 3})
+    def test_quem_ja_esta_sem_limite_nao_e_reescrito(self, cache_limpa, data_manager):
+        backend = self._montar(data_manager, [(GUID, "ana", 0)])
+        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 2})
 
-        assert backend.reconcile_screen_limits()["corrigidos"] == 0
+        assert backend.clear_session_limits()["limpos"] == 0
         assert backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy') == []
 
     def test_quem_nao_tem_perfil_no_painel_nao_e_tocado(self, cache_limpa, data_manager):
-        # Não é um utilizador que o painel administre: mexer-lhe na política
-        # seria o painel a decidir sobre uma conta que não é dele.
+        # Noutra conta, o limite é de quem o pôs — o painel não o administra.
         backend = self._montar(data_manager, [(OUTRO, "bruno", 5)])
 
-        assert backend.reconcile_screen_limits()["corrigidos"] == 0
+        assert backend.clear_session_limits()["limpos"] == 0
         assert backend.conn.api.corpos_enviados(f'/Users/{OUTRO}/Policy') == []
-
-    def test_sem_limite_no_painel_tira_o_limite_do_servidor(self, cache_limpa, data_manager):
-        # 0 é "sem limite" dos dois lados. O painel é a fonte da verdade, por
-        # isso desfaz também um limite posto à mão no servidor.
-        backend = self._montar(data_manager, [(GUID, "ana", 2)])
-        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 0})
-
-        assert backend.reconcile_screen_limits()["corrigidos"] == 1
-        assert backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy')[-1]['MaxActiveSessions'] == 0
 
     def test_a_politica_vai_inteira(self, cache_limpa, data_manager):
         # A armadilha de sempre: `POST /Users/{id}/Policy` substitui a política
         # toda. Enviar só o campo alterado apagaria os restantes.
-        backend = self._montar(data_manager, [(GUID, "ana", 1)])
-        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 3})
+        backend = self._montar(data_manager, [(GUID, "ana", 2)])
+        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 2})
 
-        backend.reconcile_screen_limits()
+        backend.clear_session_limits()
 
         gravada = backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy')[-1]
         assert gravada['EnabledFolders'] == POLITICA_BASE['EnabledFolders']
         assert 'IsAdministrator' in gravada
 
-    def test_sem_ligacao_nao_apaga_nada(self, cache_limpa, data_manager):
-        backend = self._montar(data_manager, [(GUID, "ana", 1)])
-        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 3})
+    def test_sem_ligacao_nao_escreve_nada_e_nao_se_da_por_feita(self, cache_limpa, data_manager):
+        # Se desse `success`, a reparação ficava marcada como concluída sem ter
+        # corrido, e quem estivesse trancado ficava trancado para sempre.
+        backend = self._montar(data_manager, [(GUID, "ana", 2)])
+        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 2})
         backend.conn.server_info = None
 
-        assert backend.reconcile_screen_limits()["success"] is False
+        assert backend.clear_session_limits()["success"] is False
         assert backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy') == []
 
-    def test_o_plex_nao_tem_nada_a_reconciliar(self):
-        # A capacidade é falsa: o Plex não sabe impor limites, e a chamada tem
-        # de ser inofensiva em vez de dar erro.
+    def test_o_plex_nao_tem_nada_a_limpar(self):
         from app.services.media_server.plex.backend import PlexManager
 
         backend = PlexManager.__new__(PlexManager)
-        assert backend.reconcile_screen_limits() == {"success": True, "corrigidos": 0}
+        assert backend.clear_session_limits() == {"success": True, "limpos": 0}
 
 
 @pytest.mark.integration
@@ -717,6 +721,40 @@ class TestAutenticacao:
         assert conta.id == GUID
         assert conta.username == "ana"
         assert backend.conn.api.corpos_enviados('/Users/AuthenticateByName')[0] == {"Username": "ana", "Pw": "segredo"}
+
+    def test_a_sessao_aberta_para_validar_a_palavra_passe_e_fechada(self, cache_limpa):
+        """
+        🐛 REGRESSÃO: autenticar ABRE uma sessão no Jellyfin, e deitar o token
+        fora não a fecha — fica na lista de sessões do servidor. Cada entrada no
+        painel deixava uma sessão órfã, e num servidor com sessões simultâneas
+        limitadas a pessoa tinha de sair de um aparelho para entrar no painel.
+
+        `/Sessions/Logout` encerra a sessão de QUEM CHAMA, por isso o pedido tem
+        de ir com o token do utilizador — com a chave de API do painel fecharia
+        a sessão errada.
+        """
+        backend = self._backend({"User": {"Id": GUID, "Name": "ana"}, "AccessToken": "tok"})
+
+        backend.authenticate("ana", "segredo")
+
+        assert ('/Sessions/Logout', 'tok') in backend.conn.api.tokens_usados
+
+    def test_uma_falha_a_fechar_a_sessao_nao_impede_a_entrada(self, cache_limpa):
+        # No pior caso fica a sessão órfã que existia antes desta correção —
+        # recusar o login por causa disso seria muito pior.
+        backend = montar(
+            {'/Users/AuthenticateByName': {"User": {"Id": GUID, "Name": "ana"}, "AccessToken": "tok"}},
+            erros={'/Sessions/Logout': JellyfinApiError("boom", status_code=500)},
+        )
+
+        assert backend.authenticate("ana", "segredo").id == GUID
+
+    def test_sem_token_na_resposta_nao_se_tenta_fechar_nada(self, cache_limpa):
+        backend = self._backend({"User": {"Id": GUID, "Name": "ana"}})
+
+        backend.authenticate("ana", "segredo")
+
+        assert backend.conn.api.tokens_usados == []
 
     def test_o_token_de_sessao_do_servidor_nao_e_guardado(self, cache_limpa):
         # O painel fala com o Jellyfin pela chave de API: guardar também o token

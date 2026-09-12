@@ -63,6 +63,10 @@ def load_or_create_config():
             # que obriga a pessoa a autenticar-se lá de novo. Fica desligado por
             # omissão porque é agressivo e não tem volta pelo painel.
             "FORCE_STREAM_TERMINATION": False,
+            # Reparação de uma vez: marca que já se tirou do servidor o
+            # `MaxActiveSessions` que o painel lá pôs a pensar que era um limite
+            # de telas. Ver `clear_session_limits`.
+            "JELLYFIN_SESSION_LIMIT_CLEARED": False,
             "DAYS_TO_REMOVE_BLOCKED_USER": 0,
             "EXPIRATION_NOTIFICATION_TIME": "09:00",
             "BLOCK_REMOVAL_TIME": "02:00",
@@ -249,6 +253,9 @@ def load_or_create_config():
             _set_default("STREAM_CHECK_INTERVAL_SECONDS", 15)
             _set_default("SCREEN_LIMIT_TERMINATION_STRATEGY", "oldest")
             _set_default("FORCE_STREAM_TERMINATION", False)
+            # Numa instalação já existente fica a False de propósito: é
+            # justamente onde a limpeza tem de correr.
+            _set_default("JELLYFIN_SESSION_LIMIT_CLEARED", False)
             _set_default("TERMINATION_MSG_BLOCKED_MANUAL", "O seu acesso ao servidor foi bloqueado pelo administrador.")
             _set_default("TERMINATION_MSG_BLOCKED_EXPIRED", "A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.")
             _set_default("TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED", "O seu período de teste para {username} terminou. Renove para continuar.")

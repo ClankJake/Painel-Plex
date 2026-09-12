@@ -183,70 +183,52 @@ class JellyfinUserManager:
                 atualizados += 1
         return {"success": True, "message": _("Bibliotecas atualizadas para %(n)s utilizador(es).", n=atualizados)}
 
-    def update_screen_limit(self, user_id, screens) -> bool:
-        """Aplica o limite de telas NO SERVIDOR.
+    def clear_session_limits(self) -> Dict[str, Any]:
+        """Tira do servidor o limite de SESSÕES que o painel lá pôs.
 
-        ⚠️ Esta é a defesa boa, e não o corte que o painel manda. O Jellyfin
-        RECUSA a reprodução a mais na origem, e não há leitor que o possa
-        ignorar; a ordem de parar depende de o cliente a obedecer, e há vários
-        que não o fazem (o leitor integrado da aplicação Android é um deles).
+        ⚠️ `Policy.MaxActiveSessions` não é um limite de telas: limita
+        AUTENTICAÇÕES, não reproduções. O painel chegou a usá-lo como limite de
+        telas e isso corria mal de duas maneiras:
 
-        Em troca, o servidor só trava a reprodução que COMEÇA. Quem já estava a
-        ver quando o limite desceu continua a ver — é aí que o corte do painel
-        (com a mensagem e a auditoria) continua a ser preciso.
+        * não corta nada — quem já estava ligado continua a reproduzir à
+          vontade, porque só as entradas NOVAS são recusadas;
+        * tranca a própria pessoa fora do painel — entrar no painel autentica-se
+          contra o servidor e ocupa uma sessão, por isso quem tivesse os
+          aparelhos ligados tinha de sair de um para poder entrar.
 
-        0 significa sem limite, dos dois lados.
-        """
-        policy = self._get_policy(user_id)
-        if policy is None:
-            return False
-        policy['MaxActiveSessions'] = max(0, int(screens or 0))
-        return self._set_policy(user_id, policy)
-
-    def reconcile_screen_limits(self) -> Dict[str, Any]:
-        """Repõe no servidor os limites que divergem do perfil do painel.
-
-        O painel é a fonte da verdade: se alguém mexeu no limite diretamente no
-        Jellyfin, isto desfaz a alteração. Quem não tem perfil no painel não é
-        tocado — não é um utilizador que o painel administre.
-
-        Corre no `cleanup_job` porque as instalações que já existiam antes desta
-        correção têm no servidor o limite que valia à data do convite, e nada o
-        voltaria a atualizar sozinho.
+        Corre uma vez (ver `JELLYFIN_SESSION_LIMIT_CLEARED` no config) para
+        libertar quem ficou trancado. A partir daí o painel não volta a mexer
+        neste campo: quem o quiser usar, usa-o na interface do Jellyfin.
         """
         if not self.conn.connected:
-            return {"success": False, "message": _("Sem ligação ao servidor."), "corrigidos": 0}
+            return {"success": False, "message": _("Sem ligação ao servidor."), "limpos": 0}
 
         try:
             utilizadores = self.conn.api.get('/Users') or []
         except Exception as e:
-            logger.warning(f"Não foi possível reconciliar os limites de telas: {describe(e)}")
-            return {"success": False, "message": _("O servidor não devolveu os utilizadores."), "corrigidos": 0}
+            logger.warning(f"Não foi possível limpar os limites de sessões: {describe(e)}")
+            return {"success": False, "message": _("O servidor não devolveu os utilizadores."), "limpos": 0}
 
-        corrigidos = 0
+        limpos = 0
         for bruto in utilizadores:
             user_id = normalize_user_id(bruto.get('Id'))
-            perfil = self.data_manager.get_user_profile(user_id)
-            if not perfil:
-                continue
-
-            desejado = max(0, int(perfil.get('screen_limit') or 0))
             politica = bruto.get('Policy')
-            if politica is None:
+            # Só quem o painel administra: noutra conta o limite é de quem o pôs.
+            if politica is None or not self.data_manager.get_user_profile(user_id):
                 continue
             anterior = int(politica.get('MaxActiveSessions') or 0)
-            if anterior == desejado:
+            if not anterior:
                 continue
 
-            politica['MaxActiveSessions'] = desejado
+            politica['MaxActiveSessions'] = 0
             if self._set_policy(user_id, politica):
-                corrigidos += 1
+                limpos += 1
                 logger.info(
-                    "Limite de telas de '%s' reposto no servidor: %s -> %s.",
-                    perfil.get('username') or user_id, anterior, desejado,
+                    "Limite de sessões de '%s' removido do servidor (era %s): não é um limite de telas.",
+                    bruto.get('Name') or user_id, anterior,
                 )
 
-        return {"success": True, "corrigidos": corrigidos}
+        return {"success": True, "limpos": limpos}
 
     # =========================================================================
     # BLOQUEIO

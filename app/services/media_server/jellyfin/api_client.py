@@ -79,14 +79,18 @@ class JellyfinApiClient:
         else:
             logger.warning("Configuração do Jellyfin ausente ou incompleta.")
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self, token: Optional[str] = None) -> Dict[str, str]:
         # O Jellyfin aceita a chave no cabeçalho Authorization, no formato
         # declarado pela própria especificação (securityScheme
         # 'CustomAuthentication'). Os restantes campos identificam o painel na
         # lista de dispositivos do servidor.
+        #
+        # `token` substitui a chave de API por um token de utilizador. Serve ao
+        # `/Sessions/Logout`, que encerra a sessão de QUEM CHAMA — é assim que o
+        # painel fecha a sessão que acabou de abrir para validar uma palavra-passe.
         autorizacao = (
             f'MediaBrowser Client="{CLIENT_NAME}", Device="{DEVICE_NAME}", '
-            f'DeviceId="{DEVICE_ID}", Version="{CLIENT_VERSION}", Token="{self.api_key}"'
+            f'DeviceId="{DEVICE_ID}", Version="{CLIENT_VERSION}", Token="{token or self.api_key}"'
         )
         return {
             'Authorization': autorizacao,
@@ -94,7 +98,7 @@ class JellyfinApiClient:
             'Content-Type': 'application/json',
         }
 
-    def request(self, method: str, endpoint: str, *, params=None, json=None, timeout=None) -> Any:
+    def request(self, method: str, endpoint: str, *, params=None, json=None, timeout=None, token=None) -> Any:
         """Executa um pedido e devolve o corpo já descodificado.
 
         Devolve None quando a resposta não tem corpo (204, ou um 200 vazio —
@@ -106,7 +110,7 @@ class JellyfinApiClient:
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         resposta = self.session.request(
             method.upper(), url,
-            headers=self._headers(),
+            headers=self._headers(token),
             params=params,
             json=json,
             timeout=timeout or self.TIMEOUT_SECONDS,

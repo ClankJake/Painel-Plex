@@ -45,7 +45,6 @@ class JellyfinManager:
         login_delegado=False,
         desativa_conta=True,
         links_profundos=True,
-        limite_telas_no_servidor=True,
     )
 
     IMAGE_SOURCES = ('jellyfin',)
@@ -157,6 +156,14 @@ class JellyfinManager:
             logger.error(f"Falha ao autenticar '{username}' no Jellyfin: {describe(e)}", exc_info=True)
             return None
 
+        # 🐛 Autenticar ABRE uma sessão no Jellyfin, e ela não desaparece por o
+        # painel deitar o token fora: fica na lista de sessões do servidor até
+        # expirar. Cada entrada no painel deixava uma sessão órfã — e num
+        # servidor com "sessões simultâneas" limitadas, a pessoa tinha de sair
+        # de um aparelho para conseguir entrar no painel. O painel só queria
+        # saber se a palavra-passe está certa; a sessão fecha-se já.
+        self._encerrar_sessao_de_validacao(resultado.get('AccessToken'), username)
+
         utilizador = resultado.get('User') or {}
         user_id = normalize_user_id(utilizador.get('Id'))
         if not user_id:
@@ -169,6 +176,24 @@ class JellyfinManager:
             email=None,
             thumb=f"/Users/{user_id}/Images/Primary?tag={etiqueta}" if etiqueta else None,
         )
+
+    def _encerrar_sessao_de_validacao(self, token, username):
+        """Fecha a sessão que o `AuthenticateByName` acabou de abrir.
+
+        `/Sessions/Logout` encerra a sessão de QUEM CHAMA, por isso o pedido vai
+        com o token do utilizador e não com a chave de API do painel. Uma falha
+        aqui não pode impedir o login: no pior caso fica a sessão órfã que
+        existia antes desta correção.
+        """
+        if not token:
+            return
+        try:
+            self.conn.api.request('POST', '/Sessions/Logout', token=token)
+        except Exception as e:
+            logger.warning(
+                "Não foi possível fechar a sessão de validação de '%s' no Jellyfin: %s",
+                username, describe(e),
+            )
 
     def get_owner_account(self):
         """A conta de administrador configurada no painel.
@@ -253,21 +278,20 @@ class JellyfinManager:
         return self.users.remove_user(user_id)
 
     def update_screen_limit(self, user_id, screens):
-        """Guarda o limite no perfil E aplica-o no servidor.
+        """O limite de telas é do painel — o Jellyfin não sabe impor nenhum.
 
-        O painel continua a impor o limite ele próprio (é ele que avisa o
-        utilizador e regista a auditoria), mas o Jellyfin sabe fazê-lo
-        nativamente: assim o limite continua de pé mesmo com o painel em baixo.
+        ⚠️ Isto chegou a escrever `Policy.MaxActiveSessions`. Não serve: esse
+        campo limita AUTENTICAÇÕES, não reproduções. Ver `clear_session_limits`
+        no `user_manager` para o que isso partia.
         """
         perfil = self.data_manager.get_user_profile(user_id)
         if perfil:
             perfil['screen_limit'] = screens
             self.data_manager.set_user_profile(user_id, perfil)
-        self.users.update_screen_limit(user_id, screens)
         logger.info(f"Limite de telas para o utilizador ID '{user_id}' atualizado para {screens}.")
 
-    def reconcile_screen_limits(self):
-        return self.users.reconcile_screen_limits()
+    def clear_session_limits(self):
+        return self.users.clear_session_limits()
 
     def invalidate_user_cache(self):
         return self.users.invalidate_user_cache()

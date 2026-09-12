@@ -31,7 +31,6 @@ class BackendFalso:
         self.CAPABILITIES = MediaServerCapabilities(
             convites_nativos=False, cria_contas=cria_contas, fontes_media_online=False,
             login_delegado=False, desativa_conta=True, links_profundos=True,
-            limite_telas_no_servidor=True,
         )
 
     @property

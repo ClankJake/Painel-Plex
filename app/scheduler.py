@@ -228,6 +228,46 @@ def removal_job():
         if removed_count > 0:
             logger.info(f"Tarefa 'removal_job' concluída: {removed_count} usuários removidos.")
 
+def limpar_limite_de_sessoes_do_servidor():
+    """Reparação de UMA VEZ: tira do servidor o limite de sessões do painel.
+
+    🐛 O painel escreveu `Policy.MaxActiveSessions` no Jellyfin a pensar que era
+    um limite de telas. Não é: limita AUTENTICAÇÕES. Não cortava ninguém que já
+    estivesse a ver, e trancava a pessoa fora do próprio painel — entrar no
+    painel autentica-se contra o servidor e ocupa uma sessão.
+
+    Corre uma vez e marca-se como feita, porque a partir daqui o painel não
+    administra este campo: repeti-la todos os dias seria desfazer, às escondidas,
+    um limite que o administrador tenha posto de propósito no Jellyfin.
+    """
+    from . import extensions
+    from .config import save_app_config
+
+    config = load_or_create_config()
+    if config.get("JELLYFIN_SESSION_LIMIT_CLEARED"):
+        return
+
+    try:
+        resultado = extensions.media_server.clear_session_limits()
+    except Exception as e:
+        logger.error(f"Falha ao limpar os limites de sessões do servidor: {e}", exc_info=True)
+        return
+
+    # Uma falha de ligação não pode dar a reparação por feita: tenta-se outra vez
+    # na próxima limpeza, quando o servidor estiver de volta.
+    if not resultado.get('success'):
+        return
+
+    if resultado.get('limpos'):
+        logger.info(
+            f"Limite de sessões removido do servidor para {resultado['limpos']} utilizador(es): "
+            "o `MaxActiveSessions` limita autenticações, não telas."
+        )
+
+    config["JELLYFIN_SESSION_LIMIT_CLEARED"] = True
+    save_app_config(config)
+
+
 @single_instance_job('cleanup_job')
 def cleanup_job():
     if not _app: return
@@ -251,16 +291,7 @@ def cleanup_job():
         except Exception as e:
             logger.error(f"Falha ao sincronizar perfis a partir do Plex: {e}", exc_info=True)
 
-        # 🛡️ Repõe no servidor os limites de telas que divergirem do painel.
-        # Onde o servidor os sabe impor (o `MaxActiveSessions` do Jellyfin), é a
-        # única defesa que um leitor não pode ignorar — e nas instalações
-        # anteriores a esta correção ficou presa no valor da data do convite.
-        try:
-            resultado = extensions.media_server.reconcile_screen_limits()
-            if resultado.get('corrigidos'):
-                logger.info(f"Limites de telas repostos no servidor: {resultado['corrigidos']}.")
-        except Exception as e:
-            logger.error(f"Falha ao reconciliar os limites de telas: {e}", exc_info=True)
+        limpar_limite_de_sessoes_do_servidor()
 
 @single_instance_job('cleanup_image_cache_job')
 def cleanup_image_cache_job():
