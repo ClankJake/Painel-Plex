@@ -239,6 +239,13 @@ class TestMinhaContaDoAdministrador:
             def get_user_libraries(self, user_id):
                 return {"success": True, "libraries": []}
 
+            def get_user_devices(self, user_id):
+                return {"success": True, "devices": []}
+
+            def get_watch_history(self, user_id, page=1, length=15, search=""):
+                return {"success": True, "history": [],
+                        "pagination": {"current_page": 1, "total_pages": 1, "total_records": 0}}
+
         monkeypatch.setattr(users_module.extensions, "tautulli_manager", Vazio(), raising=False)
         monkeypatch.setattr(users_module.extensions, "media_server", Vazio(), raising=False)
 
@@ -278,6 +285,44 @@ class TestMinhaContaDoAdministrador:
         from app.extensions import db
         from app.models import UserProfile
         assert db.session.get(UserProfile, "1").hide_from_leaderboard is True
+
+    @pytest.mark.parametrize("rota", [
+        "/api/users/account/details",
+        "/api/payments/options",
+        "/api/users/account/devices",
+        "/api/users/payments/1",
+        "/api/users/referral/me",
+        "/api/statistics/user/history",
+    ])
+    def test_nenhum_pedido_da_pagina_rebenta(self, client, configurada, db_session, rota):
+        """
+        🐛 REGRESSÃO REPORTADA, segunda volta: corrigir só os `/account/*`
+        não chegou. A página faz vários pedidos em paralelo e o `fetchAPI`
+        levanta em qualquer resposta que não seja 2xx — um `Promise.all` com um
+        deles a falhar derruba o carregamento INTEIRO. Por isso o que se testa é
+        a página toda, e não uma rota de cada vez.
+        """
+        _autenticar(client, media_user_id=1, role="admin")
+
+        resposta = client.get(rota)
+
+        assert resposta.status_code == 200, f"{rota} devolveu {resposta.status_code}"
+
+    def test_o_administrador_nao_tem_planos_para_renovar(self, client, configurada, db_session):
+        # Sem assinatura não há nada a comprar — e isso não é um erro do pedido.
+        _autenticar(client, media_user_id=1, role="admin")
+
+        corpo = client.get("/api/payments/options").get_json()
+
+        assert corpo["success"] is True
+        assert corpo["prices"] == {}
+
+    def test_um_token_de_pagamento_invalido_continua_a_ser_um_erro(self, client, configurada, db_session):
+        # A correção não pode transformar um link de pagamento adulterado em
+        # "sem planos": isso esconderia o problema de quem o recebeu.
+        resposta = client.get("/api/payments/options?token=nao-existe")
+
+        assert resposta.status_code == 400
 
     def test_quem_tem_perfil_continua_a_usa_lo(self, client, configurada, db_session):
         # A correção não pode passar a ignorar o perfil de quem o tem.

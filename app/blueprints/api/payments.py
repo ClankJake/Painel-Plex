@@ -304,8 +304,19 @@ def get_payment_options():
             user_profile = extensions.data_manager._row_to_dict(profile_from_token)
     elif current_user.is_authenticated:
         user_profile = extensions.data_manager.get_user_profile(normalize_user_id(current_user.id))
-    
+
+        # 🐛 O ADMINISTRADOR NÃO TEM PERFIL LOCAL (ver `/account/details`), e
+        # também não tem assinatura para renovar. Isto respondia 400, que a
+        # página da conta tratava como falha de todo o carregamento — o
+        # administrador não conseguia abrir a "Minha Conta". Não ter planos não
+        # é um erro do pedido: é a resposta certa para quem não compra nada.
+        if not user_profile:
+            return jsonify({"success": True, "prices": {}, "providers": {},
+                            "can_downgrade": False,
+                            "requires_proration_for_upgrade": False}), 200
+
     if not user_profile:
+        # Aqui sim: ou veio um token que não existe, ou não veio ninguém.
         return jsonify({"success": False, "message": _("Usuário não especificado ou token inválido.")}), 400
 
     config = load_or_create_config()

@@ -1080,9 +1080,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
         // Obtenção Paralela dos Dados Fundamentais
+        //
+        // Os planos de renovação NÃO são fundamentais: quem não tem nenhum
+        // (o administrador, ou um painel sem preços configurados) via a página
+        // inteira falhar por causa deles, porque o `fetchAPI` levanta em
+        // qualquer resposta que não seja 2xx e o `Promise.all` rejeita com a
+        // primeira. O `if (paymentOptions.success)` mais abaixo já sabia lidar
+        // com a ausência — só nunca lá chegava.
         const [accountData, paymentOptions] = await Promise.all([
             fetchAPI(state.urls.getAccountDetailsUrl),
-            fetchAPI(state.urls.getPaymentOptionsUrl)
+            fetchAPI(state.urls.getPaymentOptionsUrl).catch(() => ({ success: false }))
         ]);
 
         state.currentUser = { 
@@ -1103,14 +1110,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         initContactForm(accountData.profile_details);
 
-        // Fetch secundários e pesados não bloqueiam a UI primária
+        // Fetch secundários e pesados não bloqueiam a UI primária.
+        // O `.catch()` é preciso: sem ele, uma falha destes deixava uma
+        // rejeição por tratar na consola — a página ficava bem, mas o erro
+        // aparecia ao lado do que interessava e confundia quem o lia.
         fetchAPI(state.urls.getPaymentHistoryUrl).then(res => {
             if (res.success) renderPaymentHistory(res.payments);
-        });
+        }).catch(() => {});
 
         fetchAPI(state.urls.getAccountDevicesUrl).then(res => {
             if (res.success) renderDeviceList(res.devices);
-        });
+        }).catch(() => {});
 
         initTabs();
         initRequestsTab();

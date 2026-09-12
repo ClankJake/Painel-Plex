@@ -302,6 +302,18 @@ cria perfis, e `_sync_plex_and_local_profiles` salta-o de propósito. As rotas d
 "Minha Conta" (`/account/details`, `/account/profile`, `/account/privacy`)
 assumiam um dicionário e rebentavam com `AttributeError` assim que ele abria a
 página. As que gravam criam o perfil em falta; a que lê usa um dicionário vazio.
+`/payments/options` seguia a mesma armadilha por outro caminho: respondia 400
+("utilizador não especificado"). Sem assinatura não há planos, e isso não é um
+erro do PEDIDO — só um token inexistente o é.
+
+⚠️ **Na página da conta, um pedido secundário derrubava a página inteira.** O
+`fetchAPI` levanta em qualquer resposta que não seja 2xx, e os pedidos iniciais
+corriam num `Promise.all` — que rejeita com a PRIMEIRA falha. O
+`if (paymentOptions.success)` que trata a ausência de planos já lá estava; só
+nunca chegava a correr. Isso atingia também um painel sem preços configurados,
+que responde 404. Um teste percorre agora todas as rotas que a página chama,
+com uma sessão de administrador, porque corrigi-las uma a uma foi precisamente
+o que não chegou à primeira vez.
 
 #### O plugin Playback Reporting, quando existe
 
