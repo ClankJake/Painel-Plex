@@ -622,9 +622,11 @@ def unblock_user_route(user):
 @user_lookup_by_id
 def update_limit_route(user):
     screens = request.json.get('screens', 0)
-    profile = extensions.data_manager.get_user_profile(user['id'])
-    profile['screen_limit'] = screens
-    extensions.data_manager.set_user_profile(user['id'], profile)
+    # 🐛 Isto gravava só o perfil local. Nos servidores que sabem impor o limite
+    # (o `MaxActiveSessions` do Jellyfin), o servidor ficava com o valor da data
+    # do convite para sempre — e a única defesa que um leitor não pode ignorar
+    # continuava a apontar para o plano antigo.
+    extensions.media_server.update_screen_limit(user['id'], screens)
     logger.info(f"Admin '{current_user.username}' alterou limite de telas de '{user['username']}' para {screens}.")
     return jsonify({"success": True, "message": _("Limite aplicado.")})
 
@@ -636,9 +638,8 @@ def update_all_limits_route():
     all_users = extensions.media_server.get_all_users() or []
     for user in all_users:
         if not same_user(user['id'], current_user.id):
-            if profile := extensions.data_manager.get_user_profile(user['id']):
-                profile['screen_limit'] = screens
-                extensions.data_manager.set_user_profile(user['id'], profile)
+            if extensions.data_manager.get_user_profile(user['id']):
+                extensions.media_server.update_screen_limit(user['id'], screens)
     logger.info(f"Admin '{current_user.username}' aplicou limite global de {screens} telas para todos.")
     return jsonify({"success": True, "message": _("Limites atualizados para todos.")})
 

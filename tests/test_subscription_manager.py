@@ -308,6 +308,48 @@ class TestRenewSubscription:
 
         assert manager.data_manager.profiles["1"]["screen_limit"] == 1
 
+    def test_o_limite_novo_chega_ao_servidor(self, manager):
+        """
+        🐛 REGRESSÃO: a renovação mexia só no perfil. Nos servidores que sabem
+        impor o limite (o `MaxActiveSessions` do Jellyfin), quem mudava de plano
+        ao renovar continuava preso ao limite antigo do lado do servidor — que é
+        justamente a defesa que nenhum reprodutor pode ignorar.
+        """
+        class FachadaEspia:
+            def __init__(self):
+                self.limites = []
+                self.notifier_manager = None
+
+            def get_user_by_id(self, media_user_id):
+                return {"id": media_user_id, "username": "ana"}
+
+            def update_screen_limit(self, media_user_id, screens):
+                self.limites.append((media_user_id, screens))
+
+        manager.plex_manager = FachadaEspia()
+
+        manager.renew_subscription(1, months_to_add=1, screens=3)
+
+        assert manager.plex_manager.limites == [(1, 3)]
+
+    def test_sem_telas_indicadas_nao_se_toca_no_servidor(self, manager):
+        class FachadaEspia:
+            def __init__(self):
+                self.limites = []
+                self.notifier_manager = None
+
+            def get_user_by_id(self, media_user_id):
+                return {"id": media_user_id, "username": "ana"}
+
+            def update_screen_limit(self, media_user_id, screens):
+                self.limites.append((media_user_id, screens))
+
+        manager.plex_manager = FachadaEspia()
+
+        manager.renew_subscription(1, months_to_add=1)
+
+        assert manager.plex_manager.limites == []
+
     def test_perfil_inativo_e_reativado(self, manager):
         manager.data_manager.profiles["1"]["status"] = "inactive"
 

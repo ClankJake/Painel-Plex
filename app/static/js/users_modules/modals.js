@@ -352,6 +352,9 @@ export function showBulkScreenLimitModal() {
 
 export function showScreenLimitModal(user) {
     const safeName = sanitizeHTML(user.username);
+    const notaDoServidor = i18n.screenLimitServerNote
+        ? `<p class="text-xs text-gray-500 dark:text-gray-400 mt-3">${sanitizeHTML(i18n.screenLimitServerNote)}</p>`
+        : '';
     const body = `
         <p class="text-gray-700 dark:text-gray-300 mb-4">${i18n.selectNewLimitFor} <strong class="text-gray-900 dark:text-white">${safeName}</strong>.</p>
         <div class="grid grid-cols-2 gap-3">
@@ -362,7 +365,8 @@ export function showScreenLimitModal(user) {
             <button data-screens="5" class="btn w-full bg-blue-600 hover:bg-blue-500 text-white transition-colors">5 ${i18n.screenPlural}</button>
             <button data-screens="6" class="btn w-full bg-blue-600 hover:bg-blue-500 text-white transition-colors">6 ${i18n.screenPlural}</button>
         </div>
-        <button data-screens="0" class="btn w-full bg-gray-500 hover:bg-gray-400 mt-3 text-white transition-colors">${i18n.removeLimit}</button>`;
+        <button data-screens="0" class="btn w-full bg-gray-500 hover:bg-gray-400 mt-3 text-white transition-colors">${i18n.removeLimit}</button>
+        ${notaDoServidor}`;
         
     const modal = createModal('screenLimitModal', i18n.manageScreenLimitTitle, body, `<button id="limitCancel" class="${btnCancelClass} w-full">${i18n.cancel}</button>`);
     

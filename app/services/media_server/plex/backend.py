@@ -64,6 +64,7 @@ class PlexManager:
         login_delegado=True,
         desativa_conta=False,
         links_profundos=True,
+        limite_telas_no_servidor=False,
     )
 
     def __init__(self, data_manager, tautulli_manager, notifier_manager, overseerr_manager):
@@ -237,11 +238,16 @@ class PlexManager:
         return self.users.get_user_by_id(media_user_id)
         
     def update_screen_limit(self, media_user_id, screens):
+        """O Plex não sabe impor limites: aqui o limite é só do painel."""
         profile = self.data_manager.get_user_profile(media_user_id)
         if profile:
             profile['screen_limit'] = screens
             self.data_manager.set_user_profile(media_user_id, profile)
             logger.info(f"Limite de telas para o utilizador ID '{media_user_id}' atualizado para {screens}.")
+
+    def reconcile_screen_limits(self):
+        """Não há nada a repor: o Plex não sabe impor limites de telas."""
+        return {"success": True, "corrigidos": 0}
 
     def block_user(self, media_user_id, reason='manual'):
         if self.stream_manager and not self.users.stream_manager:

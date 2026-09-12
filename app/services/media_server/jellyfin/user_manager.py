@@ -186,16 +186,67 @@ class JellyfinUserManager:
     def update_screen_limit(self, user_id, screens) -> bool:
         """Aplica o limite de telas NO SERVIDOR.
 
-        O painel continua a impor o limite ele próprio (é ele que envia a
-        mensagem ao utilizador e regista a auditoria), mas o Jellyfin sabe
-        fazê-lo nativamente — e assim o limite continua de pé mesmo que o
-        painel esteja em baixo. 0 significa sem limite, dos dois lados.
+        ⚠️ Esta é a defesa boa, e não o corte que o painel manda. O Jellyfin
+        RECUSA a reprodução a mais na origem, e não há leitor que o possa
+        ignorar; a ordem de parar depende de o cliente a obedecer, e há vários
+        que não o fazem (o leitor integrado da aplicação Android é um deles).
+
+        Em troca, o servidor só trava a reprodução que COMEÇA. Quem já estava a
+        ver quando o limite desceu continua a ver — é aí que o corte do painel
+        (com a mensagem e a auditoria) continua a ser preciso.
+
+        0 significa sem limite, dos dois lados.
         """
         policy = self._get_policy(user_id)
         if policy is None:
             return False
         policy['MaxActiveSessions'] = max(0, int(screens or 0))
         return self._set_policy(user_id, policy)
+
+    def reconcile_screen_limits(self) -> Dict[str, Any]:
+        """Repõe no servidor os limites que divergem do perfil do painel.
+
+        O painel é a fonte da verdade: se alguém mexeu no limite diretamente no
+        Jellyfin, isto desfaz a alteração. Quem não tem perfil no painel não é
+        tocado — não é um utilizador que o painel administre.
+
+        Corre no `cleanup_job` porque as instalações que já existiam antes desta
+        correção têm no servidor o limite que valia à data do convite, e nada o
+        voltaria a atualizar sozinho.
+        """
+        if not self.conn.connected:
+            return {"success": False, "message": _("Sem ligação ao servidor."), "corrigidos": 0}
+
+        try:
+            utilizadores = self.conn.api.get('/Users') or []
+        except Exception as e:
+            logger.warning(f"Não foi possível reconciliar os limites de telas: {describe(e)}")
+            return {"success": False, "message": _("O servidor não devolveu os utilizadores."), "corrigidos": 0}
+
+        corrigidos = 0
+        for bruto in utilizadores:
+            user_id = normalize_user_id(bruto.get('Id'))
+            perfil = self.data_manager.get_user_profile(user_id)
+            if not perfil:
+                continue
+
+            desejado = max(0, int(perfil.get('screen_limit') or 0))
+            politica = bruto.get('Policy')
+            if politica is None:
+                continue
+            anterior = int(politica.get('MaxActiveSessions') or 0)
+            if anterior == desejado:
+                continue
+
+            politica['MaxActiveSessions'] = desejado
+            if self._set_policy(user_id, politica):
+                corrigidos += 1
+                logger.info(
+                    "Limite de telas de '%s' reposto no servidor: %s -> %s.",
+                    perfil.get('username') or user_id, anterior, desejado,
+                )
+
+        return {"success": True, "corrigidos": corrigidos}
 
     # =========================================================================
     # BLOQUEIO

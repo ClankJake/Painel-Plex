@@ -175,18 +175,37 @@ rasto, porque quem chama trata `True` como "feito" e não volta a tentar.
 ⚠️ **Aceitar a ordem não é obedecer-lhe.** Há clientes que recebem o `Stop`, o
 servidor confirma, e a reprodução continua — o leitor integrado da aplicação
 Android do Jellyfin (ExoPlayer) é um deles; pelo navegador o mesmo corte
-funciona. Sem contagem, o painel pedia educadamente para sempre e, de fora,
-parecia que o limite de telas simplesmente não funcionava. Ao fim de
-`TENTATIVAS_ANTES_DE_FORCAR` pedidos à mesma `playback_key`, o motor escala
-para `force_terminate()` — o último recurso do servidor, que no Jellyfin é
-revogar o acesso do APARELHO (`DELETE /Devices?id=`), invalidando-lhe as
-credenciais. O Plex não tem equivalente e devolve `False`, que é a resposta
-honesta: sem nada mais forte a oferecer, o motor volta a pedir.
+funciona. É por isso que **cortar não pode ser a defesa principal**.
 
-Esse último recurso está atrás de `FORCE_STREAM_TERMINATION`, **desligado por
-omissão**: obriga a pessoa a autenticar-se de novo naquele aparelho e não se
-desfaz a partir do painel. Desligado, fica um WARNING por reprodução a nomear a
-definição — desistir em silêncio seria o pior dos dois mundos.
+### O limite de telas tem duas defesas, e a boa é a do servidor
+
+Onde a capacidade `limite_telas_no_servidor` é verdadeira, o servidor sabe
+impor o limite ele próprio (`Policy.MaxActiveSessions`, no Jellyfin): RECUSA a
+reprodução a mais na origem, e não há leitor que o possa ignorar. É a defesa
+que funciona sempre, e por isso é a primeira.
+
+Em troca, o servidor só trava o que COMEÇA. Quem já estava a ver quando o
+limite desceu continua a ver, e um utilizador bloqueado ou com a assinatura
+vencida também não é problema do `MaxActiveSessions`. Aí continua a ser preciso
+o corte do painel — que é também quem envia a mensagem e regista a auditoria.
+
+⚠️ **`update_screen_limit()` na fachada é a ÚNICA porta** para mudar o limite
+de alguém: grava o perfil E leva-o ao servidor. Quem escrever
+`profile['screen_limit']` à mão deixa o servidor no valor antigo para sempre —
+foi exatamente o que aconteceu (o limite do Jellyfin ficava preso no que valia
+à data do convite, porque as rotas de administração, os upgrades pró-rata e as
+renovações mexiam só no perfil). O `cleanup_job` chama `reconcile_screen_limits()`
+todos os dias para repor o que divergir, e isso é o que cura as instalações
+antigas; num servidor sem a capacidade é um no-op.
+
+O último recurso, para o caso de o corte ser mesmo necessário e o cliente o
+ignorar: ao fim de `TENTATIVAS_ANTES_DE_FORCAR` pedidos à mesma `playback_key`,
+o motor escala para `force_terminate()`, que no Jellyfin revoga o acesso do
+APARELHO (`DELETE /Devices?id=`). O Plex não tem equivalente e devolve `False`,
+que é a resposta honesta: sem nada mais forte a oferecer, o motor volta a pedir.
+Está atrás de `FORCE_STREAM_TERMINATION`, **desligado por omissão**: obriga a
+pessoa a autenticar-se de novo naquele aparelho e não se desfaz a partir do
+painel. Com o limite do servidor a funcionar, raramente é preciso.
 
 Os URLs de imagens passam todos por `app/utils/image_proxy.py`; o prefixo
 (`plex:`, `plex_account:`, `url:`) é escolhido pelo backend.

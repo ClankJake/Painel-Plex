@@ -45,6 +45,7 @@ class JellyfinManager:
         login_delegado=False,
         desativa_conta=True,
         links_profundos=True,
+        limite_telas_no_servidor=True,
     )
 
     IMAGE_SOURCES = ('jellyfin',)
@@ -264,6 +265,9 @@ class JellyfinManager:
             self.data_manager.set_user_profile(user_id, perfil)
         self.users.update_screen_limit(user_id, screens)
         logger.info(f"Limite de telas para o utilizador ID '{user_id}' atualizado para {screens}.")
+
+    def reconcile_screen_limits(self):
+        return self.users.reconcile_screen_limits()
 
     def invalidate_user_cache(self):
         return self.users.invalidate_user_cache()

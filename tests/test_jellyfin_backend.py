@@ -305,6 +305,86 @@ class TestBloqueio:
 
 
 @pytest.mark.integration
+class TestReconciliacaoDoLimiteDeTelas:
+    """
+    O `MaxActiveSessions` é a única defesa que um leitor NÃO pode ignorar: o
+    servidor recusa a reprodução a mais na origem. Por isso não pode ficar para
+    trás — e ficava: só era escrito ao resgatar o convite.
+
+    Esta reconciliação corre no `cleanup_job` e serve as instalações onde o
+    limite já divergiu, e o caso de alguém o alterar direto no servidor.
+    """
+
+    def _montar(self, data_manager, politicas):
+        utilizadores = [
+            {"Id": uid, "Name": nome, "Policy": dict(POLITICA_BASE, MaxActiveSessions=maximo)}
+            for uid, nome, maximo in politicas
+        ]
+        return montar({'/Users': utilizadores}, data_manager=data_manager)
+
+    def test_repoe_o_limite_que_divergiu(self, cache_limpa, data_manager):
+        backend = self._montar(data_manager, [(GUID, "ana", 1)])
+        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 3})
+
+        resultado = backend.reconcile_screen_limits()
+
+        assert resultado == {"success": True, "corrigidos": 1}
+        assert backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy')[-1]['MaxActiveSessions'] == 3
+
+    def test_quem_ja_esta_certo_nao_e_reescrito(self, cache_limpa, data_manager):
+        backend = self._montar(data_manager, [(GUID, "ana", 3)])
+        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 3})
+
+        assert backend.reconcile_screen_limits()["corrigidos"] == 0
+        assert backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy') == []
+
+    def test_quem_nao_tem_perfil_no_painel_nao_e_tocado(self, cache_limpa, data_manager):
+        # Não é um utilizador que o painel administre: mexer-lhe na política
+        # seria o painel a decidir sobre uma conta que não é dele.
+        backend = self._montar(data_manager, [(OUTRO, "bruno", 5)])
+
+        assert backend.reconcile_screen_limits()["corrigidos"] == 0
+        assert backend.conn.api.corpos_enviados(f'/Users/{OUTRO}/Policy') == []
+
+    def test_sem_limite_no_painel_tira_o_limite_do_servidor(self, cache_limpa, data_manager):
+        # 0 é "sem limite" dos dois lados. O painel é a fonte da verdade, por
+        # isso desfaz também um limite posto à mão no servidor.
+        backend = self._montar(data_manager, [(GUID, "ana", 2)])
+        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 0})
+
+        assert backend.reconcile_screen_limits()["corrigidos"] == 1
+        assert backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy')[-1]['MaxActiveSessions'] == 0
+
+    def test_a_politica_vai_inteira(self, cache_limpa, data_manager):
+        # A armadilha de sempre: `POST /Users/{id}/Policy` substitui a política
+        # toda. Enviar só o campo alterado apagaria os restantes.
+        backend = self._montar(data_manager, [(GUID, "ana", 1)])
+        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 3})
+
+        backend.reconcile_screen_limits()
+
+        gravada = backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy')[-1]
+        assert gravada['EnabledFolders'] == POLITICA_BASE['EnabledFolders']
+        assert 'IsAdministrator' in gravada
+
+    def test_sem_ligacao_nao_apaga_nada(self, cache_limpa, data_manager):
+        backend = self._montar(data_manager, [(GUID, "ana", 1)])
+        data_manager.set_user_profile(GUID, {"username": "ana", "screen_limit": 3})
+        backend.conn.server_info = None
+
+        assert backend.reconcile_screen_limits()["success"] is False
+        assert backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy') == []
+
+    def test_o_plex_nao_tem_nada_a_reconciliar(self):
+        # A capacidade é falsa: o Plex não sabe impor limites, e a chamada tem
+        # de ser inofensiva em vez de dar erro.
+        from app.services.media_server.plex.backend import PlexManager
+
+        backend = PlexManager.__new__(PlexManager)
+        assert backend.reconcile_screen_limits() == {"success": True, "corrigidos": 0}
+
+
+@pytest.mark.integration
 class TestRemocao:
     def test_remover_apaga_no_servidor_e_desativa_o_perfil(self, cache_limpa, data_manager):
         backend = montar({'/Users': [{"Id": GUID, "Name": "ana", "Policy": {}}]}, data_manager=data_manager)

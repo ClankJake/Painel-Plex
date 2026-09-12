@@ -137,8 +137,10 @@ def _run_payment_processing_in_thread(app, txid):
                     profile_upgrade = extensions.data_manager.get_user_profile(media_user_id)
                     if profile_upgrade and novo_limite is not None:
                         limite_anterior = profile_upgrade.get('screen_limit')
+                        # Pela fachada, para o limite chegar também ao servidor
+                        # onde ele o saiba impor (ver `update_screen_limit`).
+                        extensions.media_server.update_screen_limit(media_user_id, int(novo_limite))
                         profile_upgrade['screen_limit'] = int(novo_limite)
-                        extensions.data_manager.set_user_profile(media_user_id, profile_upgrade)
                         logger.info(
                             f"Upgrade pro-rata concluído para '{profile_upgrade.get('username')}': "
                             f"{limite_anterior} -> {novo_limite} telas. Vencimento inalterado "
@@ -436,8 +438,7 @@ def create_charge_route():
         if proration_quote.get('is_free'):
             profile_free = extensions.data_manager.get_user_profile(media_user_id)
             anterior = profile_free.get('screen_limit')
-            profile_free['screen_limit'] = screens
-            extensions.data_manager.set_user_profile(media_user_id, profile_free)
+            extensions.media_server.update_screen_limit(media_user_id, screens)
             logger.info(f"Upgrade gratuito (abaixo do mínimo) para '{username}': {anterior} -> {screens} telas.")
             return jsonify({
                 "success": True, "free_upgrade": True,
@@ -509,8 +510,8 @@ def create_charge_route():
         try:
             profile_up = extensions.data_manager.get_user_profile(media_user_id)
             anterior = profile_up.get('screen_limit')
+            extensions.media_server.update_screen_limit(media_user_id, screens)
             profile_up['screen_limit'] = screens
-            extensions.data_manager.set_user_profile(media_user_id, profile_up)
 
             # O plano JÁ foi alterado acima: uma falha a registar o cupão não pode
             # transformar isto num erro para o utilizador.

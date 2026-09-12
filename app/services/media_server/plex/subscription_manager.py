@@ -129,6 +129,13 @@ class PlexSubscriptionManager:
         # 5. Salvar na Base de Dados
         self.data_manager.set_user_profile(media_user_id, profile)
 
+        # 5b. Levar o limite de telas ao servidor, onde ele o saiba impor.
+        # Tem de ser DEPOIS da gravação: a fachada relê o perfil, e antes daqui
+        # releria o que ainda estava em disco. Um plano novo que só existisse no
+        # painel deixava o `MaxActiveSessions` do Jellyfin no valor antigo.
+        if screens is not None and screens >= 0 and self.plex_manager:
+            self.plex_manager.update_screen_limit(media_user_id, screens)
+
         # 6. Restauro de Acesso Seguro e Notificação de Reativação
         if is_reactivation and self.plex_manager and self.plex_manager.notifier_manager:
             try:

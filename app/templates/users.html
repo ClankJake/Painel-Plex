@@ -231,6 +231,9 @@
         data-i18n-no-users-found="{{ _('Nenhum usuário encontrado.') }}"
         data-i18n-create-invite="{{ _('Criar Novo Convite') }}"
         data-i18n-screen-limit="{{ _('Limite de Telas') }}"
+        {# Vazio nos servidores que não sabem impor o limite (o Plex): a nota só
+           aparece onde é verdade. Ver `capabilities.limite_telas_no_servidor`. #}
+        data-i18n-screen-limit-server-note="{% if media_server.capabilities.limite_telas_no_servidor %}{{ _('O próprio servidor passa a recusar reproduções acima deste limite, mesmo em aplicativos que ignoram o comando de parar.') }}{% endif %}"
         data-i18n-no-limit="{{ _('Nenhum') }}"
         data-i18n-screen-singular="{{ _('Tela') }}"
         data-i18n-screen-plural="{{ _('Telas') }}"

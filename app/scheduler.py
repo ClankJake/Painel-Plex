@@ -251,6 +251,17 @@ def cleanup_job():
         except Exception as e:
             logger.error(f"Falha ao sincronizar perfis a partir do Plex: {e}", exc_info=True)
 
+        # 🛡️ Repõe no servidor os limites de telas que divergirem do painel.
+        # Onde o servidor os sabe impor (o `MaxActiveSessions` do Jellyfin), é a
+        # única defesa que um leitor não pode ignorar — e nas instalações
+        # anteriores a esta correção ficou presa no valor da data do convite.
+        try:
+            resultado = extensions.media_server.reconcile_screen_limits()
+            if resultado.get('corrigidos'):
+                logger.info(f"Limites de telas repostos no servidor: {resultado['corrigidos']}.")
+        except Exception as e:
+            logger.error(f"Falha ao reconciliar os limites de telas: {e}", exc_info=True)
+
 @single_instance_job('cleanup_image_cache_job')
 def cleanup_image_cache_job():
     if not _app: return
