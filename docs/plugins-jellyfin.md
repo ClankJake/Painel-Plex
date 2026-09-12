@@ -135,10 +135,49 @@ Os padrões do plugin são adequados. Se quiser afinar:
 - **Log out the offending device** — **desligado**. Revoga o token do aparelho e
   obriga a pessoa a entrar de novo nele. O painel já tem uma opção equivalente
   (ver secção 3); ligar as duas é redundante.
-- **Blocked message** — escreva o texto que o seu usuário deve ver. Só aparece
-  no navegador.
+- **Blocked message** — ver a secção 1.6.
 
-### 1.6 O que o painel faz com o plugin
+### 1.6 ⚠️ A mensagem que o usuário vê (e o que não dá para mudar)
+
+O bloqueio funciona em todo o lado. **O aviso, não.** É a limitação mais
+importante do plugin, e é preciso contar com ela.
+
+| Onde o usuário assiste | O que ele vê ao ser bloqueado |
+|---|---|
+| **Navegador** (Jellyfin Web) | O **seu texto**, se você o configurar |
+| **Aplicativos nativos** (Android, Swiftfin, Infuse, Streamyfin) | A mensagem de erro genérica **do próprio aplicativo** |
+
+**No navegador — configure e fique resolvido.** Na página do plugin, preencha
+**Title** e **Text** em *Blocked message*, com **Show my message on web clients**
+ligado (é o padrão). O plugin injeta um script no cliente web que substitui o
+diálogo genérico pelo seu texto. Escreva algo que o usuário entenda, por
+exemplo:
+
+> **Título:** Limite de telas atingido
+> **Texto:** Você já está assistindo no número máximo de telas do seu plano.
+> Pare uma das transmissões ou adquira mais telas no painel.
+
+É preciso **recarregar a página** do navegador depois de alterar o texto.
+
+**Nos aplicativos nativos — não há o que fazer.** Nenhum plugin de servidor
+consegue mudar a tela de erro de um aplicativo nativo. O plugin tem uma opção
+*"Also push a server message"* (`ShowLimitPopup`) que envia um aviso pelo
+Jellyfin, mas o comentário no próprio código do plugin é explícito: os clientes
+nativos **descartam** essa mensagem. Ligá-la só acrescenta um segundo pop-up nos
+clientes web, por cima do seu. **Deixe desligada.**
+
+O que o usuário nesses aplicativos recebe é um erro de reprodução claro (o
+plugin faz o `PlaybackInfo` responder `NotAllowed`), e não uma tela carregando
+para sempre — mas com a redação do aplicativo, não a sua.
+
+> **O painel também não consegue avisar.** O bloqueio acontece no pedido HTTP,
+> antes de existir qualquer sessão — o painel nunca fica sabendo que aconteceu,
+> e por isso não há como disparar uma notificação de Telegram ou Discord. Só
+> quando é o painel a **cortar** (assinatura vencida, bloqueio manual, limite
+> reduzido no meio da transmissão) é que a mensagem configurada em
+> **Configurações → Comunicações** é enviada.
+
+### 1.7 O que o painel faz com o plugin
 
 - **Ao alterar o limite de um usuário** (Usuários → Gerenciar Limite de Telas, ou
   em massa, ou por um upgrade/renovação paga), o painel grava o valor no perfil
@@ -155,7 +194,7 @@ Plugin StreamLimiter encontrado: o limite de telas passa a ser imposto pelo serv
 Limite de 2 tela(s) aplicado no servidor para o utilizador <id>.
 ```
 
-### 1.7 O corte do painel continua ativo — e é preciso
+### 1.8 O corte do painel continua ativo — e é preciso
 
 O plugin bloqueia o que **começa**. Ele não sabe nada sobre:
 
@@ -262,9 +301,17 @@ em **Usuários → Gerenciar Limite de Telas**.
 3. Lembre-se de que o mesmo aparelho não gasta uma vaga nova ao trocar de
    episódio. Teste com **dois aparelhos diferentes**.
 
-**A mensagem personalizada não aparece**
-Só funciona em clientes web, e é preciso recarregar a página do navegador depois
-de alterar o texto. Aplicativos nativos mostram sempre a mensagem de erro deles.
+**O bloqueio funciona, mas o usuário não é informado do limite**
+É o comportamento esperado fora do navegador, e não tem solução — ver a
+secção 1.6. No navegador, preencha *Blocked message* na página do plugin e
+recarregue a página. Em aplicativos nativos o texto é sempre o deles.
+
+**A mensagem personalizada não aparece nem no navegador**
+Confirme que **Show my message on web clients** está ligado e recarregue a
+página (o script é carregado uma vez por sessão do navegador). Se a pasta do
+cliente web for somente-leitura — acontece em alguns volumes de Docker — o
+plugin não consegue injetar o script e regista um aviso no log do Jellyfin; o
+bloqueio continua a funcionar, só o texto é que volta a ser o genérico.
 
 **O histórico continua sem a coluna do reprodutor**
 O Playback Reporting só registra a partir da instalação. Assista a algo depois
