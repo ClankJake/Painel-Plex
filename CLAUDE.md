@@ -335,6 +335,20 @@ tira do próprio servidor. Duas diferenças a ter presentes:
   que estão REGISTADOS na conta. No Plex não há como pedi-los (a API do
   plex.tv só lista os do dono), por isso são deduzidos do histórico.
 
+⚠️ **`GET /Devices?userId=` NÃO filtra por dono.** Filtra pelos aparelhos que
+aquele utilizador TEM PERMISSÃO DE USAR (`CanAccessDevice`) — e como toda a
+gente tem `EnableAllDevices` por omissão, deixa passar tudo: cada pessoa via a
+lista inteira de aparelhos do servidor, igual para todos. Quem diz quem usou o
+aparelho é o `LastUserId`, e o filtro é do painel.
+
+⚠️ **O mesmo GUID aparece com e sem hífenes.** O `Id` de um utilizador vem sem;
+os campos declarados `format: uuid` no OpenAPI (o `LastUserId`, as chaves do
+StreamLimiter) vêm com. Comparar com `==` dá sempre falso, e o sintoma não é um
+erro — é uma lista vazia ou um filtro que não filtra. Use `mesma_conta()` /
+`chave_de()` de `jellyfin/identity.py`. Isto não pertence ao
+`app/utils/identity.py`: lá a identidade é texto e serve o Plex, que identifica
+por inteiro; tirar hífenes é conhecimento do Jellyfin.
+
 ⚠️ **`default.svg` é o LOGÓTIPO DO PLEX.** O catálogo de ícones de plataforma
 veio do painel original, e o ícone de recurso é a marca do Plex — num painel
 Jellyfin era a marca errada em todos os aparelhos. Agora há um `jellyfin.svg`

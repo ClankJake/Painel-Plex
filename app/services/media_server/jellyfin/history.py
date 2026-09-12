@@ -25,6 +25,7 @@ from flask_babel import gettext as _
 from ....utils.image_proxy import proxied_image_url
 from ....utils.log_formatting import describe
 from .api_client import JellyfinApiError
+from .identity import mesma_conta
 from .playback_reporting import JellyfinPlaybackReporting
 from .sessions import plataforma_de
 
@@ -96,16 +97,23 @@ class JellyfinHistoryManager:
     # =========================================================================
 
     def get_user_devices(self, user_id: Any) -> Dict[str, Any]:
-        """Os aparelhos registados na conta.
+        """Os aparelhos que ESTE utilizador usou.
 
         Devolve a forma que a interface já consome (`player`, `platform`,
         `last_seen`), para a página da conta não precisar de saber de onde veio.
+
+        🐛 O filtro é feito AQUI, e não com `GET /Devices?userId=`, porque esse
+        parâmetro não quer dizer o que parece: ele filtra os aparelhos que o
+        utilizador TEM PERMISSÃO DE USAR (`CanAccessDevice`), não os que usou. E
+        como toda a gente tem `EnableAllDevices` por omissão, a permissão deixa
+        passar tudo — cada pessoa via a lista INTEIRA de aparelhos do servidor,
+        igual para todos. Quem diz quem usou o aparelho é o `LastUserId`.
         """
         if not self.conn.connected:
             return {"success": True, "devices": []}
 
         try:
-            resposta = self.conn.api.get('/Devices', params={'userId': str(user_id)})
+            resposta = self.conn.api.get('/Devices')
         except JellyfinApiError as e:
             logger.warning(f"O Jellyfin não devolveu os aparelhos de {user_id}: {describe(e)}")
             return {"success": False, "message": _("Não foi possível obter os aparelhos.")}
@@ -116,6 +124,12 @@ class JellyfinHistoryManager:
         itens = resposta.get('Items') if isinstance(resposta, dict) else resposta
         aparelhos = []
         for bruto in itens or []:
+            # ⚠️ O `LastUserId` vem COM hífenes (é `format: uuid` no OpenAPI) e o
+            # id que o painel tem vem sem. Comparar com `==` dava sempre falso —
+            # e o sintoma seria uma lista vazia, sem erro nenhum.
+            if not mesma_conta(bruto.get('LastUserId'), user_id):
+                continue
+
             # `CustomName` é o nome que o administrador deu ao aparelho na
             # interface do Jellyfin; quando existe, é o que a pessoa reconhece.
             nome = bruto.get('Name') or ''

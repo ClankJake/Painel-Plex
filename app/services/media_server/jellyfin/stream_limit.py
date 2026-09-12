@@ -30,6 +30,7 @@ from flask_babel import gettext as _
 from ....utils.identity import normalize_user_id
 from ....utils.log_formatting import describe
 from .api_client import JellyfinApiError
+from .identity import chave_de
 from .plugins import plugin_instalado
 
 logger = logging.getLogger(__name__)
@@ -37,17 +38,6 @@ logger = logging.getLogger(__name__)
 # Como se reconhece o plugin em `GET /Plugins`.
 ID_DO_PLUGIN = 'd98fbe02-daf3-4c09-a832-4b4e1d07326c'
 NOME_DO_PLUGIN = 'streamlimiter'
-
-
-def _chave(identificador: Any) -> str:
-    """A forma em que dois ids do Jellyfin se podem comparar.
-
-    O plugin guarda as chaves sem hífenes (`Guid.ToString("N")`), mas aceita as
-    duas formas na entrada — e o `normalize_user_id` do painel não mexe nos
-    hífenes, porque a identidade aqui é texto e vale para servidores que nem
-    GUIDs usam. A conversão fica onde é precisa: na COMPARAÇÃO com o plugin.
-    """
-    return str(identificador or '').replace('-', '').strip().lower()
 
 
 class JellyfinStreamLimit:
@@ -123,7 +113,7 @@ class JellyfinStreamLimit:
                 continue
 
             desejado = max(0, int(perfil.get('screen_limit') or 0))
-            if atuais.get(_chave(identificador), 0) == desejado:
+            if atuais.get(chave_de(identificador), 0) == desejado:
                 continue
             if self.definir_limite(identificador, desejado):
                 corrigidos += 1
@@ -154,7 +144,7 @@ class JellyfinStreamLimit:
         traduzidos = {}
         for identificador, valor in limites.items():
             try:
-                traduzidos[_chave(identificador)] = int(valor)
+                traduzidos[chave_de(identificador)] = int(valor)
             except (TypeError, ValueError):
                 continue
         return traduzidos

@@ -1042,7 +1042,7 @@ class TestHistoricoEAparelhos:
         # É melhor do que a do Plex: são os aparelhos REGISTADOS na conta, e
         # não os que se conseguem adivinhar a partir do histórico.
         backend = self._backend(aparelhos=[
-            {"Id": "d1", "Name": "Chrome", "AppName": "Jellyfin Web",
+            {"Id": "d1", "Name": "Chrome", "AppName": "Jellyfin Web", "LastUserId": GUID,
              "DateLastActivity": "2026-09-12T08:00:00Z"},
         ])
 
@@ -1062,9 +1062,9 @@ class TestHistoricoEAparelhos:
         ícone de recurso, esse, é mesmo o logótipo do Plex.
         """
         backend = self._backend(aparelhos=[
-            {"Id": "d1", "Name": "Chrome", "AppName": "Jellyfin Web"},
-            {"Id": "d2", "Name": "SM-M236B", "AppName": "Jellyfin Android"},
-            {"Id": "d3", "Name": "Sala", "AppName": "Jellyfin Media Player"},
+            {"Id": "d1", "Name": "Chrome", "AppName": "Jellyfin Web", "LastUserId": GUID},
+            {"Id": "d2", "Name": "SM-M236B", "AppName": "Jellyfin Android", "LastUserId": GUID},
+            {"Id": "d3", "Name": "Sala", "AppName": "Jellyfin Media Player", "LastUserId": GUID},
         ])
 
         chaves = [a["platform_key"] for a in backend.get_user_devices(GUID)["devices"]]
@@ -1074,7 +1074,7 @@ class TestHistoricoEAparelhos:
     def test_o_nome_da_aplicacao_continua_a_ser_mostrado(self, cache_limpa):
         # A chave do ícone é uma coisa, o texto que a pessoa lê é outra:
         # "chrome" por baixo do nome do aparelho não diria nada.
-        backend = self._backend(aparelhos=[{"Id": "d1", "Name": "Chrome", "AppName": "Jellyfin Web"}])
+        backend = self._backend(aparelhos=[{"Id": "d1", "Name": "Chrome", "AppName": "Jellyfin Web", "LastUserId": GUID}])
 
         aparelho = backend.get_user_devices(GUID)["devices"][0]
 
@@ -1082,7 +1082,7 @@ class TestHistoricoEAparelhos:
         assert aparelho["platform_key"] == "chrome"
 
     def test_um_aparelho_que_nao_se_classifica_nao_inventa_chave(self, cache_limpa):
-        backend = self._backend(aparelhos=[{"Id": "d1", "Name": "Caixa", "AppName": "AlgoDesconhecido"}])
+        backend = self._backend(aparelhos=[{"Id": "d1", "Name": "Caixa", "AppName": "AlgoDesconhecido", "LastUserId": GUID}])
 
         assert backend.get_user_devices(GUID)["devices"][0]["platform_key"] == "default"
 
@@ -1090,30 +1090,71 @@ class TestHistoricoEAparelhos:
         # É o nome que o administrador deu na interface do Jellyfin, e o que a
         # pessoa reconhece.
         backend = self._backend(aparelhos=[
-            {"Id": "d1", "Name": "SM-M236B", "CustomName": "Telemóvel da Ana"},
+            {"Id": "d1", "Name": "SM-M236B", "CustomName": "Telemóvel da Ana", "LastUserId": GUID},
         ])
 
         assert backend.get_user_devices(GUID)["devices"][0]["player"] == "Telemóvel da Ana"
 
     def test_os_aparelhos_vem_do_mais_recente_para_o_mais_antigo(self, cache_limpa):
         backend = self._backend(aparelhos=[
-            {"Id": "d1", "Name": "Antigo", "DateLastActivity": "2026-09-01T08:00:00Z"},
-            {"Id": "d2", "Name": "Recente", "DateLastActivity": "2026-09-12T08:00:00Z"},
+            {"Id": "d1", "Name": "Antigo", "LastUserId": GUID, "DateLastActivity": "2026-09-01T08:00:00Z"},
+            {"Id": "d2", "Name": "Recente", "LastUserId": GUID, "DateLastActivity": "2026-09-12T08:00:00Z"},
         ])
 
         nomes = [a["player"] for a in backend.get_user_devices(GUID)["devices"]]
 
         assert nomes == ["Recente", "Antigo"]
 
-    def test_os_aparelhos_sao_pedidos_so_para_este_utilizador(self, cache_limpa):
+    def test_so_vem_os_aparelhos_deste_utilizador(self, cache_limpa):
+        """
+        🐛 REGRESSÃO REPORTADA: cada pessoa via os MESMOS aparelhos — os do
+        servidor inteiro. O painel pedia `GET /Devices?userId=`, a assumir que
+        filtrava por dono. Não filtra: esse parâmetro devolve os aparelhos que o
+        utilizador TEM PERMISSÃO DE USAR (`CanAccessDevice`), e como toda a
+        gente tem `EnableAllDevices` por omissão, passa tudo.
+
+        Quem diz quem usou o aparelho é o `LastUserId`, e o filtro é nosso.
+        """
+        backend = self._backend(aparelhos=[
+            {"Id": "d1", "Name": "Chrome da Ana", "LastUserId": GUID},
+            {"Id": "d2", "Name": "TV do Bruno", "LastUserId": OUTRO},
+            {"Id": "d3", "Name": "Tablet da Ana", "LastUserId": GUID},
+        ])
+
+        nomes = [a["player"] for a in backend.get_user_devices(GUID)["devices"]]
+
+        assert sorted(nomes) == ["Chrome da Ana", "Tablet da Ana"]
+
+    def test_o_guid_com_hifenes_do_servidor_bate_certo(self, cache_limpa):
+        """
+        ⚠️ O `LastUserId` vem COM hífenes (`format: uuid` no OpenAPI) e o id que
+        o painel tem vem sem. Com `==` directo dava sempre falso — e o sintoma
+        seria a lista VAZIA para toda a gente, sem erro nenhum.
+        """
+        com_hifenes = "38c3a1f0-e4b2-4d7f-9c1a-0b5e6d7f8a90"
+        backend = self._backend(aparelhos=[
+            {"Id": "d1", "Name": "Chrome", "LastUserId": com_hifenes},
+        ])
+
+        assert len(backend.get_user_devices(GUID)["devices"]) == 1
+
+    def test_um_aparelho_sem_dono_conhecido_nao_e_de_ninguem(self, cache_limpa):
+        # Um aparelho registado que nunca chegou a autenticar ninguém.
+        backend = self._backend(aparelhos=[{"Id": "d1", "Name": "Órfão"}])
+
+        assert backend.get_user_devices(GUID)["devices"] == []
+
+    def test_o_pedido_nao_leva_o_userId_que_nao_filtra(self, cache_limpa):
+        # Mandá-lo é pior do que não o mandar: parece que filtra e não filtra,
+        # e faz o servidor procurar o utilizador por nada.
         backend = self._backend(aparelhos=[])
 
         backend.get_user_devices(GUID)
 
-        assert ('GET', '/Devices') in [(m, e) for m, e in backend.conn.api.enviados if m == 'GET']
+        assert backend.conn.api.ultimos_params.get('/Devices', {}) == {}
 
     def test_sem_ligacao_a_lista_vem_vazia_e_nao_e_um_erro(self, cache_limpa):
-        backend = self._backend(aparelhos=[{"Id": "d1", "Name": "Chrome"}])
+        backend = self._backend(aparelhos=[{"Id": "d1", "Name": "Chrome", "LastUserId": GUID}])
         backend.conn.server_info = None
 
         assert backend.get_user_devices(GUID) == {"success": True, "devices": []}

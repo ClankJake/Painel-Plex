@@ -333,6 +333,16 @@ cliente web for somente-leitura — acontece em alguns volumes de Docker — o
 plugin não consegue injetar o script e regista um aviso no log do Jellyfin; o
 bloqueio continua a funcionar, só o texto é que volta a ser o genérico.
 
+**A lista de Dispositivos Vinculados mostra aparelhos de outras pessoas**
+Foi um erro do painel, corrigido: ele confiava no parâmetro `userId` do
+Jellyfin, que não filtra por dono mas por permissão de uso — e toda a gente tem
+permissão para tudo por omissão. Atualize o painel.
+
+**Um aparelho que a pessoa usou não aparece na lista dela**
+O Jellyfin guarda **um** registo por aparelho, com o ÚLTIMO utilizador que o
+usou. Se duas pessoas usaram a mesma instalação do mesmo aplicativo, ele aparece
+só para a última. Não há no servidor nada mais detalhado para consultar.
+
 **O histórico continua sem a coluna do reprodutor**
 O Playback Reporting só registra a partir da instalação. Assista a algo depois
 de instalar e confirme que a linha nova traz o aparelho.
