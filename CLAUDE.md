@@ -223,6 +223,29 @@ e o Playback Reporting precisam do mesmo), com cache de 10 minutos — instalar
 um plugin obriga a reiniciar o Jellyfin, por isso não muda sozinho. Procura-se
 pelo GUID **e** pelo nome: o GUID é estável, o nome é o que se lê no log.
 
+⚠️ **Não tente trazer o bloqueio do StreamLimiter para dentro do painel.** É a
+pergunta óbvia e a resposta é não, por uma razão de arquitetura e não de
+esforço: o que faz o plugin funcionar é ele correr DENTRO do processo do
+Jellyfin. Ele regista-se no pipeline de MVC do próprio servidor
+(`PostConfigure<MvcOptions>`, em `PluginServiceRegistrator`) e vê cada pedido de
+mídia antes de a resposta começar. O painel é outro processo, noutra porta: o
+pedido `cliente → jellyfin:8096/Videos/.../stream` nunca passa por ele.
+
+Para o interceptar, o painel teria de ser um proxy reverso à frente do Jellyfin
+— todos os bytes de todas as reproduções a atravessar o Flask, que corre em
+gevent com **1 worker** de propósito. Seria o painel a tornar-se o ponto único
+de falha do servidor de média.
+
+E a API do núcleo não dá alternativa: não existe rota para matar uma
+transcodificação nem para recusar uma reprodução (confirmado no OpenAPI). Há o
+`Playing/Stop`, que o cliente pode ignorar, e a revogação do aparelho. O plugin
+mata a transcodificação e recusa o `PlaybackInfo` porque tem acesso aos
+serviços internos do servidor — coisa que nenhum cliente HTTP tem.
+
+(À parte disso, o plugin é GPL-3.0: copiar o código dele obrigaria o painel
+inteiro à mesma licença. Mas mesmo com isso resolvido, o mecanismo não é
+portável.)
+
 `clear_session_limits()` (no `cleanup_job`, guardado por
 `JELLYFIN_SESSION_LIMIT_CLEARED`) tira do servidor o `MaxActiveSessions` que o
 painel lá pôs enquanto durou a ideia errada — de UMA vez. Repeti-la todos os
