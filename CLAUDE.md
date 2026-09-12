@@ -284,6 +284,25 @@ tira do próprio servidor. Duas diferenças a ter presentes:
   que estão REGISTADOS na conta. No Plex não há como pedi-los (a API do
   plex.tv só lista os do dono), por isso são deduzidos do histórico.
 
+⚠️ **`default.svg` é o LOGÓTIPO DO PLEX.** O catálogo de ícones de plataforma
+veio do painel original, e o ícone de recurso é a marca do Plex — num painel
+Jellyfin era a marca errada em todos os aparelhos. Agora há um `jellyfin.svg`
+(o logótipo oficial, CC BY-SA 4.0), `plataforma_de()` devolve `'jellyfin'` em
+vez de `'plex'` para os clientes dele, e o `.platform-default` segue o servidor.
+
+⚠️ **Quem classifica o ícone é o servidor, não o browser.** A lista de
+aparelhos leva um `platform_key` além do `platform`: o primeiro é a classe CSS,
+o segundo é o texto que a pessoa lê. A interface adivinhava a classe pela
+PRIMEIRA palavra do `platform` — com o Jellyfin dava sempre "jellyfin"
+("Jellyfin Web", "Jellyfin Android"...), que nem existia no catálogo.
+
+⚠️ **O ADMINISTRADOR NÃO TEM PERFIL LOCAL**, por desenho: o login dele devolve
+na primeira ramificação de `_autorizar_e_iniciar_sessao`, antes da parte que
+cria perfis, e `_sync_plex_and_local_profiles` salta-o de propósito. As rotas da
+"Minha Conta" (`/account/details`, `/account/profile`, `/account/privacy`)
+assumiam um dicionário e rebentavam com `AttributeError` assim que ele abria a
+página. As que gravam criam o perfil em falta; a que lê usa um dicionário vazio.
+
 #### O plugin Playback Reporting, quando existe
 
 `playback_reporting.py` dá o histórico por REPRODUÇÃO — a mesma mídia vista

@@ -69,7 +69,10 @@ def plataforma_de(cliente: str, dispositivo: str, tipo: str) -> str:
     if 'windows' in texto: return 'windows'
     if 'linux' in texto: return 'linux'
 
-    if 'jellyfin' in texto or 'findroid' in texto or 'infuse' in texto: return 'plex'
+    # 🐛 Isto devolvia 'plex': um cliente do Jellyfin ficava com o logótipo do
+    # PLEX ao lado do nome. O catálogo de ícones veio do painel original e não
+    # tinha nenhum do Jellyfin — agora tem.
+    if 'jellyfin' in texto or 'findroid' in texto or 'infuse' in texto: return 'jellyfin'
 
     return 'default'
 

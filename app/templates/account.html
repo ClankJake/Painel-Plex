@@ -64,10 +64,21 @@
     .platform-atv, .platform-tvos { background-color: #a2aaad; background-image: url(/static/images/platforms/atv.svg); }
     .platform-chrome { background-color: #db4437; background-image: url(/static/images/platforms/chrome.svg); }
     .platform-chromecast { background-color: #4285f4; background-image: url(/static/images/platforms/chromecast.svg); }
+    /* 'default.svg' é o LOGÓTIPO DO PLEX. Como ícone de recurso serve num
+       painel ligado ao Plex; num ligado ao Jellyfin era a marca errada em
+       todos os aparelhos que não se conseguem classificar. A comparação
+       aqui é pela MARCA (é um logótipo), não por uma funcionalidade. */
+    {% if media_server.type == 'jellyfin' %}
+    .platform-default { background-color: #00a4dc; background-image: url(/static/images/platforms/jellyfin.svg); }
+    {% else %}
     .platform-default { background-color: #e5a00d; background-image: url(/static/images/platforms/default.svg); }
+    {% endif %}
     .platform-dlna { background-color: #4ba32f; background-image: url(/static/images/platforms/dlna.svg); }
     .platform-firefox { background-color: #ff7139; background-image: url(/static/images/platforms/firefox.svg); }
     .platform-gtv { background-color: #008bcf; background-image: url(/static/images/platforms/gtv.svg); }
+    /* O Jellyfin não tinha ícone próprio: qualquer cliente dele caía no
+       .platform-default, que é o LOGÓTIPO DO PLEX. */
+    .platform-jellyfin { background-color: #00a4dc; background-image: url(/static/images/platforms/jellyfin.svg); }
     .platform-ie { background-color: #18bcef; background-image: url(/static/images/platforms/ie.svg); }
     .platform-ios { background-color: #a2aaad; background-image: url(/static/images/platforms/ios.svg); }
     .platform-kodi { background-color: #30aada; background-image: url(/static/images/platforms/kodi.svg); }

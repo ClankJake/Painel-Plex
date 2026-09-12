@@ -26,6 +26,7 @@ from ....utils.image_proxy import proxied_image_url
 from ....utils.log_formatting import describe
 from .api_client import JellyfinApiError
 from .playback_reporting import JellyfinPlaybackReporting
+from .sessions import plataforma_de
 
 logger = logging.getLogger(__name__)
 
@@ -117,9 +118,17 @@ class JellyfinHistoryManager:
         for bruto in itens or []:
             # `CustomName` é o nome que o administrador deu ao aparelho na
             # interface do Jellyfin; quando existe, é o que a pessoa reconhece.
+            nome = bruto.get('Name') or ''
+            aplicacao = bruto.get('AppName') or ''
             aparelhos.append({
-                'player': bruto.get('CustomName') or bruto.get('Name') or _("Desconhecido"),
-                'platform': bruto.get('AppName') or '',
+                'player': bruto.get('CustomName') or nome or _("Desconhecido"),
+                'platform': aplicacao,
+                # 🐛 A interface adivinhava o ícone a partir da PRIMEIRA palavra
+                # do `platform`. Com o Jellyfin isso dava sempre "jellyfin"
+                # ("Jellyfin Web", "Jellyfin Android"...), que não existia no
+                # catálogo — e o ícone por omissão é o logótipo do PLEX. Quem
+                # sabe classificar é o servidor, não o browser.
+                'platform_key': plataforma_de(aplicacao, nome, ''),
                 'last_seen': _instante(bruto.get('DateLastActivity')),
             })
 

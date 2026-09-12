@@ -266,11 +266,15 @@ const renderDeviceList = (devices) => {
         return;
     }
 
-    const platformMap = ['alexa', 'android', 'atv', 'chrome', 'chromecast', 'dlna', 'firefox', 'gtv', 'ie', 'ios', 'kodi', 'lg', 'linux', 'macos', 'msedge', 'opera', 'playstation', 'plex', 'plexamp', 'roku', 'safari', 'samsung', 'tivo', 'windows', 'xbox'];
+    const platformMap = ['alexa', 'android', 'atv', 'chrome', 'chromecast', 'dlna', 'firefox', 'gtv', 'ie', 'ios', 'jellyfin', 'kodi', 'lg', 'linux', 'macos', 'msedge', 'opera', 'playstation', 'plex', 'plexamp', 'roku', 'safari', 'samsung', 'tivo', 'windows', 'xbox'];
 
     container.innerHTML = devices.map(device => {
         const lastSeen = new Date(device.last_seen * 1000);
-        const platform = (device.platform || '').toLowerCase().split(' ')[0];
+        // O servidor diz qual é o ícone quando sabe classificá-lo. Adivinhar
+        // pela primeira palavra do nome da aplicação só funciona por acaso:
+        // com o Jellyfin dava sempre 'jellyfin' ('Jellyfin Web', 'Jellyfin
+        // Android'...), que nem existia no catálogo.
+        const platform = (device.platform_key || device.platform || '').toLowerCase().split(' ')[0];
         const platformClass = platformMap.includes(platform) ? `platform-${platform}` : 'platform-default';
 
         return `

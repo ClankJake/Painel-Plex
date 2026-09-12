@@ -656,7 +656,11 @@ class TestPlataformas:
         ("Findroid", "android"),
         ("Jellyfin for Roku", "roku"),
         ("Swiftfin", "ios"),
-        ("Jellyfin Media Player", "plex"),
+        # 🐛 Isto esperava "plex": um cliente do Jellyfin ficava com o
+        # logótipo do PLEX ao lado do nome, na lista de aparelhos e no
+        # "Reproduzindo Agora".
+        ("Jellyfin Media Player", "jellyfin"),
+        ("Swiftfin para Apple TV", "atv"),
         ("AparelhoEstranho", "default"),
     ])
     def test_plataformas(self, cliente, esperado):
@@ -1046,6 +1050,39 @@ class TestHistoricoEAparelhos:
         assert resultado["devices"][0]["player"] == "Chrome"
         assert resultado["devices"][0]["platform"] == "Jellyfin Web"
         assert resultado["devices"][0]["last_seen"] > 0
+
+    def test_o_servidor_diz_qual_e_o_icone(self, cache_limpa):
+        """
+        🐛 REGRESSÃO REPORTADA: todos os aparelhos apareciam com o logótipo do
+        PLEX. A interface adivinhava o ícone pela PRIMEIRA palavra do nome da
+        aplicação, e com o Jellyfin isso dá sempre "jellyfin" ("Jellyfin Web",
+        "Jellyfin Android"...) — que não existia no catálogo de ícones. O
+        ícone de recurso, esse, é mesmo o logótipo do Plex.
+        """
+        backend = self._backend(aparelhos=[
+            {"Id": "d1", "Name": "Chrome", "AppName": "Jellyfin Web"},
+            {"Id": "d2", "Name": "SM-M236B", "AppName": "Jellyfin Android"},
+            {"Id": "d3", "Name": "Sala", "AppName": "Jellyfin Media Player"},
+        ])
+
+        chaves = [a["platform_key"] for a in backend.get_user_devices(GUID)["devices"]]
+
+        assert chaves == ["chrome", "android", "jellyfin"]
+
+    def test_o_nome_da_aplicacao_continua_a_ser_mostrado(self, cache_limpa):
+        # A chave do ícone é uma coisa, o texto que a pessoa lê é outra:
+        # "chrome" por baixo do nome do aparelho não diria nada.
+        backend = self._backend(aparelhos=[{"Id": "d1", "Name": "Chrome", "AppName": "Jellyfin Web"}])
+
+        aparelho = backend.get_user_devices(GUID)["devices"][0]
+
+        assert aparelho["platform"] == "Jellyfin Web"
+        assert aparelho["platform_key"] == "chrome"
+
+    def test_um_aparelho_que_nao_se_classifica_nao_inventa_chave(self, cache_limpa):
+        backend = self._backend(aparelhos=[{"Id": "d1", "Name": "Caixa", "AppName": "AlgoDesconhecido"}])
+
+        assert backend.get_user_devices(GUID)["devices"][0]["platform_key"] == "default"
 
     def test_o_nome_personalizado_ganha_ao_do_aparelho(self, cache_limpa):
         # É o nome que o administrador deu na interface do Jellyfin, e o que a

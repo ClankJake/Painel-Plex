@@ -213,3 +213,80 @@ class TestLimiteDeTelas:
         client.post("/api/users/update-all-limits", json={"screens": 2})
 
         assert fachada.limites == [("111", 2)]
+
+
+class TestMinhaContaDoAdministrador:
+    """
+    🐛 REGRESSÃO REPORTADA (AttributeError em `_get_expiration_details`): o
+    administrador abria a "Minha Conta" e a rota rebentava.
+
+    O administrador NÃO TEM PERFIL LOCAL, por desenho: o login dele devolve na
+    primeira ramificação de `_autorizar_e_iniciar_sessao`, antes da parte que
+    cria perfis, e a sincronização da lista de utilizadores salta-o de
+    propósito (`username != admin_username`). No Plex ele nem sequer aparece na
+    lista de amigos do servidor. Estas rotas assumiam um dicionário.
+    """
+
+    @pytest.fixture(autouse=True)
+    def sem_servicos_externos(self, monkeypatch):
+        """O Tautulli e o servidor de média não são o que está a ser testado."""
+        from app.blueprints.api import users as users_module
+
+        class Vazio:
+            def get_user_watch_details(self, **kwargs):
+                return {"success": True, "details": {}}
+
+            def get_user_libraries(self, user_id):
+                return {"success": True, "libraries": []}
+
+        monkeypatch.setattr(users_module.extensions, "tautulli_manager", Vazio(), raising=False)
+        monkeypatch.setattr(users_module.extensions, "media_server", Vazio(), raising=False)
+
+    def test_os_detalhes_da_conta_respondem_sem_perfil(self, client, configurada, db_session):
+        _autenticar(client, media_user_id=1, role="admin")
+
+        resposta = client.get("/api/users/account/details")
+
+        assert resposta.status_code == 200
+        assert resposta.get_json()["success"] is True
+
+    def test_sem_perfil_o_limite_de_telas_e_ilimitado(self, client, configurada, db_session):
+        _autenticar(client, media_user_id=1, role="admin")
+
+        corpo = client.get("/api/users/account/details").get_json()
+
+        assert corpo["expiration_info"]["date"] is None
+        assert corpo["is_on_trial"] is False
+        assert corpo["profile_details"]["name"] is None
+
+    def test_gravar_o_perfil_cria_um_em_vez_de_rebentar(self, client, configurada, db_session):
+        _autenticar(client, media_user_id=1, role="admin")
+
+        resposta = client.post("/api/users/account/profile", json={"name": "Dono"})
+
+        assert resposta.status_code == 200
+        from app.extensions import db
+        from app.models import UserProfile
+        assert db.session.get(UserProfile, "1").name == "Dono"
+
+    def test_a_privacidade_tambem_se_guarda_sem_perfil(self, client, configurada, db_session):
+        _autenticar(client, media_user_id=1, role="admin")
+
+        resposta = client.post("/api/users/account/privacy", json={"hide": True})
+
+        assert resposta.status_code == 200
+        from app.extensions import db
+        from app.models import UserProfile
+        assert db.session.get(UserProfile, "1").hide_from_leaderboard is True
+
+    def test_quem_tem_perfil_continua_a_usa_lo(self, client, configurada, db_session):
+        # A correção não pode passar a ignorar o perfil de quem o tem.
+        perfil = _criar_perfil(111)
+        perfil.name = "Ana Silva"
+        from app.extensions import db
+        db.session.commit()
+        _autenticar(client, media_user_id=111, role="user")
+
+        corpo = client.get("/api/users/account/details").get_json()
+
+        assert corpo["profile_details"]["name"] == "Ana Silva"

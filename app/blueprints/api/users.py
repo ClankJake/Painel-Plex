@@ -131,8 +131,15 @@ def finalize_reactivation_route():
 def get_account_details():
     config = load_or_create_config()
     media_user_id = normalize_user_id(current_user.id)
-    profile = extensions.data_manager.get_user_profile(media_user_id)
-    
+
+    # 🐛 O ADMINISTRADOR NÃO TEM PERFIL LOCAL. O login dele devolve logo na
+    # primeira ramificação de `_autorizar_e_iniciar_sessao`, antes da parte que
+    # cria e sincroniza perfis — isso é para quem é utilizador do servidor, e o
+    # administrador não é (no Plex nem aparece na lista de amigos). Toda esta
+    # rota assumia um dicionário e rebentava com AttributeError assim que o
+    # administrador abria a "Minha Conta".
+    profile = extensions.data_manager.get_user_profile(media_user_id) or {}
+
     is_blocked_info = extensions.data_manager.get_blocked_user(media_user_id)
 
     expiration_info = _get_expiration_details(profile, config)
@@ -193,7 +200,13 @@ def update_account_profile(validated_data):
     # Compatibilidade com Pydantic v1 e v2
     data = validated_data.dict(exclude_unset=True) if hasattr(validated_data, 'dict') else validated_data.model_dump(exclude_unset=True)
     media_user_id = normalize_user_id(current_user.id)
-    profile = extensions.data_manager.get_user_profile(media_user_id)
+    # Sem perfil (o caso do administrador), grava-se um novo em vez de rebentar:
+    # o `username` faz falta para o perfil ser reconhecível na base de dados.
+    profile = extensions.data_manager.get_user_profile(media_user_id) or {
+        'media_user_id': media_user_id,
+        'username': current_user.username,
+        'email': current_user.email,
+    }
     profile.update(data)
     extensions.data_manager.set_user_profile(media_user_id, profile)
     return jsonify({"success": True, "message": _("Perfil atualizado com sucesso.")})
@@ -206,7 +219,12 @@ def update_privacy_settings():
         return jsonify({"success": False, "message": _("Valor inválido.")}), 400
     
     media_user_id = normalize_user_id(current_user.id)
-    profile = extensions.data_manager.get_user_profile(media_user_id)
+    # Como em `/account/profile`: o administrador não tem perfil local.
+    profile = extensions.data_manager.get_user_profile(media_user_id) or {
+        'media_user_id': media_user_id,
+        'username': current_user.username,
+        'email': current_user.email,
+    }
     profile['hide_from_leaderboard'] = hide_setting
     extensions.data_manager.set_user_profile(media_user_id, profile)
     return jsonify({"success": True, "message": _("Configuração de privacidade atualizada com sucesso.")})
