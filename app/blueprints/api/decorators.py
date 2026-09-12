@@ -21,7 +21,16 @@ def user_lookup_by_id(f):
     """Encontra o utilizador pelo seu ID no servidor de média e injeta-o na rota."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        corpo = request.json if request.is_json else {}
+        # 🐛 `request.json` LEVANTA 400 (com uma página de erro em HTML) quando o
+        # pedido se diz JSON e não traz corpo — e o `fetchAPI` do painel manda
+        # sempre o cabeçalho 'Content-Type: application/json', mesmo num GET.
+        # Antes isto não acontecia porque o acesso estava do lado direito de um
+        # `or`, que o Python não avalia quando o ID já veio no URL; ao passar a
+        # ler o corpo ANTES da cadeia, todas as rotas GET com este decorador
+        # começaram a responder 400 com HTML em vez de JSON.
+        # `get_json(silent=True)` nunca levanta: devolve None e seguimos.
+        corpo = request.get_json(silent=True) or {}
+
         # 'plex_user_id' é o nome antigo do campo. Continua a ser aceite para
         # não partir integrações já feitas contra esta API (o painel tem uma
         # API de convites usada por bots); o nome a usar é 'media_user_id'.

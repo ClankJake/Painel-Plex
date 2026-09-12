@@ -118,3 +118,67 @@ class TestUserLookupById:
 
         assert codigo == 404
         assert resposta.get_json()["success"] is False
+
+
+@pytest.mark.integration
+class TestPedidoSemCorpoJson:
+    """
+    🐛 REGRESSÃO REAL, reportada de um servidor Jellyfin em produção:
+
+        GET /api/users/libraries/44874bdd... 400 (BAD REQUEST)
+        SyntaxError: Unexpected token '<', "<!doctype "... is not valid JSON
+
+    O `fetchAPI` do painel envia SEMPRE 'Content-Type: application/json', mesmo
+    num GET sem corpo. `request.json` levanta 400 — com uma página de erro em
+    HTML, daí o "<!doctype" onde o JS esperava JSON — quando o pedido se diz
+    JSON e vem vazio.
+
+    Isto funcionava porque o acesso ao corpo estava do lado DIREITO de um `or`,
+    que o Python não avalia quando o ID já veio no URL. Ao passar a ler o corpo
+    antes da cadeia, todas as rotas GET com este decorador partiram de uma vez.
+    """
+
+    GUID = "44874bddd6264037b45f671fa20ca85b"
+
+    @pytest.fixture()
+    def backend(self, monkeypatch):
+        gestor = BackendFalso({self.GUID: {"id": self.GUID, "username": "ana"}})
+        monkeypatch.setattr(decorators_module, "media_server", gestor)
+        return gestor
+
+    def test_get_com_cabecalho_json_e_sem_corpo(self, app, backend):
+        # É exatamente o que o browser envia ao abrir a gestão de bibliotecas.
+        with app.test_request_context(
+            f"/api/users/libraries/{self.GUID}",
+            method="GET",
+            headers={"Content-Type": "application/json"},
+        ):
+            assert rota_com_utilizador(media_user_id=self.GUID) == {"username": "ana"}
+
+    def test_post_com_cabecalho_json_e_sem_corpo(self, app, backend):
+        # O mesmo padrão existe em POSTs que não enviam corpo nenhum.
+        with app.test_request_context(
+            "/api/users/block", method="POST", headers={"Content-Type": "application/json"},
+        ):
+            assert rota_com_utilizador(media_user_id=self.GUID) == {"username": "ana"}
+
+    def test_corpo_json_mal_formado_nao_rebenta(self, app, backend):
+        # Um corpo inválido não deve dar 400 em HTML quando o ID veio no URL.
+        with app.test_request_context(
+            f"/api/users/libraries/{self.GUID}", method="POST",
+            data="{ isto nao e json", content_type="application/json",
+        ):
+            assert rota_com_utilizador(media_user_id=self.GUID) == {"username": "ana"}
+
+    def test_corpo_json_que_nao_e_um_objeto(self, app, backend):
+        # `_do_corpo` protege contra um corpo que seja uma lista ou um número.
+        with app.test_request_context("/api/users/block", method="POST", json=[1, 2, 3]):
+            _resposta, codigo = rota_com_utilizador()
+
+        assert codigo == 400
+
+    def test_o_id_continua_a_poder_vir_no_corpo(self, app, backend):
+        # A leitura do corpo tem de continuar a funcionar onde é mesmo precisa.
+        with app.test_request_context("/api/users/block", method="POST",
+                                      json={"media_user_id": self.GUID}):
+            assert rota_com_utilizador() == {"username": "ana"}
