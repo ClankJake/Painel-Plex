@@ -322,3 +322,68 @@ class TestAvatares:
 
     def test_sem_avatar(self):
         assert thumb_source(None) is None
+
+
+class TestFusaoDeSessoesDeCast:
+    """O Plex lista o telemóvel que comanda um Chromecast ao lado do Chromecast.
+
+    Contá-los como duas telas cortava quem tem limite de uma e está apenas a
+    usar o Cast. Mas fundir só por "mesmo título" fundia também duas
+    reproduções genuínas da mesma mídia — o oposto do problema, e igualmente
+    mau: o limite de telas deixava de ser aplicado.
+    """
+
+    def _sessao(self, session_key, titulo, plataforma, view_offset):
+        return MediaSession(
+            user_id="1", username_fallback="ana", user_email="", session_key=session_key,
+            media_title=titulo, title=titulo, subtitle="", media_type="movie",
+            state="playing", platform=plataforma, player="", progress=0.0,
+            view_offset=view_offset, duration=7_200_000,
+        )
+
+    def test_o_telemovel_que_comanda_o_chromecast_e_fundido(self, provider):
+        # Mesma reprodução: andam ao segundo um do outro.
+        chromecast = self._sessao("1", "Duna", "chromecast", 1_800_000)
+        telemovel = self._sessao("2", "Duna", "android", 1_800_500)
+
+        assert provider.deduplicate_sessions([chromecast, telemovel]) == [chromecast]
+
+    def test_a_mesma_midia_em_posicoes_diferentes_conta_duas_vezes(self, provider):
+        # 🐛 REGRESSÃO REPORTADA: são duas pessoas (ou dois aparelhos) a ver o
+        # mesmo filme em pontos diferentes — não é um Cast, e o limite de telas
+        # tem de as apanhar.
+        chromecast = self._sessao("1", "Duna", "chromecast", 300_000)
+        outro = self._sessao("2", "Duna", "android", 5_400_000)
+
+        assert len(provider.deduplicate_sessions([chromecast, outro])) == 2
+
+    def test_conteudos_diferentes_contam_as_duas(self, provider):
+        chromecast = self._sessao("1", "Duna", "chromecast", 100)
+        telemovel = self._sessao("2", "Matrix", "android", 100)
+
+        assert len(provider.deduplicate_sessions([chromecast, telemovel])) == 2
+
+    def test_sem_chromecast_nada_e_fundido(self, provider):
+        sessoes = [
+            self._sessao("1", "Duna", "android", 100),
+            self._sessao("2", "Duna", "chrome", 100),
+        ]
+
+        assert len(provider.deduplicate_sessions(sessoes)) == 2
+
+    def test_a_folga_cobre_leituras_desencontradas(self, provider):
+        # O comando e o Chromecast são lidos no mesmo pedido, mas nada garante
+        # que reportem exatamente o mesmo instante.
+        chromecast = self._sessao("1", "Duna", "chromecast", 1_800_000)
+        telemovel = self._sessao("2", "Duna", "android", 1_800_000 + 80_000)
+
+        assert provider.deduplicate_sessions([chromecast, telemovel]) == [chromecast]
+
+    def test_para_la_da_folga_ja_sao_duas(self, provider):
+        chromecast = self._sessao("1", "Duna", "chromecast", 1_800_000)
+        outro = self._sessao("2", "Duna", "android", 1_800_000 + 200_000)
+
+        assert len(provider.deduplicate_sessions([chromecast, outro])) == 2
+
+    def test_lista_vazia(self, provider):
+        assert provider.deduplicate_sessions([]) == []

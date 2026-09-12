@@ -374,6 +374,61 @@ class PlexSessionsProvider:
 
         return 'default'
 
+    # Quanto pode a posição do Chromecast afastar-se da do aparelho que o
+    # comanda. São a MESMA reprodução, por isso andam juntas; a folga existe só
+    # para leituras desencontradas.
+    CAST_TOLERANCIA_MS = 90_000
+
+    def deduplicate_sessions(self, sessions):
+        """Funde o aparelho que comanda um Chromecast com o próprio Chromecast.
+
+        O Plex lista os dois: o telemóvel que manda tocar e o Chromecast que
+        toca. Contá-los como duas telas cortava quem tem limite de uma e está
+        apenas a usar o Cast.
+
+        🐛 A regra era só "mesmo utilizador + mesmo título", e isso fundia
+        também duas reproduções GENUÍNAS da mesma mídia em aparelhos
+        diferentes — que é exatamente o que o limite de telas existe para
+        apanhar. Passa a exigir também que estejam na MESMA POSIÇÃO: o comando
+        e o Chromecast andam ao segundo um do outro, duas pessoas a ver o mesmo
+        filme não.
+
+        Fica um caso por cobrir de propósito: dois aparelhos que comecem a
+        mesma mídia ao mesmo tempo mantêm-se juntos e continuam a ser fundidos.
+        Não há na API do Plex nada que os separe com certeza, e fundir a menos
+        (cortar quem só está a usar o Cast) é pior do que fundir a mais.
+        """
+        chromecasts = [s for s in sessions if s.platform == 'chromecast']
+        if not chromecasts:
+            return list(sessions)
+
+        unicas = list(chromecasts)
+
+        for sessao in sessions:
+            if sessao.platform == 'chromecast':
+                continue
+
+            comando_de = next(
+                (
+                    cast for cast in chromecasts
+                    if cast.media_title == sessao.media_title
+                    and abs((cast.view_offset or 0) - (sessao.view_offset or 0)) <= self.CAST_TOLERANCIA_MS
+                ),
+                None,
+            )
+
+            if comando_de is not None:
+                logger.debug(
+                    "Sessão '%s' (%s) tratada como o comando do Chromecast que toca o mesmo "
+                    "conteúdo na mesma posição — não conta como uma segunda tela.",
+                    sessao.media_title, sessao.platform,
+                )
+                continue
+
+            unicas.append(sessao)
+
+        return unicas
+
     # =========================================================================
     # ENCERRAMENTO
     # =========================================================================

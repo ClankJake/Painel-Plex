@@ -134,10 +134,9 @@ servidor. Recebe um `SessionsProvider` que lhe entrega `MediaSession` — uma
 reprodução já traduzida (quem está a ver, estado, progresso, plataforma, capa)
 — e sabe encerrá-las.
 
-- **Política, no `StreamManager`**: o que conta como uma tela (o telemóvel que
-  comanda um Chromecast não conta duas vezes), quem é cortado primeiro, o
-  anti-spam dos cortes, o debounce dos eventos e a cache curta do
-  "Reproduzindo Agora".
+- **Política, no `StreamManager`**: quantas telas são permitidas, quem é
+  cortado primeiro, o anti-spam dos cortes, o debounce dos eventos e a cache
+  curta do "Reproduzindo Agora".
 - **Vocabulário, no provider** (`media_server/plex/sessions.py`): onde está o
   estado do leitor, qual o campo da capa, como se reconhece um Chromecast, o
   formato das notificações do websocket e a filtragem dos pings de progresso.
@@ -145,6 +144,18 @@ reprodução já traduzida (quem está a ver, estado, progresso, plataforma, cap
 `MediaSession.raw` leva o objeto original do servidor, e existe apenas para o
 provider o receber de volta em `terminate()`. Nada fora do provider o deve
 inspecionar, ou volta a haver conhecimento do Plex espalhado pelo painel.
+
+`deduplicate_sessions()` é do provider porque só ele sabe se o seu servidor
+devolve DUAS entradas para uma só reprodução — o Plex lista o telemóvel que
+comanda um Chromecast ao lado do Chromecast; o Jellyfin não, porque quem apenas
+comanda vem sem `NowPlayingItem` e já é descartado antes.
+
+⚠️ **Fundir a mais é pior do que não fundir**: o que se funde deixa de contar
+para o limite de telas. Enquanto o filtro do Plex era aplicado a todos os
+servidores e bastava "mesmo utilizador + mesmo título", duas reproduções
+genuínas da mesma mídia contavam como uma e o limite nunca era aplicado. O Plex
+exige agora também a mesma POSIÇÃO de reprodução. Na dúvida, devolva a lista
+intacta.
 
 `terminate()` devolve `False` quando a reprodução ainda não pode ser encerrada
 (a carregar, sem identificador interno no servidor). Quem chama reagenda em vez

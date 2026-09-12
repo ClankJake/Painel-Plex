@@ -520,34 +520,16 @@ class StreamManager:
             self._schedule_delayed_check()
 
     def _filter_duplicate_cast_sessions(self, sessions):
+        """Pergunta ao servidor quais destas sessões são a mesma reprodução.
+
+        Só o provider sabe se o seu servidor duplica uma reprodução, e como
+        reconhecer o par — ver `SessionsProvider.deduplicate_sessions`. O que
+        vive aqui é a POLÍTICA: o que sobra desta fusão é o que conta para o
+        limite de telas e é o que o painel mostra.
         """
-        Remove as sessões "fantasma" que ocorrem quando um cliente de telemóvel/browser
-        está atuando como comando de um Chromecast a reproduzir o mesmo conteúdo.
-        """
-        unique_sessions = []
-        active_casts_media = set()
-
-        # Primeiro, identifica todas as sessões que SÃO os Chromecasts reais
-        for s in sessions:
-            if s.platform == 'chromecast':
-                active_casts_media.add(s.media_title)
-                unique_sessions.append(s)
-
-        # Depois, adiciona as restantes sessões, a menos que sejam a origem do Cast
-        for s in sessions:
-            # Se já for um chromecast, pulamos porque já o adicionamos no loop acima
-            if s.platform == 'chromecast':
-                continue
-
-            # Se o utilizador está reproduzindo o MESMO título num celular/browser
-            # E há um Chromecast tocando o mesmo título, assumimos que é uma
-            # "Sessão Remota" dupla e ignoramos.
-            if s.media_title in active_casts_media:
-                continue
-
-            unique_sessions.append(s)
-
-        return unique_sessions
+        if not self.sessions:
+            return list(sessions)
+        return self.sessions.deduplicate_sessions(sessions)
 
     def _group_sessions_by_user(self, sessions):
         user_sessions_by_id = defaultdict(list)

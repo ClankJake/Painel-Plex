@@ -42,7 +42,11 @@ def plataforma_de(cliente: str, dispositivo: str, tipo: str) -> str:
 
     # ⚠️ A ORDEM IMPORTA, pela mesma razão que no Plex: as verificações são por
     # substring e 'chrome' está contido em 'chromecast'.
-    if 'chromecast' in texto or 'cast' in texto: return 'chromecast'
+    # 🐛 Aqui estava também `or 'cast' in texto`, que apanhava por substring
+    # qualquer cliente ou aparelho com essas quatro letras no nome (um
+    # "Podcast", um aparelho chamado "Cast Room"). Um falso Chromecast fazia o
+    # filtro de sessões duplicadas descartar a outra sessão do utilizador.
+    if 'chromecast' in texto or 'google cast' in texto: return 'chromecast' 
 
     if 'chrome' in texto: return 'chrome'
     if 'safari' in texto: return 'safari'
@@ -228,6 +232,22 @@ class JellyfinSessionsProvider:
             "transcode_speed": transcode.get('TranscodingFramerate'),
             "transcode_progress": int(transcode['CompletionPercentage']) if transcode.get('CompletionPercentage') else None,
         }
+
+    def deduplicate_sessions(self, sessions):
+        """O Jellyfin não duplica uma reprodução: a lista vem intacta.
+
+        🐛 Isto não é uma não-implementação, é a correção de um bug real. Quem
+        apenas COMANDA outro aparelho (o "cast" do Jellyfin é controlo remoto de
+        outro cliente) aparece em `/Sessions` sem `NowPlayingItem`, e essas
+        sessões já são descartadas em `list_sessions`. O que resta são
+        reproduções verdadeiras, cada uma no seu aparelho.
+
+        Enquanto o motor de streams aplicava aqui o filtro de Cast do Plex — que
+        funde duas sessões do mesmo utilizador com o mesmo título — um
+        utilizador a ver a MESMA mídia em dois aparelhos contava como uma tela
+        só, e o limite nunca era aplicado.
+        """
+        return list(sessions)
 
     # =========================================================================
     # ENCERRAMENTO

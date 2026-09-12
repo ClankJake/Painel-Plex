@@ -603,3 +603,56 @@ class TestAutenticacaoNoPlex:
         from app.services.media_server.plex import PlexManager
 
         assert PlexManager(None, None, None, None).authenticate("ana", "segredo") is None
+
+
+class TestFusaoDeSessoes:
+    def test_o_jellyfin_nao_funde_nada(self, cache_limpa):
+        """
+        🐛 REGRESSÃO REPORTADA: um utilizador com limite de telas a ver a MESMA
+        mídia em dois aparelhos não era cortado, porque o motor aplicava a todos
+        os servidores o filtro de Cast do Plex.
+
+        No Jellyfin quem apenas COMANDA outro aparelho aparece sem
+        `NowPlayingItem` e já é descartado antes — o que resta são reproduções
+        verdadeiras, cada uma valendo uma tela.
+        """
+        provider = JellyfinSessionsProvider(None)
+        duas = [
+            MediaSession(user_id="1", username_fallback="ana", user_email="", session_key="1",
+                         media_title="Duna", title="Duna", subtitle="", media_type="movie",
+                         state="playing", platform="android", player="", progress=0.0,
+                         view_offset=100, duration=1000),
+            MediaSession(user_id="1", username_fallback="ana", user_email="", session_key="2",
+                         media_title="Duna", title="Duna", subtitle="", media_type="movie",
+                         state="playing", platform="chrome", player="", progress=0.0,
+                         view_offset=100, duration=1000),
+        ]
+
+        assert len(provider.deduplicate_sessions(duas)) == 2
+
+    def test_quem_so_comanda_nao_chega_a_contar(self, cache_limpa):
+        # É isto que torna a fusão desnecessária no Jellyfin.
+        backend = montar({'/Sessions': [
+            {"Id": "a-tocar", "UserId": GUID, "UserName": "ana", "Client": "Jellyfin Android",
+             "PlayState": {"PositionTicks": 0, "IsPaused": False},
+             "NowPlayingItem": {"Id": "i1", "Name": "Duna", "Type": "Movie", "RunTimeTicks": 10}},
+            {"Id": "so-comanda", "UserId": GUID, "UserName": "ana", "Client": "Jellyfin Web"},
+        ]})
+
+        sessoes = backend.sessions.list_sessions()
+
+        assert [s.session_key for s in sessoes] == ["a-tocar"]
+
+    @pytest.mark.parametrize("cliente,dispositivo", [
+        ("Jellyfin Podcast", ""),
+        ("Jellyfin Web", "Cast Room"),
+        ("Broadcast Player", ""),
+    ])
+    def test_nem_tudo_com_cast_no_nome_e_um_chromecast(self, cliente, dispositivo):
+        # 🐛 A verificação era por substring de 'cast': um falso Chromecast fazia
+        # o filtro de sessões duplicadas descartar a outra sessão do utilizador.
+        assert plataforma_de(cliente, dispositivo, "") != "chromecast"
+
+    def test_um_chromecast_a_serio_continua_a_ser_reconhecido(self):
+        assert plataforma_de("Jellyfin Web", "Chromecast", "") == "chromecast"
+        assert plataforma_de("Google Cast", "", "") == "chromecast"

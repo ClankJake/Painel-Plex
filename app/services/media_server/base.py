@@ -244,6 +244,19 @@ class SessionsProvider(Protocol):
     def user_thumb_source(self, raw_thumb: Optional[str]) -> Optional[str]:
         """Converte o avatar cru do diretório num prefixo para o proxy de imagens."""
 
+    def deduplicate_sessions(self, sessions: List[MediaSession]) -> List[MediaSession]:
+        """Funde as sessões que são, na verdade, a MESMA reprodução.
+
+        Alguns servidores devolvem duas entradas para uma só reprodução (o Plex
+        lista o telemóvel que comanda um Chromecast ao lado do Chromecast). Só
+        o provider sabe se o seu servidor faz isso e como reconhecer o par —
+        por isso a decisão vive aqui, e não no motor de streams.
+
+        ⚠️ Fundir a mais é PIOR do que não fundir: o que se funde deixa de
+        contar para o limite de telas, e um utilizador a ver a mesma coisa em
+        dois aparelhos escapa ao corte. Na dúvida, devolva a lista intacta.
+        """
+
     # --- Tempo real ---
 
     def supports_realtime(self) -> bool: ...

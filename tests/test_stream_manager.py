@@ -80,6 +80,11 @@ class ProviderFalso:
         self.avatares_pedidos.append(raw_thumb)
         return f"url:{raw_thumb}" if raw_thumb else None
 
+    def deduplicate_sessions(self, sessions):
+        # Um servidor que não duplica reproduções — como o Jellyfin. Fundir
+        # sessões é conhecimento do servidor, testado no provider de cada um.
+        return list(sessions)
+
     # --- tempo real ---
     def supports_realtime(self):
         return False
@@ -124,22 +129,24 @@ class TestAgrupamento:
         assert manager._group_sessions_by_user([sessao(user_id=None)]) == {}
 
 
-class TestFilterDuplicateCastSessions:
-    def test_remove_o_telemovel_que_comanda_o_chromecast(self, manager):
-        chromecast = sessao(session_key="1", titulo="Duna", plataforma="chromecast")
-        telemovel = sessao(session_key="2", titulo="Duna", plataforma="android")
+class TestFusaoDeSessoes:
+    """O motor não decide o que é a mesma reprodução — pergunta ao servidor.
 
-        restantes = manager._filter_duplicate_cast_sessions([chromecast, telemovel])
+    Reconhecer o par (o telemóvel que comanda um Chromecast) é conhecimento do
+    servidor e vive no provider; ver `tests/test_plex_sessions.py`.
+    """
 
-        assert restantes == [chromecast]
+    def test_respeita_o_que_o_provider_devolve(self, manager):
+        a = sessao(session_key="1", titulo="Duna")
+        b = sessao(session_key="2", titulo="Duna")
+        manager.sessions.deduplicate_sessions = lambda sessoes: [a]
 
-    def test_conteudos_diferentes_contam_as_duas(self, manager):
-        chromecast = sessao(session_key="1", titulo="Duna", plataforma="chromecast")
-        telemovel = sessao(session_key="2", titulo="Matrix", plataforma="android")
+        assert manager._filter_duplicate_cast_sessions([a, b]) == [a]
 
-        assert len(manager._filter_duplicate_cast_sessions([chromecast, telemovel])) == 2
-
-    def test_sem_chromecast_nada_e_removido(self, manager):
+    def test_um_servidor_que_nao_duplica_mantem_tudo(self, manager):
+        # 🐛 É a regressão reportada: com o Jellyfin, duas reproduções da MESMA
+        # mídia em aparelhos diferentes contavam como uma tela só, porque o
+        # motor aplicava a todos o filtro de Cast do Plex.
         sessoes = [
             sessao(session_key="1", titulo="Duna", plataforma="android"),
             sessao(session_key="2", titulo="Duna", plataforma="chrome"),
@@ -245,20 +252,21 @@ class TestEnforceScreenLimits:
 
         assert manager.sessions.terminadas == {}
 
-    def test_cast_a_partir_do_telemovel_conta_como_uma_tela(self, manager, cache_limpa):
+    def test_a_mesma_midia_em_dois_aparelhos_conta_duas_telas(self, manager, cache_limpa):
         """
-        Regressão do bug do Chromecast: o telemóvel que apenas comanda o Cast
-        aparece como uma segunda sessão no servidor. Se não for filtrado, um
-        utilizador com limite de 1 tela era cortado ao usar o Chromecast.
+        🐛 REGRESSÃO REPORTADA: um utilizador com limite de telas a reproduzir a
+        MESMA mídia em dois aparelhos não era cortado. O motor aplicava a todos
+        os servidores o filtro de Cast do Plex, que funde duas sessões do mesmo
+        utilizador com o mesmo título — e assim as duas contavam como uma.
         """
-        chromecast = sessao(session_key="1", titulo="Duna", plataforma="chromecast", view_offset=100)
-        telemovel = sessao(session_key="2", titulo="Duna", plataforma="android", view_offset=100)
+        primeiro = sessao(session_key="1", titulo="Duna", plataforma="android", view_offset=100)
+        segundo = sessao(session_key="2", titulo="Duna", plataforma="chrome", view_offset=5000)
 
         # Mesma sequência usada em 'check_and_enforce_streams'.
-        unicas = manager._filter_duplicate_cast_sessions([chromecast, telemovel])
+        unicas = manager._filter_duplicate_cast_sessions([primeiro, segundo])
         manager._enforce_screen_limits(1, "ana", unicas, {"screen_limit": 1}, self._config())
 
-        assert manager.sessions.terminadas == {}
+        assert len(manager.sessions.terminadas) == 1
 
     def test_corta_varias_sessoes_de_uma_vez(self, manager, cache_limpa):
         sessoes = [sessao(session_key=str(i), view_offset=i * 100) for i in range(4)]
@@ -318,14 +326,24 @@ class TestGetActiveStreamCount:
         assert gestor.get_active_stream_count(use_cache=False) == 2
         assert provider.chamadas == 1
 
-    def test_o_telemovel_que_comanda_o_chromecast_conta_uma_vez(self, app_context):
-        """A contagem usa o mesmo critério da lista, para os dois não discordarem."""
-        gestor, _ = self._manager([
-            sessao(session_key="1", user_id=1, titulo="Duna", plataforma="chromecast"),
-            sessao(session_key="2", user_id=1, titulo="Duna", plataforma="android"),
+    def test_a_contagem_usa_a_fusao_do_servidor(self, app_context):
+        """A contagem e a lista têm de usar o mesmo critério, senão discordam."""
+        gestor, provider = self._manager([
+            sessao(session_key="1", user_id=1, titulo="Duna"),
+            sessao(session_key="2", user_id=1, titulo="Duna"),
         ])
+        provider.deduplicate_sessions = lambda sessoes: sessoes[:1]
 
         assert gestor.get_active_stream_count(use_cache=False) == 1
+
+    def test_a_mesma_midia_em_dois_aparelhos_conta_duas(self, app_context):
+        # 🐛 Num servidor que não duplica reproduções, as duas contam.
+        gestor, _ = self._manager([
+            sessao(session_key="1", user_id=1, titulo="Duna", plataforma="android"),
+            sessao(session_key="2", user_id=1, titulo="Duna", plataforma="chrome"),
+        ])
+
+        assert gestor.get_active_stream_count(use_cache=False) == 2
 
     def test_falha_de_rede_devolve_zero(self, app_context):
         gestor, provider = self._manager([])
