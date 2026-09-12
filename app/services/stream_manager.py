@@ -404,12 +404,9 @@ class StreamManager:
     def _enforce_block_rules(self, user_id, username, sessions, profile, block_info, config):
         from app.extensions import cache
         block_reason = block_info.get('block_reason', 'manual')
-        spam_timeout = max(config.get("STREAM_CHECK_INTERVAL_SECONDS", 15), 60)
+        spam_timeout = self._janela_anti_repeticao(config)
 
-        valid_sessions = [
-            s for s in sessions
-            if not (s.session_key and cache.get(f"kill_spam_{s.session_key}"))
-        ]
+        valid_sessions = [s for s in sessions if not self._acabou_de_ser_cortada(s)]
 
         if not valid_sessions: return
 
@@ -434,7 +431,7 @@ class StreamManager:
 
         for session in valid_sessions:
             if session.session_key:
-                cache.set(f"kill_spam_{session.session_key}", True, timeout=spam_timeout)
+                self._marcar_como_cortada(session, spam_timeout)
             else:
                 cache.set(f"buffer_spam_{username}_{session.media_title}", True, timeout=15)
 
@@ -453,12 +450,9 @@ class StreamManager:
     def _enforce_screen_limits(self, user_id, username, sessions, profile, config):
         from app.extensions import cache
         screen_limit = profile.get('screen_limit', 0)
-        spam_timeout = max(config.get("STREAM_CHECK_INTERVAL_SECONDS", 15), 60)
+        spam_timeout = self._janela_anti_repeticao(config)
 
-        active_sessions = [
-            s for s in sessions
-            if not (s.session_key and cache.get(f"kill_spam_{s.session_key}"))
-        ]
+        active_sessions = [s for s in sessions if not self._acabou_de_ser_cortada(s)]
 
         if screen_limit > 0 and len(active_sessions) > screen_limit:
             excess_count = len(active_sessions) - screen_limit
@@ -484,8 +478,7 @@ class StreamManager:
             for i in range(excess_count):
                 session_to_terminate = sorted_sessions[i]
 
-                if session_to_terminate.session_key:
-                    cache.set(f"kill_spam_{session_to_terminate.session_key}", True, timeout=spam_timeout)
+                self._marcar_como_cortada(session_to_terminate, spam_timeout)
 
                 db_log_key = f"db_log_limit_{user_id}_{session_to_terminate.media_title}"
                 if not cache.get(db_log_key):
@@ -518,6 +511,41 @@ class StreamManager:
         if not cache.get(buffer_lock_key):
             cache.set(buffer_lock_key, True, timeout=10)
             self._schedule_delayed_check()
+
+    def _janela_anti_repeticao(self, config):
+        """Durante quanto tempo uma reprodução já cortada é ignorada.
+
+        Serve para não repetir o corte (e a mensagem, e o registo de auditoria)
+        enquanto o cliente demora a obedecer — o servidor ainda a lista durante
+        alguns segundos depois de receber a ordem.
+
+        🐛 Era um minuto fixo. Como a guarda também tira a reprodução da
+        CONTAGEM, isso dava a quem fosse cortado um minuto inteiro de stream
+        livre: bastava recomeçar. Duas voltas da verificação periódica chegam
+        para o cliente obedecer, e reduzem a folga para quem tenta contornar.
+        """
+        intervalo = config.get("STREAM_CHECK_INTERVAL_SECONDS", 15)
+        return max(intervalo * 2, 30)
+
+    def _acabou_de_ser_cortada(self, session):
+        """Esta reprodução foi cortada há pouco e ainda está a desaparecer?"""
+        from app.extensions import cache
+
+        chave = session.playback_key
+        if not chave or not cache.get(f"kill_spam_{chave}"):
+            return False
+
+        logger.debug(
+            "Reprodução '%s' (%s) ignorada nesta volta: foi cortada há pouco e o "
+            "servidor ainda a lista.", session.media_title, chave,
+        )
+        return True
+
+    def _marcar_como_cortada(self, session, timeout):
+        from app.extensions import cache
+
+        if session.playback_key:
+            cache.set(f"kill_spam_{session.playback_key}", True, timeout=timeout)
 
     def _filter_duplicate_cast_sessions(self, sessions):
         """Pergunta ao servidor quais destas sessões são a mesma reprodução.

@@ -185,6 +185,7 @@ class MediaSession:
     username_fallback: str
     user_email: str
 
+    # O que se usa para MANDAR PARAR esta reprodução.
     session_key: str
 
     # `media_title` é o título composto que vai para os logs e para a auditoria
@@ -212,7 +213,23 @@ class MediaSession:
 
     stream_details: Dict[str, Any] = field(default_factory=dict)
 
+    # O que identifica ESTA reprodução, por oposição à sessão que a serve.
+    #
+    # 🐛 Nem sempre são a mesma coisa, e confundi-los custou caro: no Plex, o
+    # `sessionKey` muda a cada reprodução; no Jellyfin, o `Id` da sessão é do
+    # APARELHO e sobrevive a parar e recomeçar. Como o painel guardava "já
+    # cortei esta" pelo `session_key`, no Jellyfin quem recomeçasse o filme
+    # logo a seguir ao corte ficava um minuto inteiro sem ser incomodado — e o
+    # limite de telas parecia não funcionar.
+    #
+    # Fica igual ao `session_key` quando o servidor não distingue os dois.
+    playback_key: Optional[str] = None
+
     raw: Any = None
+
+    def __post_init__(self):
+        if not self.playback_key:
+            self.playback_key = self.session_key
 
 
 @runtime_checkable

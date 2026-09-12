@@ -77,8 +77,6 @@ def plataforma_de(cliente: str, dispositivo: str, tipo: str) -> str:
 class JellyfinSessionsProvider:
     """Cumpre o contrato `SessionsProvider` para o Jellyfin."""
 
-    # Uma sessão sem atividade recente não interessa ao controlo de streams.
-    ACTIVE_WITHIN_SECONDS = 60
 
     def __init__(self, connection):
         self.conn = connection
@@ -117,13 +115,25 @@ class JellyfinSessionsProvider:
         if not self.is_connected():
             return []
 
-        sessoes = self.conn.api.get(
-            '/Sessions', params={'activeWithinSeconds': self.ACTIVE_WITHIN_SECONDS}
-        ) or []
+        # 🐛 Isto pedia `activeWithinSeconds=60`, um filtro que inventei sem
+        # nada na API que o justificasse. Uma reprodução cujo cliente demore
+        # mais do que isso a dar sinal de vida (acontece com o leitor integrado
+        # a reproduzir diretamente, sem transcodificação) desaparecia da vista
+        # do painel — e o que o painel não vê, não conta nem corta.
+        #
+        # Quem decide o que é uma sessão viva é o servidor. Ao painel basta o
+        # `NowPlayingItem`: quem só está ligado, sem nada a tocar, não o traz.
+        sessoes = self.conn.api.get('/Sessions') or []
 
-        # O Jellyfin devolve também as sessões que estão apenas ligadas, sem
-        # nada a tocar. Para o controlo de streams, só interessa quem está a ver.
-        return [self._traduzir(s) for s in sessoes if s.get('NowPlayingItem')]
+        a_reproduzir = [s for s in sessoes if s.get('NowPlayingItem')]
+
+        if len(sessoes) != len(a_reproduzir):
+            logger.debug(
+                "Jellyfin: %s sessão(ões) ligadas, %s a reproduzir.",
+                len(sessoes), len(a_reproduzir),
+            )
+
+        return [self._traduzir(s) for s in a_reproduzir]
 
     def _traduzir(self, sessao: dict) -> MediaSession:
         item = sessao.get('NowPlayingItem') or {}
@@ -146,6 +156,7 @@ class JellyfinSessionsProvider:
             # O Jellyfin não associa email às sessões; o painel usa o do perfil.
             user_email='',
             session_key=str(sessao.get('Id') or ''),
+            playback_key=self._chave_da_reproducao(sessao, item),
             media_title=self._titulo_para_registo(item, tipo),
             title=self._titulo(item, tipo),
             subtitle=self._subtitulo(item, tipo),
@@ -160,6 +171,24 @@ class JellyfinSessionsProvider:
             stream_details=self._detalhes_do_stream(sessao),
             raw=sessao,
         )
+
+    def _chave_da_reproducao(self, sessao, item) -> str:
+        """O que distingue ESTA reprodução das seguintes no mesmo aparelho.
+
+        🐛 O `Id` da sessão do Jellyfin é do aparelho: parar o filme e voltar a
+        começá-lo devolve o MESMO id. Como o painel guardava "já cortei esta"
+        por esse id, quem recomeçasse logo a seguir a um corte ficava sem ser
+        incomodado durante toda a janela do anti-spam.
+
+        O `PlaylistItemId` muda a cada reprodução quando existe; quando não
+        existe, o item que está a tocar pelo menos separa filmes diferentes.
+        """
+        partes = [
+            str(sessao.get('Id') or ''),
+            str(sessao.get('PlaylistItemId') or ''),
+            str(item.get('Id') or ''),
+        ]
+        return ':'.join(parte for parte in partes if parte)
 
     def _titulo(self, item, tipo) -> str:
         if tipo == 'episode':

@@ -19,13 +19,14 @@ from tests.conftest import FakeDataManager
 
 
 def sessao(session_key="1", user_id=1, titulo="Matrix", plataforma="default",
-           view_offset=0, terminavel=True, **extra):
+           view_offset=0, terminavel=True, playback_key=None, **extra):
     """Uma sessão já traduzida, como o provider a entrega."""
     campos = dict(
         user_id=normalize_user_id(user_id),
         username_fallback="ana",
         user_email="ana@exemplo.com",
         session_key=session_key,
+        playback_key=playback_key,
         media_title=titulo,
         title=titulo,
         subtitle="",
@@ -491,3 +492,64 @@ class TestNowPlayingCache:
         # Recua o relógio da cache para além da janela.
         gestor._now_playing_cached_at -= (StreamManager.NOW_PLAYING_CACHE_SECONDS + 1)
         assert gestor._get_cached_now_playing() is None
+
+
+class TestGuardaContraCorteRepetido:
+    """
+    🐛 REGRESSÃO REPORTADA (log de um Jellyfin real): os cortes apareciam
+    espaçados de 60 a 120 segundos em vez de a cada volta da verificação. O
+    utilizador era cortado, recomeçava o filme, e ficava um minuto inteiro sem
+    ser incomodado.
+
+    A guarda "já cortei esta" era gravada com o `session_key`. No Plex isso é a
+    REPRODUÇÃO (muda a cada play); no Jellyfin é o APARELHO, e sobrevive a
+    parar e recomeçar — por isso a guarda apanhava a reprodução seguinte.
+    """
+
+    def _config(self, intervalo=15):
+        return {
+            "STREAM_CHECK_INTERVAL_SECONDS": intervalo,
+            "SCREEN_LIMIT_TERMINATION_STRATEGY": "oldest",
+            "TERMINATION_MSG_SCREEN_LIMIT": "limite",
+        }
+
+    def test_recomecar_a_reproducao_volta_a_ser_cortado(self, manager, cache_limpa):
+        # Mesmo aparelho (mesma sessão), reprodução nova.
+        primeira = sessao(session_key="aparelho-1", playback_key="aparelho-1:reproducao-A", view_offset=900)
+        outra = sessao(session_key="aparelho-2", playback_key="aparelho-2:reproducao-B", view_offset=10)
+
+        manager._enforce_screen_limits(1, "ana", [primeira, outra], {"screen_limit": 1}, self._config())
+        assert set(manager.sessions.terminadas) == {"aparelho-1"}
+
+        # O utilizador recomeça no MESMO aparelho: é uma reprodução nova.
+        manager.sessions.terminadas.clear()
+        recomecada = sessao(session_key="aparelho-1", playback_key="aparelho-1:reproducao-C", view_offset=900)
+
+        manager._enforce_screen_limits(1, "ana", [recomecada, outra], {"screen_limit": 1}, self._config())
+
+        assert set(manager.sessions.terminadas) == {"aparelho-1"}
+
+    def test_a_mesma_reproducao_nao_e_cortada_duas_vezes_seguidas(self, manager, cache_limpa):
+        # A guarda continua a servir para o que existe: não repetir a ordem
+        # (nem a mensagem, nem a auditoria) enquanto o cliente obedece.
+        a_cortar = sessao(session_key="aparelho-1", playback_key="repro-A", view_offset=900)
+        outra = sessao(session_key="aparelho-2", playback_key="repro-B", view_offset=10)
+
+        manager._enforce_screen_limits(1, "ana", [a_cortar, outra], {"screen_limit": 1}, self._config())
+        manager.sessions.terminadas.clear()
+
+        manager._enforce_screen_limits(1, "ana", [a_cortar, outra], {"screen_limit": 1}, self._config())
+
+        assert manager.sessions.terminadas == {}
+
+    def test_a_janela_acompanha_o_intervalo_de_verificacao(self, manager):
+        # Duas voltas chegam para o cliente obedecer; um minuto fixo dava a
+        # quem fosse cortado um minuto de stream livre.
+        assert manager._janela_anti_repeticao(self._config(intervalo=15)) == 30
+        assert manager._janela_anti_repeticao(self._config(intervalo=30)) == 60
+        # Nunca menos de 30s, mesmo com um intervalo muito curto.
+        assert manager._janela_anti_repeticao(self._config(intervalo=5)) == 30
+
+    def test_sem_chave_de_reproducao_usa_a_da_sessao(self):
+        # Um servidor que não distinga os dois continua a funcionar como antes.
+        assert sessao(session_key="abc").playback_key == "abc"

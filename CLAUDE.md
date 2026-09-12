@@ -145,6 +145,14 @@ reprodução já traduzida (quem está a ver, estado, progresso, plataforma, cap
 provider o receber de volta em `terminate()`. Nada fora do provider o deve
 inspecionar, ou volta a haver conhecimento do Plex espalhado pelo painel.
 
+⚠️ **A sessão e a reprodução não são a mesma coisa.** `MediaSession` tem duas
+chaves: `session_key` é o que se usa para MANDAR PARAR (o endereço do comando),
+`playback_key` é o que identifica ESTA reprodução. No Plex coincidem (o
+`sessionKey` muda a cada play); no Jellyfin o `Id` da sessão é do APARELHO e
+sobrevive a parar e recomeçar. O anti-repetição dos cortes usa a
+`playback_key` — com a da sessão, quem recomeçasse logo a seguir a um corte
+ficava toda a janela sem ser incomodado.
+
 `deduplicate_sessions()` é do provider porque só ele sabe se o seu servidor
 devolve DUAS entradas para uma só reprodução — o Plex lista o telemóvel que
 comanda um Chromecast ao lado do Chromecast; o Jellyfin não, porque quem apenas

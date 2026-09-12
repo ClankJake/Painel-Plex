@@ -656,3 +656,72 @@ class TestFusaoDeSessoes:
     def test_um_chromecast_a_serio_continua_a_ser_reconhecido(self):
         assert plataforma_de("Jellyfin Web", "Chromecast", "") == "chromecast"
         assert plataforma_de("Google Cast", "", "") == "chromecast"
+
+
+@pytest.mark.integration
+class TestIdentidadeDaReproducao:
+    """
+    🐛 REGRESSÃO REPORTADA: o `Id` da sessão do Jellyfin é do APARELHO e
+    sobrevive a parar e recomeçar. O painel guardava "já cortei esta" por esse
+    id, e quem recomeçasse logo a seguir a um corte ficava toda a janela do
+    anti-spam sem ser incomodado — no log do servidor, cortes espaçados de 60 a
+    120 segundos em vez de a cada volta da verificação.
+    """
+
+    def _sessao_bruta(self, **extra):
+        base = {
+            "Id": "aparelho-android", "UserId": GUID, "UserName": "teste",
+            "Client": "Jellyfin for Android", "DeviceName": "Telemóvel",
+            "PlayState": {"PositionTicks": 0, "IsPaused": False},
+            "NowPlayingItem": {"Id": "filme-1", "Name": "Amor Sem Limites",
+                               "Type": "Movie", "RunTimeTicks": 10_000},
+        }
+        base.update(extra)
+        return base
+
+    def test_a_sessao_continua_a_ser_o_que_se_manda_parar(self, cache_limpa):
+        backend = montar({'/Sessions': [self._sessao_bruta()]})
+
+        sessao = backend.sessions.list_sessions()[0]
+
+        assert sessao.session_key == "aparelho-android"
+
+    def test_reproducoes_diferentes_no_mesmo_aparelho_tem_chaves_diferentes(self, cache_limpa):
+        primeiro = montar({'/Sessions': [self._sessao_bruta()]}).sessions.list_sessions()[0]
+        segundo = montar({'/Sessions': [self._sessao_bruta(NowPlayingItem={
+            "Id": "filme-2", "Name": "O Recomeço", "Type": "Movie", "RunTimeTicks": 10_000,
+        })]}).sessions.list_sessions()[0]
+
+        assert primeiro.session_key == segundo.session_key
+        assert primeiro.playback_key != segundo.playback_key
+
+    def test_o_playlist_item_id_separa_dois_arranques_do_mesmo_filme(self, cache_limpa):
+        primeiro = montar({'/Sessions': [self._sessao_bruta(PlaylistItemId="playlistItem1")]}).sessions.list_sessions()[0]
+        segundo = montar({'/Sessions': [self._sessao_bruta(PlaylistItemId="playlistItem2")]}).sessions.list_sessions()[0]
+
+        assert primeiro.playback_key != segundo.playback_key
+
+
+@pytest.mark.integration
+class TestSessoesVisiveis:
+    def test_nao_se_filtra_por_atividade_recente(self, cache_limpa):
+        # 🐛 O painel pedia `activeWithinSeconds=60`, um filtro inventado sem
+        # nada na API que o justificasse. Uma reprodução cujo cliente demore
+        # mais do que isso a dar sinal de vida desaparecia da vista — e o que o
+        # painel não vê, não conta nem corta.
+        backend = montar({'/Sessions': []})
+
+        backend.sessions.list_sessions()
+
+        pedidos = [e for e in backend.conn.api.enviados if e[1] == '/Sessions']
+        assert pedidos, "a listagem de sessões não foi pedida"
+
+    def test_quem_esta_ligado_sem_ver_nada_continua_a_nao_contar(self, cache_limpa):
+        backend = montar({'/Sessions': [
+            {"Id": "a-tocar", "UserId": GUID, "UserName": "teste", "Client": "Jellyfin for Android",
+             "PlayState": {"PositionTicks": 0, "IsPaused": False},
+             "NowPlayingItem": {"Id": "i1", "Name": "Duna", "Type": "Movie", "RunTimeTicks": 10}},
+            {"Id": "so-ligado", "UserId": GUID, "UserName": "teste", "Client": "Jellyfin Web"},
+        ]})
+
+        assert [s.session_key for s in backend.sessions.list_sessions()] == ["a-tocar"]
