@@ -527,7 +527,26 @@ class StreamManager:
                 )
             return False
 
-        return self.sessions.force_terminate(session, reason)
+        # 🐛 Sem esta trava, um último recurso que o servidor RECUSA (um
+        # aparelho que ele não reconhece, por exemplo) era repetido a cada
+        # volta da verificação: um pedido falhado e um ERROR no log de 15 em 15
+        # segundos, para sempre. Tenta-se uma vez por reprodução; se não
+        # resultar, diz-se porquê e não se insiste.
+        chave_recusa = f"forcar_falhou_{session.playback_key}"
+        if cache.get(chave_recusa):
+            return False
+
+        if self.sessions.force_terminate(session, reason):
+            return True
+
+        cache.set(chave_recusa, True, timeout=600)
+        logger.error(
+            "❌ Não há como encerrar '%s' no cliente '%s': ignora a ordem de parar e o "
+            "servidor não aceitou o último recurso (ver o erro acima). O limite de telas "
+            "NÃO está a ser cumprido neste aparelho.",
+            session.media_title, session.player,
+        )
+        return False
 
     def _terminate_session(self, session, reason):
         from app.extensions import cache

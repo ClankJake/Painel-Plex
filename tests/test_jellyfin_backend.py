@@ -42,6 +42,10 @@ class ApiFalsa:
 
     def _resolver(self, metodo, endpoint):
         self.enviados.append((metodo, endpoint))
+        # Um erro pode ser registado só para um método — o mesmo endpoint
+        # responde ao GET e ao DELETE com resultados diferentes.
+        if (metodo, endpoint) in self.erros:
+            raise self.erros[(metodo, endpoint)]
         if endpoint in self.erros:
             raise self.erros[endpoint]
         # A correspondência exata vem primeiro: sem isso, um pedido a
@@ -543,30 +547,69 @@ class TestClienteQueIgnoraOComando:
     def _bruta(self, **extra):
         return TestSessoes()._sessao_bruta(**extra)
 
+    def _montar(self, aparelhos=None, **respostas):
+        base = {'/Devices': {"Items": aparelhos if aparelhos is not None else []}}
+        base.update(respostas)
+        return base
+
     def test_revogar_o_aparelho_leva_o_id_do_aparelho(self, cache_limpa):
-        backend = montar({'/Sessions': [self._bruta(DeviceId="aparelho-abc")]})
+        backend = montar(self._montar(
+            aparelhos=[{"Id": "aparelho-abc", "Name": "M23"}],
+            **{'/Sessions': [self._bruta(DeviceId="aparelho-abc")]},
+        ))
         sessao = self._sessao(backend)
 
         assert backend.sessions.force_terminate(sessao, "limite") is True
         assert ('/Devices', {'id': 'aparelho-abc'}) in backend.conn.api.apagados
 
+    def test_usa_a_grafia_do_servidor_e_nao_a_da_sessao(self, cache_limpa):
+        # O id vem do CLIENTE. Se o servidor o lista com outra caixa, é a dele
+        # que vale — mandar a outra é pedir o 400 de volta.
+        backend = montar(self._montar(
+            aparelhos=[{"Id": "Aparelho-ABC", "Name": "M23"}],
+            **{'/Sessions': [self._bruta(DeviceId="aparelho-abc")]},
+        ))
+
+        assert backend.sessions.force_terminate(self._sessao(backend), "limite") is True
+        assert ('/Devices', {'id': 'Aparelho-ABC'}) in backend.conn.api.apagados
+
+    def test_aparelho_que_o_servidor_nao_conhece_nao_e_pedido(self, cache_limpa):
+        """
+        🐛 REGRESSÃO REPORTADA: o `DeviceId` da sessão é o que o CLIENTE diz
+        ser, e nem sempre corresponde a um aparelho registado. O
+        `DELETE /Devices` respondia 400 com um corpo vazio — a cada volta da
+        verificação, para sempre, sem dizer nada a quem lia o log.
+        """
+        backend = montar(self._montar(
+            aparelhos=[{"Id": "outro-aparelho"}],
+            **{'/Sessions': [self._bruta(DeviceId="aparelho-abc")]},
+        ))
+
+        assert backend.sessions.force_terminate(self._sessao(backend), "limite") is False
+        assert backend.conn.api.apagados == []
+
     def test_sem_aparelho_conhecido_nao_se_apaga_nada(self, cache_limpa):
         # Nunca adivinhar: apagar o aparelho errado tira o acesso a quem não fez
         # nada. Sem o DeviceId, o painel assume que não tem como forçar.
-        backend = montar({'/Sessions': [self._bruta()]})
+        backend = montar(self._montar(**{'/Sessions': [self._bruta()]}))
         sessao = self._sessao(backend)
 
         assert backend.sessions.force_terminate(sessao, "limite") is False
         assert backend.conn.api.apagados == []
 
     def test_uma_recusa_do_servidor_nao_e_dada_por_feita(self, cache_limpa):
+        # O aparelho EXISTE na lista; é o apagar que o servidor recusa.
         backend = montar(
-            {'/Sessions': [self._bruta(DeviceId="aparelho-abc")]},
-            erros={'/Devices': JellyfinApiError("sem permissão", status_code=403)},
+            self._montar(
+                aparelhos=[{"Id": "aparelho-abc"}],
+                **{'/Sessions': [self._bruta(DeviceId="aparelho-abc")]},
+            ),
+            erros={('DELETE', '/Devices'): JellyfinApiError("sem permissão", status_code=403)},
         )
         sessao = self._sessao(backend)
 
         assert backend.sessions.force_terminate(sessao, "limite") is False
+        assert ('/Devices', {'id': 'aparelho-abc'}) in backend.conn.api.apagados
 
     def test_o_cliente_que_avisa_que_nao_aceita_comandos_e_terminado_na_mesma(self, cache_limpa):
         # O `SupportsMediaControl` só serve para o log ficar a explicar porquê:

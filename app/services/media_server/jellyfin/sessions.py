@@ -329,6 +329,30 @@ class JellyfinSessionsProvider:
             )
             return False
 
+    def _aparelho_conhecido(self, device_id: str) -> Optional[str]:
+        """O `Id` do aparelho tal como o servidor o LISTA, ou None.
+
+        🐛 O `DeviceId` que vem na sessão é o que o CLIENTE diz ser, e nem
+        sempre corresponde a um aparelho registado — o `DELETE /Devices` com um
+        id que o servidor não conhece responde 400 com um corpo vazio, que não
+        diz nada a quem lê o log. Confirmar na lista real transforma isso numa
+        mensagem que se percebe, e evita pedidos condenados a falhar.
+        """
+        try:
+            resposta = self.conn.api.get('/Devices')
+        except Exception as e:
+            logger.warning(f"Não foi possível listar os aparelhos do Jellyfin: {describe(e)}")
+            return None
+
+        itens = resposta.get('Items') if isinstance(resposta, dict) else resposta
+        alvo = str(device_id).strip().lower()
+        for aparelho in itens or []:
+            identificador = str(aparelho.get('Id') or '')
+            if identificador.strip().lower() == alvo:
+                # Devolve-se a grafia do SERVIDOR, não a da sessão.
+                return identificador
+        return None
+
     def force_terminate(self, session: MediaSession, reason: str) -> bool:
         """Revoga o acesso do APARELHO, para clientes que ignoram a ordem de parar.
 
@@ -337,6 +361,10 @@ class JellyfinSessionsProvider:
         não. Em troca, a pessoa tem de voltar a autenticar-se naquele aparelho —
         por isso só se chega aqui depois de a via educada ter falhado várias
         vezes e com autorização explícita do administrador.
+
+        Devolve False quando não há como revogar. Não é uma falha a esconder: é
+        o painel a dizer que, naquele cliente, o limite de telas não vai ser
+        cumprido.
         """
         bruta = session.raw if isinstance(session.raw, dict) else {}
         device_id = bruta.get('DeviceId')
@@ -348,21 +376,33 @@ class JellyfinSessionsProvider:
             )
             return False
 
+        alvo = self._aparelho_conhecido(device_id)
+        if not alvo:
+            logger.error(
+                "O Jellyfin não reconhece o aparelho '%s' (sessão %s, cliente '%s'), por isso "
+                "não há como revogar-lhe o acesso. O identificador vem da própria sessão — "
+                "se não está na lista de aparelhos do servidor, este cliente não pode ser "
+                "encerrado à força.",
+                device_id, session.session_key, session.player,
+            )
+            return False
+
         try:
-            self.conn.api.delete('/Devices', params={'id': device_id})
+            self.conn.api.delete('/Devices', params={'id': alvo})
         except JellyfinApiError as e:
             logger.error(
-                "O Jellyfin recusou revogar o aparelho %s: %s", device_id, describe(e)
+                "O Jellyfin recusou revogar o aparelho %s (sessão %s): %s",
+                alvo, session.session_key, describe(e),
             )
             return False
         except Exception as e:
-            logger.error("Falha ao revogar o aparelho %s: %s", device_id, describe(e))
+            logger.error("Falha ao revogar o aparelho %s: %s", alvo, describe(e))
             return False
 
         logger.warning(
             "🔌 Acesso do aparelho %s revogado: o cliente '%s' ignorou repetidamente a ordem "
             "de parar a reprodução. O utilizador terá de autenticar-se de novo nesse aparelho.",
-            device_id, session.player,
+            alvo, session.player,
         )
         return True
 

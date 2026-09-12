@@ -216,6 +216,15 @@ pedidos à mesma `playback_key`, e só com `FORCE_STREAM_TERMINATION` ligado
 aparelho e não se desfaz a partir do painel). O Plex devolve `False` — sem nada
 mais forte a oferecer, o motor volta a pedir.
 
+⚠️ **O `DeviceId` da sessão é o que o CLIENTE diz ser**, e nem sempre há um
+aparelho registado com esse id — o `DELETE /Devices` responde então 400 com um
+corpo vazio, que não diz nada a quem lê o log. Por isso confirma-se primeiro na
+lista real (`GET /Devices`) e usa-se a grafia do SERVIDOR. E o motor só tenta o
+último recurso UMA vez por reprodução: sem essa trava, um aparelho que o
+servidor recusa dava um pedido falhado e um ERROR de 15 em 15 segundos, para
+sempre. Quando não resulta, fica um ERROR a dizer que naquele cliente o limite
+não vai ser cumprido — que é a verdade, e é melhor do que insistir em silêncio.
+
 Os URLs de imagens passam todos por `app/utils/image_proxy.py`; o prefixo
 (`plex:`, `plex_account:`, `url:`) é escolhido pelo backend.
 

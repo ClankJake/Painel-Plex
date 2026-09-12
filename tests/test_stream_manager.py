@@ -52,6 +52,9 @@ class ProviderFalso:
         self.terminadas = {}
         # O último recurso, para clientes que ignoram a ordem de parar.
         self.forcadas = {}
+        # Uma entrada por CHAMADA (o dicionário acima é por sessão e não
+        # distingue uma tentativa de dez).
+        self.forcas_pedidas = []
         self.forca_funciona = True
         self.ligado = True
         self.owner_id = owner_id
@@ -82,6 +85,7 @@ class ProviderFalso:
 
     def force_terminate(self, session, reason):
         self.forcadas[session.session_key] = reason
+        self.forcas_pedidas.append(session.playback_key)
         return self.forca_funciona
 
     def user_thumb_source(self, raw_thumb):
@@ -620,6 +624,34 @@ class TestClienteQueIgnoraAOrdemDeParar:
         assert manager.sessions.forcadas == {}
         # E continua a pedir — desistir em silêncio seria pior.
         assert manager.sessions.terminadas == {"exoplayer": "limite"}
+
+    def test_um_ultimo_recurso_recusado_nao_e_repetido_a_cada_volta(self, manager, cache_limpa, forcar):
+        """
+        🐛 REGRESSÃO REPORTADA: com o FORCE_STREAM_TERMINATION ligado e um
+        aparelho que o servidor não aceita revogar, o painel repetia o pedido a
+        cada verificação — um 400 e um ERROR no log de 15 em 15 segundos, para
+        sempre. Tenta-se uma vez por reprodução; depois diz-se porquê e pára.
+        """
+        forcar(True)
+        manager.sessions.forca_funciona = False
+        alvo = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+
+        self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 5)
+
+        assert manager.sessions.forcas_pedidas == ["exoplayer:repro-A"]
+
+    def test_a_trava_e_por_reproducao(self, manager, cache_limpa, forcar):
+        # Uma reprodução nova merece a sua própria tentativa: o aparelho pode
+        # entretanto ter passado a ser conhecido pelo servidor.
+        forcar(True)
+        manager.sessions.forca_funciona = False
+        primeira = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+        self._insistir(manager, primeira, manager.TENTATIVAS_ANTES_DE_FORCAR + 2)
+
+        outra = sessao(session_key="exoplayer", playback_key="exoplayer:repro-B")
+        self._insistir(manager, outra, manager.TENTATIVAS_ANTES_DE_FORCAR + 1)
+
+        assert manager.sessions.forcas_pedidas == ["exoplayer:repro-A", "exoplayer:repro-B"]
 
     def test_se_o_ultimo_recurso_falhar_volta_a_pedir(self, manager, cache_limpa, forcar):
         # Um servidor sem nada mais forte a oferecer (o Plex, por exemplo)
