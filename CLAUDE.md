@@ -250,9 +250,38 @@ O campo JSON de entrada chama-se `media_user_id`; `plex_user_id` continua a ser
 aceite em `user_lookup_by_id` para não partir integrações já feitas.
 
 `TautulliManager` segue o mesmo padrão sobre `app/services/tautulli/`
-(`api_client`, `stats_handler`, `recommendations_handler`). O Tautulli só
-suporta Plex: num painel ligado ao Jellyfin as estatísticas ficam
-indisponíveis até haver um fornecedor alternativo.
+(`api_client`, `stats_handler`, `recommendations_handler`).
+
+### Estatísticas, histórico e aparelhos: três coisas, não uma
+
+O Tautulli só fala com o Plex, mas não é tudo o que ele dá que fica de fora.
+
+**As ESTATÍSTICAS ficam** (pódio, XP, conquistas, recomendações, Wrapped): saem
+do registo por reprodução que só o Tautulli guarda. A capacidade
+`estatisticas` diz onde existem; onde é falsa, escondem-se — as ligações do
+menu, o cartão do Tautulli nas Conexões e as sub-abas Conquistas, XP e
+Recomendações da Gamificação ("Indique e Ganhe" é de pagamentos e fica). As
+páginas `/statistics` e `/wrapped` redirecionam: esconder a ligação não chega,
+um marcador nos favoritos dava uma página vazia sem explicação.
+
+⚠️ Ao escondê-las, a casa de quem não é administrador deixa de existir — e
+estava escrita à mão em cinco sítios. `endpoint_inicial_do_utilizador()`
+(`app/utils/navigation.py`) responde por todos.
+
+**O HISTÓRICO e os APARELHOS não ficam**: são do contrato
+(`get_watch_history`, `get_user_devices`) e cada backend responde à sua
+maneira. No Plex vão ao Tautulli; no Jellyfin, a `jellyfin/history.py`, que os
+tira do próprio servidor. Duas diferenças a ter presentes:
+
+- O histórico do Jellyfin é por **item**, não por reprodução (`GET /Items` com
+  `Filters=IsPlayed` e `SortBy=DatePlayed`, lendo o `UserData`). Ver o mesmo
+  episódio três vezes dá uma linha. E o servidor não guarda em que aparelho
+  cada item foi visto — a coluna do reprodutor vem vazia, porque inventar seria
+  pior. `PlayedPercentage` só vem preenchido a meio de uma reprodução: um item
+  com `Played` é 100%, não 0.
+- Os aparelhos do Jellyfin são melhores do que os do Plex: `GET /Devices` dá os
+  que estão REGISTADOS na conta. No Plex não há como pedi-los (a API do
+  plex.tv só lista os do dono), por isso são deduzidos do histórico.
 
 Duas armadilhas do backend Jellyfin, ambas com teste de regressão:
 

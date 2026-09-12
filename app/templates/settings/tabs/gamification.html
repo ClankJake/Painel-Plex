@@ -26,10 +26,18 @@
         <div class="px-4 sm:px-6 pt-5 border-b border-gray-200 dark:border-gray-700/60">
             <nav class="flex gap-2 overflow-x-auto pb-2 gam-subtabs-scroll" id="gam-subtabs-nav"
                  style="-webkit-overflow-scrolling: touch; touch-action: pan-x; scrollbar-width: none;">
+                {# Conquistas, XP e Recomendações saem todas do histórico do Tautulli,
+                   que só fala com o Plex. Sem a capacidade `estatisticas`, os campos
+                   não teriam de onde vir — escondem-se em vez de dar erro. "Indique e
+                   Ganhe" é de pagamentos e não depende de nada disto. #}
+                {% if media_server.capabilities.estatisticas %}
                 <button type="button" data-subtab="achievements" class="gam-subtab-button tab-button active whitespace-nowrap flex-shrink-0">{{ _('Conquistas') }}</button>
                 <button type="button" data-subtab="xp" class="gam-subtab-button tab-button whitespace-nowrap flex-shrink-0">{{ _('Sistema de XP e Níveis') }}</button>
-                <button type="button" data-subtab="referral" class="gam-subtab-button tab-button whitespace-nowrap flex-shrink-0">{{ _('Indique e Ganhe') }}</button>
+                {% endif %}
+                <button type="button" data-subtab="referral" class="gam-subtab-button tab-button {% if not media_server.capabilities.estatisticas %}active {% endif %}whitespace-nowrap flex-shrink-0">{{ _('Indique e Ganhe') }}</button>
+                {% if media_server.capabilities.estatisticas %}
                 <button type="button" data-subtab="recommendations" class="gam-subtab-button tab-button whitespace-nowrap flex-shrink-0">{{ _('Recomendações') }}</button>
+                {% endif %}
             </nav>
         </div>
         <style>
@@ -38,6 +46,7 @@
         </style>
 
         <!-- Sub-aba: Conquistas -->
+        {% if media_server.capabilities.estatisticas %}
         <div id="gam-subtab-content-achievements" class="gam-subtab-content">
         <!-- Corpo do Formulário (Grid de Missões) -->
         <div class="p-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -307,7 +316,9 @@
         <!-- Fim da Sub-aba: Conquistas -->
 
         <!-- Sub-aba: Indique e Ganhe (Referências) -->
-        <div id="gam-subtab-content-referral" class="gam-subtab-content hidden">
+        {% endif %}
+
+        <div id="gam-subtab-content-referral" class="gam-subtab-content{% if media_server.capabilities.estatisticas %} hidden{% endif %}">
         <div class="p-6 space-y-6">
 
             <div class="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/10 dark:to-teal-900/10 rounded-xl p-5 border border-emerald-200 dark:border-emerald-800/40">
@@ -377,6 +388,7 @@
         <!-- Fim da Sub-aba: Indique e Ganhe -->
 
         <!-- Sub-aba: Recomendações ("Porque assistiu X, pode gostar de Y") -->
+        {% if media_server.capabilities.estatisticas %}
         <div id="gam-subtab-content-recommendations" class="gam-subtab-content hidden">
         <div class="p-6 space-y-6">
 
@@ -542,6 +554,7 @@
         </div>
         </div>
         <!-- Fim da Sub-aba: Sistema de XP e Níveis -->
+        {% endif %}
 
     </div>
 </div>

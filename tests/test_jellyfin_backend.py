@@ -19,6 +19,15 @@ from app.services.media_server.jellyfin.sessions import (
 )
 from tests.conftest import FakeDataManager
 
+def _fonte_da_imagem(url):
+    """O payload `<prefixo>:<caminho>` por trás de um URL do proxy."""
+    import base64
+    from urllib.parse import parse_qs, urlparse
+
+    origem = parse_qs(urlparse(url).query)['source'][0]
+    return base64.urlsafe_b64decode(origem).decode('utf-8')
+
+
 GUID = "38c3a1f0e4b24d7f9c1a0b5e6d7f8a90"
 OUTRO = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
 
@@ -36,6 +45,9 @@ class ApiFalsa:
         # (endpoint, token) de cada pedido feito com um token diferente da
         # chave de API — é assim que o `/Sessions/Logout` fecha a sessão certa.
         self.tokens_usados = []
+        # Os parâmetros de query do último GET a cada endpoint — é assim que se
+        # verifica a consulta que foi mesmo pedida ao servidor.
+        self.ultimos_params = {}
         self.base_url = "http://jellyfin.local:8096"
         self.api_key = "chave"
         self.is_configured = True
@@ -59,6 +71,7 @@ class ApiFalsa:
         return None
 
     def get(self, endpoint, **kwargs):
+        self.ultimos_params[endpoint] = kwargs.get('params') or {}
         return self._resolver('GET', endpoint)
 
     def post(self, endpoint, json=None, **kwargs):
@@ -980,3 +993,207 @@ class TestSessoesVisiveis:
         ]})
 
         assert [s.session_key for s in backend.sessions.list_sessions()] == ["a-tocar"]
+
+
+@pytest.mark.integration
+class TestHistoricoEAparelhos:
+    """
+    No Plex isto vem do Tautulli, que guarda um registo por REPRODUÇÃO. O
+    Jellyfin não tem equivalente no núcleo, mas guarda por utilizador e por
+    item o que basta: `UserData` traz `LastPlayedDate`, `PlayedPercentage`,
+    `PlayCount` e `Played`.
+
+    ⚠️ É um histórico por ITEM: ver o mesmo episódio três vezes dá uma linha.
+    E o servidor não guarda em que aparelho cada item foi visto — daí a coluna
+    do reprodutor vir vazia, e a lista de aparelhos vir de `GET /Devices`.
+    """
+
+    def _filme(self, **extra):
+        base = {
+            "Id": "item-1", "Name": "Duna", "Type": "Movie", "ProductionYear": 2021,
+            "RunTimeTicks": 1_200_000_000, "ImageTags": {"Primary": "tag1"},
+            "UserData": {"LastPlayedDate": "2026-09-12T08:42:29.1234567Z", "Played": True},
+        }
+        base.update(extra)
+        return base
+
+    def _backend(self, itens=None, total=None, aparelhos=None):
+        resposta_itens = {
+            "Items": itens if itens is not None else [],
+            "TotalRecordCount": total if total is not None else len(itens or []),
+        }
+        return montar({
+            '/Items': resposta_itens,
+            '/Devices': {"Items": aparelhos or []},
+        })
+
+    # --- aparelhos ---
+
+    def test_os_aparelhos_vem_da_lista_do_servidor(self, cache_limpa):
+        # É melhor do que a do Plex: são os aparelhos REGISTADOS na conta, e
+        # não os que se conseguem adivinhar a partir do histórico.
+        backend = self._backend(aparelhos=[
+            {"Id": "d1", "Name": "Chrome", "AppName": "Jellyfin Web",
+             "DateLastActivity": "2026-09-12T08:00:00Z"},
+        ])
+
+        resultado = backend.get_user_devices(GUID)
+
+        assert resultado["success"] is True
+        assert resultado["devices"][0]["player"] == "Chrome"
+        assert resultado["devices"][0]["platform"] == "Jellyfin Web"
+        assert resultado["devices"][0]["last_seen"] > 0
+
+    def test_o_nome_personalizado_ganha_ao_do_aparelho(self, cache_limpa):
+        # É o nome que o administrador deu na interface do Jellyfin, e o que a
+        # pessoa reconhece.
+        backend = self._backend(aparelhos=[
+            {"Id": "d1", "Name": "SM-M236B", "CustomName": "Telemóvel da Ana"},
+        ])
+
+        assert backend.get_user_devices(GUID)["devices"][0]["player"] == "Telemóvel da Ana"
+
+    def test_os_aparelhos_vem_do_mais_recente_para_o_mais_antigo(self, cache_limpa):
+        backend = self._backend(aparelhos=[
+            {"Id": "d1", "Name": "Antigo", "DateLastActivity": "2026-09-01T08:00:00Z"},
+            {"Id": "d2", "Name": "Recente", "DateLastActivity": "2026-09-12T08:00:00Z"},
+        ])
+
+        nomes = [a["player"] for a in backend.get_user_devices(GUID)["devices"]]
+
+        assert nomes == ["Recente", "Antigo"]
+
+    def test_os_aparelhos_sao_pedidos_so_para_este_utilizador(self, cache_limpa):
+        backend = self._backend(aparelhos=[])
+
+        backend.get_user_devices(GUID)
+
+        assert ('GET', '/Devices') in [(m, e) for m, e in backend.conn.api.enviados if m == 'GET']
+
+    def test_sem_ligacao_a_lista_vem_vazia_e_nao_e_um_erro(self, cache_limpa):
+        backend = self._backend(aparelhos=[{"Id": "d1", "Name": "Chrome"}])
+        backend.conn.server_info = None
+
+        assert backend.get_user_devices(GUID) == {"success": True, "devices": []}
+
+    # --- histórico ---
+
+    def test_um_filme_traz_titulo_ano_e_data(self, cache_limpa):
+        linha = self._backend([self._filme()]).get_watch_history(GUID)["history"][0]
+
+        assert linha["title"] == "Duna"
+        assert linha["subtitle"] == "2021"
+        assert linha["date"] == "12/09/2026 08:42"
+
+    def test_a_fracao_de_sete_casas_do_dotnet_nao_parte_a_data(self, cache_limpa):
+        """O Jellyfin manda SETE casas decimais — a precisão dos ticks do .NET.
+
+        O `fromisoformat` do Python 3.11+ tolera-as, mas o painel não pode
+        depender disso: em versões anteriores levantava `ValueError`, e o
+        sintoma seria a data de cada linha a vir vazia sem erro nenhum.
+        """
+        item = self._filme(UserData={"LastPlayedDate": "2026-09-12T08:42:29.1234567Z", "Played": True})
+
+        assert self._backend([item]).get_watch_history(GUID)["history"][0]["date"] == "12/09/2026 08:42"
+
+    @pytest.mark.parametrize("data", [None, "", "não é uma data"])
+    def test_uma_data_ilegivel_nao_rebenta_a_lista(self, cache_limpa, data):
+        item = self._filme(UserData={"LastPlayedDate": data, "Played": True})
+
+        assert self._backend([item]).get_watch_history(GUID)["history"][0]["date"] == ""
+
+    def test_um_episodio_traz_a_serie_e_a_numeracao(self, cache_limpa):
+        item = {
+            "Id": "ep-1", "Name": "Segredos", "Type": "Episode", "SeriesName": "Dark",
+            "SeriesId": "serie-1", "ParentIndexNumber": 2, "IndexNumber": 5,
+            "UserData": {"LastPlayedDate": "2026-09-12T08:42:29Z", "Played": True},
+        }
+
+        linha = self._backend([item]).get_watch_history(GUID)["history"][0]
+
+        assert linha["title"] == "Dark"
+        assert linha["subtitle"] == "S02 · E05 - Segredos"
+
+    def test_um_item_marcado_como_visto_conta_como_cem_por_cento(self, cache_limpa):
+        # 🐛 `PlayedPercentage` só vem preenchido enquanto a reprodução está a
+        # meio. Um item já visto não a traz — e aí são 100%, não 0.
+        item = self._filme(UserData={"LastPlayedDate": "2026-09-12T08:42:29Z", "Played": True})
+
+        assert self._backend([item]).get_watch_history(GUID)["history"][0]["percent_complete"] == 100
+
+    def test_um_item_a_meio_traz_a_percentagem_do_servidor(self, cache_limpa):
+        item = self._filme(UserData={
+            "LastPlayedDate": "2026-09-12T08:42:29Z", "Played": False, "PlayedPercentage": 37.4,
+        })
+
+        assert self._backend([item]).get_watch_history(GUID)["history"][0]["percent_complete"] == 37
+
+    def test_a_capa_de_um_episodio_e_a_da_serie(self, cache_limpa):
+        # A miniatura de um episódio é um fotograma, que numa lista não diz
+        # nada — é a mesma escolha que o backend do Plex faz.
+        item = {
+            "Id": "ep-1", "Name": "Segredos", "Type": "Episode", "SeriesName": "Dark",
+            "SeriesId": "serie-1", "SeriesPrimaryImageTag": "tagS",
+            "ImageTags": {"Primary": "tagE"},
+            "UserData": {"LastPlayedDate": "2026-09-12T08:42:29Z"},
+        }
+
+        url = self._backend([item]).get_watch_history(GUID)["history"][0]["poster_url"]
+
+        assert _fonte_da_imagem(url) == "jellyfin:/Items/serie-1/Images/Primary?tag=tagS"
+
+    def test_sem_capa_a_linha_continua_a_existir(self, cache_limpa):
+        item = self._filme(ImageTags={})
+
+        assert self._backend([item]).get_watch_history(GUID)["history"][0]["poster_url"] is None
+
+    def test_o_reprodutor_vem_vazio_porque_o_servidor_nao_o_guarda(self, cache_limpa):
+        # Inventar seria pior: quem lê a coluna fica a achar que sabe.
+        assert self._backend([self._filme()]).get_watch_history(GUID)["history"][0]["player"] == ""
+
+    def test_a_paginacao_e_calculada_a_partir_do_total_do_servidor(self, cache_limpa):
+        backend = self._backend([self._filme()], total=31)
+
+        paginacao = backend.get_watch_history(GUID, page=2, length=15)["pagination"]
+
+        assert paginacao == {"current_page": 2, "total_pages": 3, "total_records": 31}
+
+    def test_a_pagina_pedida_vira_um_deslocamento(self, cache_limpa):
+        backend = self._backend([])
+
+        backend.get_watch_history(GUID, page=3, length=15)
+
+        # O primeiro item da terceira página é o de índice 30.
+        assert backend.conn.api.ultimos_params['/Items']['StartIndex'] == 30
+        assert backend.conn.api.ultimos_params['/Items']['Limit'] == 15
+
+    def test_so_vem_o_que_ja_foi_visto_e_do_mais_recente_primeiro(self, cache_limpa):
+        backend = self._backend([])
+
+        backend.get_watch_history(GUID)
+
+        params = backend.conn.api.ultimos_params['/Items']
+        assert params['Filters'] == 'IsPlayed'
+        assert params['SortBy'] == 'DatePlayed'
+        assert params['SortOrder'] == 'Descending'
+        assert params['userId'] == GUID
+
+    def test_a_pesquisa_vai_para_o_servidor(self, cache_limpa):
+        # Filtrar no painel só apanharia a página atual.
+        backend = self._backend([])
+
+        backend.get_watch_history(GUID, search="duna")
+
+        assert backend.conn.api.ultimos_params['/Items']['SearchTerm'] == "duna"
+
+    def test_sem_pesquisa_nao_se_manda_o_campo(self, cache_limpa):
+        backend = self._backend([])
+
+        backend.get_watch_history(GUID, search="")
+
+        assert 'SearchTerm' not in backend.conn.api.ultimos_params['/Items']
+
+    def test_uma_falha_do_servidor_nao_rebenta_a_pagina(self, cache_limpa):
+        backend = montar({}, erros={'/Items': JellyfinApiError("boom", status_code=500)})
+
+        assert backend.get_watch_history(GUID)["success"] is False

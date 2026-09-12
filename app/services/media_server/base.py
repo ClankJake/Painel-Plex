@@ -62,6 +62,12 @@ class MediaServerCapabilities:
     # profundos para o cliente web.
     links_profundos: bool
 
+    # Há estatísticas de visualização (pódio, XP, conquistas, recomendações).
+    # Hoje vêm todas do Tautulli, que só fala com o Plex. Onde é falso, a
+    # funcionalidade esconde-se — o histórico e os aparelhos da página da conta
+    # NÃO dependem disto: cada backend responde por eles à sua maneira.
+    estatisticas: bool
+
 
 @runtime_checkable
 class ConnectionBackend(Protocol):
@@ -384,6 +390,14 @@ class MediaServerBackend(Protocol):
     # sabe impor um limite de reproduções simultâneas — nem o Plex, nem o
     # Jellyfin — por isso este limite é do painel e só ele o faz cumprir.
     def update_screen_limit(self, user_id: Any, screens: int) -> None: ...
+
+    # --- Histórico e aparelhos do utilizador ---
+    # De onde vêm muda por servidor: no Plex é o Tautulli que os guarda, no
+    # Jellyfin é o próprio servidor. Quem chama não precisa de saber.
+    def get_user_devices(self, user_id: Any) -> Dict[str, Any]: ...
+
+    def get_watch_history(self, user_id: Any, page: int = 1, length: int = 15,
+                          search: str = "") -> Dict[str, Any]: ...
 
     def clear_session_limits(self) -> Dict[str, Any]:
         """Reparação de uma vez: tira do servidor um limite que o painel lá pôs.

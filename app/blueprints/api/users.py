@@ -238,7 +238,10 @@ def get_account_requests():
 @users_api_bp.route('/account/devices')
 @login_required
 def get_account_devices():
-    return jsonify(extensions.tautulli_manager.get_user_devices(normalize_user_id(current_user.id)))
+    # Quem responde é o backend do servidor de média: no Plex os aparelhos são
+    # deduzidos do histórico do Tautulli, no Jellyfin vêm da lista de aparelhos
+    # REGISTADOS na conta. A rota não precisa de saber qual é qual.
+    return jsonify(extensions.media_server.get_user_devices(normalize_user_id(current_user.id)))
 
 # ==========================================
 # ROTAS ADMIN (GERENCIAMENTO)

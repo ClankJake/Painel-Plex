@@ -64,6 +64,7 @@ class PlexManager:
         login_delegado=True,
         desativa_conta=False,
         links_profundos=True,
+        estatisticas=True,
     )
 
     def __init__(self, data_manager, tautulli_manager, notifier_manager, overseerr_manager):
@@ -243,6 +244,25 @@ class PlexManager:
             profile['screen_limit'] = screens
             self.data_manager.set_user_profile(media_user_id, profile)
             logger.info(f"Limite de telas para o utilizador ID '{media_user_id}' atualizado para {screens}.")
+
+    def get_user_devices(self, user_id):
+        """Os aparelhos vêm do Tautulli: o Plex não os expõe por utilizador.
+
+        A API do plex.tv só lista os aparelhos do DONO da conta — os de um
+        amigo do servidor não estão lá. O que o painel mostra é deduzido do
+        histórico, que é o que o Tautulli guarda.
+        """
+        if not self.tautulli_manager:
+            return {"success": True, "devices": []}
+        return self.tautulli_manager.get_user_devices(user_id)
+
+    def get_watch_history(self, user_id, page=1, length=15, search=""):
+        if not self.tautulli_manager:
+            return {"success": True, "history": [],
+                    "pagination": {"current_page": 1, "total_pages": 1, "total_records": 0}}
+        return self.tautulli_manager.get_user_watch_history(
+            user_id=user_id, page=page, length=length, search=search
+        )
 
     def clear_session_limits(self):
         """Não há nada a limpar: o painel nunca escreveu limites no Plex."""

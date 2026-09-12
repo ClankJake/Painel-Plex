@@ -16,6 +16,7 @@ from ..plex.subscription_manager import PlexSubscriptionManager
 from .account_manager import JellyfinAccountManager
 from .api_client import JellyfinApiError
 from .connection import JellyfinConnectionManager
+from .history import JellyfinHistoryManager
 from .sessions import JellyfinSessionsProvider
 from .user_manager import JellyfinUserManager
 
@@ -45,6 +46,9 @@ class JellyfinManager:
         login_delegado=False,
         desativa_conta=True,
         links_profundos=True,
+        # O Tautulli só fala com o Plex. Até haver um fornecedor alternativo,
+        # o pódio, o XP e as recomendações escondem-se.
+        estatisticas=False,
     )
 
     IMAGE_SOURCES = ('jellyfin',)
@@ -53,6 +57,7 @@ class JellyfinManager:
         self.conn = JellyfinConnectionManager()
         self.users = JellyfinUserManager(self.conn, data_manager, stats_manager, requests_manager)
         self.sessions = JellyfinSessionsProvider(self.conn)
+        self.history = JellyfinHistoryManager(self.conn)
         self.invites = JellyfinAccountManager(
             self.conn, self.users, data_manager, self, requests_manager, notifier_manager
         )
@@ -289,6 +294,12 @@ class JellyfinManager:
             perfil['screen_limit'] = screens
             self.data_manager.set_user_profile(user_id, perfil)
         logger.info(f"Limite de telas para o utilizador ID '{user_id}' atualizado para {screens}.")
+
+    def get_user_devices(self, user_id):
+        return self.history.get_user_devices(user_id)
+
+    def get_watch_history(self, user_id, page=1, length=15, search=""):
+        return self.history.get_watch_history(user_id, page=page, length=length, search=search)
 
     def clear_session_limits(self):
         return self.users.clear_session_limits()

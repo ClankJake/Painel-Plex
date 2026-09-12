@@ -19,6 +19,7 @@ from .scheduler import setup_scheduler, set_app_for_jobs
 from . import models
 from . import sockets
 from .logging_config import setup_logging
+from .utils.navigation import endpoint_inicial_do_utilizador
 
 logger = logging.getLogger(__name__)
 
@@ -330,6 +331,7 @@ def create_app() -> Flask:
             'app_title': app.config.get('APP_TITLE', 'Painel Plex'),
             'cache_buster': int(datetime.now().timestamp()),
             'media_server': info_servidor,
+            'endpoint_inicial_do_utilizador': endpoint_inicial_do_utilizador,
         }
 
     @app.errorhandler(429)
@@ -377,7 +379,7 @@ def create_app() -> Flask:
             if not current_user.is_admin():
                 # A UI deve forçar este utilizador para o `/statistics` em vez do dashboard de admin (`/`)
                 if request.endpoint in ('main.index', 'main.settings_page', 'main.users_page'):
-                    return redirect(url_for('main.statistics_page'))
+                    return redirect(url_for(endpoint_inicial_do_utilizador()))
 
     # ==========================================
     # REGISTO DE ROTAS (BLUEPRINTS)

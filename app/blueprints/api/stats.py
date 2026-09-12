@@ -79,7 +79,8 @@ def get_user_watch_history_route():
         raw_search = request.args.get('search', '', type=str)
         search = bleach.clean(raw_search, strip=True)
 
-        history_data = tautulli_manager.get_user_watch_history(
+        # Pela fachada: o Plex vai ao Tautulli, o Jellyfin ao próprio servidor.
+        history_data = media_server.get_watch_history(
             user_id=normalize_user_id(current_user.id),
             page=page,
             length=length,

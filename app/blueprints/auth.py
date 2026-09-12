@@ -18,6 +18,7 @@ from ..models import User
 from ..config import is_configured, load_or_create_config, save_app_config
 from ..extensions import media_server, data_manager, limiter
 from ..utils.identity import normalize_user_id
+from ..utils.navigation import endpoint_inicial_do_utilizador
 
 # --- Configurações e Constantes ---
 logger = logging.getLogger(__name__)
@@ -323,7 +324,7 @@ def admin_required(f):
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/api/'):
                 return jsonify({"success": False, "message": _("Acesso negado. Requer permissão de administrador.")}), 403
             flash(_("Acesso restrito a administradores."), "error")
-            return redirect(url_for('main.statistics_page'))
+            return redirect(url_for(endpoint_inicial_do_utilizador()))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -333,7 +334,7 @@ def admin_required(f):
 def login():
     safe_log_request_info(force=True)
     if current_user.is_authenticated:
-        return redirect(url_for('main.index' if current_user.is_admin() else 'main.statistics_page'))
+        return redirect(url_for('main.index' if current_user.is_admin() else endpoint_inicial_do_utilizador()))
 
     # 🎁 Mantém o contexto da indicação visível para quem veio de um link de amigo
     # e escolheu "Já tenho acesso" na landing.
@@ -527,7 +528,7 @@ def _autorizar_e_iniciar_sessao(account, config, plex_token=None):
             user_profile['status'] = 'active'
             data_manager.set_user_profile(user_profile['media_user_id'], user_profile)
 
-        return _login_user_session(account, 'user', 'main.statistics_page')
+        return _login_user_session(account, 'user', endpoint_inicial_do_utilizador())
     else:
         if not user_profile:
             error_msg = _("Acesso negado. O usuário %(username)s não tem acesso a este servidor.", username=account.username)
@@ -561,7 +562,7 @@ def _autorizar_e_iniciar_sessao(account, config, plex_token=None):
             
             if is_recently_paid:
                 logger.info(f"Utilizador '{account.username}' tem pagamento recente, mas acesso ao Plex pendente. Permitindo login.")
-                return _login_user_session(account, 'user', 'main.statistics_page')
+                return _login_user_session(account, 'user', endpoint_inicial_do_utilizador())
             else:
                 logger.warning(f"Utilizador '{account.username}' em estado inconsistente. A forçar reativação.")
                 

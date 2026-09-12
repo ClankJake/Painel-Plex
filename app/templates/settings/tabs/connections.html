@@ -132,6 +132,10 @@
         </div>
         {% endif %}
 
+        {# O Tautulli só fala com o Plex. Onde não há estatísticas, o cartão
+           inteiro sai: pedir credenciais de um serviço que não vai ser usado
+           era pior do que o aviso que aqui estava. #}
+        {% if media_server.capabilities.estatisticas %}
         <!-- Cartão: Tautulli -->
         <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
             <div class="flex items-center gap-3 mb-4">
@@ -140,9 +144,6 @@
                 </div>
                 <div>
                     <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">{{ _('Tautulli') }}</h3>
-                    {% if media_server.type != 'plex' %}
-                    <p class="text-xs text-amber-600 dark:text-amber-500">{{ _('O Tautulli só funciona com o Plex: as estatísticas ficam indisponíveis neste servidor.') }}</p>
-                    {% endif %}
                     <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Necessário para o ranking de estatísticas e controlo de sessões ativas.') }}</p>
                 </div>
             </div>
@@ -174,6 +175,7 @@
                 </button>
             </div>
         </div>
+        {% endif %}
 
         <!-- Cartão: Seerr -->
         <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">

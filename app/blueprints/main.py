@@ -137,16 +137,32 @@ def referral_landing(ref_code):
         ref_code=ref_code
     )
 
+def _tem_estatisticas() -> bool:
+    """As estatísticas vêm do Tautulli, que só fala com o Plex.
+
+    Esconder as ligações no menu não chega: um marcador nos favoritos, ou o
+    endereço escrito à mão, davam uma página vazia sem explicação.
+    """
+    from ..extensions import media_server
+
+    return bool(getattr(media_server, 'capabilities', None)
+                and media_server.capabilities.estatisticas)
+
+
 @main_bp.route('/statistics')
 @login_required
 def statistics_page():
     """Página de estatísticas de consumo do utilizador e globais."""
+    if not _tem_estatisticas():
+        return redirect(url_for('main.account_page'))
     return render_template('statistics.html')
 
 @main_bp.route('/wrapped')
 @login_required
 def wrapped_page():
     """Página de retrospectiva anual estilo 'Plex Wrapped'."""
+    if not _tem_estatisticas():
+        return redirect(url_for('main.account_page'))
     return render_template('wrapped.html', now_year=datetime.now(timezone.utc).year)
 
 @main_bp.route('/financial')
