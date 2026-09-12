@@ -273,15 +273,52 @@ estava escrita à mão em cinco sítios. `endpoint_inicial_do_utilizador()`
 maneira. No Plex vão ao Tautulli; no Jellyfin, a `jellyfin/history.py`, que os
 tira do próprio servidor. Duas diferenças a ter presentes:
 
-- O histórico do Jellyfin é por **item**, não por reprodução (`GET /Items` com
-  `Filters=IsPlayed` e `SortBy=DatePlayed`, lendo o `UserData`). Ver o mesmo
-  episódio três vezes dá uma linha. E o servidor não guarda em que aparelho
-  cada item foi visto — a coluna do reprodutor vem vazia, porque inventar seria
-  pior. `PlayedPercentage` só vem preenchido a meio de uma reprodução: um item
-  com `Played` é 100%, não 0.
+- O histórico do Jellyfin tem DUAS fontes, e a boa é opcional (ver a seguir).
+  Sem o plugin, é por **item** e não por reprodução (`GET /Items` com
+  `Filters=IsPlayed` e `SortBy=DatePlayed`, lendo o `UserData`): ver o mesmo
+  episódio três vezes dá uma linha, e a coluna do reprodutor vem vazia porque o
+  núcleo não guarda em que aparelho cada item foi visto — inventar seria pior.
+  `PlayedPercentage` só vem preenchido a meio de uma reprodução: um item com
+  `Played` é 100%, não 0.
 - Os aparelhos do Jellyfin são melhores do que os do Plex: `GET /Devices` dá os
   que estão REGISTADOS na conta. No Plex não há como pedi-los (a API do
   plex.tv só lista os do dono), por isso são deduzidos do histórico.
+
+#### O plugin Playback Reporting, quando existe
+
+`playback_reporting.py` dá o histórico por REPRODUÇÃO — a mesma mídia vista
+três vezes dá três linhas, cada uma com o APARELHO em que foi vista. É
+detectado em `GET /Plugins` (com cache de 10 minutos, porque instalar um plugin
+obriga a reiniciar o Jellyfin) e, quando não consegue responder,
+`get_watch_history` cai para o registo do núcleo — nunca para uma página vazia.
+
+⚠️ **Não saber não é o mesmo que não existir.** A deteção só guarda em cache
+uma resposta que o servidor deu mesmo: gravar o "não" de uma falha de rede
+deixava o histórico dez minutos na fonte pior sem razão nenhuma.
+
+🛡️ **O plugin não tem rota de listagem paginada.** A única forma de ler a
+tabela `PlaybackActivity` é `POST /user_usage_stats/submit_custom_query`, que
+corre **SQL cru e não aceita parâmetros ligados**. Por isso:
+
+- o id do utilizador é validado contra `GUID_VALIDO` ANTES de tocar no SQL — um
+  id que não pareça um GUID não é um engano de escrita, é um ataque, e aí
+  nem se tenta a consulta;
+- tudo o resto passa por `_literal_sql()`, que duplica a plica (o escape do
+  SQLite — não há barra invertida) e corta o comprimento.
+
+O teste que guarda isto **corre o SQL gerado num SQLite real** com a tabela do
+plugin e verifica que ela continua de pé: contar plicas não prova nada, porque
+`DROP TABLE` continua a aparecer no texto — dentro do literal, inofensivo.
+
+O plugin guarda os SEGUNDOS vistos (`PlayDuration`), não a percentagem. Ela é
+calculada com a duração do item, pedida numa segunda chamada ao núcleo — uma só
+por página, com todos os ids de uma vez. Um item apagado da biblioteca não volta
+daí: a linha fica na mesma, com o nome que o plugin gravou e sem capa.
+
+⚠️ O erro do SQLite vem dentro de uma resposta **200**, na chave `message` (e a
+das colunas chama-se mesmo `colums`, com o erro de escrita). Sem olhar para ela,
+uma consulta inválida passava por uma lista vazia — "este utilizador nunca viu
+nada", e ninguém dava por isso.
 
 Duas armadilhas do backend Jellyfin, ambas com teste de regressão:
 

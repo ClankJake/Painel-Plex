@@ -25,6 +25,7 @@ from flask_babel import gettext as _
 from ....utils.image_proxy import proxied_image_url
 from ....utils.log_formatting import describe
 from .api_client import JellyfinApiError
+from .playback_reporting import JellyfinPlaybackReporting
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ class JellyfinHistoryManager:
 
     def __init__(self, connection):
         self.conn = connection
+        self.plugin = JellyfinPlaybackReporting(connection)
 
     # =========================================================================
     # APARELHOS
@@ -130,9 +132,23 @@ class JellyfinHistoryManager:
 
     def get_watch_history(self, user_id: Any, page: int = 1, length: int = 15,
                           search: str = "") -> Dict[str, Any]:
-        """O que este utilizador já viu, do mais recente para o mais antigo."""
+        """O que este utilizador já viu, do mais recente para o mais antigo.
+
+        Com o plugin Playback Reporting instalado, é um registo por REPRODUÇÃO
+        (três vezes o mesmo episódio dá três linhas, cada uma com o aparelho em
+        que foi vista). Sem ele, é o que o núcleo sabe: uma linha por item.
+
+        O plugin devolve None quando não pode responder — e aí cai-se para o
+        núcleo, que é sempre melhor do que uma página vazia.
+        """
         if not self.conn.connected:
             return {"success": True, "history": [], "pagination": self._paginacao(page, 0, length)}
+
+        if self.plugin.esta_disponivel():
+            do_plugin = self.plugin.get_watch_history(user_id, page=page, length=length, search=search)
+            if do_plugin is not None:
+                return do_plugin
+            logger.info("O Playback Reporting não respondeu: o histórico volta ao registo do núcleo.")
 
         pagina = max(1, int(page or 1))
         tamanho = max(1, int(length or 15))

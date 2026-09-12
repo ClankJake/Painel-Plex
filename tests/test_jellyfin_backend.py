@@ -78,7 +78,10 @@ class ApiFalsa:
         self.enviados.append(('POST', endpoint, json))
         if endpoint in self.erros:
             raise self.erros[endpoint]
-        return self.respostas.get(endpoint)
+        resposta = self.respostas.get(endpoint)
+        # Uma resposta que depende do CORPO enviado — o histórico do plugin faz
+        # duas consultas ao mesmo endpoint (a contagem e as linhas).
+        return resposta(json) if callable(resposta) else resposta
 
     def request(self, method, endpoint, *, params=None, json=None, timeout=None, token=None):
         self.enviados.append((method.upper(), endpoint, json))
