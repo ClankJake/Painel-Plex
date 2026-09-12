@@ -119,6 +119,7 @@ Cada integração tem um guia próprio, com passo a passo e resolução de probl
 | **Gates2b** (PIX) | [docs/integracao-gates2b.md](docs/integracao-gates2b.md) | Chave de API, valor mínimo, migração da BPIX |
 | **Seerr** (pedidos) | [docs/integracao-seerr.md](docs/integracao-seerr.md) | Pedidos no portal, notificações com capa |
 | **API de Convites** | [docs/api-convites-bot.md](docs/api-convites-bot.md) | Criar convites via bot, vínculo de Telegram ID |
+| **Plugins do Jellyfin** | [docs/plugins-jellyfin.md](docs/plugins-jellyfin.md) | Limite de telas que qualquer aplicativo respeita, histórico por reprodução |
 
 As demais funcionalidades (notificações, gamificação, indicações, backup) são configuradas diretamente em **Configurações**, com explicações na própria interface.
 
