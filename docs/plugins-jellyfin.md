@@ -159,6 +159,26 @@ exemplo:
 
 É preciso **recarregar a página** do navegador depois de alterar o texto.
 
+> ⚠️ **Não copie a mensagem do painel para aqui.** As duas não são
+> intercambiáveis:
+>
+> | | Marcadores (`{username}`, `{limit}`) | Por usuário |
+> |---|---|---|
+> | Mensagem do **painel** (Configurações → Comunicações) | **Sim**, substituídos | **Sim** |
+> | Mensagem do **plugin** (*Blocked message*) | **Não** | **Não** — é uma só, igual para todos |
+>
+> O plugin guarda o texto como texto e entrega-o tal e qual: não há
+> substituição de marcadores em lugar nenhum do código dele. Se escrever
+> `{username}, você excedeu o seu limite de {limit} tela(s)`, é exatamente isso
+> que o usuário lê — com as chavetas.
+>
+> E não é contornável pelo painel: o plugin tem **uma** mensagem para o
+> servidor inteiro, não uma por usuário, por isso nem o painel conseguiria
+> preencher o `{limit}` certo para cada pessoa.
+>
+> Escreva um texto que funcione para toda a gente, sem números nem nomes:
+> *"Você já está assistindo no número máximo de telas do seu plano."*
+
 **Nos aplicativos nativos — não há o que fazer.** Nenhum plugin de servidor
 consegue mudar a tela de erro de um aplicativo nativo. O plugin tem uma opção
 *"Also push a server message"* (`ShowLimitPopup`) que envia um aviso pelo
