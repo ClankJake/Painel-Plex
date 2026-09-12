@@ -151,7 +151,15 @@ Recomendada apenas para quem pretende contribuir com o desenvolvimento.
     pip install -r requirements.txt
     npm install
     ```
-4.  **Compile o CSS** (em um terminal separado):
+4.  **Gere os assets do frontend** (CSS e bibliotecas):
+    ```bash
+    npm run build
+    ```
+    > Este passo não é opcional. Nada em `app/static/dist/` está versionado —
+    > sem ele o navegador acusa `io is not defined` e `Chart is not defined`.
+
+    Durante o desenvolvimento, deixe o CSS a recompilar sozinho num terminal
+    separado:
     ```bash
     npm run watch:css
     ```

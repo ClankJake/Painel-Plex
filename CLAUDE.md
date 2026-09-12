@@ -20,8 +20,10 @@ pytest -k proration                      # por expressão
 pytest -m integration                    # só os que criam a app Flask + BD
 pytest --cov=app --cov-report=term-missing   # o que o CI executa
 
-# CSS (Tailwind) — o output.css não está versionado, é preciso gerar
-npm run build:css      # uma vez
+# Frontend — nada em app/static/dist/ está versionado, é preciso gerar
+npm run build          # CSS + bibliotecas (socket.io, chart.js) — é o que falta
+                       # a quem vê 'io is not defined' no navegador
+npm run build:css      # só o CSS
 npm run watch:css      # em desenvolvimento, num terminal à parte
 
 # Executar a aplicação (aplica `flask db upgrade` antes de subir)

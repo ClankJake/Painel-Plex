@@ -39,3 +39,9 @@ certs/
 
 # Dependências de Frontend (não devem ser copiadas diretamente)
 node_modules/
+
+# Os assets gerados: quem os constrói é o estágio de frontend, dentro da
+# imagem. Sem esta linha, uma pasta 'dist' da máquina de quem constrói era
+# copiada para lá — e o estágio final, que agora copia a pasta INTEIRA,
+# levaria consigo qualquer ficheiro velho que lá estivesse.
+app/static/dist/

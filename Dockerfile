@@ -16,8 +16,10 @@ RUN npm install
 # Copia o código-fonte da aplicação que contém as classes do Tailwind
 COPY app ./app
 
-# Executa o build do CSS, colocando o resultado no diretório 'dist'
-RUN npm run build:css
+# Gera o CSS e copia as bibliotecas de terceiros para 'dist'.
+# É o mesmo comando que se corre em desenvolvimento: os caminhos das
+# bibliotecas ficam só no package.json, e não repetidos aqui.
+RUN npm run build
 
 
 # --- Estágio 2: Aplicação Python ---
@@ -90,13 +92,13 @@ COPY migrations ./migrations
 COPY run.py .
 COPY babel.cfg .
 
-# Copia os assets construídos e as dependências do estágio de frontend para o diretório final correto
-COPY --from=frontend-builder /build/app/static/dist/output.css ./app/static/dist/output.css
-COPY --from=frontend-builder /build/node_modules/chart.js/dist/chart.umd.js ./app/static/dist/chart.umd.js
-COPY --from=frontend-builder /build/node_modules/chart.js/dist/chart.umd.js.map ./app/static/dist/chart.umd.js.map
-COPY --from=frontend-builder /build/node_modules/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js ./app/static/dist/chartjs-adapter-date-fns.bundle.min.js
-COPY --from=frontend-builder /build/node_modules/socket.io-client/dist/socket.io.min.js ./app/static/dist/socket.io.min.js
-COPY --from=frontend-builder /build/node_modules/socket.io-client/dist/socket.io.min.js.map ./app/static/dist/socket.io.min.js.map
+# Copia os assets construídos do estágio de frontend.
+# 🐛 Estas eram seis linhas, a repetir os caminhos das bibliotecas que o
+# package.json também precisava de saber. As duas listas divergiram: o
+# Docker copiava as bibliotecas, o desenvolvimento local não, e quem corria
+# o painel fora do contentor tinha 'io is not defined' e 'Chart is not
+# defined' no navegador. Agora quem sabe os caminhos é só o package.json.
+COPY --from=frontend-builder /build/app/static/dist ./app/static/dist
 
 
 # Expor a Porta: Informa ao Docker que a aplicação irá escutar na porta definida pela variável de ambiente.
