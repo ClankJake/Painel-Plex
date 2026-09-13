@@ -326,6 +326,18 @@ texto de um URL). Quando um dicionário indexado por ID parece "não encontrar
 nada" sem dar erro, é quase sempre isto — foi assim que os utilizadores
 bloqueados deixaram de ser expulsos durante esta migração.
 
+⚠️ **A base de dados normaliza sozinha; a lista do SERVIDOR não.** A plexapi
+identifica as contas por um inteiro, e juntar essa lista aos perfis com `in` ou
+`==` dá sempre falso sem dar erro: o painel conclui que cada utilizador do
+servidor é NOVO e que cada perfil guardado já lá não está. Na página de
+utilizadores isso dava o cartão sem nome, sem vencimento, com zero telas e sem
+link de pagamento — e o perfil verdadeiro marcado como `inactive`. É o que se
+vê ao restaurar o backup de um painel só-Plex, em que os IDs eram inteiros dos
+dois lados. Por isso a tradução é da **fachada**: `get_all_users()` e
+`get_user_by_id()` devolvem o `id` já em texto, como tudo o resto do painel.
+O mesmo vale para o que vem do Tautulli (`user_id` inteiro), normalizado em
+`get_watch_stats` — era por ele que o pódio ia buscar o nível de XP e o avatar.
+
 O campo JSON de entrada chama-se `media_user_id`; `plex_user_id` continua a ser
 aceite em `user_lookup_by_id` para não partir integrações já feitas.
 

@@ -241,8 +241,17 @@ class PlexManager:
 
     # --- DELEGAÇÕES SIMPLES ---
     def get_user_by_id(self, media_user_id):
-        return self.users.get_user_by_id(media_user_id)
-        
+        utilizador = self.users.get_user_by_id(media_user_id)
+        if not utilizador:
+            return utilizador
+
+        # Pela mesma razão que em `get_all_users()`: a identidade sai da
+        # fachada como texto, nunca como o inteiro da plexapi.
+        utilizador = dict(utilizador)
+        utilizador['id'] = normalize_user_id(utilizador.get('id'))
+        return utilizador
+
+
     def update_screen_limit(self, media_user_id, screens):
         """O Plex não sabe impor limites: aqui o limite é só do painel."""
         profile = self.data_manager.get_user_profile(media_user_id)
@@ -454,9 +463,18 @@ class PlexManager:
         processed_users = []
         
         for u in cached_users:
-            user = dict(u) 
+            user = dict(u)
+
+            # ⚠️ A plexapi identifica as contas por um INTEIRO e o painel guarda
+            # a identidade como TEXTO. Deixar o inteiro sair da fachada obriga
+            # quem a consome a lembrar-se de normalizar — e quem se esquece não
+            # recebe um erro, recebe um perfil que "não existe": o cartão do
+            # utilizador sem nome, sem vencimento e com o limite de telas a
+            # zero. A fronteira é aqui.
+            user['id'] = normalize_user_id(user.get('id'))
+
             original_thumb = user.get('thumb')
-            
+
             if original_thumb:
                 try:
                     # A tradução do avatar para o vocabulário do proxy vive no

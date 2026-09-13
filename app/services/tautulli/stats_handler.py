@@ -9,6 +9,7 @@ from flask_babel import gettext as _
 from requests.exceptions import RequestException
 
 from app.config import load_or_create_config
+from ...utils.identity import normalize_user_id
 from ...utils.image_proxy import proxied_image_url
 
 logger = logging.getLogger(__name__)
@@ -482,7 +483,13 @@ class StatsHandler:
             
             user_stats = {}
             for item in history_data:
-                user_id = item.get("user_id")
+                # ⚠️ O Tautulli devolve o `user_id` como INTEIRO e o painel
+                # guarda a identidade como TEXTO. É por este id que o pódio vai
+                # buscar o nível de XP e o avatar de cada pessoa — sem
+                # normalizar, nenhuma das duas coisas casava, e o pódio ficava
+                # sem níveis e (depois de a fachada passar a devolver texto)
+                # sem caras.
+                user_id = normalize_user_id(item.get("user_id"))
                 if user_id:
                     if user_id not in user_stats:
                         user_stats[user_id] = {"plays": 0, "total_duration": 0, "username": item.get("user")}

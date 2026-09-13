@@ -752,11 +752,33 @@ def _get_expiration_details(profile, config):
     return expiration_info
 
 def _sync_plex_and_local_profiles(all_plex_users_list, admin_username):
-    plex_user_details = {u['id']: u for u in all_plex_users_list}
+    """Junta a lista do servidor de média aos perfis locais, para os cartões.
+
+    ⚠️ **As duas metades falam da mesma pessoa em formatos diferentes**: o Plex
+    identifica as contas por um inteiro e a base de dados devolve a identidade
+    sempre como texto (o tipo `UserId`). Juntá-las sem normalizar dá sempre
+    falso, e sem erro nenhum: o painel conclui que cada utilizador do servidor é
+    NOVO (cartão sem nome, sem vencimento, com zero telas e sem link de
+    pagamento) e que cada perfil guardado já não está no servidor (marca-o
+    `inactive` e reescreve-lhe o limite de telas). É o que se vê depois de
+    restaurar o backup de um painel só-Plex, em que os IDs eram inteiros dos
+    dois lados.
+
+    A fachada já normaliza o que devolve; aqui normaliza-se outra vez porque é
+    esta função que decide desativar perfis, e isso não pode depender de o
+    backend se portar bem.
+    """
+    plex_user_details = {}
+    for u in all_plex_users_list:
+        if (media_user_id := normalize_user_id(u.get('id'))) is None:
+            continue
+        plex_user_details[media_user_id] = {**u, 'id': media_user_id}
+
     media_user_ids = set(plex_user_details.keys())
     all_profiles_from_db = extensions.data_manager.get_all_user_profiles()
-    blocked_users_data = extensions.data_manager.get_blocked_users_dict()
-    local_profile_ids = {p.get('media_user_id') for p in all_profiles_from_db}
+    blocked_users_data = {normalize_user_id(k): v
+                          for k, v in extensions.data_manager.get_blocked_users_dict().items()}
+    local_profile_ids = {normalize_user_id(p.get('media_user_id')) for p in all_profiles_from_db}
 
     all_users_to_return = []
     profiles_to_create = []
@@ -779,7 +801,7 @@ def _sync_plex_and_local_profiles(all_plex_users_list, admin_username):
             extensions.data_manager.set_user_profile(new_profile['media_user_id'], new_profile)
 
     for profile in all_profiles_from_db:
-        media_user_id = profile.get('media_user_id')
+        media_user_id = normalize_user_id(profile.get('media_user_id'))
         username = profile.get('username')
 
         if not media_user_id or username == admin_username or media_user_id not in media_user_ids:
@@ -816,15 +838,25 @@ def _sync_plex_and_local_profiles(all_plex_users_list, admin_username):
                     is_on_trial = True
             except (ValueError, TypeError): pass
 
+        # 🐛 Um perfil vindo de um painel antigo pode não ter `payment_token`: a
+        # coluna nasceu depois dele e só é preenchida quando o perfil é gravado.
+        # Sem ele, o "copiar link de pagamento" responde que a pessoa não tem
+        # link nenhum. Gravar o perfil gera-o (é o `set_user_profile` que o faz),
+        # e isto acontece uma vez só — na visita seguinte já lá está.
+        payment_token = profile.get('payment_token')
+        if not payment_token:
+            atualizado = extensions.data_manager.set_user_profile(media_user_id, {}) or {}
+            payment_token = atualizado.get('payment_token')
+
         user_data = {
-            'id': media_user_id, 'username': username, 'name': profile.get('name'), 
+            'id': media_user_id, 'username': username, 'name': profile.get('name'),
             'email': plex_data.get('email', profile.get('email')), 'thumb': plex_data.get('thumb'),
             'is_blocked': is_blocked, 'status': final_status, 'screen_limit': profile.get('screen_limit', 0),
             'expiration_date': profile.get('expiration_date'), 'trial_end_date': profile.get('trial_end_date'),
-            'is_on_trial': is_on_trial, 'payment_token': profile.get('payment_token')
+            'is_on_trial': is_on_trial, 'payment_token': payment_token
         }
         
-        existing_index = next((i for i, u in enumerate(all_users_to_return) if u['id'] == media_user_id), -1)
+        existing_index = next((i for i, u in enumerate(all_users_to_return) if same_user(u['id'], media_user_id)), -1)
         if existing_index != -1:
             all_users_to_return[existing_index] = user_data
         else:
