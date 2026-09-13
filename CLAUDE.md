@@ -661,6 +661,23 @@ para texto e `media_server_type = 'plex'` nas linhas que já existiam), e o
 `_set_default`. O manifesto do ZIP diz a versão da base de dados e o servidor,
 para se perceber meses depois o que ali está.
 
+⚠️ **Primeiro calar, depois trocar.** `_restaurar_backup()` chama
+`parar_servicos_de_fundo()` ANTES de substituir os ficheiros. Sem isso, o
+agendador — que continua vivo — relia o jobstore restaurado, encontrava lá as
+tarefas com a hora de execução no PASSADO (a do momento em que o backup foi
+feito) e tentava submetê-las todas de uma vez, mesmo a tempo de apanhar o
+reinício que o próprio restauro agenda: o log enchia-se de `RuntimeError:
+cannot schedule new futures after shutdown`, um por tarefa, logo a seguir a um
+restauro BEM-SUCEDIDO. Pelo mesmo motivo, `_parar_o_agendador()` faz `pause()`
+antes do `shutdown()` — o `shutdown` fecha os executores, mas o ciclo pode
+estar nesse instante a submeter o que está na hora. E as ligações à base de
+dados são descartadas a seguir ao restauro (`db.engine.dispose()`): o que resta
+do processo antigo estaria a ler de um ficheiro que já nem tem nome.
+
+As tarefas por utilizador que vierem atrasadas do backup são descartadas pelo
+`misfire_grace_time` — quem apanha esses casos é a varredura diária
+(`removal_job`, `expiration_notification_job`), que não depende delas.
+
 ### Blueprints
 
 Páginas em `app/blueprints/` (`main`, `auth`, `image`, `redirect`), API em

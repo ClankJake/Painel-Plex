@@ -67,11 +67,48 @@ def load_user(user_id):
 
     return models.User(**detalhes)
 
+def _parar_o_agendador():
+    """Pára o agendador sem terminar o processo. Silencioso se já estiver parado.
+
+    ⚠️ **Pausar ANTES de encerrar não é um detalhe.** O `shutdown()` fecha os
+    executores, mas o ciclo do APScheduler pode estar nesse instante a submeter
+    as tarefas que já estão na hora — e cada uma delas rebenta com
+    `RuntimeError: cannot schedule new futures after shutdown`, um erro por
+    tarefa, que assusta quem lê o log e não diz nada a ninguém. Com o
+    `pause()`, o ciclo vê que está em pausa e não submete nada.
+    """
+    try:
+        if not (extensions.scheduler and extensions.scheduler.running):
+            return
+        logger.info("A encerrar o Scheduler (APScheduler) de forma segura...")
+        extensions.scheduler.pause()
+        extensions.scheduler.shutdown(wait=False)
+    except Exception as e:
+        logger.debug(f"Aviso ao encerrar o agendador: {e}")
+
+
+def parar_servicos_de_fundo():
+    """Cala tudo o que escreve na base de dados, sem terminar o processo.
+
+    🐛 Restaurar um backup TROCA os ficheiros `.db` por baixo de um agendador
+    que está a correr. O que acontecia a seguir: o APScheduler relia o jobstore
+    restaurado, encontrava lá as tarefas com a hora de execução no PASSADO (a
+    do momento em que o backup foi feito), tentava submetê-las todas ao mesmo
+    tempo — e apanhava com isso o encerramento que o próprio restauro agenda.
+    O log enchia-se de `cannot schedule new futures after shutdown` a seguir a
+    um restauro bem-sucedido.
+    """
+    _parar_o_agendador()
+    try:
+        if extensions.stream_manager:
+            extensions.stream_manager.stop_listener()
+    except Exception as e:
+        logger.debug(f"Aviso ao encerrar o listener de eventos: {e}")
+
+
 def shutdown_scheduler(signum=None, frame=None):
     """Garante que o agendador é desligado de forma segura e elegante ao sair."""
-    if extensions.scheduler.running:
-        logger.info("A encerrar o Scheduler (APScheduler) de forma segura...")
-        extensions.scheduler.shutdown(wait=False)
+    _parar_o_agendador()
 
     # 📡 Encerra também o listener SSE do Plex. Sem isto, a thread do websocket e
     # eventuais timers de debounce ficavam a correr durante o encerramento,

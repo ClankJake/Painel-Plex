@@ -585,7 +585,7 @@ def setup_restore_backup():
         return jsonify({"success": False, "message": _("Nenhum arquivo selecionado.")}), 400
 
     try:
-        _ext.backup_manager.restore_from_zip(uploaded_file.stream)
+        _restaurar_backup(uploaded_file.stream)
     except ValueError as e:
         # Validação falhou (ZIP inválido / config.json corrompido) — nada foi alterado.
         return jsonify({"success": False, "message": str(e)}), 400
@@ -599,6 +599,34 @@ def setup_restore_backup():
         "success": True,
         "message": _("Backup restaurado com sucesso! A aplicação será reiniciada — aguarde e recarregue a página.")
     })
+
+
+def _restaurar_backup(ficheiro):
+    """Restaura um ZIP com o painel já calado.
+
+    🐛 O restauro TROCA os ficheiros `.db` por baixo da aplicação. Com o
+    agendador ainda a correr, ele relia o jobstore restaurado, encontrava lá as
+    tarefas com a hora de execução no PASSADO — a do momento em que o backup
+    foi feito — e tentava submetê-las todas de uma vez, em cima do reinício que
+    o próprio restauro agenda. O resultado era um `cannot schedule new futures
+    after shutdown` por tarefa, logo a seguir a um restauro BEM-SUCEDIDO.
+
+    Parar primeiro também protege o outro lado: ninguém fica a escrever na base
+    de dados antiga enquanto ela é substituída.
+    """
+    from ... import parar_servicos_de_fundo
+
+    parar_servicos_de_fundo()
+    _ext.backup_manager.restore_from_zip(ficheiro)
+
+    # As ligações abertas apontam para o ficheiro que acabou de ser
+    # substituído: sem isto, o que resta deste processo continuaria a ler e a
+    # escrever no ficheiro antigo (que já nem tem nome).
+    try:
+        _ext.db.session.remove()
+        _ext.db.engine.dispose()
+    except Exception as e:
+        logger.debug(f"Aviso ao fechar as ligações à base de dados: {e}")
 
 
 def _agendar_reinicio(motivo: str):
@@ -1356,7 +1384,7 @@ def backup_restore():
         return jsonify({"success": False, "message": _("Nenhum arquivo selecionado.")}), 400
 
     try:
-        _ext.backup_manager.restore_from_zip(uploaded_file.stream)
+        _restaurar_backup(uploaded_file.stream)
     except ValueError as e:
         # Erro de validação (ZIP inválido, config.json corrompido, etc.) — seguro, nada foi alterado.
         return jsonify({"success": False, "message": str(e)}), 400
