@@ -48,8 +48,16 @@ class TautulliApiClient:
         
         if self.is_configured:
             logger.info("Configuração do TautulliApiClient carregada com sucesso.")
+        elif self.base_url or self.api_key:
+            # Meio preenchido é um engano, e vale o aviso: falta-lhe uma metade.
+            em_falta = "o URL" if not self.base_url else "a chave de API"
+            logger.warning(f"Configuração do Tautulli incompleta: falta {em_falta}.")
         else:
-            logger.warning("Configuração do TautulliApiClient ausente ou incompleta.")
+            # 🔇 Em branco é uma escolha legítima — num painel Jellyfin o
+            # Tautulli nem sequer se aplica, e num painel Plex o histórico e os
+            # aparelhos passam a ser lidos do próprio servidor. Isto era um
+            # WARNING em cada arranque a dizer que estava tudo bem.
+            logger.debug("Tautulli não configurado: o painel lê o histórico do próprio servidor de média.")
 
     def _make_request(self, params: Dict[str, Any], method: str = 'GET', data: Optional[Any] = None, timeout: int = 10) -> Any:
         """

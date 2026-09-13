@@ -81,6 +81,15 @@ class JellyfinManager:
     def capabilities(self):
         return self.CAPABILITIES
 
+    def estatisticas_disponiveis(self):
+        """Não há: o Tautulli só fala com o Plex, e o painel não o substitui.
+
+        O histórico e os aparelhos NÃO dependem disto — esses o Jellyfin
+        responde sozinho (ver `history.py`). O que se esconde é o pódio, o XP,
+        as conquistas, as recomendações e o Wrapped.
+        """
+        return False
+
     def init_app(self, app):
         from app.config import is_configured
         self.app = app

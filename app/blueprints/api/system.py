@@ -137,9 +137,15 @@ def get_active_streams():
 @limiter.exempt 
 def get_system_health():
     """Verifica e retorna o estado de todos os serviços integrados."""
-    health_status = {
-        "plex": media_server.check_status(),
-        "tautulli": tautulli_manager.check_status(),
+    health_status = {"plex": media_server.check_status()}
+
+    # O Tautulli só fala com o Plex: num painel ligado a outro servidor não é um
+    # serviço "desativado", é um serviço que não existe — e um cartão apagado no
+    # estado do sistema é uma pergunta que o administrador não tem como fechar.
+    if getattr(getattr(media_server, 'capabilities', None), 'estatisticas', False):
+        health_status["tautulli"] = tautulli_manager.check_status()
+
+    health_status.update({
         "efi": efi_manager.check_status(),
         "mercado_pago": mercado_pago_manager.check_status(),
         "gates2b": gates2b_manager.check_status(),
@@ -147,7 +153,7 @@ def get_system_health():
             "status": "RUNNING" if scheduler.running else "STOPPED",
             "message": _("Agendador em execução.") if scheduler.running else _("Agendador parado.")
         }
-    }
+    })
     return jsonify({"success": True, "health": health_status})
 
 @system_api_bp.route('/termination-logs')

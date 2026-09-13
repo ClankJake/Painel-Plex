@@ -16,6 +16,7 @@ from .user_manager import PlexUserManager
 from .invite_manager import PlexInviteManager
 from .online_media import PlexOnlineMediaManager
 from .subscription_manager import PlexSubscriptionManager
+from .history import PlexHistoryManager
 from .sessions import PlexSessionsProvider, thumb_source
 from ..base import MediaServerCapabilities
 
@@ -72,6 +73,7 @@ class PlexManager:
         self.users = PlexUserManager(self.conn, data_manager, tautulli_manager, overseerr_manager)
         self.online_media = PlexOnlineMediaManager(self.conn)
         self.sessions = PlexSessionsProvider(self.conn)
+        self.history = PlexHistoryManager(self.conn)
         self.invites = PlexInviteManager(self.conn, self.users, data_manager, self, overseerr_manager, notifier_manager)
         # 🛡️ CORREÇÃO: Injeta o global_scheduler no SubscriptionManager
         self.subscriptions = PlexSubscriptionManager(data_manager, self.users, scheduler=global_scheduler)
@@ -265,22 +267,49 @@ class PlexManager:
             return thumb
         return self._thumb_para_a_interface(thumb)
 
+    def _tautulli_ativo(self):
+        """Há um Tautulli configurado para responder?
+
+        Não basta o objeto existir: ele é sempre construído, e fica inerte
+        enquanto não tiver URL e chave. É esta pergunta que decide de onde vêm
+        o histórico e os aparelhos — e se há estatísticas de todo.
+        """
+        cliente = getattr(self.tautulli_manager, 'api_client', None)
+        return bool(cliente is not None and getattr(cliente, 'is_configured', False))
+
+    def estatisticas_disponiveis(self):
+        """O pódio, o XP, as conquistas, as recomendações e o Wrapped.
+
+        Saem todos do registo por reprodução que só o Tautulli guarda: sem ele,
+        o painel não tem de onde os tirar. A CAPACIDADE diz que este servidor
+        as suporta (e é o que mantém o cartão do Tautulli nas Conexões, sem o
+        qual não haveria onde o configurar); isto diz se elas existem AGORA.
+        """
+        return bool(self.CAPABILITIES.estatisticas and self._tautulli_ativo())
+
     def get_user_devices(self, user_id):
-        """Os aparelhos vêm do Tautulli: o Plex não os expõe por utilizador.
+        """Os aparelhos de alguém, deduzidos do histórico.
 
         A API do plex.tv só lista os aparelhos do DONO da conta — os de um
-        amigo do servidor não estão lá. O que o painel mostra é deduzido do
-        histórico, que é o que o Tautulli guarda.
+        amigo do servidor não estão lá — por isso são sempre deduzidos do que
+        foi reproduzido. Com Tautulli, do registo dele; sem ele, do próprio
+        servidor (ver `history.py`), que é mais lento e sabe menos.
         """
-        if not self.tautulli_manager:
-            return {"success": True, "devices": []}
-        return self.tautulli_manager.get_user_devices(user_id)
+        if self._tautulli_ativo():
+            return self.tautulli_manager.get_user_devices(user_id)
+        return self.history.get_user_devices(user_id)
 
     def get_watch_history(self, user_id, page=1, length=15, search=""):
-        if not self.tautulli_manager:
-            return {"success": True, "history": [],
-                    "pagination": {"current_page": 1, "total_pages": 1, "total_records": 0}}
-        return self.tautulli_manager.get_user_watch_history(
+        """O histórico, do Tautulli quando o há e do servidor quando não.
+
+        🐛 Sem Tautulli isto devolvia uma lista vazia — e a página dizia que a
+        pessoa nunca tinha visto nada, que é diferente de "não sei".
+        """
+        if self._tautulli_ativo():
+            return self.tautulli_manager.get_user_watch_history(
+                user_id=user_id, page=page, length=length, search=search
+            )
+        return self.history.get_watch_history(
             user_id=user_id, page=page, length=length, search=search
         )
 

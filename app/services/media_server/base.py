@@ -62,10 +62,15 @@ class MediaServerCapabilities:
     # profundos para o cliente web.
     links_profundos: bool
 
-    # Há estatísticas de visualização (pódio, XP, conquistas, recomendações).
-    # Hoje vêm todas do Tautulli, que só fala com o Plex. Onde é falso, a
-    # funcionalidade esconde-se — o histórico e os aparelhos da página da conta
-    # NÃO dependem disto: cada backend responde por eles à sua maneira.
+    # O servidor PODE ter estatísticas de visualização (pódio, XP, conquistas,
+    # recomendações, Wrapped). Hoje saem todas do Tautulli, que só fala com o
+    # Plex. O histórico e os aparelhos da página da conta NÃO dependem disto:
+    # cada backend responde por eles à sua maneira.
+    #
+    # ⚠️ "Pode" não é "tem": num painel Plex sem Tautulli configurado esta
+    # capacidade continua verdadeira — é ela que mantém o cartão do Tautulli
+    # nas Conexões, sem o qual não haveria onde o configurar. Quem quiser saber
+    # se as estatísticas existem AGORA pergunta `estatisticas_disponiveis()`.
     estatisticas: bool
 
 
@@ -328,6 +333,17 @@ class MediaServerBackend(Protocol):
 
     @property
     def capabilities(self) -> MediaServerCapabilities: ...
+
+    def estatisticas_disponiveis(self) -> bool:
+        """Há estatísticas de visualização NESTE MOMENTO?
+
+        `capabilities.estatisticas` diz se o servidor as suporta; isto diz se a
+        fonte delas está mesmo ligada — no Plex, se o Tautulli está
+        configurado. A interface esconde-as por esta resposta, e não pela
+        capacidade, ou um painel Plex sem Tautulli mostrava um pódio vazio e
+        mandava quem não é administrador para uma página sem nada.
+        """
+        return bool(self.capabilities.estatisticas)
 
     # --- Submanagers ---
     conn: ConnectionBackend

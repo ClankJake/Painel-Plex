@@ -1,14 +1,24 @@
 # tests/test_estatisticas_por_capacidade.py
-"""As estatísticas escondem-se onde o servidor não as suporta.
+"""As estatísticas escondem-se onde não há de onde as tirar.
 
 Pódio, XP, conquistas, recomendações e o Wrapped saem todos do histórico do
 Tautulli, que só fala com o Plex. Num painel ligado ao Jellyfin não há de onde
-os tirar — e a regra da casa é que uma capacidade em falta ESCONDE a
-funcionalidade, nunca a mostra partida.
+os tirar — e a regra da casa é que o que falta ESCONDE a funcionalidade, nunca
+a mostra partida.
 
-⚠️ O que NÃO se esconde: o histórico e os aparelhos da página da conta. Esses
-o Jellyfin sabe responder sozinho (ver `jellyfin/history.py`), e é justamente a
-diferença que estes testes guardam.
+⚠️ São duas perguntas parecidas e não são a mesma:
+
+- `capabilities.estatisticas` — o servidor PODE tê-las. É o que mantém o cartão
+  do Tautulli nas Conexões: escondê-lo a quem ainda não o configurou deixava-o
+  sem forma nenhuma de o configurar.
+- `estatisticas_disponiveis()` — HÁ agora. É por esta que se escondem o menu,
+  as páginas e as sub-abas: um painel Plex sem Tautulli tem a capacidade e não
+  tem os dados.
+
+⚠️ O que NÃO se esconde em caso nenhum: o histórico e os aparelhos da página da
+conta. O Jellyfin responde a eles sozinho (`jellyfin/history.py`) e o Plex sem
+Tautulli também (`plex/history.py`) — é justamente a diferença que estes testes
+guardam.
 """
 
 import pytest
@@ -28,16 +38,28 @@ def _capacidades(estatisticas):
 
 
 class BackendFalso:
-    """O mínimo que a página e o contexto dos templates pedem."""
+    """O mínimo que a página e o contexto dos templates pedem.
 
-    def __init__(self, estatisticas):
-        self.SERVER_TYPE = 'plex' if estatisticas else 'jellyfin'
-        self.DISPLAY_NAME = 'Plex Media Server' if estatisticas else 'Jellyfin'
-        self.CAPABILITIES = _capacidades(estatisticas)
+    `suporta` é a capacidade (o servidor pode tê-las); `disponiveis` é o estado
+    de agora. Ficam separados de propósito: é a combinação "pode mas não tem"
+    — um painel Plex sem Tautulli — que mais custou a acertar.
+    """
+
+    def __init__(self, suporta, disponiveis=None):
+        self.SERVER_TYPE = 'plex' if suporta else 'jellyfin'
+        self.DISPLAY_NAME = 'Plex Media Server' if suporta else 'Jellyfin'
+        self.CAPABILITIES = _capacidades(suporta)
+        self._disponiveis = suporta if disponiveis is None else disponiveis
 
     @property
     def capabilities(self):
         return self.CAPABILITIES
+
+    def estatisticas_disponiveis(self):
+        return self._disponiveis
+
+    def check_status(self):
+        return {"status": "ONLINE", "message": "ok"}
 
     def get_all_users(self, force_refresh=False):
         return []
@@ -55,12 +77,14 @@ def servidor(monkeypatch):
     """Substitui o backend em TODOS os sítios que o guardaram por valor."""
     from app import extensions
     from app.blueprints import main as main_module
+    from app.blueprints.api import system as system_module
     from app.blueprints.api import users as users_module
 
-    def instalar(estatisticas):
-        backend = BackendFalso(estatisticas)
+    def instalar(estatisticas, disponiveis=None):
+        backend = BackendFalso(estatisticas, disponiveis)
         monkeypatch.setattr(extensions, 'media_server', backend)
         monkeypatch.setattr(main_module, 'media_server', backend, raising=False)
+        monkeypatch.setattr(system_module, 'media_server', backend, raising=False)
         monkeypatch.setattr(users_module.extensions, 'media_server', backend, raising=False)
         return backend
 
@@ -179,3 +203,121 @@ class TestOQueNaoSeEsconde:
 
         assert resposta.status_code == 200
         assert resposta.get_json()["success"] is True
+
+
+class TestPlexSemTautulli:
+    """
+    🐛 O Tautulli é opcional, mas quem não o configurava ficava com o pódio, o
+    XP e o Wrapped no menu — páginas que não tinham de onde se encher. E, na
+    página da conta, um histórico vazio a dizer que ninguém tinha visto nada.
+    """
+
+    def test_o_menu_esconde_as_estatisticas(self, client, configurada, db_session, servidor):
+        servidor(True, disponiveis=False)
+        _autenticar(client)
+
+        pagina = client.get('/account').get_data(as_text=True)
+
+        assert 'href="/statistics"' not in pagina
+        assert 'href="/wrapped"' not in pagina
+
+    def test_as_paginas_redirecionam(self, client, configurada, db_session, servidor):
+        servidor(True, disponiveis=False)
+        _autenticar(client)
+
+        assert client.get('/statistics').status_code == 302
+        assert client.get('/wrapped').status_code == 302
+
+    def test_quem_nao_e_administrador_aterra_na_conta(self, app_context, servidor):
+        from app.utils.navigation import endpoint_inicial_do_utilizador
+
+        servidor(True, disponiveis=False)
+        assert endpoint_inicial_do_utilizador() == 'main.account_page'
+
+    def test_o_historico_e_os_aparelhos_ficam(self, client, configurada, db_session, servidor):
+        # São a razão de ser da separação: o Plex responde a estes sozinho.
+        servidor(True, disponiveis=False)
+        _autenticar(client)
+
+        pagina = client.get('/account').get_data(as_text=True)
+
+        assert 'device-list-container' in pagina
+        assert 'history-container' in pagina
+
+    def test_o_cartao_do_tautulli_continua_nas_conexoes(self, client, configurada, db_session, servidor):
+        # ⚠️ Se este cartão seguisse `estatisticas_disponiveis()`, desaparecia
+        # exatamente a quem falta configurar o Tautulli — e não haveria como
+        # voltar a ligá-lo a não ser editando o config.json à mão.
+        servidor(True, disponiveis=False)
+        _autenticar(client)
+
+        pagina = client.get('/settings').get_data(as_text=True)
+
+        assert 'TAUTULLI_API_KEY' in pagina
+        # E fica dito o que se perde sem ele.
+        assert 'mais lento' in pagina
+
+    def test_num_painel_jellyfin_o_cartao_sai(self, client, configurada, db_session, servidor):
+        servidor(False)
+        _autenticar(client)
+
+        assert 'TAUTULLI_API_KEY' not in client.get('/settings').get_data(as_text=True)
+
+
+class TestEstadoDoSistema:
+    """O cartão do Tautulli na Dashboard."""
+
+    def test_num_painel_jellyfin_o_tautulli_nao_e_um_servico(self, client, configurada, db_session, servidor):
+        # Um cartão permanentemente apagado é uma pergunta que o administrador
+        # não tem como fechar: ali o Tautulli não está desligado, não existe.
+        servidor(False)
+        _autenticar(client)
+
+        saude = client.get('/api/system/system-health').get_json()['health']
+
+        assert 'tautulli' not in saude
+
+    def test_num_painel_plex_continua_a_aparecer(self, client, configurada, db_session, servidor):
+        # Aqui "desativado" é informação: diz ao administrador que pode ligá-lo.
+        servidor(True, disponiveis=False)
+        _autenticar(client)
+
+        saude = client.get('/api/system/system-health').get_json()['health']
+
+        assert saude['tautulli']['status'] == 'DISABLED'
+
+
+class TestTarefasDeFundo:
+    """
+    🔇 O `sync_xp_job` corre todas as madrugadas sobre TODOS os perfis. Sem
+    Tautulli, cada um deles dava um erro — com repetições — a dizer o mesmo:
+    que não há de onde ler o histórico.
+    """
+
+    def test_sem_estatisticas_o_xp_nem_se_tenta(self, app, servidor, monkeypatch):
+        from app import extensions, scheduler as agendador
+
+        servidor(True, disponiveis=False)
+        agendador.set_app_for_jobs(app)
+        chamadas = []
+        monkeypatch.setattr(extensions.data_manager, 'get_all_user_profiles',
+                            lambda: chamadas.append(True) or [])
+
+        agendador.sync_xp_job()
+
+        assert chamadas == []
+
+    def test_com_estatisticas_corre_como_sempre(self, app, servidor, monkeypatch):
+        from app import extensions, scheduler as agendador
+
+        servidor(True)
+        agendador.set_app_for_jobs(app)
+        chamadas = []
+        monkeypatch.setattr(extensions.data_manager, 'get_all_user_profiles',
+                            lambda: chamadas.append(True) or [])
+        monkeypatch.setattr(extensions.tautulli_manager, 'reset_season_if_due',
+                            lambda: {"reset": False})
+
+        agendador.sync_xp_job()
+
+        assert chamadas == [True]

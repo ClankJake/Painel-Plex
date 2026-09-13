@@ -348,6 +348,16 @@ def sync_xp_job():
     if not _app: return
     with _app.app_context():
         from . import extensions
+        from .utils.estatisticas import estatisticas_disponiveis
+
+        # 🔇 Sem fonte de estatísticas não há XP para sincronizar — e tentar
+        # dava um erro por utilizador, com repetições, todas as madrugadas: num
+        # painel Jellyfin o Tautulli nem se aplica, e num painel Plex pode
+        # simplesmente não estar configurado.
+        if not estatisticas_disponiveis():
+            logger.debug("[XP] Sem estatísticas disponíveis: nada a sincronizar.")
+            return
+
         profiles = extensions.data_manager.get_all_user_profiles()
         for profile in profiles:
             media_user_id = profile.get('media_user_id')

@@ -308,12 +308,26 @@ aceite em `user_lookup_by_id` para não partir integrações já feitas.
 O Tautulli só fala com o Plex, mas não é tudo o que ele dá que fica de fora.
 
 **As ESTATÍSTICAS ficam** (pódio, XP, conquistas, recomendações, Wrapped): saem
-do registo por reprodução que só o Tautulli guarda. A capacidade
-`estatisticas` diz onde existem; onde é falsa, escondem-se — as ligações do
-menu, o cartão do Tautulli nas Conexões e as sub-abas Conquistas, XP e
+do registo por reprodução que só o Tautulli guarda. Onde não há de onde as
+tirar, escondem-se — as ligações do menu e as sub-abas Conquistas, XP e
 Recomendações da Gamificação ("Indique e Ganhe" é de pagamentos e fica). As
 páginas `/statistics` e `/wrapped` redirecionam: esconder a ligação não chega,
-um marcador nos favoritos dava uma página vazia sem explicação.
+um marcador nos favoritos dava uma página vazia sem explicação. E o
+`sync_xp_job` desiste logo: sem fonte, dava um erro por utilizador (com
+repetições) todas as madrugadas.
+
+⚠️ **"Pode" e "tem" são perguntas diferentes**, e trocá-las dá dois erros
+opostos:
+
+- `media_server.capabilities.estatisticas` — o servidor SUPORTA-AS. É fixa, e é
+  ela que mantém o cartão do Tautulli nas Conexões e o cartão dele no estado do
+  sistema. Escondê-los a quem ainda não configurou o Tautulli deixava-o sem
+  forma nenhuma de o configurar.
+- `estatisticas_disponiveis()` (`app/utils/estatisticas.py`, exposto aos
+  templates como `media_server.estatisticas`) — EXISTEM AGORA: o servidor
+  suporta-as **e** a fonte está ligada. É por esta que se escondem o menu, as
+  páginas e as sub-abas; um painel Plex sem Tautulli tem a capacidade e não tem
+  os dados.
 
 ⚠️ Ao escondê-las, a casa de quem não é administrador deixa de existir — e
 estava escrita à mão em cinco sítios. `endpoint_inicial_do_utilizador()`
@@ -321,8 +335,9 @@ estava escrita à mão em cinco sítios. `endpoint_inicial_do_utilizador()`
 
 **O HISTÓRICO e os APARELHOS não ficam**: são do contrato
 (`get_watch_history`, `get_user_devices`) e cada backend responde à sua
-maneira. No Plex vão ao Tautulli; no Jellyfin, a `jellyfin/history.py`, que os
-tira do próprio servidor. Duas diferenças a ter presentes:
+maneira. No Plex vão ao Tautulli quando ele existe e, quando não,
+a `plex/history.py`; no Jellyfin, a `jellyfin/history.py`. Duas diferenças a
+ter presentes:
 
 - O histórico do Jellyfin tem DUAS fontes, e a boa é opcional (ver a seguir).
   Sem o plugin, é por **item** e não por reprodução (`GET /Items` com
@@ -398,6 +413,36 @@ nunca chegava a correr. Isso atingia também um painel sem preços configurados,
 que responde 404. Um teste percorre agora todas as rotas que a página chama,
 com uma sessão de administrador, porque corrigi-las uma a uma foi precisamente
 o que não chegou à primeira vez.
+
+#### O Plex sem Tautulli
+
+O Tautulli é opcional. Sem ele, `plex/history.py` lê o histórico e os aparelhos
+do próprio servidor — mais devagar e com menos detalhe, mas a alternativa era
+uma página a dizer que a pessoa nunca viu nada, que é diferente de "não sei".
+O cartão das Conexões diz ao administrador o que está a trocar:
+
+- **é mais lento**: cada página é uma consulta ao servidor, em vez de vir da
+  base de dados já indexada do Tautulli;
+- **não há percentagem**: o Plex só regista uma entrada quando o item é dado
+  por VISTO — o que ficou a meio não aparece de todo. Por isso a barra vai a
+  100%: é o que a entrada significa, não uma estimativa;
+- **a pesquisa é sobre uma janela** (`JANELA`, as reproduções mais recentes):
+  `/status/sessions/history/all` não aceita filtro por título — só `accountID`,
+  `viewedAt`, `librarySectionID`, `metadataItemID` e `sort`.
+
+O histórico traz apenas o `deviceID`; quem lhe dá um nome é `/devices`, e as
+contas vêm de `/accounts` — ambos com cache de 5 minutos, e sem guardar o
+resultado de uma falha de rede (a mesma regra dos plugins do Jellyfin).
+
+⚠️ **O id do DONO não é o mesmo dos dois lados.** Em `/accounts` o dono é a
+conta **1**; só as contas partilhadas lá aparecem com o id de plex.tv que o
+painel guarda. Filtrar o histórico do administrador pelo id dele devolvia
+sempre uma lista vazia — sem erro nenhum, que é o pior dos casos. A tradução
+faz-se pelo nome da conta do dono (`conn.account`).
+
+🔇 E não configurar o Tautulli deixou de ser um WARNING em cada arranque: em
+branco é uma escolha legítima (num painel Jellyfin nem se aplica). O aviso fica
+para quem o preenche só a meio, que é um engano de verdade.
 
 #### O plugin Playback Reporting, quando existe
 

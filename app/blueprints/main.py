@@ -138,15 +138,15 @@ def referral_landing(ref_code):
     )
 
 def _tem_estatisticas() -> bool:
-    """As estatísticas vêm do Tautulli, que só fala com o Plex.
+    """As estatísticas vêm do Tautulli, que só fala com o Plex — e só quando
+    está configurado.
 
     Esconder as ligações no menu não chega: um marcador nos favoritos, ou o
     endereço escrito à mão, davam uma página vazia sem explicação.
     """
-    from ..extensions import media_server
+    from ..utils.estatisticas import estatisticas_disponiveis
 
-    return bool(getattr(media_server, 'capabilities', None)
-                and media_server.capabilities.estatisticas)
+    return estatisticas_disponiveis()
 
 
 @main_bp.route('/statistics')

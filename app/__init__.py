@@ -20,6 +20,7 @@ from . import models
 from . import sockets
 from .logging_config import setup_logging
 from .utils.navigation import endpoint_inicial_do_utilizador
+from .utils.estatisticas import estatisticas_disponiveis
 
 logger = logging.getLogger(__name__)
 
@@ -341,7 +342,12 @@ def create_app() -> Flask:
         info_servidor = {
             'type': getattr(backend, 'SERVER_TYPE', 'plex'),
             'name': getattr(backend, 'DISPLAY_NAME', 'Plex Media Server'),
+            # `capabilities` é o que o servidor PODE fazer; `estatisticas` é o
+            # que há AGORA (ver `utils/estatisticas.py`). Os templates escondem
+            # o pódio, o XP e o Wrapped pela segunda — a primeira é que mantém
+            # o cartão do Tautulli nas Conexões, para haver onde o configurar.
             'capabilities': getattr(backend, 'capabilities', None),
+            'estatisticas': estatisticas_disponiveis(),
         }
 
         return {
