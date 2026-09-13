@@ -189,7 +189,7 @@ class TestBuildFinalUrl:
         assert params == {}
 
     def test_fonte_tautulli_monta_o_proxy(self, monkeypatch):
-        monkeypatch.setattr(image_module, "tautulli_manager", self.TautulliFalso())
+        monkeypatch.setattr(image_module, "stats_manager", self.TautulliFalso())
 
         url, params = build_final_url("tautulli", "/pms_image_proxy?img=/x&width=200")
 

@@ -124,6 +124,17 @@
                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Gere-a no Jellyfin em Painel de Controlo → Chaves de API.') }}</p>
                 </div>
 
+                <!-- De onde vêm as estatísticas neste painel, e o que muda com o
+                     plugin. É aqui que o administrador decide se vale a pena. -->
+                <div class="flex gap-3 rounded-xl border border-purple-200 bg-purple-50 p-4 dark:border-purple-800/40 dark:bg-purple-900/10">
+                    <svg class="w-5 h-5 flex-shrink-0 text-purple-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    <div class="text-xs text-purple-800 dark:text-purple-300 space-y-1">
+                        <p class="font-semibold">{{ _('As estatísticas saem deste servidor — não é preciso Tautulli.') }}</p>
+                        <p>{{ _('Com o plugin Playback Reporting instalado, elas são exatas: uma linha por reprodução, com o tempo que foi mesmo visto e o aparelho onde foi.') }}</p>
+                        <p>{{ _('Sem ele, o Jellyfin só sabe que itens cada pessoa já deu por vistos: conta-se uma reprodução por item, com a duração do próprio item. Serve para o pódio e para o XP, mas é uma aproximação.') }}</p>
+                    </div>
+                </div>
+
                 <button type="button" id="testJellyfinButton" class="btn bg-purple-600 hover:bg-purple-500 text-white py-2 px-5 rounded-xl shadow-sm text-sm font-bold transition-all flex items-center gap-2">
                     {{ _('Testar Conexão') }}
                 </button>
@@ -132,14 +143,16 @@
         </div>
         {% endif %}
 
-        {# O Tautulli só fala com o Plex. Onde o servidor não o suporta, o cartão
-           inteiro sai: pedir credenciais de um serviço que não vai ser usado era
-           pior do que o aviso que aqui estava.
+        {# O Tautulli só fala com o Plex. Num painel cujas estatísticas saem do
+           próprio servidor de média, o cartão inteiro sai: pedir credenciais de
+           um serviço que não vai ser usado era pior do que o aviso que aqui
+           estava.
 
-           ⚠️ A condição é a CAPACIDADE, e não `media_server.estatisticas`: esse
-           só é verdadeiro quando o Tautulli já está configurado, e o cartão
-           desaparecia justamente a quem falta configurá-lo. #}
-        {% if media_server.capabilities.estatisticas %}
+           ⚠️ A condição é `estatisticas_externas` (a fonte é um serviço à
+           parte), e não `media_server.estatisticas`: esse só é verdadeiro
+           quando o Tautulli já está configurado, e o cartão desaparecia
+           justamente a quem falta configurá-lo. #}
+        {% if media_server.capabilities.estatisticas_externas %}
         <!-- Cartão: Tautulli -->
         <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
             <div class="flex items-center gap-3 mb-4">

@@ -173,6 +173,21 @@ def start_background_services(app) -> bool:
     _register_shutdown_handlers()
     return extensions.scheduler.running
 
+def _fonte_de_estatisticas(tipo_de_servidor):
+    """De onde vêm as reproduções que alimentam as estatísticas.
+
+    None deixa o `StatsManager` usar o Tautulli, que é o caso do Plex.
+    """
+    from .services.media_server import resolve_media_server_type
+
+    if resolve_media_server_type(tipo_de_servidor) != 'jellyfin':
+        return None
+
+    from .services.media_server.jellyfin.stats_api import JellyfinStatsApi
+
+    return JellyfinStatsApi(lambda: extensions.media_server)
+
+
 def create_app() -> Flask:
     """
     Cria e configura a instância principal da aplicação Flask (Application Factory).
@@ -273,7 +288,7 @@ def create_app() -> Flask:
     # INICIALIZAÇÃO DE MANAGERS E SERVIÇOS
     # ==========================================
     from .services import (
-        DataManager, TautulliManager, create_media_server,
+        DataManager, StatsManager, create_media_server,
         NotifierManager, EfiManager, MercadoPagoManager,
         OverseerrManager, LinkShortener, Gates2bManager, StreamManager,
         PricingManager, BackupManager, ReferralManager
@@ -281,7 +296,15 @@ def create_app() -> Flask:
 
     extensions.data_manager = DataManager()
     extensions.pricing_manager = PricingManager(data_manager=extensions.data_manager)
-    extensions.tautulli_manager = TautulliManager(data_manager=extensions.data_manager)
+    # A fonte das estatísticas segue o servidor de média: o Tautulli num painel
+    # Plex, o próprio servidor num painel Jellyfin. O backend ainda não existe
+    # aqui (é construído mais abaixo, e precisa deste manager), por isso a fonte
+    # recebe uma função que o vai buscar quando for preciso — a mesma injeção
+    # tardia das outras dependências circulares.
+    extensions.stats_manager = StatsManager(
+        data_manager=extensions.data_manager,
+        api_client=_fonte_de_estatisticas(app_config.get('MEDIA_SERVER_TYPE')),
+    )
     extensions.link_shortener = LinkShortener()
     extensions.notifier_manager = NotifierManager(link_shortener_service=extensions.link_shortener, socketio_instance=extensions.socketio)
     extensions.efi_manager = EfiManager(data_manager=extensions.data_manager)
@@ -299,7 +322,7 @@ def create_app() -> Flask:
     extensions.media_server = create_media_server(
         app_config.get('MEDIA_SERVER_TYPE'),
         data_manager=extensions.data_manager,
-        stats_manager=extensions.tautulli_manager,
+        stats_manager=extensions.stats_manager,
         notifier_manager=extensions.notifier_manager,
         requests_manager=extensions.overseerr_manager,
     )
@@ -342,6 +365,7 @@ def create_app() -> Flask:
         info_servidor = {
             'type': getattr(backend, 'SERVER_TYPE', 'plex'),
             'name': getattr(backend, 'DISPLAY_NAME', 'Plex Media Server'),
+            'short_name': getattr(backend, 'SHORT_NAME', 'Plex'),
             # `capabilities` é o que o servidor PODE fazer; `estatisticas` é o
             # que há AGORA (ver `utils/estatisticas.py`). Os templates escondem
             # o pódio, o XP e o Wrapped pela segunda — a primeira é que mantém

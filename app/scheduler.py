@@ -386,12 +386,12 @@ def sync_xp_job():
             # 🛡️ ISOLAMENTO DE FALHA: um utilizador com histórico problemático no
             # Tautulli não pode impedir a sincronização dos demais.
             _execute_with_retry(
-                action=lambda pid=media_user_id, u=username: extensions.tautulli_manager.stats.sync_user_xp(pid, u),
+                action=lambda pid=media_user_id, u=username: extensions.stats_manager.stats.sync_user_xp(pid, u),
                 description=f"sincronizar XP para '{username}'"
             )
 
         try:
-            result = extensions.tautulli_manager.reset_season_if_due()
+            result = extensions.stats_manager.reset_season_if_due()
             if result.get("reset"):
                 logger.info(f"[XP] {result.get('message')}")
         except Exception as e:

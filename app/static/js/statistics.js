@@ -209,16 +209,16 @@ document.addEventListener('DOMContentLoaded', () => {
             ? `<img src="${escapeHTML(item.poster_url)}" alt="${title}" loading="lazy" class="w-36 h-52 object-cover rounded-lg" onerror="this.onerror=null;this.src='https://placehold.co/144x208/1F2937/E5E7EB?text=${encodeURIComponent(i18n.noArt || '?')}'">`
             : `<div class="w-36 h-52 rounded-lg bg-gray-100 dark:bg-gray-700/50 flex items-center justify-center text-3xl">🎬</div>`;
 
-        const openTag = item.plex_url
-            ? `<a href="${escapeHTML(item.plex_url)}" target="_blank" rel="noopener noreferrer" title="${escapeHTML(i18n.watchOnPlex || '')}" class="block flex-shrink-0 w-36 group snap-start focus:outline-none focus:ring-2 focus:ring-yellow-500 rounded-lg">`
+        const openTag = item.item_url
+            ? `<a href="${escapeHTML(item.item_url)}" target="_blank" rel="noopener noreferrer" title="${escapeHTML(i18n.watchOnPlex || '')}" class="block flex-shrink-0 w-36 group snap-start focus:outline-none focus:ring-2 focus:ring-yellow-500 rounded-lg">`
             : `<div class="flex-shrink-0 w-36 group snap-start">`;
-        const closeTag = item.plex_url ? '</a>' : '</div>';
+        const closeTag = item.item_url ? '</a>' : '</div>';
 
         return `
             ${openTag}
                 <div class="relative group-hover:scale-105 group-hover:drop-shadow-[0_5px_15px_rgba(168,85,247,0.35)] transition-transform duration-300">
                     ${poster}
-                    ${item.plex_url ? `<div class="absolute inset-0 rounded-lg bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    ${item.item_url ? `<div class="absolute inset-0 rounded-lg bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <span class="text-white text-xs font-bold px-2 py-1 rounded bg-yellow-500/90">${escapeHTML(i18n.watchOnPlex || '')}</span>
                     </div>` : ''}
                 </div>

@@ -1,4 +1,4 @@
-# app/services/tautulli_manager.py
+# app/services/stats_manager.py
 
 import logging
 from typing import Dict, Any, Optional, Union
@@ -14,13 +14,23 @@ from ..extensions import cache
 
 logger = logging.getLogger(__name__)
 
-class TautulliManager:
+class StatsManager:
     """
-    Atua como uma fachada (Facade) para os serviços do Tautulli, focado
-    exclusivamente em estatísticas e gestão do estado da ligação.
+    Fachada das estatísticas: pódio, XP, conquistas, recomendações e Wrapped.
+
+    ⚠️ **A agregação é a mesma para todos os servidores; a FONTE é que muda.**
+    Tudo isto sai de uma lista de reproduções, e quem a fornece é o
+    `api_client` — o Tautulli num painel Plex, o próprio servidor num painel
+    Jellyfin (`media_server/jellyfin/stats_api.py`). Foi assim que as
+    estatísticas passaram a existir no Jellyfin sem se reescrever uma linha da
+    agregação; escrever uma segunda cópia dela era a alternativa, e teriam
+    divergido no primeiro ajuste ao XP.
+
+    Uma fonte tem de saber responder a `get_history`, `get_recently_added`,
+    `get_metadata` e `image_payload`, e dizer se está `is_configured`.
     """
-    def __init__(self, data_manager):
-        self.api_client = TautulliApiClient()
+    def __init__(self, data_manager, api_client=None):
+        self.api_client = api_client if api_client is not None else TautulliApiClient()
         self.stats = StatsHandler(self.api_client, data_manager)
         self.recommendations = RecommendationsHandler(self.api_client, data_manager)
         self.data_manager = data_manager
@@ -48,9 +58,14 @@ class TautulliManager:
         logger.info("Cache de recomendações invalidada.")
 
     def reload_credentials(self) -> None:
-        """Recarrega as credenciais e configurações para o Tautulli."""
-        logger.info("A recarregar as credenciais do Tautulli Manager...")
-        self.api_client.reload_config()
+        """Recarrega as credenciais da fonte, quando ela as tem.
+
+        A fonte do Jellyfin não tem credenciais próprias: usa a ligação ao
+        servidor de média, que é recarregada noutro sítio.
+        """
+        logger.info("A recarregar as credenciais da fonte de estatísticas...")
+        if hasattr(self.api_client, 'reload_config'):
+            self.api_client.reload_config()
         self.invalidate_stats_cache()  # Invalida a cache ao recarregar
         # O estado de saúde também fica obsoleto: sem isto, o painel continuaria a
         # mostrar "Offline" até 30s depois de o administrador corrigir o URL/chave.

@@ -28,24 +28,22 @@ Notas de desenho:
 * O índice (catálogo + matriz) é construído UMA vez para o servidor inteiro e
   reaproveitado por todos os utilizadores — é a parte cara (uma chamada ao
   Tautulli e, opcionalmente, alguns pedidos de metadados). Quem faz a cache é o
-  ``TautulliManager``; aqui só se calcula.
+  ``StatsManager``; aqui só se calcula.
 * A privacidade é respeitada: quem ativou "esconder do ranking" não entra na
   matriz como *vizinho* (o histórico dele nunca influencia o que os outros veem),
   mas continua a receber recomendações a partir do seu próprio histórico.
 * Nada do que é devolvido identifica *quem* viu o quê — apenas quantos.
 """
 
-import base64
 import logging
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from math import sqrt
 from typing import Any, Dict, List, Optional, Set
 
-from flask import url_for
-
 from app.config import load_or_create_config
 from ...utils.identity import normalize_user_ids
+from ...utils.image_proxy import proxied_image_url
 
 logger = logging.getLogger(__name__)
 
@@ -81,24 +79,21 @@ def _config_bool(config: Dict[str, Any], key: str) -> bool:
     return bool(value)
 
 
-def build_poster_url(thumb: Optional[str], width: int = 300, height: int = 450) -> Optional[str]:
+def build_poster_url(api: Any, thumb: Optional[str], width: int = 300, height: int = 450) -> Optional[str]:
     """
-    Constrói o URL do proxy interno de imagens para uma miniatura do Tautulli.
+    Constrói o URL do proxy interno de imagens para uma miniatura.
 
     O proxy recebe o caminho já codificado em base64 (ver ``blueprints/image.py``),
-    o que evita expor o URL/token do Tautulli ao browser do utilizador.
+    o que evita expor o URL/token da fonte ao browser do utilizador.
+
+    Quem diz de ONDE se pede a imagem é a fonte (``api.image_payload``): as
+    mesmas recomendações servem um servidor cujas capas vêm do Tautulli e outro
+    cujas capas vêm do próprio servidor de média.
     """
-    if not thumb:
+    if not thumb or api is None:
         return None
 
-    tautulli_path = f"/pms_image_proxy?img={thumb}&width={width}&height={height}"
-    b64_payload = base64.urlsafe_b64encode(f"tautulli:{tautulli_path}".encode("utf-8")).decode("utf-8")
-
-    # 🛡️ Fora de um pedido HTTP (ex: tarefa agendada) o url_for rebenta.
-    try:
-        return url_for("image.proxy_image", source=b64_payload)
-    except RuntimeError:
-        return f"/image/?source={b64_payload}"
+    return proxied_image_url(api.image_payload(thumb, width, height))
 
 
 def _item_identity(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -254,7 +249,7 @@ class RecommendationsHandler:
         self._enrich_with_genres(config, catalog, item_users)
 
         for item in catalog.values():
-            item["poster_url"] = build_poster_url(item.pop("thumb", None))
+            item["poster_url"] = build_poster_url(self.api, item.pop("thumb", None))
 
         return {
             "catalog": catalog,

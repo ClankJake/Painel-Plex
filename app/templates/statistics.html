@@ -272,7 +272,7 @@
         <div class="absolute inset-0 rounded-full border-t-2 border-yellow-500 animate-spin"></div>
         <div class="absolute inset-2 rounded-full border-r-2 border-blue-500 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
     </div>
-    <p class="text-lg font-medium text-gray-600 dark:text-gray-300 mt-6 animate-pulse">{{ _('Processando os dados do Plex...') }}</p>
+    <p class="text-lg font-medium text-gray-600 dark:text-gray-300 mt-6 animate-pulse">{{ _('Processando os dados do %(servidor)s...', servidor=media_server.short_name) }}</p>
 </div>
 
 <!-- Container Principal de Estatísticas -->
@@ -493,7 +493,7 @@
         data-i18n-match-viewers="{{ _('{count} pessoas que viram este título também viram') }}"
         data-i18n-match-viewers-one="{{ _('Uma pessoa que viu este título também viu') }}"
         data-i18n-match-genre="{{ _('Género parecido:') }}"
-        data-i18n-watch-on-plex="{{ _('Ver no Plex') }}"
+        data-i18n-watch-on-plex="{{ _('Ver no %(servidor)s', servidor=media_server.short_name) }}"
         data-i18n-movie="{{ _('Filme') }}"
         data-i18n-series="{{ _('Série') }}"
         data-i18n-recommendations-empty="{{ _('Ainda não há dados suficientes no servidor para gerar recomendações. Assista a mais alguns títulos e volte aqui!') }}"

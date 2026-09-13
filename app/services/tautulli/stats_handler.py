@@ -1,16 +1,15 @@
 # app/services/tautulli/stats_handler.py
 
 import logging
-import base64
 from datetime import datetime, timedelta, timezone
 from collections import Counter
 from typing import Dict, List, Any, Optional
 
 from flask_babel import gettext as _
 from requests.exceptions import RequestException
-from flask import url_for
 
 from app.config import load_or_create_config
+from ...utils.image_proxy import proxied_image_url
 
 logger = logging.getLogger(__name__)
 
@@ -643,7 +642,7 @@ class StatsHandler:
 
             # 🎮 XP/Níveis: sincroniza sempre que as estatísticas são (re)calculadas.
             # Como esta função já está protegida por 5 minutos de cache a montante
-            # (TautulliManager.get_user_watch_details), isto nunca chama a API do
+            # (StatsManager.get_user_watch_details), isto nunca chama a API do
             # Tautulli mais de uma vez a cada 5 minutos por utilizador, independentemente
             # de quantas pessoas diferentes vejam a página nesse intervalo.
             if self.data_manager:
@@ -806,18 +805,10 @@ class StatsHandler:
             stats["top_shows"][item.get("grandparent_title")] += 1
             
         if len(stats["recent"]) < 9:
-            poster_url = None
-            if item.get('thumb'):
-                tautulli_path = f"/pms_image_proxy?img={item['thumb']}&width=200&height=300"
-                payload_str = f"tautulli:{tautulli_path}"
-                b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                
-                # 🛡️ Fallback Robusto: Previne crash quando não há contexto HTTP (ex: Background Thread)
-                try:
-                    poster_url = url_for('image.proxy_image', source=b64_payload)
-                except RuntimeError:
-                    poster_url = f"/image/?source={b64_payload}"
-            
+            # Quem sabe de onde se pede esta capa é a FONTE (ver `image_payload`):
+            # aqui só se agrega, e a agregação é a mesma em qualquer servidor.
+            poster_url = proxied_image_url(self.api.image_payload(item.get('thumb'), 200, 300))
+
             stats["recent"].append({
                 "type": media_type, 
                 "title": item.get("title"), 
@@ -851,22 +842,11 @@ class StatsHandler:
             
             processed_history = []
             for item in history_data:
-                poster_url = None
                 thumb_key = item.get('thumb')
                 if item.get('media_type') == 'episode' and item.get('grandparent_thumb'):
                     thumb_key = item.get('grandparent_thumb')
+                poster_url = proxied_image_url(self.api.image_payload(thumb_key, 200, 300))
 
-                if thumb_key:
-                    tautulli_path = f"/pms_image_proxy?img={thumb_key}&width=200&height=300"
-                    payload_str = f"tautulli:{tautulli_path}"
-                    b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                    
-                    # 🛡️ Fallback Robusto: URL Estática para processos Assíncronos
-                    try:
-                        poster_url = url_for('image.proxy_image', source=b64_payload)
-                    except RuntimeError:
-                        poster_url = f"/image/?source={b64_payload}"
-                
                 title = item.get("title")
                 subtitle = str(item.get("year")) if item.get("year") else ""
                 if item.get("media_type") == 'episode':
@@ -919,18 +899,8 @@ class StatsHandler:
                     if item.get('media_type') == 'episode' and item.get('grandparent_thumb'): 
                         thumb_key = item.get('grandparent_thumb')
                         
-                    poster_url = None
-                    if thumb_key:
-                        tautulli_path = f"/pms_image_proxy?img={thumb_key}&width=300&height=450"
-                        payload_str = f"tautulli:{tautulli_path}"
-                        b64_payload = base64.urlsafe_b64encode(payload_str.encode('utf-8')).decode('utf-8')
-                        
-                        # 🛡️ Fallback Robusto
-                        try:
-                            poster_url = url_for('image.proxy_image', source=b64_payload)
-                        except RuntimeError:
-                            poster_url = f"/image/?source={b64_payload}"
-                            
+                    poster_url = proxied_image_url(self.api.image_payload(thumb_key, 300, 450))
+
                     filtered_media.append({ 
                         'title': item.get('title'), 
                         'year': item.get('year'), 

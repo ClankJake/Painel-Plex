@@ -37,6 +37,10 @@ class FakeApiClient:
     def get_metadata(self, rating_key):
         return self.metadata.get(str(rating_key))
 
+    def image_payload(self, thumb, width=300, height=450):
+        """O prefixo é da FONTE: o Tautulli diz `tautulli:`, o Jellyfin outro."""
+        return f"tautulli:/pms_image_proxy?img={thumb}&width={width}&height={height}" if thumb else None
+
 
 @pytest.fixture()
 def configurar(monkeypatch):

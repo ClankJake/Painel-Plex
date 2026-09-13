@@ -7,7 +7,7 @@ noutras partes da aplicação.
 """
 
 from .data_manager import DataManager
-from .tautulli_manager import TautulliManager
+from .stats_manager import StatsManager
 from .media_server import create_media_server, resolve_media_server_type
 from .media_server.plex import PlexManager
 from .notifier_manager import NotifierManager
@@ -23,7 +23,7 @@ from .referral_manager import ReferralManager
 
 __all__ = [
     'DataManager',
-    'TautulliManager',
+    'StatsManager',
     'PlexManager',
     'create_media_server',
     'resolve_media_server_type',

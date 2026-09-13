@@ -16,7 +16,7 @@ from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 
-from ...extensions import media_server, tautulli_manager, efi_manager, mercado_pago_manager, gates2b_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager , notifier_manager
+from ...extensions import media_server, stats_manager, efi_manager, mercado_pago_manager, gates2b_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager , notifier_manager
 # 🐛 CORREÇÃO: 'backup_manager' NÃO pode ser importado por valor aqui. Ao contrário
 # dos outros gestores, ele é instanciado mais tarde no create_app() (depois deste
 # módulo já ter sido importado), por isso um "from ...extensions import backup_manager"
@@ -139,11 +139,12 @@ def get_system_health():
     """Verifica e retorna o estado de todos os serviços integrados."""
     health_status = {"plex": media_server.check_status()}
 
-    # O Tautulli só fala com o Plex: num painel ligado a outro servidor não é um
-    # serviço "desativado", é um serviço que não existe — e um cartão apagado no
-    # estado do sistema é uma pergunta que o administrador não tem como fechar.
-    if getattr(getattr(media_server, 'capabilities', None), 'estatisticas', False):
-        health_status["tautulli"] = tautulli_manager.check_status()
+    # O Tautulli só fala com o Plex: num painel cujas estatísticas saem do
+    # próprio servidor de média não é um serviço "desativado", é um serviço que
+    # não existe — e um cartão apagado no estado do sistema é uma pergunta que o
+    # administrador não tem como fechar.
+    if getattr(getattr(media_server, 'capabilities', None), 'estatisticas_externas', False):
+        health_status["tautulli"] = stats_manager.check_status()
 
     health_status.update({
         "efi": efi_manager.check_status(),
@@ -387,7 +388,7 @@ def api_settings():
         if gates2b_changed:
             gates2b_manager.reload_credentials()
         if tautulli_changed:
-            tautulli_manager.reload_credentials()
+            stats_manager.reload_credentials()
         elif _changed(
             'RECOMMENDATIONS_ENABLED', 'RECOMMENDATIONS_HISTORY_DAYS', 'RECOMMENDATIONS_MIN_PERCENT_WATCHED',
             'RECOMMENDATIONS_MIN_CO_OCCURRENCE', 'RECOMMENDATIONS_MAX_SECTIONS', 'RECOMMENDATIONS_ITEMS_PER_SECTION',
@@ -395,7 +396,7 @@ def api_settings():
         ):
             # Afinar o motor de recomendações tem de dar efeito imediato; caso
             # contrário o administrador testa e não vê nada mudar durante 30 min.
-            tautulli_manager.invalidate_recommendations_cache()
+            stats_manager.invalidate_recommendations_cache()
 
         if overseerr_changed:
             if hasattr(overseerr_manager, 'reload_credentials'):
@@ -755,7 +756,7 @@ def save_setup():
 
     save_app_config(config)
     
-    tautulli_manager.reload_credentials()
+    stats_manager.reload_credentials()
     efi_manager.reload_credentials() 
     
     if hasattr(overseerr_manager, 'reload_credentials'):
@@ -779,7 +780,7 @@ def save_setup():
 
         temporario = create_media_server(
             tipo_servidor,
-            data_manager=data_manager, stats_manager=tautulli_manager,
+            data_manager=data_manager, stats_manager=stats_manager,
             notifier_manager=notifier_manager, requests_manager=overseerr_manager,
         )
         success, message = temporario.reload_connections()
@@ -870,7 +871,7 @@ def test_tautulli_connection():
     if not api_key:
         return jsonify({'success': False, 'message': _('Chave da API é obrigatória.')}), 400
 
-    return jsonify(tautulli_manager.test_connection(url, api_key))
+    return jsonify(stats_manager.test_connection(url, api_key))
 
 def _credencial_com_placeholder(recebida, chave_guardada):
     """Devolve a credencial a usar no teste.
@@ -1244,7 +1245,7 @@ def regenerate_api_key():
 def xp_season_info():
     """Devolve o estado da temporada de XP atual (data de fim, dias restantes)."""
     try:
-        return jsonify({"success": True, "season": tautulli_manager.get_season_info()})
+        return jsonify({"success": True, "season": stats_manager.get_season_info()})
     except Exception as e:
         logger.error(f"Erro ao obter informação da temporada de XP: {e}", exc_info=True)
         return jsonify({"success": False, "message": str(e)}), 500
@@ -1260,7 +1261,7 @@ def xp_season_reset():
     sempre ('lifetime_xp') é preservado.
     """
     try:
-        result = tautulli_manager.reset_season_if_due(force=True)
+        result = stats_manager.reset_season_if_due(force=True)
         status = 200 if result.get("success") else 400
         return jsonify(result), status
     except Exception as e:

@@ -24,7 +24,7 @@ def _construir_plex(*, data_manager, stats_manager, notifier_manager, requests_m
 
     return PlexManager(
         data_manager=data_manager,
-        tautulli_manager=stats_manager,
+        stats_manager=stats_manager,
         notifier_manager=notifier_manager,
         overseerr_manager=requests_manager,
     )

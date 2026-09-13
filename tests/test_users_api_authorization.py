@@ -246,7 +246,7 @@ class TestMinhaContaDoAdministrador:
                 return {"success": True, "history": [],
                         "pagination": {"current_page": 1, "total_pages": 1, "total_records": 0}}
 
-        monkeypatch.setattr(users_module.extensions, "tautulli_manager", Vazio(), raising=False)
+        monkeypatch.setattr(users_module.extensions, "stats_manager", Vazio(), raising=False)
         monkeypatch.setattr(users_module.extensions, "media_server", Vazio(), raising=False)
 
     def test_os_detalhes_da_conta_respondem_sem_perfil(self, client, configurada, db_session):
@@ -381,7 +381,7 @@ class TestAvatarDaSessao:
             def get_user_watch_details(self, **kwargs):
                 return {"success": True, "details": {}}
 
-        monkeypatch.setattr(users_module.extensions, "tautulli_manager", TautulliVazio(), raising=False)
+        monkeypatch.setattr(users_module.extensions, "stats_manager", TautulliVazio(), raising=False)
 
         def instalar(thumb=None):
             fachada = self.FachadaComAvatar(thumb)

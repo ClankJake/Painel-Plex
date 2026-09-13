@@ -22,10 +22,10 @@ class PlexUserManager:
     """
     Gere todas as operações relacionadas com os utilizadores do Plex.
     """
-    def __init__(self, connection, data_manager, tautulli_manager, overseerr_manager):
+    def __init__(self, connection, data_manager, stats_manager, overseerr_manager):
         self.conn = connection
         self.data_manager = data_manager
-        self.tautulli_manager = tautulli_manager
+        self.stats_manager = stats_manager
         self.overseerr_manager = overseerr_manager
         self.stream_manager = None
 

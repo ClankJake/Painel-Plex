@@ -63,15 +63,20 @@ class MediaServerCapabilities:
     links_profundos: bool
 
     # O servidor PODE ter estatísticas de visualização (pódio, XP, conquistas,
-    # recomendações, Wrapped). Hoje saem todas do Tautulli, que só fala com o
-    # Plex. O histórico e os aparelhos da página da conta NÃO dependem disto:
-    # cada backend responde por eles à sua maneira.
+    # recomendações, Wrapped). O histórico e os aparelhos da página da conta
+    # NÃO dependem disto: cada backend responde por eles à sua maneira.
     #
     # ⚠️ "Pode" não é "tem": num painel Plex sem Tautulli configurado esta
     # capacidade continua verdadeira — é ela que mantém o cartão do Tautulli
     # nas Conexões, sem o qual não haveria onde o configurar. Quem quiser saber
     # se as estatísticas existem AGORA pergunta `estatisticas_disponiveis()`.
     estatisticas: bool
+
+    # A fonte das estatísticas é um serviço À PARTE, que o administrador tem de
+    # configurar (o Tautulli). Quando é falso, elas saem do próprio servidor de
+    # média e não há nada para configurar — é esta bandeira que decide se o
+    # cartão do Tautulli aparece nas Conexões e no estado do sistema.
+    estatisticas_externas: bool
 
 
 @runtime_checkable
@@ -330,6 +335,10 @@ class MediaServerBackend(Protocol):
     # Identificação, para logs, para a interface e para a recarga seletiva.
     SERVER_TYPE: str
     DISPLAY_NAME: str
+    # O nome curto, para o que a pessoa lê no meio de uma frase ("Ver no
+    # Plex", "O Seu Jellyfin Wrapped"). Estava escrito à mão nas páginas das
+    # estatísticas, que eram só do Plex.
+    SHORT_NAME: str
 
     @property
     def capabilities(self) -> MediaServerCapabilities: ...
@@ -423,6 +432,16 @@ class MediaServerBackend(Protocol):
 
     def get_watch_history(self, user_id: Any, page: int = 1, length: int = 15,
                           search: str = "") -> Dict[str, Any]: ...
+
+    def link_para_item(self, item_id: Any) -> Optional[str]:
+        """O endereço onde a pessoa abre ESTE item no cliente do servidor.
+
+        Estava escrito numa rota, a montar um URL de app.plex.tv à mão — o que
+        num painel Jellyfin dava um botão "Ver no Plex" que levava a lado
+        nenhum. Como tudo o que é vocabulário do servidor, vive no backend.
+        None quando não há como o construir (sem ligação, ou sem item).
+        """
+        return None
 
     def importar_bloqueios_do_servidor(self) -> Dict[str, Any]:
         """Traz para a auditoria os cortes que o SERVIDOR deu sozinho.

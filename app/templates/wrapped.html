@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ _('O Seu Plex Wrapped') }} - {{ app_title }}{% endblock %}
+{% block title %}{{ _('O Seu %(servidor)s Wrapped', servidor=media_server.short_name) }} - {{ app_title }}{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -78,7 +78,7 @@
 <!-- Estado antes de entrar no modo imersivo: seletor de ano + botão "começar" -->
 <div id="wrapped-intro" class="max-w-lg mx-auto text-center py-16">
     <div class="text-6xl mb-4">🎬✨</div>
-    <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">{{ _('O Seu Plex Wrapped') }}</h2>
+    <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">{{ _('O Seu %(servidor)s Wrapped', servidor=media_server.short_name) }}</h2>
     <p class="text-gray-500 dark:text-gray-400 mb-8">{{ _('A sua retrospectiva pessoal de visualizações — filmes, séries, madrugadas e tudo mais.') }}</p>
 
     <div class="bg-white dark:bg-gray-800/50 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 space-y-4">
@@ -137,7 +137,7 @@
         data-i18n-watch-again="{{ _('Ver Novamente') }}"
         data-i18n-back-to-stats="{{ _('Voltar às Estatísticas') }}"
         data-i18n-loading-failed="{{ _('Falha ao carregar a sua retrospectiva.') }}"
-        data-i18n-your-year="{{ _('O seu {year} no Plex') }}"
+        data-i18n-your-year="{{ _('O seu {year} no %(servidor)s', servidor=media_server.short_name) }}"
         data-i18n-hours-title="{{ _('Você maratonou') }}"
         data-i18n-movies-episodes-title="{{ _('O que você assistiu') }}"
         data-i18n-genre-title="{{ _('Seu gênero favorito foi') }}"
@@ -148,7 +148,7 @@
         data-i18n-busiest-day-subtitle="{{ _('foi em') }}"
         data-i18n-personality-title="{{ _('A sua personalidade do ano') }}"
         data-i18n-monthly-title="{{ _('O seu ano, mês a mês') }}"
-        data-i18n-summary-title="{{ _('O meu resumo no Plex') }}"
+        data-i18n-summary-title="{{ _('O meu resumo no %(servidor)s', servidor=media_server.short_name) }}"
         data-i18n-plays="{{ _('reproduções') }}"
         data-i18n-genres-explored="{{ _('gêneros explorados no total') }}"
         data-i18n-your-favourites="{{ _('Os seus destaques') }}"
@@ -160,7 +160,8 @@
         data-i18n-save-image="{{ _('Salvar Imagem') }}"
         data-i18n-image-saved="{{ _('Imagem guardada!') }}"
         data-i18n-night-owl-sessions="{{ _('sessões de madrugada') }}"
-        data-share-text-template="{{ _('🎬 O meu Plex Wrapped {year}: {hours}h assistidas, {movies} filmes, {episodes} episódios! Meu perfil: {personality} {icon}') }}"
+        data-share-text-template="{{ _('🎬 O meu %(servidor)s Wrapped {year}: {hours}h assistidas, {movies} filmes, {episodes} episódios! Meu perfil: {personality} {icon}', servidor=media_server.short_name) }}"
+        data-i18n-share-title="{{ _('%(servidor)s Wrapped', servidor=media_server.short_name) }}"
         >
 </script>
 {% endblock %}

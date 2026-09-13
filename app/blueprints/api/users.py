@@ -153,7 +153,7 @@ def get_account_details():
             pass
 
     libraries_data = extensions.media_server.get_user_libraries(media_user_id)
-    watch_data = extensions.tautulli_manager.get_user_watch_details(media_user_id=media_user_id)
+    watch_data = extensions.stats_manager.get_user_watch_details(media_user_id=media_user_id)
 
     # 🐛 O avatar da sessão é uma FOTOGRAFIA do momento do login: quem colocasse
     # uma imagem de perfil no servidor depois de entrar continuava a ver o "?"

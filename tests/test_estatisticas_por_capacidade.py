@@ -1,10 +1,11 @@
 # tests/test_estatisticas_por_capacidade.py
 """As estatísticas escondem-se onde não há de onde as tirar.
 
-Pódio, XP, conquistas, recomendações e o Wrapped saem todos do histórico do
-Tautulli, que só fala com o Plex. Num painel ligado ao Jellyfin não há de onde
-os tirar — e a regra da casa é que o que falta ESCONDE a funcionalidade, nunca
-a mostra partida.
+Pódio, XP, conquistas, recomendações e o Wrapped saem todos de uma lista de
+reproduções. Num painel Plex quem a guarda é o Tautulli, e sem ele não há de
+onde a tirar — a regra da casa é que o que falta ESCONDE a funcionalidade,
+nunca a mostra partida. (Num painel Jellyfin a lista vem do próprio servidor:
+ver `test_jellyfin_estatisticas.py`.)
 
 ⚠️ São duas perguntas parecidas e não são a mesma:
 
@@ -28,12 +29,14 @@ from app.services.media_server.base import MediaServerCapabilities
 pytestmark = pytest.mark.integration
 
 
-def _capacidades(estatisticas):
+def _capacidades(estatisticas, externas=None):
+    """`externas` é o que separa um painel Plex (Tautulli) de um Jellyfin."""
     return MediaServerCapabilities(
         convites_nativos=not estatisticas, cria_contas=not estatisticas,
         fontes_media_online=estatisticas, login_delegado=estatisticas,
         desativa_conta=not estatisticas, links_profundos=True,
         estatisticas=estatisticas,
+        estatisticas_externas=estatisticas if externas is None else externas,
     )
 
 
@@ -45,10 +48,12 @@ class BackendFalso:
     — um painel Plex sem Tautulli — que mais custou a acertar.
     """
 
-    def __init__(self, suporta, disponiveis=None):
-        self.SERVER_TYPE = 'plex' if suporta else 'jellyfin'
-        self.DISPLAY_NAME = 'Plex Media Server' if suporta else 'Jellyfin'
-        self.CAPABILITIES = _capacidades(suporta)
+    def __init__(self, suporta, disponiveis=None, externas=None):
+        externo = suporta if externas is None else externas
+        self.SERVER_TYPE = 'plex' if externo else 'jellyfin'
+        self.DISPLAY_NAME = 'Plex Media Server' if externo else 'Jellyfin'
+        self.SHORT_NAME = 'Plex' if externo else 'Jellyfin'
+        self.CAPABILITIES = _capacidades(suporta, externas)
         self._disponiveis = suporta if disponiveis is None else disponiveis
 
     @property
@@ -80,8 +85,8 @@ def servidor(monkeypatch):
     from app.blueprints.api import system as system_module
     from app.blueprints.api import users as users_module
 
-    def instalar(estatisticas, disponiveis=None):
-        backend = BackendFalso(estatisticas, disponiveis)
+    def instalar(estatisticas, disponiveis=None, externas=None):
+        backend = BackendFalso(estatisticas, disponiveis, externas)
         monkeypatch.setattr(extensions, 'media_server', backend)
         monkeypatch.setattr(main_module, 'media_server', backend, raising=False)
         monkeypatch.setattr(system_module, 'media_server', backend, raising=False)
@@ -315,9 +320,51 @@ class TestTarefasDeFundo:
         chamadas = []
         monkeypatch.setattr(extensions.data_manager, 'get_all_user_profiles',
                             lambda: chamadas.append(True) or [])
-        monkeypatch.setattr(extensions.tautulli_manager, 'reset_season_if_due',
+        monkeypatch.setattr(extensions.stats_manager, 'reset_season_if_due',
                             lambda: {"reset": False})
 
         agendador.sync_xp_job()
 
         assert chamadas == [True]
+
+
+class TestJellyfinTemEstatisticas:
+    """
+    As do Jellyfin saem do próprio servidor (`jellyfin/stats_api.py`), por isso
+    não há nada para o administrador ligar — mas há tudo para mostrar. É a
+    combinação que faltava: estatísticas SEM fonte externa.
+    """
+
+    def _jellyfin(self, servidor):
+        return servidor(True, disponiveis=True, externas=False)
+
+    def test_o_menu_mostra_as_ligacoes(self, client, configurada, db_session, servidor):
+        self._jellyfin(servidor)
+        _autenticar(client)
+
+        pagina = client.get('/account').get_data(as_text=True)
+
+        assert 'href="/statistics"' in pagina
+        assert 'href="/wrapped"' in pagina
+
+    def test_as_paginas_abrem(self, client, configurada, db_session, servidor):
+        self._jellyfin(servidor)
+        _autenticar(client)
+
+        assert client.get('/statistics').status_code == 200
+
+    def test_o_cartao_do_tautulli_nao_aparece(self, client, configurada, db_session, servidor):
+        # Pedir as credenciais de um serviço que não vai ser usado é pior do
+        # que não as pedir: o Tautulli não fala com o Jellyfin.
+        self._jellyfin(servidor)
+        _autenticar(client)
+
+        assert 'TAUTULLI_API_KEY' not in client.get('/settings').get_data(as_text=True)
+
+    def test_o_tautulli_tambem_sai_do_estado_do_sistema(self, client, configurada, db_session, servidor):
+        self._jellyfin(servidor)
+        _autenticar(client)
+
+        saude = client.get('/api/system/system-health').get_json()['health']
+
+        assert 'tautulli' not in saude

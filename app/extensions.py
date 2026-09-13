@@ -46,7 +46,7 @@ data_manager = None
 # SEMPRE com este nome: nada fora de app/services/media_server/plex/ deve saber
 # que o servidor por baixo é o Plex.
 media_server = None
-tautulli_manager = None
+stats_manager = None
 stream_manager = None 
 notifier_manager = None
 efi_manager = None

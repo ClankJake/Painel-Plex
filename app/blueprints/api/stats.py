@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 from flask_babel import gettext as _
 
-from ...extensions import media_server, tautulli_manager, data_manager
+from ...extensions import media_server, stats_manager, data_manager
 from ...utils.identity import normalize_user_id
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ def get_statistics_data():
     
     plex_users = media_server.get_all_users() or []
     plex_users_info = {u['id']: u['thumb'] for u in plex_users}
-    tautulli_data = tautulli_manager.get_watch_stats(days=days, plex_users_info=plex_users_info)
+    tautulli_data = stats_manager.get_watch_stats(days=days, plex_users_info=plex_users_info)
 
     if not tautulli_data.get("success"):
         return jsonify(tautulli_data)
@@ -63,7 +63,7 @@ def get_user_statistics(media_user_id):
 
     if not is_private or current_user.is_admin() or current_user.id == str(media_user_id):
         days = request.args.get('days', 7, type=int)
-        return jsonify(tautulli_manager.get_user_watch_details(media_user_id=media_user_id, days=days))
+        return jsonify(stats_manager.get_user_watch_details(media_user_id=media_user_id, days=days))
     else:
         logger.warning(f"Acesso negado para '{current_user.username}' ao tentar ver as estatísticas privadas do utilizador ID '{media_user_id}'.")
         return jsonify({"success": False, "message": _("Este usuário prefere manter suas estatísticas privadas.")}), 403
@@ -95,22 +95,7 @@ def get_user_watch_history_route():
 @login_required
 def get_recently_added_route():
     days = request.args.get('days', 7, type=int)
-    return jsonify(tautulli_manager.get_recently_added(days=days))
-
-def _plex_deep_link(machine_identifier, rating_key):
-    """
-    Link profundo para a página do item no Plex Web.
-
-    Sem 'machine_identifier' (Plex offline ou por configurar) devolve None — a
-    interface mostra o cartão à mesma, apenas sem o botão de "Ver no Plex".
-    """
-    if not machine_identifier or not rating_key:
-        return None
-    return (
-        f"https://app.plex.tv/desktop#!/server/{machine_identifier}"
-        f"/details?key=%2Flibrary%2Fmetadata%2F{rating_key}"
-    )
-
+    return jsonify(stats_manager.get_recently_added(days=days))
 
 @stats_api_bp.route('/recommendations')
 @login_required
@@ -131,20 +116,24 @@ def get_recommendations_route():
     # Normalizado para texto: sem isto, o ID do utilizador autenticado (string)
     # e o pedido pelo administrador (int) criariam duas entradas de cache
     # distintas para exactamente o mesmo resultado.
-    result = tautulli_manager.get_recommendations(str(target_user_id))
+    result = stats_manager.get_recommendations(str(target_user_id))
     if not result.get("success"):
         return jsonify(result), 502
 
-    machine_identifier = None
-    try:
-        machine_identifier = media_server.get_server_identifier()
-    except Exception:
-        logger.debug("Plex indisponível: as recomendações seguem sem links profundos.")
+    def _link(rating_key):
+        # Quem sabe montar o endereço é o backend: no Plex é uma página do
+        # plex.tv, no Jellyfin é a interface web do próprio servidor. Sem
+        # ligação não há link, e o cartão aparece à mesma — só sem o botão.
+        try:
+            return media_server.link_para_item(rating_key)
+        except Exception:
+            logger.debug("Servidor indisponível: as recomendações seguem sem links profundos.")
+            return None
 
     for section in result.get("sections", []):
-        section["seed"]["plex_url"] = _plex_deep_link(machine_identifier, section["seed"].get("rating_key"))
+        section["seed"]["item_url"] = _link(section["seed"].get("rating_key"))
         for item in section.get("items", []):
-            item["plex_url"] = _plex_deep_link(machine_identifier, item.get("rating_key"))
+            item["item_url"] = _link(item.get("rating_key"))
 
     return jsonify(result)
 
@@ -167,5 +156,5 @@ def get_wrapped_data_route(media_user_id):
         return jsonify({"success": False, "message": _("Este usuário prefere manter suas estatísticas privadas.")}), 403
 
     year = request.args.get('year', type=int)
-    return jsonify(tautulli_manager.get_wrapped_data(media_user_id=media_user_id, year=year))
+    return jsonify(stats_manager.get_wrapped_data(media_user_id=media_user_id, year=year))
 

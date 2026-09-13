@@ -54,6 +54,8 @@ class PlexManager:
 
     SERVER_TYPE = 'plex'
     DISPLAY_NAME = 'Plex Media Server'
+    # O nome curto é o que aparece no meio de uma frase ("Ver no Plex").
+    SHORT_NAME = 'Plex'
 
     # O Plex convida contas que já existem em plex.tv; nunca cria contas. O
     # bloqueio é feito retirando as partilhas, porque não há forma de suspender
@@ -66,11 +68,13 @@ class PlexManager:
         desativa_conta=False,
         links_profundos=True,
         estatisticas=True,
+        # As do Plex vêm do Tautulli, que é outro serviço e tem de ser ligado.
+        estatisticas_externas=True,
     )
 
-    def __init__(self, data_manager, tautulli_manager, notifier_manager, overseerr_manager):
+    def __init__(self, data_manager, stats_manager, notifier_manager, overseerr_manager):
         self.conn = PlexConnectionManager()
-        self.users = PlexUserManager(self.conn, data_manager, tautulli_manager, overseerr_manager)
+        self.users = PlexUserManager(self.conn, data_manager, stats_manager, overseerr_manager)
         self.online_media = PlexOnlineMediaManager(self.conn)
         self.sessions = PlexSessionsProvider(self.conn)
         self.history = PlexHistoryManager(self.conn)
@@ -80,7 +84,7 @@ class PlexManager:
         self.subscriptions.plex_manager = self
         self.stream_manager = None
         self.data_manager = data_manager
-        self.tautulli_manager = tautulli_manager
+        self.stats_manager = stats_manager
         self.notifier_manager = notifier_manager
         self.overseerr_manager = overseerr_manager
         self.app = None
@@ -274,7 +278,7 @@ class PlexManager:
         enquanto não tiver URL e chave. É esta pergunta que decide de onde vêm
         o histórico e os aparelhos — e se há estatísticas de todo.
         """
-        cliente = getattr(self.tautulli_manager, 'api_client', None)
+        cliente = getattr(self.stats_manager, 'api_client', None)
         return bool(cliente is not None and getattr(cliente, 'is_configured', False))
 
     def estatisticas_disponiveis(self):
@@ -296,7 +300,7 @@ class PlexManager:
         servidor (ver `history.py`), que é mais lento e sabe menos.
         """
         if self._tautulli_ativo():
-            return self.tautulli_manager.get_user_devices(user_id)
+            return self.stats_manager.get_user_devices(user_id)
         return self.history.get_user_devices(user_id)
 
     def get_watch_history(self, user_id, page=1, length=15, search=""):
@@ -306,7 +310,7 @@ class PlexManager:
         pessoa nunca tinha visto nada, que é diferente de "não sei".
         """
         if self._tautulli_ativo():
-            return self.tautulli_manager.get_user_watch_history(
+            return self.stats_manager.get_user_watch_history(
                 user_id=user_id, page=page, length=length, search=search
             )
         return self.history.get_watch_history(
@@ -324,6 +328,16 @@ class PlexManager:
     def importar_bloqueios_do_servidor(self):
         """Não há nada a importar: no Plex, quem corta é só o painel."""
         return {"success": True, "importados": 0}
+
+    def link_para_item(self, item_id):
+        """A página do item no Plex Web, que precisa do id da MÁQUINA."""
+        identificador = self.get_server_identifier()
+        if not identificador or not item_id:
+            return None
+        return (
+            f"https://app.plex.tv/desktop#!/server/{identificador}"
+            f"/details?key=%2Flibrary%2Fmetadata%2F{item_id}"
+        )
 
     def block_user(self, media_user_id, reason='manual'):
         if self.stream_manager and not self.users.stream_manager:

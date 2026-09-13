@@ -416,7 +416,7 @@ def _fachada(tautulli_configurado):
 
     gestor = PlexManager(
         data_manager=_Duplo(),
-        tautulli_manager=TautulliFalso(tautulli_configurado),
+        stats_manager=TautulliFalso(tautulli_configurado),
         notifier_manager=_Duplo(),
         overseerr_manager=_Duplo(),
     )

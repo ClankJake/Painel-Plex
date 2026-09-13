@@ -118,6 +118,18 @@ class TautulliApiClient:
     def get_metadata(self, rating_key: str) -> Any:
         return self._make_request({"cmd": "get_metadata", "rating_key": rating_key})
 
+    def image_payload(self, thumb: Optional[str], width: int = 300, height: int = 450) -> Optional[str]:
+        """O `<prefixo>:<caminho>` que o proxy de imagens do painel entende.
+
+        Vive aqui porque o prefixo é conhecimento da FONTE: quem agrega as
+        estatísticas não tem de saber que estas capas se vão buscar ao Tautulli.
+        Era o que faltava para a mesma agregação servir outro servidor — a
+        alternativa seria um `if` por marca em cada sítio que mostra uma capa.
+        """
+        if not thumb:
+            return None
+        return f"tautulli:/pms_image_proxy?img={thumb}&width={width}&height={height}"
+
     # --- TESTE E VALIDAÇÃO ---
 
     @staticmethod

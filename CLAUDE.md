@@ -41,8 +41,8 @@ corre apenas o pytest, em Python 3.11 e 3.12.
 
 Flask com *application factory* (`create_app()` em `app/__init__.py`), SQLite,
 Jinja2 + Tailwind, e JavaScript ES modules sem framework. O painel administra um
-servidor Plex: usuários, convites, assinaturas, pagamentos PIX, notificações e
-estatísticas vindas do Tautulli.
+servidor Plex ou Jellyfin: usuários, convites, assinaturas, pagamentos PIX,
+notificações e estatísticas de visualização.
 
 ### Managers como singletons de módulo
 
@@ -329,34 +329,60 @@ bloqueados deixaram de ser expulsos durante esta migração.
 O campo JSON de entrada chama-se `media_user_id`; `plex_user_id` continua a ser
 aceite em `user_lookup_by_id` para não partir integrações já feitas.
 
-`TautulliManager` segue o mesmo padrão sobre `app/services/tautulli/`
-(`api_client`, `stats_handler`, `recommendations_handler`).
+`StatsManager` (`app/services/stats_manager.py`) segue o mesmo padrão sobre
+`app/services/tautulli/` (`api_client`, `stats_handler`,
+`recommendations_handler`) — e a agregação que lá vive é partilhada por todos
+os servidores. Ver a secção das estatísticas.
 
 ### Estatísticas, histórico e aparelhos: três coisas, não uma
 
-O Tautulli só fala com o Plex, mas não é tudo o que ele dá que fica de fora.
+**As ESTATÍSTICAS** (pódio, XP, conquistas, recomendações, Wrapped) saem todas
+de uma coisa só: **uma lista de reproduções**. A agregação vive em
+`services/tautulli/stats_handler.py` e é a MESMA para todos os servidores; o
+que muda é a FONTE que a alimenta, injetada no `StatsManager`:
 
-**As ESTATÍSTICAS ficam** (pódio, XP, conquistas, recomendações, Wrapped): saem
-do registo por reprodução que só o Tautulli guarda. Onde não há de onde as
-tirar, escondem-se — as ligações do menu e as sub-abas Conquistas, XP e
-Recomendações da Gamificação ("Indique e Ganhe" é de pagamentos e fica). As
-páginas `/statistics` e `/wrapped` redirecionam: esconder a ligação não chega,
-um marcador nos favoritos dava uma página vazia sem explicação. E o
+- num painel Plex, o Tautulli (`services/tautulli/api_client.py`);
+- num painel Jellyfin, o próprio servidor
+  (`media_server/jellyfin/stats_api.py`).
+
+Uma fonte tem de saber responder a `get_history`, `get_recently_added`,
+`get_metadata` e `image_payload`, e dizer se está `is_configured`. Quem a
+escolhe é o `_fonte_de_estatisticas()` do `create_app`, pelo tipo de servidor.
+
+⚠️ **Escrever uma segunda agregação era a alternativa, e teriam divergido no
+primeiro ajuste ao XP.** Foi por isso que o prefixo das capas deixou de estar
+escrito à mão (`tautulli:...`) e passou a vir de `image_payload`: era a única
+coisa, em toda a agregação, que sabia de que servidor se tratava.
+
+Onde não há de onde as tirar, escondem-se — as ligações do menu e as sub-abas
+Conquistas, XP e Recomendações da Gamificação ("Indique e Ganhe" é de pagamentos
+e fica). As páginas `/statistics` e `/wrapped` redirecionam: esconder a ligação
+não chega, um marcador nos favoritos dava uma página vazia sem explicação. E o
 `sync_xp_job` desiste logo: sem fonte, dava um erro por utilizador (com
 repetições) todas as madrugadas.
 
-⚠️ **"Pode" e "tem" são perguntas diferentes**, e trocá-las dá dois erros
-opostos:
+⚠️ **São três perguntas parecidas, e trocá-las dá erros opostos:**
 
-- `media_server.capabilities.estatisticas` — o servidor SUPORTA-AS. É fixa, e é
-  ela que mantém o cartão do Tautulli nas Conexões e o cartão dele no estado do
-  sistema. Escondê-los a quem ainda não configurou o Tautulli deixava-o sem
-  forma nenhuma de o configurar.
+- `media_server.capabilities.estatisticas` — o servidor SUPORTA-AS. Hoje é
+  verdadeira nos dois.
+- `media_server.capabilities.estatisticas_externas` — a fonte é um serviço À
+  PARTE, que o administrador tem de configurar (o Tautulli). É ela que decide
+  se o cartão do Tautulli aparece nas Conexões e no estado do sistema: num
+  painel Jellyfin não há ali nada para configurar, e pedir credenciais de um
+  serviço que não vai ser usado é pior do que não as pedir.
 - `estatisticas_disponiveis()` (`app/utils/estatisticas.py`, exposto aos
   templates como `media_server.estatisticas`) — EXISTEM AGORA: o servidor
   suporta-as **e** a fonte está ligada. É por esta que se escondem o menu, as
   páginas e as sub-abas; um painel Plex sem Tautulli tem a capacidade e não tem
   os dados.
+
+⚠️ **O nome da marca aparece no meio das frases** ("Ver no Plex", "O Seu Plex
+Wrapped"). Estava escrito à mão nas páginas de estatísticas, que eram só do
+Plex — num painel Jellyfin passava a ser a marca errada, como aconteceu com o
+`default.svg`. Use `media_server.short_name` (`SHORT_NAME` no backend). Pela
+mesma razão, o link "Ver no ..." das recomendações deixou de ser montado na
+rota: `link_para_item()` é do contrato, porque o endereço é do servidor (uma
+página de app.plex.tv, ou a interface web do próprio Jellyfin).
 
 ⚠️ Ao escondê-las, a casa de quem não é administrador deixa de existir — e
 estava escrita à mão em cinco sítios. `endpoint_inicial_do_utilizador()`
@@ -472,6 +498,34 @@ faz-se pelo nome da conta do dono (`conn.account`).
 🔇 E não configurar o Tautulli deixou de ser um WARNING em cada arranque: em
 branco é uma escolha legítima (num painel Jellyfin nem se aplica). O aviso fica
 para quem o preenche só a meio, que é um engano de verdade.
+
+#### As estatísticas do Jellyfin: duas fontes, uma boa e uma aproximada
+
+`jellyfin/stats_api.py` traduz o que o servidor sabe para a lista de
+reproduções que a agregação consome:
+
+- **com o plugin Playback Reporting**, é exato: uma linha por reprodução, com
+  os SEGUNDOS vistos, o cliente e o aparelho. A consulta é a mesma
+  `submit_custom_query` do histórico, com as mesmas trancas de SQL;
+- **sem ele**, o núcleo só sabe que ITENS cada pessoa deu por vistos
+  (`Filters=IsPlayed`): conta-se uma reprodução por item, com a duração do
+  próprio item. Serve para o pódio e para o XP, e está dito no cartão do
+  Jellyfin nas Conexões — quem quiser exatidão instala o plugin.
+
+⚠️ **O `UserId` do plugin vem com hífenes e o painel guarda-o sem.** O pódio
+junta o histórico aos perfis por esse id: com as duas grafias misturadas, a
+mesma pessoa aparecia duas vezes — ou nenhuma. Tudo o que sai dali passa por
+`chave_de()`, e a consulta procura pelas DUAS grafias, porque não se sabe qual
+delas a versão instalada do plugin gravou.
+
+⚠️ **A data do plugin não traz fuso** (`2026-09-12 20:23:28`). Lê-se como UTC,
+que é o que `history.py` já fazia com as mesmas linhas — o que não pode haver é
+duas leituras diferentes da mesma data no mesmo painel.
+
+Os géneros, o ano, o realizador e as capas não estão no registo do plugin: vêm
+de uma segunda chamada ao núcleo (`/Items?ids=`), em blocos e só para os itens
+que aparecem. Um item apagado da biblioteca conta na mesma, com o nome que o
+plugin gravou e sem capa.
 
 #### O plugin Playback Reporting, quando existe
 

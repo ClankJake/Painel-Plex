@@ -37,6 +37,7 @@ class JellyfinManager:
 
     SERVER_TYPE = 'jellyfin'
     DISPLAY_NAME = 'Jellyfin'
+    SHORT_NAME = 'Jellyfin'
 
     # As contas são locais ao servidor: o painel cria-as e é responsável pelas
     # credenciais. Não há convites a contas externas, não há fontes de mídia
@@ -49,9 +50,11 @@ class JellyfinManager:
         login_delegado=False,
         desativa_conta=True,
         links_profundos=True,
-        # O Tautulli só fala com o Plex. Até haver um fornecedor alternativo,
-        # o pódio, o XP e as recomendações escondem-se.
-        estatisticas=False,
+        # Há estatísticas, e saem do próprio servidor: do plugin Playback
+        # Reporting quando existe, do registo do núcleo quando não
+        # (`stats_api.py`). O Tautulli não entra aqui — nem há o que configurar.
+        estatisticas=True,
+        estatisticas_externas=False,
     )
 
     IMAGE_SOURCES = ('jellyfin',)
@@ -85,13 +88,14 @@ class JellyfinManager:
         return self.CAPABILITIES
 
     def estatisticas_disponiveis(self):
-        """Não há: o Tautulli só fala com o Plex, e o painel não o substitui.
+        """Há: saem do próprio servidor (ver `stats_api.py`).
 
-        O histórico e os aparelhos NÃO dependem disto — esses o Jellyfin
-        responde sozinho (ver `history.py`). O que se esconde é o pódio, o XP,
-        as conquistas, as recomendações e o Wrapped.
+        Não depende de mais nada estar instalado. Com o plugin Playback
+        Reporting são por REPRODUÇÃO, com o tempo que foi mesmo visto; sem ele,
+        o núcleo só sabe que itens cada pessoa deu por vistos, e o tempo é o
+        que o item dura — uma aproximação, dita na interface.
         """
-        return False
+        return True
 
     def init_app(self, app):
         from app.config import is_configured
@@ -450,6 +454,16 @@ class JellyfinManager:
             socketio.emit('new_termination_log', payload, namespace='/dashboard')
         except Exception as e:
             logger.debug(f"Não foi possível anunciar o corte na Dashboard: {describe(e)}")
+
+    def link_para_item(self, item_id):
+        """A página do item na interface web do próprio servidor."""
+        base = (self.get_base_url() or '').rstrip('/')
+        identificador = self.get_server_identifier()
+        if not base or not item_id:
+            return None
+
+        endereco = f"{base}/web/#/details?id={item_id}"
+        return f"{endereco}&serverId={identificador}" if identificador else endereco
 
     def get_user_devices(self, user_id):
         return self.history.get_user_devices(user_id)

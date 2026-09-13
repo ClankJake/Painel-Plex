@@ -31,6 +31,10 @@ class FakeApiClient:
         self.chamadas_metadata.append(str(rating_key))
         return self.metadata.get(str(rating_key))
 
+    def image_payload(self, thumb, width=300, height=450):
+        """O prefixo é da FONTE: o Tautulli diz `tautulli:`, o Jellyfin outro."""
+        return f"tautulli:/pms_image_proxy?img={thumb}&width={width}&height={height}" if thumb else None
+
 
 @pytest.fixture()
 def configurar(monkeypatch):
@@ -118,10 +122,10 @@ class TestPercentComplete:
 
 class TestBuildPosterUrl:
     def test_sem_thumb_nao_ha_poster(self):
-        assert build_poster_url(None) is None
+        assert build_poster_url(FakeApiClient(), None) is None
 
     def test_gera_url_do_proxy_interno(self, app_context):
-        url = build_poster_url("/library/metadata/1/thumb")
+        url = build_poster_url(FakeApiClient(), "/library/metadata/1/thumb")
 
         assert "/image/?source=" in url
         # O URL do Tautulli nunca pode aparecer em claro para o browser.
