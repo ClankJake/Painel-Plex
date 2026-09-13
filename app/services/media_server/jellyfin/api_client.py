@@ -135,6 +135,43 @@ class JellyfinApiClient:
     def get(self, endpoint, **kwargs):
         return self.request('GET', endpoint, **kwargs)
 
+    def get_bytes(self, endpoint, *, params=None, headers=None, timeout=None):
+        """O corpo em bruto, para o que não é JSON — hoje, o log do servidor.
+
+        Devolve `(dados, parcial)`: `parcial` diz se o servidor honrou um
+        pedido `Range` (206) ou se mandou o ficheiro todo (200). Quem chama
+        precisa de saber: é a diferença entre já ter só a parte nova e ter de
+        a cortar do resto.
+
+        Um 416 ("Range Not Satisfiable") não é um erro a reportar — é o
+        servidor a dizer que não há nada para lá do ponto pedido.
+        """
+        if not self.is_configured:
+            raise JellyfinApiError(_("As configurações do Jellyfin (URL, Chave de API) estão incompletas."))
+
+        cabecalhos = self._headers()
+        cabecalhos['Accept'] = '*/*'
+        cabecalhos.pop('Content-Type', None)
+        cabecalhos.update(headers or {})
+
+        resposta = self.session.get(
+            f"{self.base_url}/{endpoint.lstrip('/')}",
+            headers=cabecalhos, params=params,
+            timeout=timeout or self.TIMEOUT_SECONDS,
+        )
+
+        if resposta.status_code == 416:
+            return b'', True
+
+        if resposta.status_code >= 400:
+            raise JellyfinApiError(
+                _("O Jellyfin recusou o pedido (%(codigo)s): %(detalhe)s",
+                  codigo=resposta.status_code, detalhe=(resposta.text or '')[:200]),
+                status_code=resposta.status_code,
+            )
+
+        return resposta.content, resposta.status_code == 206
+
     def post(self, endpoint, **kwargs):
         return self.request('POST', endpoint, **kwargs)
 

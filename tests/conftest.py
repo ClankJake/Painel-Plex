@@ -291,13 +291,20 @@ class FakeDataManager:
         return (_id(media_user_id), code) in self.pending_coupon_charges
 
     # --- Auditoria ---
-    def log_stream_termination(self, media_user_id, username, media_title, platform, reason):
+    def log_stream_termination(self, media_user_id, username, media_title, platform, reason,
+                               timestamp=None):
         registo = {
             "media_user_id": media_user_id, "username": username, "media_title": media_title,
-            "platform": platform, "reason": reason,
+            "platform": platform, "reason": reason, "timestamp": timestamp,
         }
         self.terminations.append(registo)
         return registo
+
+    def get_last_termination_timestamp(self, reason):
+        """A marca de água de quem importa cortes de fora (ver o DataManager)."""
+        momentos = [t['timestamp'] for t in self.terminations
+                    if t.get('reason') == reason and t.get('timestamp')]
+        return max(momentos) if momentos else None
 
     # --- Notificações ---
     def create_notification(self, message, category="info", link=None, media_user_id=None):

@@ -506,6 +506,43 @@ class TestAuditoriaDeCortes:
         assert data_manager.clear_all_stream_termination_logs() == 2
         assert data_manager.get_stream_termination_logs() == []
 
+    def test_a_marca_de_agua_e_o_ultimo_corte_daquela_razao(self, data_manager):
+        """Quem importa cortes do servidor precisa de saber onde ficou.
+
+        Sem isto, cada leitura do log do Jellyfin voltava a gravar o que já lá
+        estava — e a auditoria enchia-se de repetições do mesmo bloqueio.
+        """
+        data_manager.set_user_profile(1, {"username": "ana"})
+        ontem = datetime.now(timezone.utc) - timedelta(days=1)
+
+        assert data_manager.get_last_termination_timestamp('plugin_limit_blocked') is None
+
+        data_manager.log_stream_termination(1, "ana", "Matrix", "Android", "limit_exceeded")
+        # A razão importa: a marca de água de quem importa não pode andar para
+        # a frente por causa de um corte que o próprio painel deu.
+        assert data_manager.get_last_termination_timestamp('plugin_limit_blocked') is None
+
+        data_manager.log_stream_termination(1, "ana", "Duna", "", "plugin_limit_blocked",
+                                            timestamp=ontem)
+        marca = data_manager.get_last_termination_timestamp('plugin_limit_blocked')
+
+        # ⚠️ Volta sem fuso (o SQLite não o guarda), mas é sempre UTC: quem a
+        # compara com uma hora com fuso tem de a marcar como tal.
+        assert marca is not None and marca.tzinfo is None
+        assert abs((marca.replace(tzinfo=timezone.utc) - ontem).total_seconds()) < 1
+
+    def test_a_hora_do_corte_pode_ser_a_de_quando_aconteceu(self, data_manager):
+        # Os cortes do plugin são lidos do log minutos depois: gravá-los com a
+        # hora da LEITURA punha-os todos no mesmo instante, fora de ordem.
+        data_manager.set_user_profile(1, {"username": "ana"})
+        quando = datetime.now(timezone.utc) - timedelta(hours=3)
+
+        data_manager.log_stream_termination(1, "ana", "Duna", "", "plugin_limit_blocked",
+                                            timestamp=quando)
+
+        guardado = data_manager.get_stream_termination_logs()[0]["timestamp"]
+        assert str(quando.replace(tzinfo=None))[:19] in str(guardado)
+
 
 class TestConquistas:
     def test_desbloquear_e_ler(self, data_manager):

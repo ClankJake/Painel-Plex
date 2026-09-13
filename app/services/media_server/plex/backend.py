@@ -321,6 +321,10 @@ class PlexManager:
         """Não há nada a limpar: o painel nunca escreveu limites no Plex."""
         return {"success": True, "limpos": 0}
 
+    def importar_bloqueios_do_servidor(self):
+        """Não há nada a importar: no Plex, quem corta é só o painel."""
+        return {"success": True, "importados": 0}
+
     def block_user(self, media_user_id, reason='manual'):
         if self.stream_manager and not self.users.stream_manager:
             self.users.stream_manager = self.stream_manager

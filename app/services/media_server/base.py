@@ -424,6 +424,16 @@ class MediaServerBackend(Protocol):
     def get_watch_history(self, user_id: Any, page: int = 1, length: int = 15,
                           search: str = "") -> Dict[str, Any]: ...
 
+    def importar_bloqueios_do_servidor(self) -> Dict[str, Any]:
+        """Traz para a auditoria os cortes que o SERVIDOR deu sozinho.
+
+        Só existe onde há quem corte além do painel — no Jellyfin, o plugin
+        StreamLimiter, que recusa o pedido da mídia dentro do processo do
+        servidor e não deixa rasto nenhum por aqui. Onde o painel é o único a
+        cortar, não há nada a importar.
+        """
+        return {"success": True, "importados": 0}
+
     def clear_session_limits(self) -> Dict[str, Any]:
         """Reparação de uma vez: tira do servidor um limite que o painel lá pôs.
 

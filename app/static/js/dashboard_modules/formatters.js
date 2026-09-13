@@ -108,6 +108,10 @@ export function getReasonText(reason) {
     switch (reason) {
         case 'limit_exceeded':
             return i18n.reasonLimitExceeded;
+        // O corte não foi do painel: foi o plugin do servidor a recusar o
+        // pedido da mídia. Dizê-lo evita a pergunta "mas eu não cortei ninguém".
+        case 'plugin_limit_blocked':
+            return i18n.reasonPluginLimitBlocked;
         case 'blocked_manual':
             return i18n.reasonBlockedManual;
         case 'blocked_expired':

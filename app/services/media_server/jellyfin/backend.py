@@ -17,8 +17,10 @@ from .account_manager import JellyfinAccountManager
 from .api_client import JellyfinApiError
 from .connection import JellyfinConnectionManager
 from .history import JellyfinHistoryManager
+from .identity import chave_de
 from .sessions import JellyfinSessionsProvider
 from .stream_limit import JellyfinStreamLimit
+from .stream_gate_log import RAZAO_DO_CORTE, JellyfinStreamGateLog
 from .user_manager import JellyfinUserManager
 
 logger = logging.getLogger(__name__)
@@ -60,6 +62,7 @@ class JellyfinManager:
         self.sessions = JellyfinSessionsProvider(self.conn)
         self.history = JellyfinHistoryManager(self.conn)
         self.stream_limit = JellyfinStreamLimit(self.conn)
+        self.gate_log = JellyfinStreamGateLog(self.conn)
         self.invites = JellyfinAccountManager(
             self.conn, self.users, data_manager, self, requests_manager, notifier_manager
         )
@@ -355,6 +358,98 @@ class JellyfinManager:
 
     def sync_screen_limits(self):
         return self.stream_limit.sincronizar(self.data_manager.get_all_user_profiles() or [])
+
+    def importar_bloqueios_do_servidor(self):
+        """Traz para a auditoria os cortes que o PLUGIN deu sozinho.
+
+        O StreamLimiter recusa o pedido da mídia dentro do processo do Jellyfin
+        — o painel não participa, e por isso não sabia nada desses cortes: a
+        "Auditoria de Cortes" mostrava só os seus, e quem visse o limite a ser
+        cumprido não encontrava rasto nenhum no painel.
+
+        Como o plugin não tem rota de eventos, a única fonte é o log do
+        servidor (ver `stream_gate_log.py`).
+        """
+        if not self.stream_limit.esta_disponivel():
+            return {"success": True, "importados": 0}
+
+        bloqueios = self.gate_log.ler_bloqueios()
+        if not bloqueios:
+            return {"success": True, "importados": 0}
+
+        # A marca de água vem da própria auditoria: o último corte já lá
+        # registado. Assim uma releitura do ficheiro não duplica nada.
+        marca = self.data_manager.get_last_termination_timestamp(RAZAO_DO_CORTE)
+        if marca is not None and marca.tzinfo is None:
+            # O SQLite guarda a hora sem o fuso; é sempre UTC (ver o DataManager).
+            marca = marca.replace(tzinfo=timezone.utc)
+
+        novos = [b for b in bloqueios if marca is None or b.quando > marca]
+        if not novos:
+            return {"success": True, "importados": 0}
+
+        aparelhos = self.gate_log.nomes_de_aparelhos()
+        nomes = self._nomes_dos_utilizadores()
+
+        importados = 0
+        for bloqueio in sorted(novos, key=lambda b: b.quando):
+            perfil = self.data_manager.get_user_profile(bloqueio.user_id) or {}
+            nome = perfil.get('username') or nomes.get(chave_de(bloqueio.user_id))
+            if not nome:
+                # Sem nome não vale a pena a linha: a auditoria é lida por
+                # pessoas, e um GUID não diz a ninguém quem foi.
+                logger.debug(f"Bloqueio do plugin para um utilizador desconhecido: {bloqueio}")
+                continue
+
+            registo = self.data_manager.log_stream_termination(
+                media_user_id=bloqueio.user_id,
+                username=nome,
+                # Não há título: o plugin recusa ANTES de haver reprodução. O
+                # que se sabe, e é o que interessa, é o limite que se atingiu.
+                media_title=_("Limite de %(limite)s tela(s)", limite=bloqueio.limite),
+                platform=aparelhos.get(chave_de(bloqueio.aparelho)) or '',
+                reason=RAZAO_DO_CORTE,
+                timestamp=bloqueio.quando,
+            )
+            importados += 1
+            self._anunciar_corte(registo)
+
+        if importados:
+            logger.info(f"Auditoria: {importados} corte(s) do plugin StreamLimiter importado(s) do log do Jellyfin.")
+        return {"success": True, "importados": importados}
+
+    def _nomes_dos_utilizadores(self):
+        """`id` → nome, para quem ainda não tem perfil local no painel."""
+        try:
+            utilizadores = self.users.list_users() or []
+        except Exception as e:
+            logger.debug(f"Não foi possível obter os nomes dos utilizadores: {describe(e)}")
+            return {}
+        return {chave_de(u.get('id')): u.get('username') for u in utilizadores if u.get('id')}
+
+    @staticmethod
+    def _anunciar_corte(registo):
+        """Põe o corte na Dashboard sem esperar pelo próximo carregamento.
+
+        A interface já sabia ouvir isto (`new_termination_log`); não havia era
+        ninguém a dizê-lo.
+
+        ⚠️ A hora vai no MESMO formato que a rota da auditoria usa: a interface
+        faz `new Date(timestamp + 'Z')`, e um `datetime` serializado à maneira
+        do Flask dava "Invalid Date" — sem erro nenhum, só a data em branco.
+        """
+        if not registo:
+            return
+
+        try:
+            from ....extensions import socketio
+
+            payload = dict(registo)
+            if isinstance(payload.get('timestamp'), datetime):
+                payload['timestamp'] = payload['timestamp'].strftime('%Y-%m-%dT%H:%M:%S')
+            socketio.emit('new_termination_log', payload, namespace='/dashboard')
+        except Exception as e:
+            logger.debug(f"Não foi possível anunciar o corte na Dashboard: {describe(e)}")
 
     def get_user_devices(self, user_id):
         return self.history.get_user_devices(user_id)

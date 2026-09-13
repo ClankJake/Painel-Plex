@@ -51,6 +51,12 @@ class ApiFalsa:
         self.base_url = "http://jellyfin.local:8096"
         self.api_key = "chave"
         self.is_configured = True
+        # Os ficheiros que o `get_bytes` serve (o log do servidor), e se este
+        # servidor honra ou não um pedido parcial. Modelar as DUAS respostas
+        # importa: quem lê o log tem de ficar certo nos dois casos.
+        self.ficheiros = {}
+        self.honra_range = True
+        self.pedidos_range = []
 
     def _resolver(self, metodo, endpoint):
         self.enviados.append((metodo, endpoint))
@@ -95,6 +101,25 @@ class ApiFalsa:
     def delete(self, endpoint, **kwargs):
         self.apagados.append((endpoint, kwargs.get('params')))
         return self._resolver('DELETE', endpoint)
+
+    def get_bytes(self, endpoint, *, params=None, headers=None, timeout=None):
+        self.enviados.append(('GET', endpoint))
+        self.ultimos_params[endpoint] = params or {}
+        if endpoint in self.erros:
+            raise self.erros[endpoint]
+
+        conteudo = self.ficheiros.get((params or {}).get('name'), b'')
+        intervalo = (headers or {}).get('Range')
+        self.pedidos_range.append(intervalo)
+
+        if intervalo and self.honra_range:
+            inicio = int(intervalo.split('=')[1].split('-')[0])
+            if inicio >= len(conteudo):
+                return b'', True
+            return conteudo[inicio:], True
+
+        # Sem `Range` honrado, o servidor manda o ficheiro inteiro.
+        return conteudo, False
 
     def reload_config(self):
         pass

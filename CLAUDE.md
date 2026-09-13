@@ -210,7 +210,36 @@ dizê-lo, em vez de o painel mostrar "Ilimitado" sobre alguém que não está.
 
 O corte do painel continua a ser preciso: o plugin trava o que COMEÇA, e não
 sabe nada de assinaturas vencidas nem de bloqueios — e é o painel quem envia a
-mensagem e regista a auditoria.
+mensagem.
+
+🛡️ **O que o plugin bloqueia entra na auditoria pelo LOG do servidor**
+(`stream_gate_log.py`, importado de 5 em 5 minutos pelo `server_block_import_job`,
+através de `importar_bloqueios_do_servidor()` no contrato). Quem bloqueia é ele,
+dentro do processo do Jellyfin: o painel não participa, e a "Auditoria de
+Cortes" mostrava só os cortes dela própria — o limite era cumprido sem deixar
+rasto nenhum aqui. E o log é a única fonte possível: a API do plugin é só sobre
+limites (`SetUserStreamLimit`, `GetAllStreamLimits`), não sobre o que já
+aconteceu. A linha é esta:
+
+    [2026-09-12 20:23:28.756 -03:00] [INF] [97] Jellyfin.Plugin.StreamLimit.Gate.StreamGateFilter: Stream gate denied playback negotiation. User: 44874bdd-..., device: "7e0fa1c8...", limit: 1
+
+Quatro coisas que ela exige e que têm teste de regressão:
+
+- ⚠️ **a hora vem no fuso do SERVIDOR** (`-03:00`). Guardá-la como está punha o
+  corte três horas no futuro — e à frente da marca de água, o que faria a
+  importação seguinte ignorar tudo o que viesse a seguir;
+- ⚠️ **o GUID vem com hífenes** e o painel guarda-o sem (`chave_de`, como em
+  todo o resto do Jellyfin);
+- **só se lê o que ainda não se leu**, retomando sempre num FIM DE LINHA (o
+  ficheiro está a ser escrito enquanto o lemos). Pede-se com `Range`; se o
+  servidor mandar o ficheiro inteiro, o corte é feito no painel;
+- **quem impede a repetição é a auditoria**, não a posição de leitura: a marca
+  de água é o último registo com a razão `plugin_limit_blocked`
+  (`get_last_termination_timestamp`). Perder a cache faz reler, não duplicar.
+
+Não há título nessas linhas — o plugin recusa ANTES de haver reprodução — por
+isso a auditoria mostra o limite atingido no lugar dele, e o nome do aparelho
+(de `GET /Devices`) no lugar da plataforma.
 
 `update_screen_limit()` na fachada é a **única porta** para mudar o limite de
 alguém: grava o perfil e leva-o ao plugin. Quem escrever

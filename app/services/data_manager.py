@@ -315,13 +315,34 @@ class DataManager:
 
     # --- MÉTODOS DE AUDITORIA ---
     @db_transaction
-    def log_stream_termination(self, media_user_id, username, media_title, platform, reason):
+    def log_stream_termination(self, media_user_id, username, media_title, platform, reason,
+                               timestamp=None):
+        """Regista um corte na auditoria.
+
+        `timestamp` existe para os cortes que NÃO foram do painel: os que o
+        plugin StreamLimiter deu sozinho são lidos do log do Jellyfin minutos
+        depois de acontecerem, e gravá-los com a hora da leitura punha-os todos
+        empilhados no mesmo instante, fora de ordem com os restantes.
+        """
         log_entry = StreamTerminationLog(
             media_user_id=media_user_id, username=username, media_title=media_title,
-            platform=platform, reason=reason, timestamp=datetime.now(timezone.utc)
+            platform=platform, reason=reason,
+            timestamp=timestamp or datetime.now(timezone.utc)
         )
         db.session.add(log_entry)
         return self._row_to_dict(log_entry)
+
+    def get_last_termination_timestamp(self, reason):
+        """Quando foi o último corte registado com esta razão (None se nenhum).
+
+        É a marca de água de quem importa cortes de fora: sem ela, cada leitura
+        do log do servidor voltava a gravar o que já lá estava.
+        """
+        ultimo = (StreamTerminationLog.query
+                  .filter(StreamTerminationLog.reason == reason)
+                  .order_by(StreamTerminationLog.timestamp.desc())
+                  .first())
+        return ultimo.timestamp if ultimo else None
 
     def get_stream_termination_logs(self, limit=20):
         logs = StreamTerminationLog.query.order_by(StreamTerminationLog.timestamp.desc()).limit(limit).all()

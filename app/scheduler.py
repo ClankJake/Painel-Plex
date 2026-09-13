@@ -303,6 +303,25 @@ def cleanup_job():
         except Exception as e:
             logger.error(f"Falha ao sincronizar os limites de telas: {e}", exc_info=True)
 
+@single_instance_job('server_block_import_job')
+def server_block_import_job():
+    """Traz para a auditoria os cortes que o SERVIDOR deu sozinho.
+
+    Onde o painel é o único a cortar, isto não faz nada (ver
+    `importar_bloqueios_do_servidor` no contrato). Onde há o plugin
+    StreamLimiter, é a única forma de esses cortes aparecerem no painel: o
+    plugin recusa o pedido dentro do processo do Jellyfin e não passa por aqui.
+    """
+    if not _app: return
+    with _app.app_context():
+        from . import extensions
+
+        try:
+            extensions.media_server.importar_bloqueios_do_servidor()
+        except Exception as e:
+            logger.error(f"Falha ao importar os cortes do servidor: {e}", exc_info=True)
+
+
 @single_instance_job('cleanup_image_cache_job')
 def cleanup_image_cache_job():
     if not _app: return
@@ -431,6 +450,15 @@ def setup_scheduler(app):
         id='removal_job', func=removal_job,
         trigger=CronTrigger(hour=int(block_time_parts[0]), minute=int(block_time_parts[1]), timezone=tz_str),
         replace_existing=True, misfire_grace_time=3600
+    )
+
+    # Os cortes do plugin StreamLimiter (ver `server_block_import_job`). De
+    # cinco em cinco minutos: a auditoria não é tempo real, e o log do servidor
+    # é lido só a partir do ponto onde a leitura anterior parou.
+    extensions.scheduler.add_job(
+        id='server_block_import_job', func=server_block_import_job,
+        trigger='interval', minutes=5,
+        replace_existing=True, coalesce=True, misfire_grace_time=600
     )
 
     cleanup_time_parts = config.get("CLEANUP_TIME", "03:00").split(':')
