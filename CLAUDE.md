@@ -531,21 +531,11 @@ grandes quebram em `*_modules/` com a mesma divisão (`api`, `config`, `dom`,
 `sanitizeHTML` escapam também aspas, porque o resultado é interpolado dentro de
 atributos.
 
-⚠️ **Um macro importado com `{% import %}` NÃO vê o contexto do template.** É
-preciso `{% import ... with context %}`. O símbolo do painel
-(`partials/logo.html`) estava copiado em quatro templates e passou a macro para
-a logo personalizada caber num sítio só — sem o `with context`, o
-`app_logo_url` era indefinido lá dentro e a logo NUNCA aparecia, em página
-nenhuma e sem erro. Há um teste que varre os templates à procura do import sem
-contexto.
-
-A logo personalizada vive em `CONFIG_DIR/branding/` (o volume do utilizador),
-nunca em `app/static/` — o `static` está dentro da imagem e desaparece na
-atualização seguinte. `app/services/branding.py` valida-a pelos PRIMEIROS
-BYTES, não pela extensão, e **recusa SVG de propósito**: é XML, aceita
-`<script>`, e esta imagem aparece no cabeçalho de todas as páginas, incluindo as
-públicas — seria XSS armazenado em todo o lado, enviado pela própria interface
-de administração.
+⚠️ **Um macro importado com `{% import %}` NÃO vê o contexto do template** — só
+os argumentos que recebe. O símbolo do painel (`partials/logo.html`) é um macro
+por isso mesmo: não lê nada do contexto, recebe as classes de quem o chama.
+Um macro que precise de variáveis globais tem de ser importado
+`{% import ... with context %}`, ou elas ficam indefinidas lá dentro, sem erro.
 
 O Tailwind compila **apenas** `app/static/css/input.css`; os templates entram no
 build só como fonte de nomes de classes. Um `@apply` dentro de um `<style>` de

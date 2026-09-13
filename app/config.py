@@ -35,9 +35,6 @@ def load_or_create_config():
             "SECRET_KEY": secret_key_from_env or secrets.token_hex(16),
             "INTERNAL_TRIGGER_KEY": secrets.token_hex(32),
             "APP_TITLE": "Painel Plex",
-            # Nome do ficheiro da logo em CONFIG_DIR/branding/. Vazio = o
-            # símbolo padrão do painel. Ver `app/services/branding.py`.
-            "APP_LOGO_FILE": "",
             "APP_BASE_URL": "",
             "LOG_LEVEL": "INFO",
             "LOG_FILE": os.path.join(CONFIG_DIR, "app.log"),
@@ -255,7 +252,6 @@ def load_or_create_config():
             _set_default("LOG_DEDUP_SECONDS", 60)
             _set_default("STREAM_CHECK_INTERVAL_SECONDS", 15)
             _set_default("SCREEN_LIMIT_TERMINATION_STRATEGY", "oldest")
-            _set_default("APP_LOGO_FILE", "")
             _set_default("FORCE_STREAM_TERMINATION", False)
             # Numa instalação já existente fica a False de propósito: é
             # justamente onde a limpeza tem de correr.

@@ -506,33 +506,6 @@ def api_settings():
 # SETUP E DIAGNÓSTICO (TESTES)
 # ==========================================
 
-@system_api_bp.route('/logo', methods=['POST', 'DELETE'])
-@login_required
-@admin_required
-def app_logo_route():
-    """Envia ou remove a logo personalizada do painel.
-
-    🛡️ É a única rota do painel que aceita um ficheiro de quem está
-    autenticado e o passa a servir em TODAS as páginas, incluindo as públicas.
-    A validação — formato pelos primeiros bytes, tamanho, recusa do SVG — vive
-    em `services/branding.py`, junto da explicação de porquê.
-    """
-    from ...services.branding import guardar_logo, remover_logo
-
-    if request.method == 'DELETE':
-        resultado = remover_logo()
-    else:
-        ficheiro = request.files.get('file')
-        dados = ficheiro.read() if ficheiro else b''
-        resultado = guardar_logo(dados)
-
-    estado = resultado.pop('status', 200)
-    if resultado.get('success'):
-        # O `app.config` é a cópia em memória que os templates leem.
-        current_app.config['APP_LOGO_FILE'] = load_or_create_config().get('APP_LOGO_FILE', '')
-    return jsonify(resultado), estado
-
-
 @system_api_bp.route('/setup/servers')
 def get_plex_servers():
     token = session.get('plex_token')

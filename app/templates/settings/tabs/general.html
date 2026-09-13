@@ -1,4 +1,3 @@
-{% import 'partials/logo.html' as logo with context %}
 <div id="tab-geral" class="tab-content active animate-fade-in-up">
     <div class="bg-white dark:bg-[#1e293b] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/60 overflow-hidden">
         
@@ -29,31 +28,6 @@
                                 <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"></path></svg>
                             </div>
                             <input type="text" id="APP_TITLE" class="pl-10 block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 transition-all dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" placeholder="Ex: Meu Plex Premium">
-                        </div>
-                    </div>
-
-                    <!-- Logo do painel -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Logo do Painel') }}</label>
-                        <div class="flex items-center gap-4">
-                            <div class="flex-shrink-0 w-14 h-14 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-center overflow-hidden">
-                                <img id="logoPreview" src="{{ app_logo_url or '' }}" alt="" class="w-10 h-10 object-contain {% if not app_logo_url %}hidden{% endif %}">
-                                <span id="logoPreviewVazio" class="text-yellow-500 {% if app_logo_url %}hidden{% endif %}">{{ logo.simbolo('w-8 h-8') }}</span>
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <div class="flex flex-wrap gap-2">
-                                    <label for="logoUploadInput" class="btn cursor-pointer bg-yellow-500 hover:bg-yellow-400 text-gray-900 py-2 px-4 rounded-xl text-sm font-bold transition-all">
-                                        {{ _('Escolher imagem') }}
-                                    </label>
-                                    <input type="file" id="logoUploadInput" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden">
-                                    <button type="button" id="logoRemoveButton" class="btn bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 py-2 px-4 rounded-xl text-sm font-semibold transition-all {% if not app_logo_url %}hidden{% endif %}">
-                                        {{ _('Remover') }}
-                                    </button>
-                                </div>
-                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                                    {{ _('PNG, JPG, GIF ou WEBP, até 2 MB. É aplicada de imediato, sem passar pelo botão Salvar. O SVG não é aceite: pode conter código, e esta imagem aparece em todas as páginas, incluindo as públicas.') }}
-                                </p>
-                            </div>
                         </div>
                     </div>
 
