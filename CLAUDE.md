@@ -460,6 +460,16 @@ página. As que gravam criam o perfil em falta; a que lê usa um dicionário vaz
 ("utilizador não especificado"). Sem assinatura não há planos, e isso não é um
 erro do PEDIDO — só um token inexistente o é.
 
+E as ESTATÍSTICAS caíram na mesma pela terceira vez, com três sintomas
+diferentes: `/api/statistics/user/<id>` rebentava com um `AttributeError`
+(`profile.get(...)` sobre `None`), `/api/statistics/wrapped/<id>` respondia 404
+"Usuário não encontrado", e o `StatsManager` devolvia tudo vazio com um WARNING
+a dizer que não encontrou o perfil. O perfil local guarda o XP, a privacidade e
+o nome — **o histórico é do servidor**, e existe à mesma. Quem não tem perfil
+também não pediu privacidade, e o nome (que só serve para as notificações de
+conquistas) vem do servidor por `_nome_do_utilizador()`. Quem não é
+administrador tem sempre perfil: sem ele, o `load_user` encerra-lhe a sessão.
+
 ⚠️ **Na página da conta, um pedido secundário derrubava a página inteira.** O
 `fetchAPI` levanta em qualquer resposta que não seja 2xx, e os pedidos iniciais
 corriam num `Promise.all` — que rejeita com a PRIMEIRA falha. O

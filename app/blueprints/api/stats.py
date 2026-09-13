@@ -58,7 +58,11 @@ def get_user_statistics(media_user_id):
     """
     Obtém as estatísticas detalhadas de um utilizador, respeitando as configurações de privacidade.
     """
-    profile = data_manager.get_user_profile(media_user_id)
+    # 🐛 Um perfil em falta rebentava aqui com um AttributeError: o
+    # ADMINISTRADOR não tem perfil local (por desenho) e bastava-lhe abrir as
+    # suas próprias estatísticas para levar com um 500. Quem não tem perfil
+    # também não pediu privacidade — não há nada a esconder.
+    profile = data_manager.get_user_profile(media_user_id) or {}
     is_private = profile.get('hide_from_leaderboard', False)
 
     if not is_private or current_user.is_admin() or current_user.id == str(media_user_id):
@@ -146,10 +150,11 @@ def get_wrapped_data_route(media_user_id):
     mesma configuração de privacidade (hide_from_leaderboard) do restante
     das estatísticas.
     """
-    profile = data_manager.get_user_profile(media_user_id)
-    if not profile:
-        return jsonify({"success": False, "message": _("Usuário não encontrado.")}), 404
-
+    # 🐛 Não ter perfil local não é "utilizador não encontrado": o
+    # administrador nunca tem um, e quem ainda não entrou no painel também não.
+    # O Wrapped sai do histórico do servidor, que existe à mesma — e o perfil
+    # aqui só serve para a preferência de privacidade.
+    profile = data_manager.get_user_profile(media_user_id) or {}
     is_private = profile.get('hide_from_leaderboard', False)
     if is_private and not current_user.is_admin() and current_user.id != str(media_user_id):
         logger.warning(f"Acesso negado para '{current_user.username}' ao tentar ver o Plex Wrapped privado do utilizador ID '{media_user_id}'.")

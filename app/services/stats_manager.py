@@ -35,6 +35,32 @@ class StatsManager:
         self.recommendations = RecommendationsHandler(self.api_client, data_manager)
         self.data_manager = data_manager
 
+    def _nome_do_utilizador(self, media_user_id: Union[int, str]) -> Optional[str]:
+        """O nome de quem se vai calcular as estatísticas.
+
+        🐛 O perfil local era a única fonte, e há duas pessoas que não o têm: o
+        ADMINISTRADOR, que nunca tem (por desenho — ver o `_autorizar_e_iniciar_sessao`),
+        e quem ainda não entrou no painel. Essas ficavam com as estatísticas e o
+        Wrapped vazios, e um WARNING no log a dizer "não encontrei o perfil" —
+        que não é uma falha, é o normal para o dono do servidor.
+
+        O nome só serve para as notificações de conquistas e para o XP; quem o
+        sabe sempre é o servidor de média.
+        """
+        perfil = self.data_manager.get_user_profile(media_user_id) if self.data_manager else None
+        if perfil and perfil.get('username'):
+            return perfil['username']
+
+        try:
+            from ..extensions import media_server
+
+            utilizador = media_server.get_user_by_id(media_user_id) if media_server else None
+        except Exception as e:
+            logger.debug(f"O servidor não soube dizer quem é '{media_user_id}': {e}")
+            utilizador = None
+
+        return (utilizador or {}).get('username') or None
+
     def invalidate_stats_cache(self) -> None:
         """Invalida toda a cache relacionada com o Tautulli."""
         cache.delete_memoized(self.get_watch_stats)
@@ -112,7 +138,7 @@ class StatsManager:
         if not self.api_client.is_configured:
             return {"success": True, "stats": []}
             
-        logger.debug(f"Tautulli: A buscar estatísticas globais de visualização (cache miss) para '{days}' dias.")
+        logger.debug(f"Estatísticas: a buscar o pódio (cache miss) para '{days}' dias.")
         return self.stats.get_watch_stats(days, plex_users_info)
 
     @cache.memoize(timeout=300)
@@ -136,14 +162,14 @@ class StatsManager:
         if not self.api_client.is_configured:
             return {"success": True, "details": {}}
             
-        logger.debug(f"Tautulli: A buscar detalhes de visualização (cache miss) para ID '{media_user_id}' e '{days}' dias.")
-        
-        profile = self.data_manager.get_user_profile(media_user_id)
-        if not profile or not profile.get('username'):
-            logger.warning(f"Tautulli: Não foi possível encontrar o perfil para o ID '{media_user_id}'. Detalhes de visualização vazios.")
+        logger.debug(f"Estatísticas: a buscar os detalhes (cache miss) do ID '{media_user_id}' para '{days}' dias.")
+
+        username = self._nome_do_utilizador(media_user_id)
+        if not username:
+            # Nem o painel nem o servidor sabem quem é: aí sim, não há o que mostrar.
+            logger.warning(f"Nem o painel nem o servidor conhecem o utilizador '{media_user_id}': detalhes vazios.")
             return {"success": True, "details": {}}
 
-        username = profile.get('username')
         return self.stats.get_user_watch_details(str(media_user_id), username, days=days)
 
     def get_user_watch_history(self, user_id: Union[int, str], page: int = 1, length: int = 25, search: str = "") -> Dict[str, Any]:
@@ -155,11 +181,11 @@ class StatsManager:
 
     @cache.memoize(timeout=300)
     def get_recently_added(self, days: int = 7) -> Dict[str, Any]:
-        """Busca o conteúdo adicionado recentemente ao servidor Plex através do Tautulli."""
+        """Busca o conteúdo adicionado recentemente ao servidor de média."""
         if not self.api_client.is_configured:
             return {"success": True, "media": []}
             
-        logger.debug(f"Tautulli: A buscar itens adicionados recentemente (cache miss) para '{days}' dias.")
+        logger.debug(f"Estatísticas: a buscar os itens adicionados recentemente (cache miss) para '{days}' dias.")
         return self.stats.get_recently_added(days)
 
     @cache.memoize(timeout=300)
@@ -168,7 +194,7 @@ class StatsManager:
         if not self.api_client.is_configured:
             return {"success": True, "devices": []}
             
-        logger.debug(f"Tautulli: A buscar dispositivos do utilizador (cache miss) para o ID '{media_user_id}'.")
+        logger.debug(f"Estatísticas: a buscar os aparelhos (cache miss) do ID '{media_user_id}'.")
         return self.stats.get_user_devices(str(media_user_id))
 
     # ==========================================
@@ -185,11 +211,11 @@ class StatsManager:
         if not self.api_client.is_configured:
             return {"success": True, "has_data": False, "wrapped": None}
 
-        profile = self.data_manager.get_user_profile(media_user_id)
-        if not profile or not profile.get('username'):
+        username = self._nome_do_utilizador(media_user_id)
+        if not username:
             return {"success": True, "has_data": False, "wrapped": None}
 
-        return self.stats.get_wrapped_data(str(media_user_id), profile.get('username'), year=year)
+        return self.stats.get_wrapped_data(str(media_user_id), username, year=year)
 
     # ==========================================
     # RECOMENDAÇÕES ("PORQUE ASSISTIU X...")
