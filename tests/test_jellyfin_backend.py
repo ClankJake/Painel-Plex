@@ -753,6 +753,73 @@ class TestCriacaoDeContas:
         assert JellyfinManager(data_manager=None).invites.accept_invite_via_token("x")['success'] is False
 
 
+class TestImagemDePerfil:
+    """
+    🐛 REGRESSÃO REPORTADA: pôr uma imagem de perfil no Jellyfin e ela não
+    aparecer no painel — nem no cabeçalho (`base.html`), nem na "Minha Conta".
+
+    É a armadilha do `list_users()` vs `get_all_users()`: a leitura crua devolve
+    `/Users/<id>/Images/Primary?tag=...`, que é um caminho do JELLYFIN. Num
+    `<img src>` do painel, o browser pede-o ao PAINEL — que não tem essa rota e
+    responde 404. A imagem não aparece, e não há erro nenhum no log.
+
+    Tudo o que sai da fachada com uma imagem tem de vir já pelo proxy.
+    """
+
+    ETIQUETA = {"Id": GUID, "Name": "ana", "PrimaryImageTag": "tag1"}
+
+    def _esperado(self):
+        return f"jellyfin:/Users/{GUID}/Images/Primary?tag=tag1"
+
+    def test_o_login_devolve_a_imagem_pelo_proxy(self, cache_limpa):
+        # Vai direto para a sessão e daí para o `<img src>` do cabeçalho.
+        backend = montar({'/Users/AuthenticateByName': {"User": self.ETIQUETA, "AccessToken": "tok"}})
+
+        conta = backend.authenticate("ana", "segredo")
+
+        assert _fonte_da_imagem(conta.thumb) == self._esperado()
+
+    def test_a_conta_do_administrador_tambem(self, cache_limpa, config_file):
+        config_file(ADMIN_USER_ID=GUID, ADMIN_USER="ana")
+        backend = montar({'/Users': [self.ETIQUETA]})
+
+        conta = backend.get_owner_account()
+
+        assert _fonte_da_imagem(conta.thumb) == self._esperado()
+
+    def test_a_lista_de_utilizadores_tambem(self, cache_limpa):
+        backend = montar({'/Users': [self.ETIQUETA]})
+
+        assert _fonte_da_imagem(backend.get_all_users()[0]['thumb']) == self._esperado()
+
+    def test_quem_nao_tem_imagem_fica_sem_ela(self, cache_limpa):
+        # Não um URL de proxy vazio, que daria um 404 e um ícone partido.
+        backend = montar({'/Users': [{"Id": GUID, "Name": "ana"}]})
+
+        assert backend.get_all_users()[0]['thumb'] is None
+
+    def test_sem_imagem_o_login_tambem_devolve_none(self, cache_limpa):
+        backend = montar({'/Users/AuthenticateByName': {"User": {"Id": GUID, "Name": "ana"}}})
+
+        assert backend.authenticate("ana", "segredo").thumb is None
+
+    def test_o_caminho_cru_nunca_sai_da_fachada(self, cache_limpa):
+        """O que o browser recebe nunca pode ser um caminho do Jellyfin."""
+        backend = montar({
+            '/Users': [self.ETIQUETA],
+            '/Users/AuthenticateByName': {"User": self.ETIQUETA, "AccessToken": "tok"},
+        })
+
+        saidas = [
+            backend.get_all_users()[0]['thumb'],
+            backend.authenticate("ana", "segredo").thumb,
+        ]
+
+        for thumb in saidas:
+            assert not thumb.startswith('/Users/'), thumb
+            assert '/image/' in thumb
+
+
 class TestImagens:
     def test_o_url_da_imagem_leva_a_chave_de_api(self, cache_limpa):
         backend = montar()

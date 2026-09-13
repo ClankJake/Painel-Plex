@@ -177,11 +177,14 @@ class JellyfinManager:
             return None
 
         etiqueta = utilizador.get('PrimaryImageTag')
+        caminho = f"/Users/{user_id}/Images/Primary?tag={etiqueta}" if etiqueta else None
         return OwnerAccount(
             id=user_id,
             username=utilizador.get('Name') or username,
             email=None,
-            thumb=f"/Users/{user_id}/Images/Primary?tag={etiqueta}" if etiqueta else None,
+            # Vai direto para a sessão e daí para um `<img src>` do painel: tem
+            # de ser o URL do proxy, não o caminho do Jellyfin.
+            thumb=self._thumb_para_a_interface(caminho),
         )
 
     def _encerrar_sessao_de_validacao(self, token, username):
@@ -222,7 +225,7 @@ class JellyfinManager:
             id=admin_id,
             username=(utilizador or {}).get('username') or config.get('ADMIN_USER') or '',
             email=None,
-            thumb=(utilizador or {}).get('thumb'),
+            thumb=self._thumb_para_a_interface((utilizador or {}).get('thumb')),
         )
 
     def authorize_image_url(self, source, image_path):
@@ -242,9 +245,23 @@ class JellyfinManager:
     # UTILIZADORES
     # =========================================================================
 
-    def get_all_users(self, force_refresh=False):
+    def _thumb_para_a_interface(self, thumb_cru):
+        """O caminho cru da imagem do Jellyfin no URL que o browser consegue pedir.
+
+        🐛 A leitura crua (`users.list_users()`) devolve
+        `/Users/<id>/Images/Primary?tag=...`, que é um caminho do JELLYFIN. Posto
+        num `<img src>` do painel, o browser pede-o ao PAINEL — que não tem essa
+        rota e responde 404. O sintoma é a imagem de perfil a não aparecer, sem
+        erro nenhum no log.
+
+        Tudo o que sai da fachada com uma imagem tem de passar por aqui.
+        """
         from ....utils.image_proxy import proxied_image_url
 
+        fonte = self.sessions.user_thumb_source(thumb_cru)
+        return proxied_image_url(fonte) if fonte else None
+
+    def get_all_users(self, force_refresh=False):
         if force_refresh:
             self.users.invalidate_user_cache()
 
@@ -253,9 +270,7 @@ class JellyfinManager:
         processados = []
         for bruto in utilizadores:
             utilizador = dict(bruto)
-            fonte = self.sessions.user_thumb_source(utilizador.get('thumb'))
-            if fonte:
-                utilizador['thumb'] = proxied_image_url(fonte)
+            utilizador['thumb'] = self._thumb_para_a_interface(utilizador.get('thumb'))
             processados.append(utilizador)
         return processados
 

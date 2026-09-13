@@ -8,6 +8,12 @@ export const saveButton = document.getElementById('saveButton');
 export const saveBulkTemplatesButton = document.getElementById('saveBulkTemplatesButton');
 export const logLevelSelector = document.getElementById('log_level_selector');
 export const testTautulliButton = document.getElementById('testTautulliButton');
+
+// Logo personalizada do painel (Configurações → Geral).
+export const logoUploadInput = document.getElementById('logoUploadInput');
+export const logoRemoveButton = document.getElementById('logoRemoveButton');
+export const logoPreview = document.getElementById('logoPreview');
+export const logoPreviewVazio = document.getElementById('logoPreviewVazio');
 export const testJellyfinButton = document.getElementById('testJellyfinButton');
 export const testOverseerrButton = document.getElementById('testOverseerrButton');
 export const reauthPlexButton = document.getElementById('reauth-plex-button');

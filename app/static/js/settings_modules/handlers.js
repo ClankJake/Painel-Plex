@@ -330,6 +330,61 @@ async function handleBackupRestore(file) {
     }
 }
 
+// ==========================================
+// LOGO PERSONALIZADA DO PAINEL
+// ==========================================
+
+/**
+ * Mostra (ou esconde) a pré-visualização sem esperar pelo servidor.
+ * `url` a null volta ao símbolo padrão.
+ */
+function atualizarPreviaDaLogo(url) {
+    if (dom.logoPreview) {
+        dom.logoPreview.src = url || '';
+        dom.logoPreview.classList.toggle('hidden', !url);
+    }
+    if (dom.logoPreviewVazio) dom.logoPreviewVazio.classList.toggle('hidden', !!url);
+    if (dom.logoRemoveButton) dom.logoRemoveButton.classList.toggle('hidden', !url);
+}
+
+async function handleLogoUpload(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        // Upload multipart: não passa pelo fetchAPI, que só envia JSON.
+        const response = await fetch(urls.appLogo, { method: 'POST', body: formData });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || `HTTP ${response.status}`);
+
+        // O nome do ficheiro no servidor é sempre o mesmo, por isso o browser
+        // serviria a imagem antiga da cache. O parâmetro força o pedido novo.
+        atualizarPreviaDaLogo(`/branding/logo?v=${Date.now()}`);
+        showToast(data.message, 'success');
+    } catch (error) {
+        showToast(error.message, 'error');
+    } finally {
+        // Sem isto, escolher o MESMO ficheiro outra vez não dispara o evento.
+        event.target.value = '';
+    }
+}
+
+async function handleLogoRemove() {
+    try {
+        const response = await fetch(urls.appLogo, { method: 'DELETE' });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || `HTTP ${response.status}`);
+
+        atualizarPreviaDaLogo(null);
+        showToast(data.message, 'success');
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
 async function handleSaveSettings(e) {
     e.preventDefault();
     if (!dom.saveButton) return;
@@ -537,6 +592,9 @@ export function initializeEventListeners() {
         dom.saveBulkTemplatesButton.addEventListener('click', handleSaveBulkTemplates);
     }
     
+    if (dom.logoUploadInput) dom.logoUploadInput.addEventListener('change', handleLogoUpload);
+    if (dom.logoRemoveButton) dom.logoRemoveButton.addEventListener('click', handleLogoRemove);
+
     if (dom.testTautulliButton) {
         dom.testTautulliButton.addEventListener('click', () => handleTestConnection(dom.testTautulliButton, 'testTautulli', () => ({ 
             url: document.getElementById('TAUTULLI_URL')?.value, 

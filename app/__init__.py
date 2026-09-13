@@ -154,6 +154,21 @@ def start_background_services(app) -> bool:
     _register_shutdown_handlers()
     return extensions.scheduler.running
 
+def _url_da_logo():
+    """O URL da logo personalizada, ou None para os templates usarem o padrão.
+
+    Uma falha a ler o config não pode partir TODAS as páginas: o contexto
+    global corre em cada render, e uma exceção aqui seria um 500 em todo o lado.
+    """
+    try:
+        from .services.branding import logo_atual
+
+        return url_for('serve_logo') if logo_atual() else None
+    except Exception as e:
+        logger.debug(f"Não foi possível resolver a logo do painel: {e}")
+        return None
+
+
 def create_app() -> Flask:
     """
     Cria e configura a instância principal da aplicação Flask (Application Factory).
@@ -332,6 +347,8 @@ def create_app() -> Flask:
             'cache_buster': int(datetime.now().timestamp()),
             'media_server': info_servidor,
             'endpoint_inicial_do_utilizador': endpoint_inicial_do_utilizador,
+            # Quando é None, os templates desenham o símbolo padrão.
+            'app_logo_url': _url_da_logo(),
         }
 
     @app.errorhandler(429)
@@ -390,6 +407,40 @@ def create_app() -> Flask:
         if lang in app.config['LANGUAGES'].keys():
             session['language'] = lang
         return redirect(request.referrer or url_for('main.index'))
+
+    @app.route('/branding/logo')
+    def serve_logo():
+        """A logo personalizada do painel.
+
+        Pública de propósito: ela aparece no cabeçalho de páginas que não
+        exigem login (o convite, o pagamento por link, a própria página de
+        entrada). É uma imagem que o administrador escolheu mostrar a quem
+        chega — não há nada a proteger.
+
+        🛡️ O `Content-Type` é imposto por nós a partir da EXTENSÃO que o painel
+        escolheu ao gravar, e nunca adivinhado: é o que garante que o browser
+        trata isto como imagem. O ficheiro já tinha sido validado pelos
+        primeiros bytes no envio (ver `services/branding.py`).
+        """
+        from .services.branding import logo_atual
+
+        caminho = logo_atual()
+        if not caminho:
+            return '', 404
+
+        tipos = {'png': 'image/png', 'jpg': 'image/jpeg', 'gif': 'image/gif', 'webp': 'image/webp'}
+        extensao = os.path.splitext(caminho)[1].lstrip('.').lower()
+        resposta = send_from_directory(
+            os.path.dirname(caminho), os.path.basename(caminho),
+            mimetype=tipos.get(extensao, 'application/octet-stream'),
+        )
+        # Sem `nosniff`, um browser poderia ignorar o Content-Type e adivinhar
+        # outro a partir do conteúdo.
+        resposta.headers['X-Content-Type-Options'] = 'nosniff'
+        # A logo muda raramente, mas quando muda tem de aparecer: o nome do
+        # ficheiro é sempre o mesmo, por isso a cache é curta e revalidada.
+        resposta.headers['Cache-Control'] = 'public, max-age=300, must-revalidate'
+        return resposta
 
     @app.route('/manifest.json')
     def serve_manifest():

@@ -1,0 +1,18 @@
+{#
+  O símbolo do painel, num sítio só.
+
+  Estava copiado em 12 pontos de 8 templates — acrescentar a logo
+  personalizada obrigaria a repetir a mesma condição nos 12, e a próxima
+  alteração ia esquecer-se de algum.
+
+  `classes` são as do tamanho e cor de cada sítio (`w-8 h-8 ...`). A logo
+  enviada é uma imagem, por isso as classes de COR não se lhe aplicam — o
+  tamanho sim, e é o que importa para o layout não saltar.
+#}
+{% macro simbolo(classes='w-8 h-8 text-yellow-500') %}
+  {% if app_logo_url %}
+    <img src="{{ app_logo_url }}" alt="{{ app_title }}" class="{{ classes }} object-contain">
+  {% else %}
+    <svg class="{{ classes }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
+  {% endif %}
+{% endmacro %}
