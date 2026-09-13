@@ -470,6 +470,13 @@ também não pediu privacidade, e o nome (que só serve para as notificações d
 conquistas) vem do servidor por `_nome_do_utilizador()`. Quem não é
 administrador tem sempre perfil: sem ele, o `load_user` encerra-lhe a sessão.
 
+⚠️ E logo a seguir veio o quarto sintoma: **gravar o XP CRIA o perfil**, e
+`username` é NOT NULL. O administrador abria as estatísticas e o log ficava com
+um `IntegrityError` sobre um INSERT de trinta colunas — sem XP e sem pista.
+`sync_user_xp` escreve o nome na CRIAÇÃO (só aí: sincronizar XP não é sítio
+para renomear quem já cá está), e `set_user_profile` passou a recusar-se a
+criar um perfil sem nome com uma mensagem que diz o que falta.
+
 ⚠️ **Na página da conta, um pedido secundário derrubava a página inteira.** O
 `fetchAPI` levanta em qualquer resposta que não seja 2xx, e os pedidos iniciais
 corriam num `Promise.all` — que rejeita com a PRIMEIRA falha. O

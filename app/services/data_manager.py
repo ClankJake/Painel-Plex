@@ -757,8 +757,20 @@ class DataManager:
 
     @db_transaction
     def set_user_profile(self, media_user_id, profile_data):
+        """Cria ou atualiza o perfil local de um utilizador.
+
+        ⚠️ **Criar exige um `username`** — a coluna é NOT NULL. Quem chama isto
+        com um dicionário PARCIAL (só o XP, só o estado) está a contar que o
+        perfil já exista; quando não existia, o que aparecia no log era um
+        `IntegrityError` sobre um INSERT de trinta colunas, que não diz a
+        ninguém o que faltava. Diz-se aqui.
+        """
         profile = UserProfile.query.get(media_user_id)
         if not profile:
+            if not (profile_data or {}).get('username'):
+                raise ValueError(
+                    f"Não se cria um perfil sem 'username' (media_user_id={media_user_id})."
+                )
             profile = UserProfile(media_user_id=media_user_id)
         if not profile.payment_token:
             profile.payment_token = secrets.token_urlsafe(16)

@@ -165,6 +165,17 @@ class StatsHandler:
             last_sync_ts = profile.get('xp_last_sync_at')
             current_xp = profile.get('xp', 0) or 0
 
+            # 🐛 Gravar o XP CRIA o perfil quando ele não existe — e um perfil
+            # sem `username` viola o NOT NULL da tabela. É o caso do
+            # ADMINISTRADOR, que nunca tem perfil local e passou a ter
+            # estatísticas: abrir a própria página dava um IntegrityError no log
+            # e nenhum XP. O nome só se escreve na CRIAÇÃO: sincronizar XP não é
+            # sítio para renomear quem já cá está.
+            ao_criar = {} if profile else {'username': username}
+            if not profile and not username:
+                logger.debug(f"Sem nome para o utilizador {media_user_id}: o XP não é gravado.")
+                return current_xp
+
             if last_sync_ts:
                 after_date = datetime.fromtimestamp(last_sync_ts, tz=timezone.utc).strftime('%Y-%m-%d')
             else:
@@ -181,7 +192,10 @@ class StatsHandler:
             if not history:
                 # Nada de novo para processar, mas ainda assim marca a sincronização
                 # como feita agora para não ficar sempre a tentar reprocessar o vazio.
-                self.data_manager.set_user_profile(media_user_id, {'xp_last_sync_at': datetime.now(timezone.utc).timestamp()})
+                self.data_manager.set_user_profile(media_user_id, {
+                    **ao_criar,
+                    'xp_last_sync_at': datetime.now(timezone.utc).timestamp(),
+                })
                 return current_xp
 
             newest_ts = last_sync_ts or 0
@@ -208,6 +222,7 @@ class StatsHandler:
             new_lifetime_xp = int(current_lifetime + xp_gained)
 
             self.data_manager.set_user_profile(media_user_id, {
+                **ao_criar,
                 'xp': new_total_xp,
                 'lifetime_xp': new_lifetime_xp,
                 'xp_last_sync_at': newest_ts or datetime.now(timezone.utc).timestamp(),

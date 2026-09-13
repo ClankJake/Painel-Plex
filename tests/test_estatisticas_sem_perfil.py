@@ -181,3 +181,80 @@ class TestOsDetalhesSaemNaMesma:
         resposta = manager.get_wrapped_data(media_user_id=ADMIN, year=agora.year)
 
         assert resposta['has_data'] is True
+
+
+class TestOPerfilQueOXpCria:
+    """
+    🐛 Gravar o XP CRIA o perfil quando ele não existe — e um perfil sem
+    `username` viola o NOT NULL da tabela. O administrador, que nunca tem
+    perfil, abria as suas estatísticas e o que ficava no log era um
+    `IntegrityError` sobre um INSERT de trinta colunas. Sem XP, e sem pista.
+
+    Este teste usa o `DataManager` REAL: é a base de dados que tem a regra, e
+    um duplo em memória não a faria cumprir.
+    """
+
+    def _handler(self, data_manager, historico=None):
+        from app.services.tautulli.stats_handler import StatsHandler
+
+        class FonteFalsa:
+            def get_history(self, **kwargs):
+                return {"data": historico or []}
+
+            def get_recently_added(self, **kwargs):
+                return {"recently_added": []}
+
+            def get_metadata(self, rating_key):
+                return {}
+
+            def image_payload(self, thumb, width=300, height=450):
+                return None
+
+        return StatsHandler(FonteFalsa(), data_manager=data_manager)
+
+    def test_o_perfil_criado_pelo_xp_leva_o_nome(self, app_context, db_session, data_manager):
+        handler = self._handler(data_manager, [
+            {"date": 1757700000, "duration": 3600, "percent_complete": 100},
+        ])
+
+        assert handler.sync_user_xp(ADMIN, "dono") == 80  # 60 min + bónus
+
+        perfil = data_manager.get_user_profile(ADMIN)
+        assert perfil is not None
+        assert perfil['username'] == 'dono'
+        assert perfil['xp'] == 80
+
+    def test_tambem_quando_nao_ha_nada_de_novo_para_contar(self, app_context, db_session, data_manager):
+        # O caminho do "histórico vazio" grava à mesma, para não reprocessar o
+        # vazio a cada visita — e era outro INSERT sem nome.
+        handler = self._handler(data_manager, [])
+
+        handler.sync_user_xp(ADMIN, "dono")
+
+        assert (data_manager.get_user_profile(ADMIN) or {}).get('username') == 'dono'
+
+    def test_sincronizar_nao_renomeia_quem_ja_ca_esta(self, app_context, db_session, data_manager):
+        # O nome só se escreve na CRIAÇÃO: o administrador pode ter mudado o
+        # nome dele no painel, e o XP não é sítio para o desfazer.
+        data_manager.set_user_profile(ADMIN, {"username": "escolhido"})
+        handler = self._handler(data_manager, [
+            {"date": 1757700000, "duration": 600, "percent_complete": 0},
+        ])
+
+        handler.sync_user_xp(ADMIN, "do servidor")
+
+        assert data_manager.get_user_profile(ADMIN)['username'] == 'escolhido'
+
+    def test_sem_nome_nenhum_nao_se_cria_um_perfil_invalido(self, app_context, db_session, data_manager):
+        handler = self._handler(data_manager, [
+            {"date": 1757700000, "duration": 600, "percent_complete": 0},
+        ])
+
+        handler.sync_user_xp(ADMIN, "")
+
+        assert data_manager.get_user_profile(ADMIN) is None
+
+    def test_o_data_manager_diz_o_que_falta(self, app_context, db_session, data_manager):
+        # Em vez de um NOT NULL cru sobre trinta colunas.
+        with pytest.raises(ValueError, match="username"):
+            data_manager.set_user_profile(ADMIN, {"xp": 10})
