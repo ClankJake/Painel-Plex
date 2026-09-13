@@ -7,10 +7,34 @@ from flask_login import login_required, current_user
 from flask_babel import gettext as _
 
 from ...extensions import media_server, stats_manager, data_manager
-from ...utils.identity import normalize_user_id
+from ...utils.identity import normalize_user_id, same_user
 
 logger = logging.getLogger(__name__)
 stats_api_bp = Blueprint('stats_api', __name__)
+
+def _dono_do_servidor():
+    """O administrador do painel, com o avatar já pronto para a interface.
+
+    Devolve None quando ainda não há um (instalação a meio) ou quando o
+    servidor não o sabe dizer — nesse caso o pódio fica como estava.
+    """
+    from ...config import load_or_create_config
+
+    admin_id = normalize_user_id(load_or_create_config().get('ADMIN_USER_ID'))
+    if not admin_id:
+        return None
+
+    thumb = None
+    try:
+        conta = media_server.get_owner_account()
+        # `thumb_para_interface` é idempotente e sabe o formato de cada
+        # servidor: no Plex traduz o URL do plex.tv para o proxy do painel.
+        thumb = media_server.thumb_para_interface(getattr(conta, 'thumb', None))
+    except Exception as e:
+        logger.debug(f"Não foi possível obter o avatar do administrador: {e}")
+
+    return {'id': admin_id, 'thumb': thumb}
+
 
 def _obfuscate_username(username):
     if len(username) <= 2: return username
@@ -23,6 +47,14 @@ def get_statistics_data():
     
     plex_users = media_server.get_all_users() or []
     plex_users_info = {u['id']: u['thumb'] for u in plex_users}
+
+    # 🐛 O DONO do servidor não está na lista de utilizadores — no Plex nunca
+    # esteve (a API só lista os amigos). Como ele agora aparece no pódio como
+    # toda a gente, a linha dele ficava com o avatar "?" para quem a visse.
+    dono = _dono_do_servidor()
+    if dono:
+        plex_users_info.setdefault(dono['id'], dono['thumb'])
+
     tautulli_data = stats_manager.get_watch_stats(days=days, plex_users_info=plex_users_info)
 
     if not tautulli_data.get("success"):
@@ -42,6 +74,9 @@ def get_statistics_data():
         is_private = profile.get('hide_from_leaderboard', False)
         user_stat["is_private"] = is_private
         user_stat["original_username"] = user_stat["username"]
+        # Quem administra o painel aparece no pódio como os outros; dizer quem
+        # é evita a pergunta "quem é este que vê tudo e não tem plano".
+        user_stat["is_admin"] = bool(dono and same_user(user_id, dono['id']))
 
         if not current_user.is_admin() and is_private and current_user.id != str(user_id):
             user_stat["username"] = _obfuscate_username(user_stat["username"])

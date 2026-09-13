@@ -298,6 +298,17 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     };
 
+    // O dono do servidor aparece no pódio como toda a gente. Dizer quem é
+    // evita a pergunta "e este, que vê tudo e não tem plano?" — e o avatar dele
+    // vem agora preenchido, que antes era o "?" (ele não está na lista de
+    // utilizadores do servidor).
+    const adminBadge = (user, classes = '') => user.is_admin
+        ? `<span class="${classes} inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300" title="${escapeHTML(i18n.administrator || 'Administrador')}">
+             <svg class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path d="M2.5 5.5l2.6 2.2L8 4l2.9 3.7 2.6-2.2.9 8.5H1.6l.9-8.5z"/></svg>
+             ${escapeHTML(i18n.administrator || 'Administrador')}
+           </span>`
+        : '';
+
     const renderPodium = (stats) => {
         if (!dom.podiumContainer) return;
         if (stats.length === 0) {
@@ -318,6 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="w-full rounded-t-lg flex flex-col justify-end items-center p-2 pb-4 text-white shadow-lg" style="height: ${item.height}; background: ${item.gradient};">
                     <div class="pt-10 text-center">
                         <p class="font-bold text-lg truncate">${item.medal} ${item.user.username}</p>
+                        ${adminBadge(item.user, 'mt-1')}
                         <p class="text-sm font-semibold">${formatDuration(item.user.total_duration)}</p>
                     </div>
                 </div>
@@ -348,6 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="flex items-center">
                         <img src="${user.thumb || 'https://placehold.co/40x40/1F2937/E5E7EB?text=?'}" onerror="this.onerror=null;this.src='https://placehold.co/40x40/1F2937/E5E7EB?text=U'" class="w-10 h-10 object-cover rounded-full mr-4" alt="Avatar">
                         <span class="font-semibold">${user.username}</span>
+                        ${adminBadge(user, 'ml-2')}
                     </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 font-mono">${formatDuration(user.total_duration)}</td>

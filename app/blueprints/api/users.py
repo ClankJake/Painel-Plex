@@ -170,11 +170,18 @@ def get_account_details():
         except (ValueError, TypeError): 
             pass
 
+    # A "Minha Conta" do administrador não tem assinatura, nem vencimento, nem
+    # limite de telas — ele é o dono do servidor. Em vez de mostrar campos
+    # vazios ou um "Não disponível", a interface identifica-o e esconde o que
+    # não se lhe aplica.
+    e_administrador = current_user.is_admin()
+
     return jsonify({
         "success": True, 
         "username": current_user.username, 
         "email": current_user.email, 
         "thumb": thumb,
+        "is_admin": e_administrador,
         "join_date": join_date, 
         "screen_limit": _("%(num)d Tela(s)", num=profile.get('screen_limit', 0)) if profile.get('screen_limit', 0) > 0 else _("Ilimitado"),
         "libraries": libraries_data.get('libraries', []), 

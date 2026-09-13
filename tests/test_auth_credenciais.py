@@ -97,6 +97,37 @@ class TestLoginComCredenciais:
         with client.session_transaction() as sessao:
             assert sessao["user_details"]["role"] == "admin"
 
+    def test_o_login_do_administrador_cria_lhe_o_perfil(self, client, config_file, jellyfin,
+                                                        db_session, data_manager):
+        """
+        🐛 O administrador nunca teve perfil local, e isso deixou de servir
+        quando ele passou a contar nas estatísticas: o XP precisa de onde ficar,
+        e o perfil acabava por nascer a meio de uma sincronização — sem o nome,
+        que a tabela não aceita. Nasce aqui, inteiro, no único momento em que se
+        sabe quem ele é.
+        """
+        config_file(IS_CONFIGURED=True, ADMIN_USER="ana", MEDIA_SERVER_TYPE="jellyfin")
+
+        client.post('/auth/login/credentials', json={"username": "ana", "password": "segredo"})
+
+        perfil = data_manager.get_user_profile(GUID)
+        assert perfil is not None
+        assert perfil['username'] == 'ana'
+        assert perfil['media_server_type'] == 'jellyfin'
+
+    def test_entrar_outra_vez_nao_desfaz_o_que_ele_escolheu(self, client, config_file, jellyfin,
+                                                            db_session, data_manager):
+        # O que está no perfil foi escolhido na "Minha Conta"; um login não é
+        # sítio para o desfazer.
+        config_file(IS_CONFIGURED=True, ADMIN_USER="ana")
+        data_manager.set_user_profile(GUID, {"username": "ana", "name": "O Dono", "xp": 500})
+
+        client.post('/auth/login/credentials', json={"username": "ana", "password": "segredo"})
+
+        perfil = data_manager.get_user_profile(GUID)
+        assert perfil['name'] == 'O Dono'
+        assert perfil['xp'] == 500
+
     def test_palavra_passe_errada_e_recusada(self, client, config_file, jellyfin, db_session):
         config_file(IS_CONFIGURED=True)
 

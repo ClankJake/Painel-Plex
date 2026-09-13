@@ -43,6 +43,23 @@ RESERVED_COUPON_MAX_AGE_MINUTES = 30
 EXPORT_BATCH_SIZE = 500
 
 
+def tipo_de_servidor_configurado():
+    """Que servidor de média este painel administra, para marcar o que grava.
+
+    Lê-se do config e não do manager: isto corre em jobs de fundo e em rotas,
+    e a camada de dados não deve depender de um objeto que pode ainda não ter
+    sido construído.
+    """
+    try:
+        from ..config import load_or_create_config
+        from .media_server import resolve_media_server_type
+
+        return resolve_media_server_type(load_or_create_config().get('MEDIA_SERVER_TYPE'))
+    except Exception as e:  # pragma: no cover - defensivo
+        logger.debug(f"Não foi possível determinar o tipo de servidor: {e}")
+        return None
+
+
 def normalize_coupon_code(code):
     """
     Forma canónica de um código de cupão: sem espaços à volta e em maiúsculas.
@@ -772,6 +789,14 @@ class DataManager:
                     f"Não se cria um perfil sem 'username' (media_user_id={media_user_id})."
                 )
             profile = UserProfile(media_user_id=media_user_id)
+            # Que servidor de média criou este perfil. Sem isto, todos os
+            # perfis criados pelo painel ficavam com a coluna a NULL — e a
+            # coluna existe precisamente para não confundir um ID do Plex com
+            # um GUID do Jellyfin que por acaso coincida. Quem passa o valor
+            # explicitamente (o registo de contas do Jellyfin) manda.
+            profile.media_server_type = (
+                (profile_data or {}).get('media_server_type') or tipo_de_servidor_configurado()
+            )
         if not profile.payment_token:
             profile.payment_token = secrets.token_urlsafe(16)
         

@@ -450,15 +450,23 @@ o segundo é o texto que a pessoa lê. A interface adivinhava a classe pela
 PRIMEIRA palavra do `platform` — com o Jellyfin dava sempre "jellyfin"
 ("Jellyfin Web", "Jellyfin Android"...), que nem existia no catálogo.
 
-⚠️ **O ADMINISTRADOR NÃO TEM PERFIL LOCAL**, por desenho: o login dele devolve
-na primeira ramificação de `_autorizar_e_iniciar_sessao`, antes da parte que
-cria perfis, e `_sync_plex_and_local_profiles` salta-o de propósito. As rotas da
-"Minha Conta" (`/account/details`, `/account/profile`, `/account/privacy`)
-assumiam um dicionário e rebentavam com `AttributeError` assim que ele abria a
-página. As que gravam criam o perfil em falta; a que lê usa um dicionário vazio.
-`/payments/options` seguia a mesma armadilha por outro caminho: respondia 400
-("utilizador não especificado"). Sem assinatura não há planos, e isso não é um
-erro do PEDIDO — só um token inexistente o é.
+⚠️ **O ADMINISTRADOR não tem perfil local até entrar.** O login dele devolve na
+primeira ramificação de `_autorizar_e_iniciar_sessao`, antes da parte que cria
+perfis, e `_sync_plex_and_local_profiles` salta-o de propósito (no Plex ele nem
+aparece na lista de amigos). Isso deixou de servir quando ele passou a contar
+nas estatísticas — o XP precisa de onde ficar guardado —, e hoje
+`_garantir_perfil_do_administrador()` cria-lho NO LOGIN: inteiro, no único
+momento em que se sabe o nome, o email e o servidor. Não atualiza um perfil que
+já exista: o que lá está foi escolhido na "Minha Conta".
+
+**O código defensivo continua todo a fazer falta**, porque o perfil só aparece
+no primeiro login DEPOIS desta versão — e num painel já a correr isso pode
+demorar. As rotas da "Minha Conta" (`/account/details`, `/account/profile`,
+`/account/privacy`) assumiam um dicionário e rebentavam com `AttributeError`
+assim que ele abria a página. As que gravam criam o perfil em falta; a que lê
+usa um dicionário vazio. `/payments/options` seguia a mesma armadilha por outro
+caminho: respondia 400 ("utilizador não especificado"). Sem assinatura não há
+planos, e isso não é um erro do PEDIDO — só um token inexistente o é.
 
 E as ESTATÍSTICAS caíram na mesma pela terceira vez, com três sintomas
 diferentes: `/api/statistics/user/<id>` rebentava com um `AttributeError`
@@ -469,6 +477,16 @@ o nome — **o histórico é do servidor**, e existe à mesma. Quem não tem per
 também não pediu privacidade, e o nome (que só serve para as notificações de
 conquistas) vem do servidor por `_nome_do_utilizador()`. Quem não é
 administrador tem sempre perfil: sem ele, o `load_user` encerra-lhe a sessão.
+
+⚠️ **O administrador é o dono, e a interface passou a dizê-lo.** Ele não foi
+convidado (não tem "membro desde"), não tem plano nem vencimento, e o painel
+não lhe impõe limite de telas — mostrar esses campos vazios só levantava a
+pergunta de porquê. A "Minha Conta" identifica-o com uma etiqueta e esconde o
+que não se lhe aplica (`is_admin` em `/account/details`), e o pódio marca a
+linha dele. ⚠️ E dá-lhe cara: o dono NÃO está na lista de utilizadores do
+servidor, por isso era o único com o avatar "?" — vem de
+`get_owner_account()`, passado por `thumb_para_interface()` (idempotente, e
+sabe o formato de cada servidor).
 
 ⚠️ E logo a seguir veio o quarto sintoma: **gravar o XP CRIA o perfil**, e
 `username` é NOT NULL. O administrador abria as estatísticas e o log ficava com
@@ -615,6 +633,33 @@ chaves estrangeiras precisam de `PRAGMA legacy_alter_table=ON` no SQLite, e de
 repor a chave estrangeira numa segunda passagem depois da renomeação — ver
 `b7d4e82a16c9`, onde ambos os detalhes custaram uma tabela sem chaves. `User` é a exceção: não é uma tabela, é um objeto do
 Flask-Login reconstruído a partir da sessão (`load_user`).
+
+⚠️ **Um perfil novo fica marcado com o servidor que o criou**
+(`media_server_type`, gravado por `set_user_profile` a partir do config). A
+coluna existe para um painel que troque de servidor não confundir um ID do Plex
+com um GUID do Jellyfin que por acaso coincida — e ficava a NULL em tudo o que
+o painel criava. Quem passa o valor explicitamente manda.
+
+### Restaurar um backup de outra versão
+
+🛡️ Restaurar é **substituir a base de dados por baixo da aplicação**; o esquema
+só é acertado no arranque seguinte, pelo `flask db upgrade` que está tanto no
+`run.py` como no `CMD` do Dockerfile. Há dois backups que fariam esse arranque
+falhar, e um painel que não arranca é muito pior do que um restauro recusado —
+por isso `validate_backup_zip` lê a `alembic_version` de dentro do ZIP e recusa:
+
+- um backup de uma versão **MAIS RECENTE** (revisão que não existe nas
+  migrações deste painel: o Alembic pára com "Can't locate revision");
+- um backup **com dados e sem registo de versão** (instalação anterior às
+  migrações: o `upgrade` tentaria criar tabelas que já lá estão).
+
+O caminho normal — um backup **mais antigo**, que é o de quem vem do painel
+só-Plex — passa de propósito: as migrações levam-no para a frente no arranque, e
+é para isso que elas existem. `a9f3c17b2e04` é quem trata desse salto (identidade
+para texto e `media_server_type = 'plex'` nas linhas que já existiam), e o
+`MEDIA_SERVER_TYPE` em falta no `config.json` antigo resolve-se sozinho no
+`_set_default`. O manifesto do ZIP diz a versão da base de dados e o servidor,
+para se perceber meses depois o que ali está.
 
 ### Blueprints
 

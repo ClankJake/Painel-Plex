@@ -421,6 +421,39 @@ def login_with_credentials():
     return _autorizar_e_iniciar_sessao(conta, load_or_create_config())
 
 
+def _garantir_perfil_do_administrador(account):
+    """Cria o perfil local do administrador, se ainda não existir.
+
+    O administrador nunca teve perfil: o login dele devolve antes da parte que
+    os cria, e `_sync_plex_and_local_profiles` salta-o de propósito (no Plex
+    ele nem aparece na lista de amigos). Isso deixou de servir quando ele
+    passou a contar nas estatísticas: o XP precisa de onde ficar guardado, e o
+    perfil acabava por ser criado a meio de uma sincronização — com o nome em
+    falta, que a tabela não aceita.
+
+    Criá-lo AQUI é criá-lo inteiro, no único momento em que se sabe o nome, o
+    email e que servidor é. Não se atualiza um perfil que já exista: o que lá
+    está foi escolhido na "Minha Conta", e um login não é sítio para o desfazer.
+    """
+    media_user_id = normalize_user_id(account.id)
+    if not media_user_id:
+        return
+
+    try:
+        if data_manager.get_user_profile(media_user_id):
+            return
+
+        data_manager.set_user_profile(media_user_id, {
+            'username': account.username,
+            'email': getattr(account, 'email', None),
+            'status': 'active',
+        })
+        logger.info(f"Perfil local do administrador '{account.username}' criado.")
+    except Exception as e:
+        # Um perfil em falta não pode impedir o dono de entrar no painel.
+        logger.warning(f"Não foi possível criar o perfil do administrador: {e}")
+
+
 def _autorizar_e_iniciar_sessao(account, config, plex_token=None):
     """Decide o que fazer com uma conta já autenticada, seja qual for o servidor.
 
@@ -455,6 +488,8 @@ def _autorizar_e_iniciar_sessao(account, config, plex_token=None):
                 logger.info(f"ID do administrador ({account.id}) registado na configuração.")
         except Exception as e:
             logger.warning(f"Não foi possível registar o ADMIN_USER_ID: {e}")
+
+        _garantir_perfil_do_administrador(account)
 
         return _login_user_session(
             account, 'admin', 'main.index', 

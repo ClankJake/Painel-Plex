@@ -213,6 +213,23 @@ const renderProfileBaseInfo = (data, expiration) => {
     document.getElementById('user-email').textContent = data.email;
     document.getElementById('user-join-date').textContent = data.join_date;
     document.getElementById('user-screen-limit').textContent = data.screen_limit;
+
+    // O administrador é o DONO do servidor: não tem data de entrada (nunca foi
+    // convidado), não tem plano e não é limitado pelo painel. Mostrar "Membro
+    // desde: Não disponível" e "Limite de Telas: Ilimitado" só levantava a
+    // pergunta de porquê — em vez disso, diz-se quem ele é.
+    const adminBadge = document.getElementById('user-admin-badge');
+    const adminNote = document.getElementById('user-admin-note');
+    const joinDateRow = document.getElementById('user-join-date-container');
+    const screenLimitRow = document.getElementById('user-screen-limit-container');
+
+    if (data.is_admin) {
+        adminBadge?.classList.remove('hidden');
+        adminBadge?.classList.add('inline-flex');
+        adminNote?.classList.remove('hidden');
+        joinDateRow?.classList.add('hidden');
+        screenLimitRow?.classList.add('hidden');
+    }
     // Guardado para detetar upgrades a meio do ciclo (pro-rata).
     state.currentScreens = parseInt(data.screen_limit, 10) || 0;
     

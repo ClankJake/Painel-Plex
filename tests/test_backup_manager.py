@@ -299,3 +299,119 @@ class TestPastaDeBackups:
         gestor = BackupManager(config_dir=str(destino), backups_dir=str(alternativa))
 
         assert gestor.backups_dir == str(alternativa)
+
+
+# ==========================================================================
+# MIGRAR DE UM PAINEL ANTIGO
+# ==========================================================================
+
+def _zip_de_backup(bd=None, config=None):
+    """Um ZIP de backup com a base de dados que o teste quiser."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr(CONFIG_ENTRY_NAME, json.dumps(config or {"IS_CONFIGURED": True}))
+        if bd is not None:
+            zf.writestr(APP_DB_ENTRY_NAME, bd)
+    buffer.seek(0)
+    return buffer
+
+
+def _base_de_dados(tmp_path, revisao=None, com_dados=True, nome="antiga.db"):
+    """Uma base de dados como a que vem dentro de um backup."""
+    caminho = tmp_path / nome
+    ligacao = sqlite3.connect(caminho)
+    if com_dados:
+        ligacao.execute("CREATE TABLE user_profiles (media_user_id TEXT PRIMARY KEY, username TEXT)")
+    if revisao is not None:
+        ligacao.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        ligacao.execute("INSERT INTO alembic_version VALUES (?)", (revisao,))
+    ligacao.commit()
+    ligacao.close()
+    return caminho.read_bytes()
+
+
+def _uma_revisao_conhecida():
+    from app.services.backup_manager import _revisoes_conhecidas
+
+    conhecidas = _revisoes_conhecidas()
+    assert conhecidas, "sem migrações não há nada a validar"
+    return sorted(conhecidas)[0]
+
+
+class TestRestaurarDeOutraVersao:
+    """
+    🛡️ Restaurar é substituir a base de dados por baixo da aplicação, e o
+    esquema só é acertado no arranque seguinte (`flask db upgrade`). Um backup
+    que faça esse arranque falhar deixa o painel SEM ARRANCAR — e um restauro
+    recusado é muito melhor do que isso.
+    """
+
+    def test_um_backup_mais_antigo_passa(self, manager, tmp_path):
+        # É o caso de quem vem do painel só-Plex: as migrações levam-no para a
+        # frente no arranque, que é exatamente para o que elas servem.
+        ok, erro = manager.validate_backup_zip(
+            _zip_de_backup(_base_de_dados(tmp_path, revisao=_uma_revisao_conhecida()))
+        )
+
+        assert (ok, erro) == (True, None)
+
+    def test_um_backup_de_uma_versao_mais_recente_e_recusado(self, manager, tmp_path):
+        # O Alembic pararia com "Can't locate revision" no arranque.
+        ok, erro = manager.validate_backup_zip(
+            _zip_de_backup(_base_de_dados(tmp_path, revisao="versao-do-futuro"))
+        )
+
+        assert ok is False
+        assert "MAIS RECENTE" in erro
+        assert "versao-do-futuro" in erro
+
+    def test_dados_sem_registo_de_versao_sao_recusados(self, manager, tmp_path):
+        # O `upgrade` tentaria criar tabelas que já lá estão.
+        ok, erro = manager.validate_backup_zip(
+            _zip_de_backup(_base_de_dados(tmp_path, revisao=None, com_dados=True))
+        )
+
+        assert ok is False
+        assert "alembic_version" in erro
+
+    def test_uma_base_de_dados_vazia_passa(self, manager, tmp_path):
+        # Sem tabelas nenhumas, o arranque cria tudo do zero.
+        ok, erro = manager.validate_backup_zip(
+            _zip_de_backup(_base_de_dados(tmp_path, revisao=None, com_dados=False))
+        )
+
+        assert (ok, erro) == (True, None)
+
+    def test_um_ficheiro_que_nao_e_sqlite_e_recusado(self, manager):
+        ok, erro = manager.validate_backup_zip(_zip_de_backup(b"isto nao e uma base de dados"))
+
+        assert ok is False
+        assert "SQLite" in erro
+
+    def test_um_zip_recusado_nao_toca_nos_ficheiros(self, manager, instalacao, tmp_path):
+        antes = (instalacao / "config.json").read_text(encoding="utf-8")
+
+        with pytest.raises(ValueError):
+            manager.restore_from_zip(_zip_de_backup(_base_de_dados(tmp_path, revisao="do-futuro")))
+
+        assert (instalacao / "config.json").read_text(encoding="utf-8") == antes
+
+
+class TestOManifesto:
+    def test_diz_a_versao_da_base_de_dados_e_o_servidor(self, manager, instalacao):
+        # Sem isto, um ZIP guardado durante meses não diz a ninguém se ainda dá
+        # para o restaurar — nem em que painel foi feito.
+        (instalacao / "config.json").write_text(
+            json.dumps({"IS_CONFIGURED": True, "MEDIA_SERVER_TYPE": "jellyfin"}), encoding="utf-8"
+        )
+        ligacao = sqlite3.connect(instalacao / "app_data.db")
+        ligacao.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        ligacao.execute("INSERT INTO alembic_version VALUES ('abc123')")
+        ligacao.commit()
+        ligacao.close()
+
+        with zipfile.ZipFile(io.BytesIO(manager.create_backup_bytes())) as zf:
+            manifesto = zf.read(MANIFEST_ENTRY_NAME).decode("utf-8")
+
+        assert "abc123" in manifesto
+        assert "jellyfin" in manifesto

@@ -143,13 +143,20 @@
                     <h3 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
                         <span id="user-username"></span>
                         <span id="user-level-badge" class="hidden text-lg align-middle cursor-default" title=""></span>
+                        <!-- O dono do servidor não tem plano nem vencimento: dizê-lo
+                             é melhor do que deixar campos vazios à espera de explicação. -->
+                        <span id="user-admin-badge" class="hidden items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800/60">
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M2.5 5.5l2.6 2.2L8 4l2.9 3.7 2.6-2.2.9 8.5H1.6l.9-8.5z"/></svg>
+                            {{ _('Administrador') }}
+                        </span>
                     </h3>
                     <p class="text-sm text-gray-500 dark:text-gray-400 mb-2 sm:mb-4" id="user-email"></p>
                     
                     <div id="user-dates" class="text-sm text-gray-600 dark:text-gray-300 space-y-1">
-                        <p>{{ _('Membro desde:') }} <span id="user-join-date" class="font-semibold text-gray-900 dark:text-white"></span></p>
-                        <p>{{ _('Limite de Telas:') }} <span id="user-screen-limit" class="font-semibold text-gray-900 dark:text-white"></span></p>
+                        <p id="user-join-date-container">{{ _('Membro desde:') }} <span id="user-join-date" class="font-semibold text-gray-900 dark:text-white"></span></p>
+                        <p id="user-screen-limit-container">{{ _('Limite de Telas:') }} <span id="user-screen-limit" class="font-semibold text-gray-900 dark:text-white"></span></p>
                         <p id="user-expiration-container" class="hidden"></p>
+                        <p id="user-admin-note" class="hidden text-gray-500 dark:text-gray-400">{{ _('Dono do servidor — sem assinatura, sem vencimento e sem limite de telas.') }}</p>
                     </div>
                 </div>
             </div>
