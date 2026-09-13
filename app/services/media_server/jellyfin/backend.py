@@ -261,6 +261,20 @@ class JellyfinManager:
         fonte = self.sessions.user_thumb_source(thumb_cru)
         return proxied_image_url(fonte) if fonte else None
 
+    def thumb_para_interface(self, thumb):
+        """Idempotente: o que já é um URL do proxy volta intacto.
+
+        🐛 É o que salva quem JÁ ESTAVA autenticado quando o formato mudou: o
+        avatar vive numa cópia dentro do cookie da sessão, e essa não se
+        reescreve sozinha. Sem isto, essas pessoas ficavam com um 404 no
+        cabeçalho até voltarem a entrar — até 30 dias depois.
+        """
+        if not thumb:
+            return None
+        if '/image/' in thumb:
+            return thumb
+        return self._thumb_para_a_interface(thumb)
+
     def get_all_users(self, force_refresh=False):
         if force_refresh:
             self.users.invalidate_user_cache()
@@ -275,7 +289,19 @@ class JellyfinManager:
         return processados
 
     def get_user_by_id(self, user_id):
-        return self.users.get_user_by_id(user_id)
+        """Um utilizador tratado para a interface — imagem incluída.
+
+        🐛 Isto devolvia a leitura CRUA do submanager, com o thumb no formato do
+        Jellyfin. Quem o punha num `<img src>` (a página pública de pagamento, o
+        detalhe de um utilizador) recebia um 404 do painel.
+        """
+        utilizador = self.users.get_user_by_id(user_id)
+        if not utilizador:
+            return None
+
+        tratado = dict(utilizador)
+        tratado['thumb'] = self._thumb_para_a_interface(tratado.get('thumb'))
+        return tratado
 
     def get_user_libraries(self, user_id):
         return self.users.get_user_libraries(user_id)

@@ -427,6 +427,15 @@ class MediaServerBackend(Protocol):
 
     def authorize_image_url(self, source: str, image_path: str) -> Tuple[Optional[str], Dict[str, Any]]: ...
 
+    def thumb_para_interface(self, thumb: Optional[str]) -> Optional[str]:
+        """Um caminho de imagem DESTE servidor no URL que o browser consegue pedir.
+
+        Existe para quem tem um thumb sem saber de onde veio — o caso da sessão
+        de quem já estava autenticado antes de o formato mudar. Tem de ser
+        idempotente: o que já é um URL do proxy volta intacto.
+        """
+        return thumb
+
     def sync_profiles_from_server(self, only_missing: bool = True) -> Dict[str, Any]: ...
 
     # --- Sessões ---

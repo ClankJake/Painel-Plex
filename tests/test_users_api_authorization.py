@@ -335,3 +335,114 @@ class TestMinhaContaDoAdministrador:
         corpo = client.get("/api/users/account/details").get_json()
 
         assert corpo["profile_details"]["name"] == "Ana Silva"
+
+
+class TestAvatarDaSessao:
+    """
+    🐛 REGRESSÃO REPORTADA: `GET /Users/<id>/Images/Primary 404` no painel, e um
+    "?" no lugar do avatar do administrador.
+
+    O avatar é uma CÓPIA guardada no cookie da sessão, tirada no momento do
+    login. Daí saem dois problemas diferentes:
+
+    1. quem já estava autenticado quando o formato mudou continuou a carregar o
+       caminho cru do servidor — e o browser pede-o ao PAINEL, que dá 404;
+    2. quem coloca a imagem de perfil DEPOIS de entrar nunca a vê, porque a
+       sessão não se reescreve sozinha. Era o "?" do administrador.
+    """
+
+    class FachadaComAvatar:
+        """Um servidor onde a pessoa tem (ou não) uma imagem de perfil."""
+
+        def __init__(self, thumb=None):
+            self.thumb = thumb
+
+        def get_user_by_id(self, user_id):
+            return {"id": str(user_id), "username": "dono", "thumb": self.thumb}
+
+        def thumb_para_interface(self, thumb):
+            # O que já é do proxy volta intacto; o caminho cru é convertido.
+            if not thumb:
+                return None
+            return thumb if '/image/' in thumb else f"/image/?source=convertido"
+
+        def get_user_libraries(self, user_id):
+            return {"success": True, "libraries": []}
+
+        def get_user_devices(self, user_id):
+            return {"success": True, "devices": []}
+
+    @pytest.fixture()
+    def servidor(self, monkeypatch):
+        from app import extensions
+        from app.blueprints.api import users as users_module
+
+        class TautulliVazio:
+            def get_user_watch_details(self, **kwargs):
+                return {"success": True, "details": {}}
+
+        monkeypatch.setattr(users_module.extensions, "tautulli_manager", TautulliVazio(), raising=False)
+
+        def instalar(thumb=None):
+            fachada = self.FachadaComAvatar(thumb)
+            monkeypatch.setattr(extensions, "media_server", fachada)
+            monkeypatch.setattr(users_module.extensions, "media_server", fachada, raising=False)
+            return fachada
+
+        return instalar
+
+    def _autenticar_com_thumb(self, client, thumb):
+        with client.session_transaction() as sessao:
+            sessao["user_details"] = {
+                "id": "1", "username": "dono", "email": "d@e.test",
+                "role": "admin", "thumb": thumb,
+            }
+            sessao["_user_id"] = "1"
+            sessao["_fresh"] = True
+
+    def test_uma_sessao_antiga_deixa_de_pedir_o_caminho_cru(self, client, configurada, db_session, servidor):
+        # O sintoma exato reportado: o browser a pedir /Users/... ao painel.
+        servidor()
+        self._autenticar_com_thumb(client, "/Users/44874bdd/Images/Primary?tag=a2f1")
+
+        pagina = client.get("/account").get_data(as_text=True)
+
+        assert "/Users/44874bdd/Images/Primary" not in pagina
+
+    def test_a_imagem_posta_depois_do_login_passa_a_aparecer(self, client, configurada, db_session, servidor):
+        # O "?" do administrador: entrou sem imagem, pôs uma a seguir.
+        servidor(thumb="/image/?source=nova")
+        self._autenticar_com_thumb(client, None)
+
+        corpo = client.get("/api/users/account/details").get_json()
+
+        assert corpo["thumb"] == "/image/?source=nova"
+
+    def test_a_imagem_nova_fica_na_sessao_para_o_cabecalho(self, client, configurada, db_session, servidor):
+        # Sem isto, a "Minha Conta" mostrava a imagem nova e o resto do painel
+        # continuava com a antiga.
+        servidor(thumb="/image/?source=nova")
+        self._autenticar_com_thumb(client, None)
+
+        client.get("/api/users/account/details")
+
+        with client.session_transaction() as sessao:
+            assert sessao["user_details"]["thumb"] == "/image/?source=nova"
+
+    def test_um_servidor_que_nao_responde_mantem_o_avatar_que_havia(self, client, configurada, db_session, servidor):
+        # Melhor um avatar antigo do que nenhum.
+        fachada = servidor()
+        def rebenta(user_id):
+            raise RuntimeError("servidor em baixo")
+        fachada.get_user_by_id = rebenta
+        self._autenticar_com_thumb(client, "/image/?source=antiga")
+
+        corpo = client.get("/api/users/account/details").get_json()
+
+        assert corpo["thumb"] == "/image/?source=antiga"
+
+    def test_quem_nao_tem_avatar_em_lado_nenhum_continua_sem(self, client, configurada, db_session, servidor):
+        servidor(thumb=None)
+        self._autenticar_com_thumb(client, None)
+
+        assert client.get("/api/users/account/details").get_json()["thumb"] is None

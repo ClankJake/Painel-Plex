@@ -245,6 +245,26 @@ class PlexManager:
             self.data_manager.set_user_profile(media_user_id, profile)
             logger.info(f"Limite de telas para o utilizador ID '{media_user_id}' atualizado para {screens}.")
 
+    def _thumb_para_a_interface(self, thumb_cru):
+        from ....utils.image_proxy import proxied_image_url
+
+        fonte = self.sessions.user_thumb_source(thumb_cru)
+        return proxied_image_url(fonte) if fonte else None
+
+    def thumb_para_interface(self, thumb):
+        """Idempotente: o que já é um URL do proxy volta intacto.
+
+        🐛 É o que salva quem JÁ ESTAVA autenticado quando o formato mudou: o
+        avatar vive numa cópia dentro do cookie da sessão, e essa não se
+        reescreve sozinha. Sem isto, essas pessoas ficavam com um 404 no
+        cabeçalho até voltarem a entrar — até 30 dias depois.
+        """
+        if not thumb:
+            return None
+        if '/image/' in thumb:
+            return thumb
+        return self._thumb_para_a_interface(thumb)
+
     def get_user_devices(self, user_id):
         """Os aparelhos vêm do Tautulli: o Plex não os expõe por utilizador.
 

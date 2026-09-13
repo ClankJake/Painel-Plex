@@ -803,6 +803,44 @@ class TestImagemDePerfil:
 
         assert backend.authenticate("ana", "segredo").thumb is None
 
+    def test_procurar_um_utilizador_tambem_devolve_pelo_proxy(self, cache_limpa):
+        """
+        🐛 REGRESSÃO REPORTADA (404 em `/Users/<id>/Images/Primary`): a fachada
+        devolvia aqui a leitura CRUA do submanager. Quem punha esse thumb num
+        `<img src>` — a página pública de pagamento, o detalhe de um utilizador
+        — pedia-o ao PAINEL, que responde 404.
+        """
+        backend = montar({'/Users': [self.ETIQUETA]})
+
+        assert _fonte_da_imagem(backend.get_user_by_id(GUID)['thumb']) == self._esperado()
+
+    def test_um_utilizador_que_nao_existe_continua_a_ser_none(self, cache_limpa):
+        backend = montar({'/Users': [self.ETIQUETA]})
+
+        assert backend.get_user_by_id(OUTRO) is None
+
+    def test_converter_um_url_ja_convertido_nao_o_estraga(self, cache_limpa):
+        """
+        ⚠️ Tem de ser idempotente: é o que corre sobre o avatar guardado na
+        SESSÃO, que tanto pode ser o formato antigo como o novo.
+        """
+        backend = montar()
+        ja_convertido = backend._thumb_para_a_interface(f"/Users/{GUID}/Images/Primary?tag=tag1")
+
+        assert backend.thumb_para_interface(ja_convertido) == ja_convertido
+
+    def test_converter_o_caminho_cru_de_uma_sessao_antiga(self, cache_limpa):
+        # Quem já estava autenticado tem o caminho do Jellyfin no cookie.
+        backend = montar()
+
+        convertido = backend.thumb_para_interface(f"/Users/{GUID}/Images/Primary?tag=tag1")
+
+        assert _fonte_da_imagem(convertido) == self._esperado()
+
+    @pytest.mark.parametrize("vazio", [None, ""])
+    def test_sem_avatar_nao_se_inventa_um_url(self, cache_limpa, vazio):
+        assert montar().thumb_para_interface(vazio) is None
+
     def test_o_caminho_cru_nunca_sai_da_fachada(self, cache_limpa):
         """O que o browser recebe nunca pode ser um caminho do Jellyfin."""
         backend = montar({
@@ -812,6 +850,7 @@ class TestImagemDePerfil:
 
         saidas = [
             backend.get_all_users()[0]['thumb'],
+            backend.get_user_by_id(GUID)['thumb'],
             backend.authenticate("ana", "segredo").thumb,
         ]
 

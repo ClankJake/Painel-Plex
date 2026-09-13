@@ -5,7 +5,7 @@ import secrets
 import json
 from datetime import date, datetime, timezone, timedelta 
 
-from flask import Blueprint, jsonify, request, url_for, current_app
+from flask import Blueprint, jsonify, request, url_for, current_app, session
 from flask_login import current_user
 from flask_babel import gettext as _, format_date
 from tzlocal import get_localzone
@@ -155,6 +155,13 @@ def get_account_details():
     libraries_data = extensions.media_server.get_user_libraries(media_user_id)
     watch_data = extensions.tautulli_manager.get_user_watch_details(media_user_id=media_user_id)
 
+    # 🐛 O avatar da sessão é uma FOTOGRAFIA do momento do login: quem colocasse
+    # uma imagem de perfil no servidor depois de entrar continuava a ver o "?"
+    # até voltar a autenticar-se. Esta rota já fala com o servidor, por isso
+    # aproveita-se para trazer o avatar atual — e para o gravar na sessão, que é
+    # de onde o cabeçalho (base.html) o lê em todas as outras páginas.
+    thumb = _avatar_atualizado(media_user_id)
+
     is_on_trial = False
     if trial_end_date_iso := profile.get('trial_end_date'):
         try:
@@ -167,7 +174,7 @@ def get_account_details():
         "success": True, 
         "username": current_user.username, 
         "email": current_user.email, 
-        "thumb": current_user.thumb,
+        "thumb": thumb,
         "join_date": join_date, 
         "screen_limit": _("%(num)d Tela(s)", num=profile.get('screen_limit', 0)) if profile.get('screen_limit', 0) > 0 else _("Ilimitado"),
         "libraries": libraries_data.get('libraries', []), 
@@ -688,6 +695,33 @@ def get_user_payments_history(media_user_id):
 # ==========================================
 # FUNÇÕES AUXILIARES (HELPERS PRIVADOS)
 # ==========================================
+
+def _avatar_atualizado(media_user_id):
+    """O avatar que o servidor tem AGORA, e atualiza a sessão se tiver mudado.
+
+    Devolve o da sessão quando o servidor não sabe responder — é melhor um
+    avatar antigo do que nenhum.
+    """
+    atual = current_user.thumb
+    try:
+        utilizador = extensions.media_server.get_user_by_id(media_user_id)
+    except Exception as e:
+        logger.debug(f"Não foi possível atualizar o avatar de {media_user_id}: {e}")
+        return atual
+
+    novo = (utilizador or {}).get('thumb')
+    if not utilizador or novo == atual:
+        return atual
+
+    # A sessão é a fonte do cabeçalho em TODAS as páginas: sem a atualizar, a
+    # "Minha Conta" mostrava a imagem nova e o resto do painel a antiga.
+    detalhes = dict(session.get('user_details') or {})
+    if detalhes:
+        detalhes['thumb'] = novo
+        session['user_details'] = detalhes
+
+    return novo
+
 
 def _get_expiration_details(profile, config):
     expiration_info = {"date": None, "days_left": None, "status": "active"}

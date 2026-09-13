@@ -335,6 +335,25 @@ tira do próprio servidor. Duas diferenças a ter presentes:
   que estão REGISTADOS na conta. No Plex não há como pedi-los (a API do
   plex.tv só lista os do dono), por isso são deduzidos do histórico.
 
+⚠️ **O avatar vive numa CÓPIA dentro do cookie da sessão**, tirada no momento
+do login — e isso dá dois problemas que parecem um só:
+
+- quem já estava autenticado quando o formato do thumb mudou continuava a
+  carregar o caminho cru do servidor, e o browser pedia-o ao PAINEL (404). O
+  `load_user()` passa tudo o que vem da sessão por
+  `media_server.thumb_para_interface()`, que TEM de ser idempotente: recebe
+  tanto o formato antigo como o novo;
+- quem põe a imagem de perfil DEPOIS de entrar nunca a via, porque a sessão não
+  se reescreve sozinha — era o "?" do administrador. O `/account/details` já
+  fala com o servidor, por isso traz o avatar atual E grava-o na sessão, que é
+  de onde o `base.html` o lê em todas as outras páginas.
+
+⚠️ **Tudo o que sai da fachada com uma imagem passa por
+`_thumb_para_a_interface()`** — `get_all_users()`, `get_user_by_id()`,
+`get_owner_account()` e o `authenticate()`. Foram descobertos um a um, cada um
+com o seu 404: é a armadilha do `list_users()` (cru) contra o que a interface
+consome, e o sintoma nunca é um erro no log, é só a imagem em falta.
+
 ⚠️ **`GET /Devices?userId=` NÃO filtra por dono.** Filtra pelos aparelhos que
 aquele utilizador TEM PERMISSÃO DE USAR (`CanAccessDevice`) — e como toda a
 gente tem `EnableAllDevices` por omissão, deixa passar tudo: cada pessoa via a

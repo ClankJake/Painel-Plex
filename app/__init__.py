@@ -42,11 +42,29 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 
 @extensions.login_manager.user_loader
 def load_user(user_id):
-    """Carrega o utilizador para o Flask-Login a partir dos detalhes da sessão."""
+    """Carrega o utilizador para o Flask-Login a partir dos detalhes da sessão.
+
+    🐛 O avatar é uma CÓPIA guardada no cookie da sessão, tirada no momento do
+    login. Quando o formato do thumb mudou (passou a ir pelo proxy de imagens),
+    quem já estava autenticado continuou a carregar o caminho cru do servidor
+    de média — e o browser pedia-o ao PAINEL, que responde 404.
+    Reescrever a sessão a cada pedido seria caro; converter aqui é uma
+    operação de texto, e é o único sítio por onde uma sessão vira `current_user`.
+    """
     user_details = session.get('user_details')
-    if user_details and str(user_details.get('id')) == str(user_id):
-        return models.User(**user_details)
-    return None
+    if not user_details or str(user_details.get('id')) != str(user_id):
+        return None
+
+    detalhes = dict(user_details)
+    try:
+        backend = extensions.media_server
+        if backend and detalhes.get('thumb'):
+            detalhes['thumb'] = backend.thumb_para_interface(detalhes['thumb'])
+    except Exception as e:
+        # Um avatar não pode impedir alguém de entrar.
+        logger.debug(f"Não foi possível normalizar o avatar da sessão: {e}")
+
+    return models.User(**detalhes)
 
 def shutdown_scheduler(signum=None, frame=None):
     """Garante que o agendador é desligado de forma segura e elegante ao sair."""
