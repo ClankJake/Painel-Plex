@@ -52,7 +52,17 @@ flask db upgrade
 ```
 
 Não há linter nem formatador configurados. O CI (`.github/workflows/tests.yml`)
-corre apenas o pytest, em Python 3.11 e 3.12.
+corre apenas o pytest, em Python 3.11 e 3.12 — **não toca no frontend**, por isso
+um `npm install` partido não aparece ali.
+
+⚠️ **O `package-lock.json` tem de vir do registo PÚBLICO.** O que estava
+versionado registava os hashes de tarballs RE-EMPACOTADOS por um espelho: 68 dos
+70 pacotes tinham um `integrity` que o `registry.npmjs.org` não serve, e o
+`npm install` morria com `EINTEGRITY` para quem clonasse o repositório. Ninguém
+deu por isso porque o Dockerfile copia só o `package.json` e resolve de fresco —
+a imagem construía na mesma, com versões que o lockfile nunca chegou a fixar.
+Se o `npm install` voltar a acusar "tarball seems to be corrupted", é isto, e a
+correção é regenerar o lockfile fora desse espelho.
 
 ## Arquitetura
 
