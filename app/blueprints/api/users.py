@@ -456,26 +456,31 @@ def reactivate_user_route():
         return jsonify({"success": False, "message": _("Apenas usuários inativos podem ser reativados.")}), 404
 
     username = profile.get('username')
-    identifier = profile.get('email') or username
-    
-    if not identifier:
-        return jsonify({"success": True, "message": _("Reativado localmente, mas sem email para enviar convite.")})
 
     try:
         logger.info(f"Admin '{current_user.username}' a iniciar reativação manual de '{username}'.")
-        invite_result = extensions.media_server.invites.send_invite(identifier, libraries, media_user_id=media_user_id)
-        
-        if not invite_result.get('success'):
-            logger.error(f"Falha ao enviar convite de reativação para '{username}': {invite_result.get('message')}")
-            return jsonify({"success": False, "message": invite_result.get('message', 'Erro ao convidar.')})
 
-        extensions.data_manager.set_user_profile(media_user_id, {'status': 'active', 'libraries': json.dumps(libraries)})
+        # ⚠️ Repor o acesso NÃO é "enviar um convite": é o que esta rota chamava,
+        # e num servidor de contas locais "enviar convite" quer dizer CRIAR uma
+        # conta — com o email por nome, e com uma palavra-passe que ninguém veria.
+        # Quem sabe o que é preciso fazer é o backend (ver `restaurar_acesso`).
+        restauro = extensions.media_server.restaurar_acesso(media_user_id, profile, libraries=libraries)
+
+        if not restauro.get('success'):
+            logger.error(f"Falha ao repor o acesso de '{username}': {restauro.get('message')}")
+            return jsonify({"success": False, "message": restauro.get('message') or _("Erro ao repor o acesso.")})
+
+        extensions.data_manager.set_user_profile(media_user_id, {
+            'status': 'active',
+            'libraries': json.dumps(libraries),
+            'pending_invite_link': restauro.get('link_pendente'),
+        })
         extensions.data_manager.remove_blocked_user(media_user_id)
 
         if extensions.socketio:
             extensions.socketio.emit('user_list_updated', {'message': _("O usuário %(username)s foi reativado.", username=username)}, namespace='/dashboard')
 
-        return jsonify({"success": True, "message": _("Usuário reativado. Convite enviado com sucesso!")})
+        return jsonify({"success": True, "message": _("Usuário reativado com sucesso.")})
 
     except Exception as e:
         logger.error(f"Erro interno ao reativar {media_user_id}: {e}", exc_info=True)

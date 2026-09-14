@@ -126,7 +126,10 @@ class TestSuperficieAgnostica:
         backend.invalidate_user_cache()
         assert chamadas == [True]
 
-    def test_a_fachada_trata_a_lista_crua_do_diretorio(self, backend, monkeypatch):
+    # `app_context`: `get_all_users` lê a cache do Flask, que precisa de
+    # contexto. Sem ele este teste só passava quando outro ficheiro já tinha
+    # criado a aplicação — e falhava a correr sozinho.
+    def test_a_fachada_trata_a_lista_crua_do_diretorio(self, backend, monkeypatch, app_context):
         # A fachada consome `users.list_users()` — a leitura crua — e devolve-a
         # tratada para a interface. São duas camadas com responsabilidades
         # distintas que, durante muito tempo, tiveram o mesmo nome.
@@ -147,6 +150,70 @@ class TestSuperficieAgnostica:
         # pelo proxy de imagens para injetar o X-Plex-Token. Não têm 'plex' no
         # nome do atributo por acaso — ficam documentados como dívida da Fase 1.
         assert com_marca == []
+
+
+class TestAsAssinaturasNaoDivergem:
+    """Os dois backends têm de aceitar os mesmos ARGUMENTOS, não só os mesmos nomes.
+
+    🐛 `send_invite` tinha um terceiro parâmetro chamado `media_user_id` no Plex
+    (como no contrato) e `plex_user_id` no Jellyfin — o nome antigo, de quando
+    só havia um servidor. Quem chamava pelo nome, que é como o contrato manda,
+    levava com `TypeError: send_invite() got an unexpected keyword argument`.
+    Acontecia nas duas reativações, a paga e a manual, e o que ficava no log não
+    dizia nada sobre um parâmetro mal chamado.
+
+    Um `isinstance(backend, Protocol)` não apanha isto: os Protocols verificam
+    os nomes dos métodos, não as suas assinaturas.
+    """
+
+    def _parametros(self, funcao):
+        import inspect
+
+        return [
+            nome for nome, p in inspect.signature(funcao).parameters.items()
+            if nome != 'self' and p.kind is not inspect.Parameter.VAR_KEYWORD
+        ]
+
+    @pytest.mark.parametrize('metodo', ['send_invite', 'create_account', 'claim_invitation'])
+    def test_o_provisionamento_fala_a_mesma_lingua(self, metodo):
+        from app.services.media_server.jellyfin.account_manager import JellyfinAccountManager
+        from app.services.media_server.plex.invite_manager import PlexInviteManager
+
+        do_plex = getattr(PlexInviteManager, metodo, None)
+        do_jellyfin = getattr(JellyfinAccountManager, metodo, None)
+        if do_plex is None or do_jellyfin is None:
+            pytest.skip(f"'{metodo}' não existe nos dois backends.")
+
+        assert self._parametros(do_jellyfin) == self._parametros(do_plex)
+
+    def test_nenhum_parametro_tem_a_marca_de_um_servidor_no_nome(self):
+        # A fachada já não deixa passar métodos com 'plex' no nome; os
+        # PARÂMETROS escaparam a essa rede e foi por aí que o bug entrou.
+        from app.services.media_server.jellyfin.account_manager import JellyfinAccountManager
+        from app.services.media_server.jellyfin.backend import JellyfinManager
+
+        for classe in (JellyfinManager, JellyfinAccountManager):
+            for nome in dir(classe):
+                if nome.startswith('_'):
+                    continue
+                atributo = getattr(classe, nome, None)
+                if not callable(atributo):
+                    continue
+                com_marca = [p for p in self._parametros(atributo) if 'plex' in p.lower()]
+                assert com_marca == [], f"{classe.__name__}.{nome}{com_marca}"
+
+
+class TestReporOAcesso:
+    """Repor o acesso é do BACKEND, porque é diferente em cada servidor."""
+
+    def test_esta_no_contrato(self):
+        assert hasattr(MediaServerBackend, 'restaurar_acesso')
+
+    def test_os_dois_backends_respondem(self):
+        from app.services.media_server.jellyfin.backend import JellyfinManager
+
+        assert callable(getattr(PlexManager, 'restaurar_acesso'))
+        assert callable(getattr(JellyfinManager, 'restaurar_acesso'))
 
 
 class TestAutorizacaoDeImagensDoPlex:

@@ -103,6 +103,22 @@ def _run_payment_processing_in_thread(app, txid):
                 
                 media_user_id = payment['media_user_id']
                 profile = extensions.data_manager.get_user_profile(media_user_id)
+
+                # 🐛 Um perfil em falta rebentava aqui com `AttributeError` no
+                # `.get()` sobre None — e o tratamento de erros lá em baixo
+                # marcava o pagamento como 'FALHOU'. Ou seja: alguém pagava, a
+                # transação desaparecia do relatório financeiro, e o log não
+                # dizia porquê. Acontece a quem pagou e cujo perfil foi apagado
+                # entretanto (uma remoção manual, um restauro mais antigo).
+                if not profile:
+                    logger.error(
+                        f"Pagamento {mask_token(txid)}: não há perfil local para o utilizador "
+                        f"'{media_user_id}'. O pagamento fica por processar, para não se perder."
+                    )
+                    extensions.data_manager.update_pix_payment_status(txid, 'ATIVA')
+                    extensions.db.session.commit()
+                    return
+
                 is_reactivation = profile.get('status') == 'inactive'
 
                 if is_reactivation:

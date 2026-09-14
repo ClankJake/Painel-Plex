@@ -118,11 +118,11 @@ class NotificationError(Exception):
 DEFAULT_TEMPLATES = {
     "TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nEste é um lembrete de que sua fatura está com o vencimento próximo.\nVencimento: *{date}*\nValor: *{price}*\nPlano: *{plan_name}*\nAcesso: `{email}`\n\nNa data do vencimento o sistema poderá bloquear o acesso. Para evitar a interrupção, realize o pagamento clicando no botão abaixo:",
     "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\n\nOlá {name}!\nA sua subscrição foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
-    "TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE": "✅ *Conta Reativada*\n\nOlá {name}!\nA sua subscrição foi renovada e a sua conta reativada com sucesso.\nNovo vencimento: *{new_date}*\n\nPara acessar o servidor, clique no link abaixo e aceite o convite:\n{invite_link}",
+    "TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE": "✅ *Conta Reativada*\n\nOlá {name}!\nA sua subscrição foi renovada e a sua conta reativada com sucesso.\nNovo vencimento: *{new_date}*\n\nPara voltar a aceder, use o link abaixo:\n{invite_link}",
     "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n\n{name}, o seu período de teste terminou.\nPara manter o seu acesso, realize a renovação no botão abaixo:",
-    "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
+    "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao **{server_name}** está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
     "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
-    "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi reativada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para aceitar o convite do Plex]({invite_link})", "color": 65280}]}',
+    "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi reativada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para voltar a aceder]({invite_link})", "color": 65280}]}',
     "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
     "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
     "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
@@ -134,7 +134,7 @@ DEFAULT_TEMPLATES = {
     # --- WhatsApp (texto simples; sem markdown do Telegram nem JSON) ---
     "WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nO seu acesso vence em {days} dia(s), no dia {date}.\nPlano: {plan_name}\nValor: {price}\n\nRenove aqui para não perder o acesso:\n{payment_link}",
     "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "✅ Renovação confirmada!\n\nOlá {name}, a sua subscrição foi renovada com sucesso.\nNovo vencimento: {new_date}\n\nBom entretenimento!",
-    "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "✅ Conta reativada!\n\nOlá {name}, a sua conta foi reativada.\nNovo vencimento: {new_date}\n\nAceite o convite para voltar a aceder:\n{invite_link}",
+    "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "✅ Conta reativada!\n\nOlá {name}, a sua conta foi reativada.\nNovo vencimento: {new_date}\n\nUse o link abaixo para voltar a aceder:\n{invite_link}",
     "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "⌛ O seu período de teste terminou\n\nOlá {name}, esperamos que tenha gostado!\nPara continuar com acesso, faça a sua assinatura aqui:\n{payment_link}",
     "WHATSAPP_BULK_MESSAGE_TEMPLATE": "📢 Aviso do servidor\n\nOlá {name},\n\n{message}",
     # --- Pedidos no Overseerr/Jellyseerr ---
@@ -855,7 +855,11 @@ class NotifierManager:
             'planname': plan_name,
             'date_time': now.strftime('%d/%m/%Y %H:%M'),
             'days_left': context.get('days', 0),
-            'invite_link': context.get('invite_link', '')
+            # `.get(chave, '')` devolve None quando a chave EXISTE com valor
+            # None — e ela existe sempre nas reativações, podendo vir vazia
+            # quando o servidor não sabe dizer um endereço. Quem o converte é o
+            # `_format_template`; isto deixa-o explícito aqui, onde se lê.
+            'invite_link': context.get('invite_link') or ''
         }
 
         def _entregar(canal, envio):
@@ -1059,8 +1063,21 @@ class NotifierManager:
     def send_trial_end_notification(self, user, user_profile):
         self._prepare_and_send('trial_end', user, user_profile, {})
 
+    def _nome_do_servidor(self):
+        """Como se chama o servidor que esta pessoa usa.
+
+        ⚠️ Os templates padrão diziam "Plex" no meio da frase ("O seu acesso ao
+        Plex está prestes a expirar"). Num painel Jellyfin era a marca errada
+        entregue ao utilizador — o mesmo que aconteceu com o `default.svg` e com
+        o "Ver no Plex" das estatísticas. Quem sabe o nome é o servidor.
+        """
+        from .. import extensions
+
+        return getattr(extensions.media_server, 'SHORT_NAME', None) or 'Plex'
+
     def _build_placeholders(self, user, user_profile, context):
         return {
+            'server_name': self._nome_do_servidor(),
             'username': user.get('username'), 
             'name': user_profile.get('name') or user.get('username'),
             'email': user.get('email') or user_profile.get('email') or "",
@@ -1287,7 +1304,7 @@ class NotifierManager:
         
         all_plex_users = extensions.media_server.get_all_users()
         if not all_plex_users: 
-            raise ValueError(_("Não foi possível obter a lista de utilizadores do Plex."))
+            raise ValueError(_("Não foi possível obter a lista de utilizadores do servidor."))
 
         if target_audience == 'specific': 
             alvos = set(map(str, target_user_ids or []))

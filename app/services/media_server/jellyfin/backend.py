@@ -341,6 +341,66 @@ class JellyfinManager:
             self.users.stream_manager = self.stream_manager
         return self.users.remove_user(user_id)
 
+    def restaurar_acesso(self, media_user_id, profile, libraries=None):
+        """Aqui a conta é LOCAL: devolver o acesso é reativá-la, não convidar.
+
+        ⚠️ O caminho partilhado da reativação chamava `invites.send_invite()` —
+        que num servidor de contas locais quer dizer CRIAR uma conta. Com a
+        conta a existir já, a tentativa era uma conta duplicada com o email por
+        nome e uma palavra-passe que ninguém veria; e a notificação levava um
+        endereço de `clients.plex.tv` a quem nunca teve conta no Plex.
+
+        O que é preciso fazer é tirar-lhe o `IsDisabled` e repor as bibliotecas
+        que o perfil guardou. Não há nada para aceitar, por isso não há
+        `link_pendente` — o link é o do próprio servidor, onde a pessoa entra
+        com as credenciais que já tem.
+
+        ⚠️ **Se a conta já não existir, isto NÃO a recria.** Depois de
+        `DAYS_TO_REMOVE_BLOCKED_USER` dias, o `removal_job` apaga-a mesmo
+        (`DELETE /Users`), e recriá-la seria inventar uma palavra-passe nova
+        que o painel teria de entregar. Dizer que não se conseguiu é melhor do
+        que dar por reativado um acesso que não existe.
+        """
+        import json
+
+        media_user_id = normalize_user_id(media_user_id)
+
+        if not self.get_user_by_id(media_user_id):
+            logger.error(
+                f"Reativação de '{(profile or {}).get('username')}': a conta já não existe no "
+                "Jellyfin (foi removida). É preciso criá-la de novo e entregar as credenciais."
+            )
+            return {
+                "success": False,
+                "message": _("A conta já não existe no servidor e tem de ser criada de novo."),
+                "link": self.get_base_url(),
+                "link_pendente": None,
+            }
+
+        resultado = self.users.unblock_user(media_user_id)
+        if not resultado.get('success'):
+            return {**resultado, "link": self.get_base_url(), "link_pendente": None}
+
+        if libraries is None:
+            libraries = (profile or {}).get('libraries', '[]')
+        if isinstance(libraries, str):
+            try:
+                libraries = json.loads(libraries)
+            except (ValueError, TypeError):
+                libraries = []
+
+        if libraries:
+            self.users.update_user_libraries(
+                media_user_id, libraries, allow_sync=(profile or {}).get('allow_downloads')
+            )
+
+        return {
+            "success": True,
+            "message": _("Acesso reposto no servidor."),
+            "link": self.get_base_url(),
+            "link_pendente": None,
+        }
+
     def update_screen_limit(self, user_id, screens):
         """Grava o limite no perfil e, se houver quem o imponha, no servidor.
 

@@ -103,8 +103,14 @@ mandar pagar? — é partilhado em `_autorizar_e_iniciar_sessao`
 A rota `/auth/login/credentials` recusa-se a funcionar quando
 `capabilities.login_delegado` é verdade: no Plex, aceitar credenciais seria
 pedir a palavra-passe do plex.tv a quem entra — exatamente o que o fluxo de PIN
-existe para evitar. E está limitada a 10 por minuto, porque é a única rota do
-painel onde se podem testar palavras-passe. Isso muda o fluxo do
+existe para evitar. É a única rota do painel onde se podem testar
+palavras-passe, e por isso tem três travões: 10 por minuto por ENDEREÇO
+(Flask-Limiter), um contador por CONTA e outro, mais largo, por endereço
+(`utils/tentativas_de_login.py`), e um limite ao tamanho do que se aceita antes
+de tocar na rede. ⚠️ O limite por IP sozinho não chegava: quem ataca uma conta
+concreta tinha as dez por minuto todas para ela, e mudar de endereço dava-lhe
+outras dez. E conta-se o nome ESCRITO, exista ou não — travar só contas reais
+diria quais existem neste servidor, o oposto da mensagem de erro única. Isso muda o fluxo do
 convite (passa a pedir utilizador e palavra-passe) e enfraquece o anti-abuso de
 períodos de teste — uma conta nova não custa nada e nada a liga à mesma pessoa.
 Um convite de teste num servidor destes deve exigir um contacto verificável.
@@ -112,6 +118,28 @@ Um convite de teste num servidor destes deve exigir um contacto verificável.
 Em troca, o bloqueio é muito melhor: `Policy.IsDisabled` é um booleano, e o
 utilizador mantém as bibliotecas. No Plex é preciso retirar as partilhas,
 guardar quais eram e repô-las depois.
+
+⚠️ **Reativar não é "enviar um convite".** Era o que estava escrito no
+`PlexSubscriptionManager` — que os DOIS backends usam, porque o que lá vive é a
+política de vencimentos, igual em todos. Um pagamento de reativação num painel
+Jellyfin ia parar a `invites.send_invite()`, que ali quer dizer **criar uma
+conta**: com a conta a existir já, a tentativa era uma conta duplicada com o
+email por nome e uma palavra-passe que ninguém veria — e a notificação levava um
+`clients.plex.tv/.../accept` a quem nunca teve conta no Plex.
+
+Repor o acesso é agora do contrato (`restaurar_acesso`): no Plex convida-se
+outra vez e fica um `link_pendente` (é ele que faz aparecer o botão de
+confirmação manual na página de pagamento); onde as contas são locais tira-se o
+`IsDisabled`, repõem-se as bibliotecas do perfil, e não há nada para aceitar. Se
+a conta já tiver sido apagada pelo `removal_job`, o Jellyfin devolve
+`success: False` em vez de dar por reposto um acesso que não existe — recriá-la
+seria inventar uma palavra-passe que o painel teria de entregar.
+
+⚠️ E os Protocols do contrato verificam os NOMES dos métodos, não as
+assinaturas: `send_invite` tinha `media_user_id` no Plex e `plex_user_id` no
+Jellyfin, e quem chamava pelo nome levava com um `TypeError` nas duas
+reativações. Há agora um teste que compara as assinaturas dos dois backends
+(`tests/test_media_server_contract.py`).
 
 `PlexManager` (em `media_server/plex/backend.py`) é uma fachada sobre os
 submanagers: `.conn`, `.users`, `.invites`, `.subscriptions`, `.online_media`.
@@ -702,6 +730,23 @@ Rotas de API usam `@admin_required` (`app/decorators.py`) e
 `@validate_json(Schema)` (`app/blueprints/api/decorators.py`), com os esquemas
 Pydantic em `app/blueprints/api/schemas.py` — ainda no estilo `@validator` do
 Pydantic v1, cujo aviso de depreciação está silenciado no `pytest.ini`.
+
+### Notificações
+
+Os templates (Telegram, Discord, WhatsApp, webhook) vivem no config.json e os
+padrões estão em `DEFAULT_TEMPLATES` (`notifier_manager.py`) e em
+`load_or_create_config()`. Os dois têm de ser mudados juntos.
+
+⚠️ **A marca aparecia no meio das frases entregues ao utilizador** — "O seu
+acesso ao Plex está prestes a expirar", "aceite o convite no link abaixo". Num
+painel Jellyfin era a marca errada a chegar a quem paga, e "aceitar um convite"
+é um passo que ali nem existe. Use `{server_name}`, que vem do
+`SHORT_NAME` do backend. Quem já reescreveu os templates na página de
+Configurações mantém o que lá tem: um padrão só vale para quem não escolheu.
+
+`{invite_link}` deixou de ser "o link do convite do Plex" e passou a ser "o
+endereço para voltar a aceder" — é o `link` que `restaurar_acesso` devolve, e
+muda por servidor.
 
 ### Pagamentos
 

@@ -136,60 +136,36 @@ class PlexSubscriptionManager:
         if screens is not None and screens >= 0 and self.plex_manager:
             self.plex_manager.update_screen_limit(media_user_id, screens)
 
-        # 6. Restauro de Acesso Seguro e Notificação de Reativação
+        # 6. Restauro de Acesso e Notificação de Reativação
+        #
+        # ⚠️ **Este ficheiro é dos DOIS backends** (o do Jellyfin também o usa:
+        # o que aqui vive é a política de vencimentos, que não muda por
+        # servidor). Aqui estava, escrito à mão, o convite do Plex e o endereço
+        # `clients.plex.tv/.../accept` — mandados também a quem tem um painel
+        # Jellyfin, onde a conta é local, já existe, e "enviar convite" quer
+        # dizer CRIAR uma conta. Repor o acesso é do backend: `restaurar_acesso`.
         if is_reactivation and self.plex_manager and self.plex_manager.notifier_manager:
             try:
                 user_info = self.plex_manager.get_user_by_id(media_user_id) or {'id': media_user_id, 'username': profile.get('username')}
-                email = profile.get('email') or user_info.get('email')
-                
-                # Utiliza o método robusto do InviteManager para restaurar o acesso e readicionar o utilizador
-                invite_result = {}
-                if email:
-                    import json
-                    libraries = profile.get('libraries', '[]')
-                    if isinstance(libraries, str):
-                        try:
-                            libraries = json.loads(libraries)
-                        except:
-                            libraries = []
-                            
-                    invite_result = self.plex_manager.invites.send_invite(
-                        identifier=email,
-                        library_titles=libraries,
-                        media_user_id=media_user_id,
-                        allow_sync=profile.get('allow_downloads', False)
+
+                restauro = self.plex_manager.restaurar_acesso(media_user_id, profile)
+                if not restauro.get('success'):
+                    logger.warning(
+                        f"Reativação de '{profile.get('username')}': o acesso ao servidor não foi "
+                        f"reposto ({restauro.get('message')}). A assinatura FICA renovada."
                     )
-                
-                # Resgata o token escondido e constrói o Link Direto de Aceite
-                invite_token = invite_result.get('invite_token')
-                
-                if invite_token and invite_token != "ACCEPTED":
-                    long_invite_link = f"https://clients.plex.tv/servers/shared_servers/accept?invite_token={invite_token}"
 
-                    # 🔗 ENCURTADOR DE LINKS: reaproveita o mesmo serviço já usado para os
-                    # links de pagamento (LinkShortener), respeitando a configuração global
-                    # ENABLE_LINK_SHORTENER. Um link curto no próprio domínio do painel fica
-                    # mais limpo e confiável em mensagens de WhatsApp/Webhook/Telegram do que
-                    # a URL longa e "técnica" da API do Plex. Se o encurtador falhar por
-                    # qualquer motivo, cai de volta para o link longo (nunca quebra o convite).
-                    config = load_or_create_config()
-                    link_shortener = getattr(self.plex_manager.notifier_manager, 'link_shortener', None)
-                    if config.get("ENABLE_LINK_SHORTENER") and link_shortener:
-                        invite_link = link_shortener.create_short_link(long_invite_link)
-                    else:
-                        invite_link = long_invite_link
-                else:
-                    invite_link = "https://app.plex.tv/desktop"
+                invite_link = restauro.get('link')
 
-                # 🔗 Persiste o link no perfil para que a página de pagamento consiga
-                # exibir um botão de confirmação manual caso a ativação automática falhe.
-                # Só guardamos um link "real" quando temos um token válido (convite pendente);
-                # caso contrário, limpamos para não mostrar o botão à toa.
+                # 🔗 O link pendente é o que faz aparecer o botão de confirmação
+                # manual na página de pagamento. Só existe onde sobra mesmo
+                # alguma coisa por aceitar (o convite do Plex); onde a conta é
+                # local não há nada a confirmar, e mostrar o botão à toa seria
+                # pedir à pessoa que fizesse um passo que não existe.
                 latest_profile = self.data_manager.get_user_profile(media_user_id) or profile
-                latest_profile['pending_invite_link'] = invite_link if (invite_token and invite_token != "ACCEPTED") else None
+                latest_profile['pending_invite_link'] = restauro.get('link_pendente')
                 self.data_manager.set_user_profile(media_user_id, latest_profile)
-                
-                # Dispara a notificação de reativação com o link embutido
+
                 self.plex_manager.notifier_manager.send_reactivation_notification(user_info, new_expiration_date, profile, invite_link)
             except Exception as e:
                 logger.error(f"Falha ao restaurar acesso ou enviar notificação de reativação para o usuário {media_user_id}: {e}")

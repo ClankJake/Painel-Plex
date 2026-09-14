@@ -67,7 +67,7 @@ class PlexInviteManager(InvitationLifecycle):
         self.overseerr_manager = overseerr_manager
         self.notifier_manager = notifier_manager
 
-    def claim_invitation(self, code, plex_user_account):
+    def claim_invitation(self, code, account):
         """
         Orquestra o resgate de um convite inicial, com proteção anti-espertos.
         """
@@ -75,8 +75,8 @@ class PlexInviteManager(InvitationLifecycle):
         if not invitation:
             return {"success": False, "message": message}
         
-        username = plex_user_account.username
-        media_user_id = plex_user_account.id
+        username = account.username
+        media_user_id = account.id
         
         # 1. Validação básica de resgate duplicado do mesmo convite.
         # Compara pelo ID do Plex (identidade estável) e, para os convites
@@ -134,9 +134,9 @@ class PlexInviteManager(InvitationLifecycle):
         # caso contrário uma tentativa falhada queimava uma utilização do convite.
         try:
             invite_result = self.send_invite(
-                identifier=plex_user_account.email, 
+                identifier=account.email, 
                 library_titles=invitation['libraries'], 
-                media_user_id=plex_user_account.id,
+                media_user_id=account.id,
                 allow_sync=invitation.get('allow_downloads', False)
             )
             
@@ -147,18 +147,18 @@ class PlexInviteManager(InvitationLifecycle):
                 self.data_manager.release_invitation_use(code, username, media_user_id)
                 return {"success": False, "message": _("Já tem acesso a este servidor.")}
 
-            accept_result = self._accept_invite_v2(plex_user_account)
+            accept_result = self._accept_invite_v2(account)
             if not accept_result.get("success"):
                 self.user_manager.invalidate_user_cache()
                 all_current_users = self.user_manager.list_users()
-                if not any(str(u['id']) == str(plex_user_account.id) for u in all_current_users):
+                if not any(str(u['id']) == str(account.id) for u in all_current_users):
                     self.data_manager.release_invitation_use(code, username, media_user_id)
                     return {"success": False, "message": accept_result.get('message')}
 
-            self._apply_online_media_preferences(plex_user_account)
+            self._apply_online_media_preferences(account)
 
             if invitation.get('screen_limit', 0) > 0:
-                self.plex_manager.update_screen_limit(plex_user_account.id, invitation['screen_limit'])
+                self.plex_manager.update_screen_limit(account.id, invitation['screen_limit'])
         except Exception:
             self.data_manager.release_invitation_use(code, username, media_user_id)
             raise
@@ -172,7 +172,7 @@ class PlexInviteManager(InvitationLifecycle):
              self.data_manager.create_notification(message=_("'%(username)s' resgatou um convite.", username=username), category='success')
 
         user_data_response = self._setup_local_profile_and_integrations(
-            plex_user_account, invitation, telegram_id_from_invite
+            account, invitation, telegram_id_from_invite
         )
 
         return {

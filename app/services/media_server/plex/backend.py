@@ -361,6 +361,81 @@ class PlexManager:
             self.users.stream_manager = self.stream_manager
         return self.users.remove_user(media_user_id)
 
+    def restaurar_acesso(self, media_user_id, profile, libraries=None):
+        """No Plex, devolver o acesso é voltar a CONVIDAR a conta.
+
+        Bloquear aqui é retirar as partilhas e guardar quais eram; reativar é
+        repô-las, e isso passa por um convite que a pessoa tem de aceitar. Daí
+        o `link_pendente`: enquanto ele existir, a página de pagamento mostra o
+        botão de confirmação manual.
+
+        Esta lógica esteve no `PlexSubscriptionManager`, que o backend do
+        Jellyfin também usa — e mandava links de plex.tv a quem nunca teve
+        conta no Plex. Vive aqui porque é vocabulário do Plex.
+        """
+        import json
+
+        from app.config import load_or_create_config
+
+        if libraries is None:
+            libraries = profile.get('libraries', '[]')
+        if isinstance(libraries, str):
+            try:
+                libraries = json.loads(libraries)
+            except (ValueError, TypeError):
+                libraries = []
+
+        identificador = profile.get('email') or (self.get_user_by_id(media_user_id) or {}).get('email')
+        if not identificador:
+            # Sem email não há a quem enviar o convite. O acesso ao painel
+            # continua reposto; o que falta é o acesso ao servidor.
+            return {
+                "success": False,
+                "message": _("Sem email, não é possível enviar o convite do Plex."),
+                "link": "https://app.plex.tv/desktop",
+                "link_pendente": None,
+            }
+
+        resultado = self.invites.send_invite(
+            identifier=identificador,
+            library_titles=libraries,
+            media_user_id=media_user_id,
+            allow_sync=profile.get('allow_downloads', False),
+        )
+
+        token = resultado.get('invite_token')
+        pendente = bool(token) and token != "ACCEPTED"
+
+        if not pendente:
+            # Já aceite (ou sem convite a fazer): o sítio para onde mandar a
+            # pessoa é o próprio Plex.
+            return {
+                "success": resultado.get('success', True),
+                "message": resultado.get('message', ''),
+                "link": "https://app.plex.tv/desktop",
+                "link_pendente": None,
+            }
+
+        link_longo = f"https://clients.plex.tv/servers/shared_servers/accept?invite_token={token}"
+
+        # 🔗 O mesmo encurtador dos links de pagamento: um endereço no domínio
+        # do painel passa melhor num WhatsApp do que o URL técnico da API do
+        # Plex. Se falhar, fica o longo — o convite nunca se perde por isto.
+        link = link_longo
+        try:
+            encurtador = getattr(self.notifier_manager, 'link_shortener', None)
+            if load_or_create_config().get("ENABLE_LINK_SHORTENER") and encurtador:
+                link = encurtador.create_short_link(link_longo) or link_longo
+        except Exception as e:
+            logger.warning(f"Não foi possível encurtar o link do convite: {e}")
+
+        return {
+            "success": resultado.get('success', True),
+            "message": resultado.get('message', ''),
+            "link": link,
+            "link_pendente": link,
+        }
+
     # --- SESSÕES E STREAMING ---
     def get_active_sessions(self):
         if not self.conn.plex or not self.stream_manager:
@@ -497,7 +572,7 @@ class PlexManager:
     # --- CONVITES E TOKENS ---
     def create_invitation(self, **kwargs): return self.invites.create_invitation(**kwargs)
     def get_invitation_by_code(self, code): return self.invites.get_invitation_by_code(code)
-    def claim_invitation(self, code, plex_user_account): return self.invites.claim_invitation(code, plex_user_account)
+    def claim_invitation(self, code, account): return self.invites.claim_invitation(code, account)
     def list_invitations(self): return self.invites.list_invitations()
     def delete_invitation(self, code): return self.invites.delete_invitation(code)
     def reactivate_invitation(self, code): return self.invites.reactivate_invitation(code)

@@ -86,13 +86,20 @@ class JellyfinAccountManager(InvitationLifecycle):
         logger.info(f"Conta '{nome}' criada no Jellyfin.")
         return {"success": True, "user_id": user_id, "username": nome}
 
-    def send_invite(self, identifier, library_titles, plex_user_id=None, allow_sync=False):
+    def send_invite(self, identifier, library_titles, media_user_id=None, allow_sync=False):
         """Dar acesso, no vocabulário partilhado com o backend do Plex.
 
         Aqui `identifier` é o nome da conta a criar. A palavra-passe é gerada
         pelo painel quando não é indicada — é isso que permite um fluxo
         administrativo ("adicionar utilizador") sem pedir nada ao utilizador
         final, que depois a muda no Jellyfin.
+
+        🐛 O terceiro parâmetro chamava-se `plex_user_id` — o nome antigo, de
+        quando só havia um servidor. O contrato (e o backend do Plex) chamam-lhe
+        `media_user_id`, e quem chamava pelo nome levava com um `TypeError`:
+        `send_invite() got an unexpected keyword argument`. Acontecia nas duas
+        reativações, a paga e a manual, e o que ficava no log não dizia nada
+        sobre um parâmetro mal chamado.
         """
         resultado = self.create_account(identifier, secrets.token_urlsafe(12))
         if not resultado.get('success'):

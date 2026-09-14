@@ -134,7 +134,7 @@ class AccountProvisioning(Protocol):
 
     def get_invitation_by_code(self, code: str) -> Tuple[Optional[Dict[str, Any]], str]: ...
 
-    def claim_invitation(self, code: str, plex_user_account: Any) -> Dict[str, Any]: ...
+    def claim_invitation(self, code: str, account: Any) -> Dict[str, Any]: ...
 
     def list_invitations(self) -> List[Dict[str, Any]]: ...
 
@@ -410,6 +410,33 @@ class MediaServerBackend(Protocol):
     def unblock_user(self, user_id: Any) -> Dict[str, Any]: ...
 
     def remove_user(self, user_id: Any) -> Dict[str, Any]: ...
+
+    def restaurar_acesso(self, media_user_id: Any, profile: Dict[str, Any],
+                         libraries: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Devolve o acesso a quem pagou uma reativação. Muda por servidor.
+
+        ⚠️ **Isto não é "enviar um convite".** Era o que estava escrito no
+        `PlexSubscriptionManager`, que os DOIS backends usam: um pagamento de
+        reativação num painel Jellyfin ia parar a `invites.send_invite()`, e o
+        que vinha a seguir era um endereço `clients.plex.tv/.../accept` — ou,
+        em falhando, `app.plex.tv/desktop` — mandado a quem nunca teve conta
+        no Plex. Pior: no Jellyfin a conta já existe e "enviar convite" é
+        CRIAR uma conta, pelo que a tentativa era uma conta duplicada com o
+        email por nome e uma palavra-passe que ninguém veria.
+
+        O que cada servidor faz é mesmo diferente:
+
+        - no Plex, o acesso foi RETIRADO (as partilhas) e é preciso convidar a
+          conta outra vez; fica um link por aceitar, que a notificação leva;
+        - onde as contas são locais, a conta foi SUSPENSA e basta reativá-la —
+          não há nada para aceitar, e o link é o do próprio servidor.
+
+        Devolve `{"success", "message", "link", "link_pendente"}`:
+        `link` é o que vai na notificação; `link_pendente` só existe quando
+        sobra mesmo alguma coisa por aceitar — é o que faz aparecer o botão de
+        confirmação manual na página de pagamento.
+        """
+        return {"success": True, "message": "", "link": None, "link_pendente": None}
 
     # ⚠️ A ÚNICA porta para mudar o limite de telas de alguém. Grava o perfil e,
     # onde houver quem o imponha (no Jellyfin, o plugin StreamLimiter), leva-o
