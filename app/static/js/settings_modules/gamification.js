@@ -231,7 +231,7 @@ export async function loadSeasonStatus(urls, fetchAPI) {
 export async function handleManualSeasonReset(urls, fetchAPI, showToast) {
     // ⚠️ Ação destrutiva: dupla confirmação, tal como no restauro de backups.
     const msg = i18n.confirmSeasonReset ||
-        'ATENÇÃO: isto vai zerar o XP da temporada atual de TODOS os utilizadores e reiniciar o ranking.\n\nO XP acumulado de sempre (vitalício) será preservado.\n\nDeseja continuar?';
+        'ATENÇÃO: isto vai zerar o XP da temporada atual de TODOS os usuários e reiniciar o ranking.\n\nO XP acumulado de sempre (vitalício) será preservado.\n\nDeseja continuar?';
     if (!confirm(msg)) return;
 
     const word = (i18n.resetConfirmationWord || 'ZERAR').toUpperCase();

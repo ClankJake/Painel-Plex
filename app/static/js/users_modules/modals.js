@@ -432,7 +432,7 @@ export async function showLibraryManagementModal(user = null) {
         }).join('');
 
         if (allLibraries.length === 0) {
-            checkboxesHtml = `<p class="text-yellow-600 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-xl text-center">${i18n.noLibrariesAvailable || 'Nenhuma biblioteca disponível para partilhar no seu Servidor Plex.'}</p>`;
+            checkboxesHtml = `<p class="text-yellow-600 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-xl text-center">${i18n.noLibrariesAvailable || 'Nenhuma biblioteca disponível para compartilhar no seu servidor.'}</p>`;
         }
 
         // 🛡️ CORREÇÃO: Toggle Switch Padronizado TailwindCSS
@@ -441,7 +441,7 @@ export async function showLibraryManagementModal(user = null) {
                 <label class="flex items-center justify-between w-full p-3 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors group">
                     <div class="pr-4">
                         <span class="text-sm font-bold text-gray-900 dark:text-white block group-hover:text-blue-600 transition-colors">${i18n.allowDownloadsShort || 'Permitir Downloads'}</span>
-                        <span class="text-xs text-gray-500 dark:text-gray-400 block">${i18n.allowDownloadsHint || 'Permite que o utilizador descarregue filmes e séries (Offline)'}</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400 block">${i18n.allowDownloadsHint || 'Permite que o usuário baixe filmes e séries (Offline)'}</span>
                     </div>
                     <div class="relative inline-flex items-center cursor-pointer flex-shrink-0">
                         <input type="checkbox" id="modalAllowSync" class="sr-only peer" ${allowSync ? 'checked' : ''}>
@@ -488,7 +488,7 @@ export async function showLibraryManagementModal(user = null) {
             }
 
             saveButton.disabled = true;
-            saveButton.textContent = i18n.saving || 'A guardar...';
+            saveButton.textContent = i18n.saving || 'Salvando...';
             
             const allowSyncToggle = modal.querySelector('#modalAllowSync');
             const allowSyncChecked = allowSyncToggle ? allowSyncToggle.checked : null;

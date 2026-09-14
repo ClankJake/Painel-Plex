@@ -55,8 +55,11 @@
             <!-- PASSO 0: Boas-vindas -->
             <div data-step="0" class="wizard-step transition-opacity duration-500 ease-in-out text-center">
                 <div class="text-6xl mb-4">👋</div>
-                <h2 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ _('Bem-vindo ao Painel de Gestão Plex!') }}</h2>
-                <p class="text-gray-500 dark:text-gray-400 mt-4 max-w-lg mx-auto">{{ _('Esta ferramenta simplifica a gestão do seu servidor Plex: convide usuários, controle acessos e telas simultâneas, e acompanhe estatísticas detalhadas de uso.') }}</p>
+                {# ⚠️ Aqui a marca não pode ser escrita à mão: este é o ecrã ANTES
+                   de a pessoa escolher o servidor, e metade das instalações são
+                   de Jellyfin. #}
+                <h2 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ _('Bem-vindo ao seu painel de gestão!') }}</h2>
+                <p class="text-gray-500 dark:text-gray-400 mt-4 max-w-lg mx-auto">{{ _('Esta ferramenta simplifica a gestão do seu servidor de mídia: convide usuários, controle acessos e telas simultâneas, e acompanhe estatísticas detalhadas de uso.') }}</p>
                 <div class="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
                     <button type="button" id="start-setup" class="btn bg-green-600 hover:bg-green-500 text-white px-6 py-3 font-semibold shadow-lg shadow-green-500/20">{{ _('Vamos Começar') }} &rarr;</button>
                     <button type="button" id="go-to-restore" class="btn bg-transparent border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 px-6 py-3 font-semibold">
@@ -98,10 +101,10 @@
                     <div class="mb-4">
                         <label for="jellyfin_api_key" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Chave da API') }}</label>
                         <input type="password" id="jellyfin_api_key" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" placeholder="••••••••">
-                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Gere-a no Jellyfin em Painel de Controlo → Chaves de API.') }}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Gere uma no Jellyfin, em Painel de Controle → Chaves de API.') }}</p>
                     </div>
                     <button type="button" id="connect-jellyfin" class="btn w-full bg-purple-600 hover:bg-purple-500 text-white px-6 py-3 font-bold">
-                        {{ _('Ligar ao Jellyfin') }}
+                        {{ _('Conectar ao Jellyfin') }}
                     </button>
                     <p id="jellyfin-connect-result" class="text-sm mt-3 text-center"></p>
                 </div>
@@ -113,8 +116,11 @@
 
             <!-- PASSO 2: Seleção do servidor -->
             <div data-step="2" class="wizard-step hidden opacity-0 transition-opacity duration-500 ease-in-out">
-                <h2 id="step2-title" class="text-xl font-bold text-gray-900 dark:text-white mb-1">{{ _('Selecionar Servidor Plex') }}</h2>
-                <p id="step2-subtitle" class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('Escolha qual servidor este painel vai gerir.') }}</p>
+                {# O título e o subtítulo mudam com o servidor escolhido: no Plex
+                   escolhe-se um SERVIDOR, no Jellyfin uma CONTA de
+                   administrador (ver `selecionarTipoDeServidor`). #}
+                <h2 id="step2-title" class="text-xl font-bold text-gray-900 dark:text-white mb-1">{{ _('Selecionar Servidor') }}</h2>
+                <p id="step2-subtitle" class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('Escolha qual servidor este painel vai gerenciar.') }}</p>
                 <div id="server-list" class="space-y-3 max-h-72 overflow-y-auto pr-1 text-left">
                     <p class="text-center p-8 text-gray-400 dark:text-gray-500 text-sm">{{ _('Aguardando autenticação...') }}</p>
                 </div>
@@ -140,8 +146,16 @@
                         <input type="text" id="APP_TITLE" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" value="{{ config.APP_TITLE or 'Painel Plex' }}">
                     </div>
 
-                    <!-- Tautulli -->
-                    <div class="bg-gray-50/50 dark:bg-gray-800/30 p-4 rounded-xl border border-gray-200 dark:border-gray-700/50">
+                    <!-- Tautulli: SÓ FAZ SENTIDO NUM PAINEL PLEX.
+                         🐛 Este cartão aparecia sempre, e num assistente de
+                         Jellyfin pedia credenciais de um serviço que só fala
+                         com o Plex — quem as preenchesse ficava com uma
+                         integração que nunca ia ser usada. Quem o esconde é o
+                         `selecionarTipoDeServidor` (setup.js), pela mesma
+                         razão por que a página de Conexões usa a capacidade
+                         `estatisticas_externas`: aqui ainda não há backend
+                         construído a quem perguntar. -->
+                    <div id="setup-card-tautulli" class="bg-gray-50/50 dark:bg-gray-800/30 p-4 rounded-xl border border-gray-200 dark:border-gray-700/50">
                         <h4 class="font-bold text-gray-900 dark:text-white flex items-center gap-2">
                             <span>📊</span>{{ _('Tautulli') }}
                             <span class="text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">{{ _('Opcional') }}</span>
@@ -240,11 +254,13 @@
     data-urls-get-plex-servers="{{ url_for('system_api.get_plex_servers') }}"
     data-urls-test-jellyfin="{{ url_for('system_api.test_jellyfin_connection') }}"
     data-urls-jellyfin-users="{{ url_for('system_api.get_jellyfin_users_for_setup') }}"
-    data-i18n-jellyfin-connecting="{{ _('A ligar...') }}"
-    data-i18n-jellyfin-connect="{{ _('Ligar ao Jellyfin') }}"
+    data-i18n-jellyfin-connecting="{{ _('Conectando...') }}"
+    data-i18n-jellyfin-connect="{{ _('Conectar ao Jellyfin') }}"
     data-i18n-select-admin="{{ _('Escolha a conta que vai administrar o painel.') }}"
+    data-i18n-select-server-title="{{ _('Selecionar Servidor Plex') }}"
+    data-i18n-select-server-subtitle="{{ _('Escolha qual servidor este painel vai gerenciar.') }}"
     data-i18n-select-admin-title="{{ _('Conta de Administrador') }}"
-    data-i18n-no-admin-found="{{ _('O Jellyfin não devolveu nenhuma conta.') }}"
+    data-i18n-no-admin-found="{{ _('O Jellyfin não retornou nenhuma conta.') }}"
     data-i18n-restarting="{{ _('Configuração salva. A aplicação está reiniciando — aguarde e recarregue a página.') }}"
     data-urls-test-tautulli="{{ url_for('system_api.test_tautulli_connection') }}"
     data-urls-test-overseerr="{{ url_for('system_api.test_overseerr_connection') }}"

@@ -22,6 +22,14 @@ import pytest
 RAIZ = Path(__file__).resolve().parent.parent
 PASTAS = ('app/templates', 'app/blueprints', 'app/services', 'app/utils')
 
+# ⚠️ **O JavaScript também fala com a pessoa.** Os textos dele vêm quase todos
+# do HTML (`data-i18n-*`, que já entra por `app/templates`), mas cada um tem uma
+# ALTERNATIVA escrita no próprio ficheiro — o `i18n.x || 'texto'` que aparece
+# quando a chave falta. Oito delas ficaram em português europeu depois da
+# varredura, precisamente porque esta lista não chegava aqui: "A guardar...",
+# "A enviar...", "descarregue filmes", "ficheiro de backup".
+PASTAS_JS = ('app/static/js',)
+
 # Cada marca vem com a forma brasileira, para a mensagem de erro dizer logo o
 # que escrever em vez de mandar procurar.
 MARCAS = [
@@ -39,13 +47,18 @@ MARCAS = [
     (r'\bestá a [a-zç]+ar\b', 'está + gerúndio ("está salvando")'),
     # Só o RÓTULO de carregamento: "obriga o usuário a entrar" é português do
     # Brasil correto e não pode ser apanhado aqui.
-    (r'^A (entrar|guardar|enviar|criar|alterar|conectar|reconectar|carregar)\b',
+    (r'^A (entrar|guardar|enviar|criar|alterar|conectar|reconectar|carregar|ligar)\b',
      'gerúndio ("Salvando...", "Enviando...")'),
     # A ênclise antes do infinitivo: "para a criar" -> "para criá-la".
     (r'\bpara (a|o|as|os) [a-zà-ú]+ar\b', 'o pronome depois do verbo ("para criá-la")'),
+    (r'\bcontrolo\b', 'controle'),
+    (r'\bdescarreg\w+', 'baixar / download'),
+    (r'\bbases? de dados\b', 'banco de dados'),
 ]
 
 LITERAL = re.compile(r"_\(\s*(['\"])(.*?)\1", re.S)
+# A alternativa de uma chave de tradução em falta: `i18n.algumaCoisa || 'texto'`.
+ALTERNATIVA_JS = re.compile(r"i18n\.[A-Za-z0-9_]+\s*\|\|\s*(['\"])(.*?)\1", re.S)
 MODELO = re.compile(r'^\s*"[A-Z_]+_MESSAGE_TEMPLATE":\s*(.*)$', re.M)
 
 
@@ -62,6 +75,14 @@ def _textos_visiveis():
                 for achado in padrao.finditer(conteudo):
                     linha = conteudo.count('\n', 0, achado.start()) + 1
                     yield nome, linha, achado.group(grupo)
+
+    for pasta in PASTAS_JS:
+        for caminho in sorted((RAIZ / pasta).rglob('*.js')):
+            conteudo = caminho.read_text(encoding='utf-8')
+            nome = caminho.relative_to(RAIZ).as_posix()
+            for achado in ALTERNATIVA_JS.finditer(conteudo):
+                linha = conteudo.count('\n', 0, achado.start()) + 1
+                yield nome, linha, achado.group(2)
 
 
 @pytest.mark.parametrize('marca, sugestao', MARCAS)

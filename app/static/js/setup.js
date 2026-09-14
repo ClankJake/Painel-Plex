@@ -279,7 +279,23 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- Escolha do servidor de média ---
     function selecionarTipoDeServidor(tipo) {
+        const mudou = setupData.media_server_type !== tipo;
         setupData.media_server_type = tipo;
+
+        // ⚠️ Trocar de servidor tem de APAGAR o que ficou do outro. É a mesma
+        // armadilha do botão "Próximo" que ficava ativo com a escolha anterior
+        // (ver `initializeSetup`): quem experimentasse um servidor e mudasse de
+        // ideias levava consigo o nome do administrador do primeiro.
+        if (mudou) {
+            setupData.plex_url = null;
+            setupData.plex_token = null;
+            setupData.jellyfin_url = null;
+            setupData.jellyfin_api_key = null;
+            setupData.admin_user = null;
+            setupData.admin_user_id = null;
+            const proximo = document.getElementById('next-2');
+            if (proximo) proximo.disabled = true;
+        }
 
         document.querySelectorAll('.server-type-option').forEach(botao => {
             const ativo = botao.dataset.serverType === tipo;
@@ -292,11 +308,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('server-setup-plex')?.classList.toggle('hidden', tipo !== 'plex');
         document.getElementById('server-setup-jellyfin')?.classList.toggle('hidden', tipo !== 'jellyfin');
+
+        // 🐛 O cartão do Tautulli aparecia sempre. Ele só fala com o Plex, por
+        // isso num assistente de Jellyfin pedia credenciais de um serviço que
+        // nunca ia ser usado — e quem as preenchesse ficava convencido de que
+        // tinha ligado alguma coisa.
+        document.getElementById('setup-card-tautulli')?.classList.toggle('hidden', tipo !== 'plex');
+
+        // 🐛 E o passo 2 ficava com o texto do OUTRO servidor: quem
+        // experimentasse o Jellyfin e voltasse ao Plex via "Conta de
+        // Administrador" por cima de uma lista de servidores. O texto é
+        // reposto a cada escolha, que é o único momento em que se sabe qual é.
+        const titulo = document.getElementById('step2-title');
+        const subtitulo = document.getElementById('step2-subtitle');
+        if (titulo && tipo === 'plex') titulo.textContent = i18n.selectServerTitle || '';
+        if (subtitulo && tipo === 'plex') subtitulo.textContent = i18n.selectServerSubtitle || '';
+        if (titulo && tipo === 'jellyfin') titulo.textContent = i18n.selectAdminTitle || '';
+        if (subtitulo && tipo === 'jellyfin') subtitulo.textContent = i18n.selectAdmin || '';
     }
 
     document.querySelectorAll('.server-type-option').forEach(botao => {
         botao.addEventListener('click', () => selecionarTipoDeServidor(botao.dataset.serverType));
     });
+
+    // ⚠️ Corre uma vez no arranque para o ecrã ficar coerente com a escolha por
+    // omissão. Sem isto, o que está visível é o que o HTML tiver escrito à mão —
+    // e era assim que o cartão do Tautulli e o título do passo 2 ficavam a
+    // depender de duas verdades diferentes.
+    selecionarTipoDeServidor(setupData.media_server_type);
 
     // --- Jellyfin: ligar e escolher a conta de administrador ---
     document.getElementById('connect-jellyfin')?.addEventListener('click', async () => {
@@ -312,7 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         botao.disabled = true;
-        botao.textContent = i18n.jellyfinConnecting || 'A ligar...';
+        botao.textContent = i18n.jellyfinConnecting || 'Conectando...';
         resultado.textContent = '';
 
         try {
@@ -341,12 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function mostrarContasJellyfin(contas) {
         const lista = document.getElementById('server-list');
-        const titulo = document.getElementById('step2-title');
-        const subtitulo = document.getElementById('step2-subtitle');
         const proximo = document.getElementById('next-2');
-
-        if (titulo) titulo.textContent = i18n.selectAdminTitle || 'Conta de Administrador';
-        if (subtitulo) subtitulo.textContent = i18n.selectAdmin || '';
 
         // Nenhuma conta escolhida ainda: o botão só abre depois da escolha.
         setupData.admin_user = null;
@@ -395,7 +429,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setRestoreFile(file) {
         if (!file) return;
         if (!file.name.toLowerCase().endsWith('.zip')) {
-            showToast(i18n.invalidFileType || 'Selecione um ficheiro .zip válido.', 'error');
+            showToast(i18n.invalidFileType || 'Selecione um arquivo .zip válido.', 'error');
             return;
         }
         selectedRestoreFile = file;
@@ -476,8 +510,13 @@ document.addEventListener('DOMContentLoaded', () => {
         finishButton.textContent = i18n.saving;
 
         setupData.APP_TITLE = document.getElementById('APP_TITLE').value;
-        setupData.TAUTULLI_URL = document.getElementById('tautulli_url').value;
-        setupData.TAUTULLI_API_KEY = document.getElementById('tautulli_api_key').value;
+        // O Tautulli só fala com o Plex. Num painel Jellyfin o cartão está
+        // escondido, e mandar os campos vazios apagaria em silêncio o que
+        // estivesse num config.json restaurado de um painel anterior.
+        if (!ehJellyfin()) {
+            setupData.TAUTULLI_URL = document.getElementById('tautulli_url').value;
+            setupData.TAUTULLI_API_KEY = document.getElementById('tautulli_api_key').value;
+        }
         setupData.OVERSEERR_ENABLED = document.getElementById('overseerr_enabled').checked;
         setupData.OVERSEERR_URL = document.getElementById('overseerr_url').value;
         setupData.OVERSEERR_API_KEY = document.getElementById('overseerr_api_key').value;

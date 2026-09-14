@@ -128,7 +128,7 @@ export function setupWebSocket() {
         if (reason !== 'ping timeout' && reason !== 'transport close') {
             console.warn(`WS: Desconectado do servidor. Motivo: ${reason}`);
         }
-        updateRealtimeIndicator('reconnecting', i18n.reconnecting || 'A reconectar...', i18n);
+        updateRealtimeIndicator('reconnecting', i18n.reconnecting || 'Reconectando...', i18n);
     });
 
     socket.on('reconnect_attempt', () => {

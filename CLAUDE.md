@@ -15,6 +15,13 @@ internos. Há um teste que percorre tudo o que é visível e recusa o vocabulár
 europeu, dizendo logo qual a forma a usar
 (`tests/test_textos_em_portugues_do_brasil.py`).
 
+⚠️ **O JavaScript também fala com a pessoa**, e a varredura não chegava lá. Os
+textos dele vêm quase todos do HTML (`data-i18n-*`), mas cada um tem uma
+ALTERNATIVA escrita no próprio ficheiro — o `i18n.x || 'texto'` que aparece
+quando a chave falta. Oito delas ficaram em português europeu ("A guardar...",
+"A enviar...", "descarregue filmes", "ficheiro de backup"). O teste percorre
+agora também `app/static/js`.
+
 ## Comandos
 
 ```bash
@@ -863,6 +870,33 @@ do processo antigo estaria a ler de um ficheiro que já nem tem nome.
 As tarefas por utilizador que vierem atrasadas do backup são descartadas pelo
 `misfire_grace_time` — quem apanha esses casos é a varredura diária
 (`removal_job`, `expiration_notification_job`), que não depende delas.
+
+### O assistente de instalação
+
+`setup.html` + `setup.js`. É o único sítio do painel onde **ainda não há backend
+construído a quem perguntar** — o servidor só é escolhido ali — por isso o que
+noutras páginas se esconde com `media_server.capabilities` tem de ser escondido
+pelo JavaScript, no momento da escolha (`selecionarTipoDeServidor`).
+
+🐛 **O cartão do Tautulli aparecia sempre.** Ele só fala com o Plex: num
+assistente de Jellyfin pedia credenciais de um serviço que nunca ia ser usado, e
+quem as preenchesse ficava convencido de que tinha ligado alguma coisa. O mesmo
+`selecionarTipoDeServidor` repõe o texto do passo 2 (no Plex escolhe-se um
+SERVIDOR, no Jellyfin uma CONTA) e limpa o estado do servidor anterior — quem
+experimentasse um e mudasse de ideias levava consigo o nome do administrador do
+primeiro.
+
+⚠️ Ele **corre uma vez no arranque**. Sem isso, o que está visível é o que o HTML
+tiver escrito à mão, e o ecrã passa a depender de duas verdades diferentes.
+
+⚠️ Um campo escondido não deve ser ENVIADO: `save_setup` preserva as chaves de
+API que cheguem vazias, mas não os URLs — mandar `TAUTULLI_URL` em branco
+apagava o que estivesse num config.json restaurado.
+
+Há um teste que prende o contrato entre os dois ficheiros: toda a chave
+`i18n.x` / `urls.x` que o script procura tem de existir como `data-*` no
+template (`tests/test_assistente_por_servidor.py`). É a armadilha que já deu
+`undefined` por extenso na página de convite.
 
 ### Blueprints
 

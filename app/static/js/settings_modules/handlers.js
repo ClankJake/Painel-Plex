@@ -291,7 +291,7 @@ async function handleBackupRestore(file) {
 
     // ⚠️ Ação destrutiva e irreversível: dupla confirmação antes de prosseguir.
     const firstConfirm = confirm(
-        (i18n.confirmRestoreStep1 || 'ATENÇÃO: Isto vai SUBSTITUIR o config.json e as bases de dados atuais pelos dados do ficheiro de backup selecionado.\n\nTodos os dados criados depois desse backup (novos utilizadores, pagamentos, etc.) serão PERDIDOS.\n\nA aplicação será reiniciada automaticamente em seguida.\n\nDeseja continuar?')
+        (i18n.confirmRestoreStep1 || 'ATENÇÃO: Isto vai SUBSTITUIR o config.json e os bancos de dados atuais pelos dados do arquivo de backup selecionado.\n\nTodos os dados criados depois desse backup (novos usuários, pagamentos, etc.) serão PERDIDOS.\n\nA aplicação será reiniciada automaticamente em seguida.\n\nDeseja continuar?')
     );
     if (!firstConfirm) return;
 
@@ -336,7 +336,7 @@ async function handleSaveSettings(e) {
 
     const originalText = dom.saveButton.textContent;
     dom.saveButton.disabled = true;
-    dom.saveButton.innerHTML = `${getSpinner()} ${i18n.saving || 'A guardar...'}`;
+    dom.saveButton.innerHTML = `${getSpinner()} ${i18n.saving || 'Salvando...'}`;
 
     const newConfig = {};
     const screenPrices = {};
