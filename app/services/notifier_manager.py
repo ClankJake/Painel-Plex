@@ -124,16 +124,19 @@ DEFAULT_TEMPLATES = {
     # ⚠️ Não há forma de recuperar a antiga, nem de pedir uma à pessoa: ela não
     # está a ver o painel, está a pagar. É por isto que este evento existe.
     "TELEGRAM_CREDENTIALS_MESSAGE_TEMPLATE": "🔑 *Acesso Reposto*\n\nOlá {name}!\nA sua conta no {server_name} foi criada de novo, por isso a palavra-passe mudou.\n\nUtilizador: `{new_username}`\nPalavra-passe: `{new_password}`\n\nEntre em {invite_link} e troque a palavra-passe assim que puder.",
+    "TELEGRAM_PASSWORD_RESET_MESSAGE_TEMPLATE": "🔑 *Repor a palavra-passe*\n\nOlá {name}!\nPediu para repor a palavra-passe da sua conta no {server_name}.\n\nAbra este link e escolha uma nova:\n{reset_link}\n\nO link é válido durante {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem — nada muda até alguém o abrir.",
     "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao **{server_name}** está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
     "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
     "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi reativada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para voltar a aceder]({invite_link})", "color": 65280}]}',
     "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
     "DISCORD_CREDENTIALS_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Acesso Reposto", "description": "Olá **{username}**! 🔑\\n\\nA sua conta no **{server_name}** foi criada de novo, por isso a palavra-passe mudou.\\n\\nUtilizador: `{new_username}`\\nPalavra-passe: `{new_password}`\\n\\nTroque a palavra-passe assim que puder.", "color": 3447003}]}',
+    "DISCORD_PASSWORD_RESET_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Repor a palavra-passe\", \"description\": \"Olá **{username}**! 🔑\\n\\nPediu para repor a palavra-passe da sua conta no **{server_name}**.\\n\\n[Clique aqui para escolher uma nova]({reset_link})\\n\\nO link vale {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem.\", \"color\": 3447003}]}",
     "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
     "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
     "WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi reativada. Novo vencimento: {new_date}. Link de acesso: {invite_link}"}',
     "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}',
     "WEBHOOK_CREDENTIALS_MESSAGE_TEMPLATE": '{"content": "A conta de {username} foi criada de novo no servidor. Utilizador: {new_username} — Palavra-passe: {new_password}"}',
+    "WEBHOOK_PASSWORD_RESET_MESSAGE_TEMPLATE": "{\"content\": \"{username} pediu para repor a palavra-passe. Link válido {reset_minutes} min: {reset_link}\"}",
     "TELEGRAM_BULK_MESSAGE_TEMPLATE": "📢 *Aviso do Servidor*\n\nOlá {name},\n\n{message}",
     "DISCORD_BULK_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}',
     "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}',
@@ -143,6 +146,7 @@ DEFAULT_TEMPLATES = {
     "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "✅ Conta reativada!\n\nOlá {name}, a sua conta foi reativada.\nNovo vencimento: {new_date}\n\nUse o link abaixo para voltar a aceder:\n{invite_link}",
     "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "⌛ O seu período de teste terminou\n\nOlá {name}, esperamos que tenha gostado!\nPara continuar com acesso, faça a sua assinatura aqui:\n{payment_link}",
     "WHATSAPP_CREDENTIALS_MESSAGE_TEMPLATE": "🔑 Acesso reposto\n\nOlá {name}, a sua conta no {server_name} foi criada de novo, por isso a palavra-passe mudou.\n\nUtilizador: {new_username}\nPalavra-passe: {new_password}\n\nEntre em {invite_link} e troque a palavra-passe assim que puder.",
+    "WHATSAPP_PASSWORD_RESET_MESSAGE_TEMPLATE": "🔑 Repor a palavra-passe\n\nOlá {name}, pediu para repor a palavra-passe da sua conta no {server_name}.\n\nAbra este link e escolha uma nova:\n{reset_link}\n\nVale {reset_minutes} minutos e só serve uma vez. Se não foi você, ignore esta mensagem.",
     "WHATSAPP_BULK_MESSAGE_TEMPLATE": "📢 Aviso do servidor\n\nOlá {name},\n\n{message}",
     # --- Pedidos no Overseerr/Jellyseerr ---
     "TELEGRAM_MEDIA_REQUEST_MESSAGE_TEMPLATE": "🍿 *Novo Conteúdo Solicitado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acesse o pedido:*\n{media_url}",
@@ -1069,6 +1073,25 @@ class NotifierManager:
 
     def send_trial_end_notification(self, user, user_profile):
         self._prepare_and_send('trial_end', user, user_profile, {})
+
+    def send_password_reset_notification(self, user, user_profile, link, validade_minutos):
+        """Entrega o link para repor a palavra-passe.
+
+        🛡️ O link É a credencial enquanto vive: quem o tiver muda a
+        palavra-passe da conta. Por isso vai pelos canais que a pessoa já
+        registou no painel e por mais nenhum — e não fica no log.
+
+        Devolve o resumo da entrega (`{'sent': [...], 'failed': [...]}`): quem
+        chama precisa de saber se ALGUM canal aceitou, para não criar um pedido
+        cujo link nunca chegou a ninguém.
+        """
+        if not link:
+            return {'sent': [], 'failed': []}
+
+        return self._prepare_and_send('password_reset', user, user_profile, {
+            'reset_link': link,
+            'reset_minutes': validade_minutos,
+        })
 
     def send_credentials_notification(self, user, user_profile, credenciais, link=None):
         """Entrega as credenciais de uma conta que teve de ser criada de novo.

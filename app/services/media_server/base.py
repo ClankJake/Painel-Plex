@@ -471,6 +471,20 @@ class MediaServerBackend(Protocol):
         return {"success": True, "message": "", "media_user_id": media_user_id,
                 "link": None, "link_pendente": None}
 
+    def definir_palavra_passe(self, media_user_id: Any, nova: str) -> Dict[str, Any]:
+        """Muda a palavra-passe de uma conta, sem conhecer a anterior.
+
+        Só existe onde as contas são LOCAIS (`capabilities.cria_contas`): aí o
+        painel criou-as e é responsável pelas credenciais, e é quem pode repor
+        o acesso de quem se esqueceu. Onde a autenticação é delegada (o Plex), a
+        palavra-passe vive no plex.tv e não há nada a fazer daqui — a resposta é
+        um "não", não um erro.
+
+        🛡️ A palavra-passe entra por aqui e não sai: nem para o log, nem para a
+        resposta.
+        """
+        return {"success": False, "message": "Este servidor não gere palavras-passe."}
+
     # ⚠️ A ÚNICA porta para mudar o limite de telas de alguém. Grava o perfil e,
     # onde houver quem o imponha (no Jellyfin, o plugin StreamLimiter), leva-o
     # também ao servidor. Nenhum dos dois servidores sabe fazê-lo sozinho.

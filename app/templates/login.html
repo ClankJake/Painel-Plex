@@ -158,6 +158,15 @@
                        que aparece sem a página mudar. #}
                     <p id="credentials-error" class="text-sm text-red-500 text-center min-h-[1.25rem]"
                        role="alert" aria-live="polite"></p>
+
+                    {# Só aqui: num painel cuja autenticação é delegada, a
+                       palavra-passe vive no plex.tv e o painel não a repõe. #}
+                    <p class="text-center text-sm">
+                        <a href="{{ url_for('main.password_forgot_page') }}"
+                           class="text-purple-600 dark:text-purple-400 hover:underline">
+                            {{ _('Esqueci-me da palavra-passe') }}
+                        </a>
+                    </p>
                 </form>
                 {% else %}
                 <div class="mt-6">

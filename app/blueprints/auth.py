@@ -19,6 +19,9 @@ from ..config import is_configured, load_or_create_config, save_app_config
 from ..extensions import media_server, data_manager, limiter
 from flask_limiter.util import get_remote_address
 
+from ..services.password_reset import (
+    aplicar_reposicao, pedir_reposicao, servidor_repoe_palavras_passe,
+)
 from ..utils import tentativas_de_login
 from ..utils.identity import normalize_user_id
 from ..utils.navigation import endpoint_inicial_do_utilizador
@@ -729,3 +732,78 @@ def redirect_to_auth():
     """
     context_url = url_for('auth.get_plex_auth_context')
     return render_template('plex_redirect.html', get_plex_auth_context_url=context_url)
+
+
+# ==========================================
+# ESQUECI A PALAVRA-PASSE
+# ==========================================
+#
+# ⚠️ Só existe onde as contas são LOCAIS: num painel Plex a palavra-passe vive
+# no plex.tv e o painel não tem nada que a repor. A regra de negócio toda vive
+# em `services/password_reset.py`; aqui ficam a porta HTTP e os travões.
+
+MIN_PALAVRA_PASSE = 6
+
+
+@auth_bp.route('/password/forgot', methods=['POST'])
+@limiter.limit("5 per minute")
+def pedir_reposicao_de_palavra_passe():
+    """Envia o link de reposição pelos contactos que a pessoa registou.
+
+    🛡️ **Responde sempre o mesmo.** Exista a conta ou não, tenha contacto ou
+    não, a resposta é "se existir uma conta, enviámos o link". Dizer
+    "utilizador não encontrado" fazia desta rota um oráculo que revela quais as
+    contas que existem neste servidor — o oposto da mensagem única do login.
+    """
+    if not servidor_repoe_palavras_passe(media_server):
+        return jsonify({
+            "success": False,
+            "message": _("Este servidor usa autenticação externa: a palavra-passe é gerida lá."),
+        }), 400
+
+    safe_log_request_info()
+
+    dados = request.get_json(silent=True) or {}
+    identificador = (dados.get('identifier') or '').strip()
+
+    # A mesma resposta também para um pedido vazio ou absurdo: o que sai daqui
+    # não pode depender do que entrou.
+    if identificador and len(identificador) <= MAX_UTILIZADOR:
+        pedir_reposicao(identificador, data_manager, media_server,
+                        media_server.notifier_manager)
+
+    return jsonify({
+        "success": True,
+        "message": _("Se existir uma conta com esses dados, enviámos o link para os contactos registados."),
+    })
+
+
+@auth_bp.route('/password/reset', methods=['POST'])
+@limiter.limit("10 per minute")
+def repor_palavra_passe():
+    """Grava a palavra-passe nova, para quem chegou com um link válido."""
+    if not servidor_repoe_palavras_passe(media_server):
+        return jsonify({
+            "success": False,
+            "message": _("Este servidor usa autenticação externa: a palavra-passe é gerida lá."),
+        }), 400
+
+    dados = request.get_json(silent=True) or {}
+    token = (dados.get('token') or '').strip()
+    nova = dados.get('password') or ''
+
+    if not token:
+        return jsonify({"success": False, "message": _("Este link não é válido.")}), 400
+
+    if len(nova) < MIN_PALAVRA_PASSE:
+        return jsonify({
+            "success": False,
+            "message": _("A palavra-passe tem de ter pelo menos %(minimo)d caracteres.", minimo=MIN_PALAVRA_PASSE),
+        }), 400
+
+    # O mesmo limite do login: é o ponto onde o pedido para, antes da rede.
+    if len(nova) > MAX_PALAVRA_PASSE:
+        return jsonify({"success": False, "message": _("A palavra-passe é demasiado longa.")}), 400
+
+    sucesso, mensagem = aplicar_reposicao(token, nova, data_manager, media_server)
+    return jsonify({"success": sucesso, "message": mensagem}), (200 if sucesso else 400)

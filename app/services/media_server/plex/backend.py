@@ -252,6 +252,19 @@ class PlexManager:
         return utilizador
 
 
+    def definir_palavra_passe(self, media_user_id, nova):
+        """A palavra-passe de uma conta Plex não é do painel.
+
+        Ela vive no plex.tv, que é quem autentica (o fluxo de PIN existe
+        precisamente para o painel nunca a ver). Repô-la daqui não é difícil: é
+        impossível — e é por isso que o "Esqueci-me da palavra-passe" não
+        aparece num painel Plex.
+        """
+        return {
+            "success": False,
+            "message": _("A palavra-passe da conta Plex é gerida em plex.tv."),
+        }
+
     def update_screen_limit(self, media_user_id, screens):
         """O Plex não sabe impor limites: aqui o limite é só do painel."""
         profile = self.data_manager.get_user_profile(media_user_id)

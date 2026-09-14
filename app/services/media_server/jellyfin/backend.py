@@ -506,6 +506,53 @@ class JellyfinManager:
         return any(perfil.get(campo) for campo in
                    ('telegram_id', 'telegram_user', 'discord_user_id', 'phone_number'))
 
+    def definir_palavra_passe(self, media_user_id, nova):
+        """Repõe a palavra-passe de uma conta local, sem conhecer a anterior.
+
+        São DOIS pedidos, e a ordem é a que a própria interface do Jellyfin usa
+        quando um administrador carrega em "repor palavra-passe":
+
+        1. `ResetPassword: true` — apaga a que lá está. É este passo que dispensa
+           a `CurrentPw`, que o painel não tem nem pode ter;
+        2. `NewPw` — grava a nova sobre a conta já sem palavra-passe.
+
+        ⚠️ Entre os dois, a conta fica SEM palavra-passe. A janela é de um
+        pedido HTTP e não há como a evitar — o Jellyfin não tem uma rota que
+        substitua uma palavra-passe desconhecida de uma vez. Se o segundo pedido
+        falhar, diz-se que falhou: deixar a pessoa a pensar que está tudo bem
+        com a conta aberta seria muito pior.
+        """
+        media_user_id = normalize_user_id(media_user_id)
+
+        if not self.conn.connected:
+            return {"success": False, "message": _("Jellyfin não configurado.")}
+        if not nova:
+            return {"success": False, "message": _("A palavra-passe é obrigatória.")}
+        if not self.get_user_by_id(media_user_id):
+            return {"success": False, "message": _("Utilizador não encontrado no servidor.")}
+
+        try:
+            self.conn.api.post(f'/Users/{media_user_id}/Password',
+                               json={'ResetPassword': True})
+        except JellyfinApiError as e:
+            logger.error(f"O Jellyfin recusou apagar a palavra-passe de '{media_user_id}': {describe(e)}")
+            return {"success": False, "message": _("O servidor recusou repor a palavra-passe.")}
+
+        try:
+            self.conn.api.post(f'/Users/{media_user_id}/Password',
+                               json={'CurrentPw': '', 'NewPw': nova})
+        except JellyfinApiError as e:
+            # 🛡️ A conta ficou SEM palavra-passe. É preciso dizê-lo em voz alta:
+            # o administrador tem de a definir à mão até isto ser repetido.
+            logger.error(
+                f"O Jellyfin apagou a palavra-passe de '{media_user_id}' mas recusou a nova "
+                f"({describe(e)}). A CONTA ESTÁ SEM PALAVRA-PASSE."
+            )
+            return {"success": False, "message": _("O servidor recusou a palavra-passe nova.")}
+
+        logger.info(f"Palavra-passe do utilizador '{media_user_id}' reposta pelo painel.")
+        return {"success": True, "message": _("Palavra-passe alterada.")}
+
     def update_screen_limit(self, user_id, screens):
         """Grava o limite no perfil e, se houver quem o imponha, no servidor.
 

@@ -222,6 +222,32 @@ class ShortLink(db.Model):
     original_url = db.Column(db.String(512), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class PasswordReset(db.Model):
+    """Um pedido de reposição de palavra-passe, à espera de ser usado.
+
+    Só existe onde as contas são LOCAIS (o painel cria-as e é responsável pelas
+    credenciais). Num painel Plex a palavra-passe vive no plex.tv e o painel não
+    tem nada que a repor.
+
+    🛡️ **Guarda-se o RESUMO do token, não o token.** Quem lesse a base de dados
+    — ou um ZIP de backup, que é só um ficheiro — ficava com uma porta aberta
+    para cada pedido ainda válido. Com o resumo, o que está guardado não serve
+    para nada: só quem recebeu o link na notificação o consegue usar.
+
+    A linha fica depois de usada (com `used_at` preenchido) de propósito: um
+    segundo clique no mesmo link tem de dizer "já foi usado", que é diferente de
+    "não existe".
+    """
+
+    __tablename__ = 'password_resets'
+
+    token_hash = db.Column(db.String(64), primary_key=True)
+    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+
+
 class UnlockedAchievement(db.Model):
     __tablename__ = 'unlocked_achievements'
     id = db.Column(db.Integer, primary_key=True)

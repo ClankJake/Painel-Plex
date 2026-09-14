@@ -789,6 +789,40 @@ Configurações mantém o que lá tem: um padrão só vale para quem não escolh
 endereço para voltar a aceder" — é o `link` que `restaurar_acesso` devolve, e
 muda por servidor.
 
+### Esqueci-me da palavra-passe
+
+⚠️ **Só existe onde as contas são LOCAIS** (`capabilities.cria_contas`). Num
+painel Plex a palavra-passe vive no plex.tv — o painel nunca a vê, é para isso
+que o fluxo de PIN existe — e a ligação, a página e as rotas escondem-se todas.
+
+A regra de negócio vive em `app/services/password_reset.py`; o backend grava
+com `definir_palavra_passe()`, que é do contrato. **Não sai email daqui**: o
+painel nunca enviou emails, por isso o link vai pelos contactos que a pessoa já
+registou (Telegram, Discord, WhatsApp, webhook), como os avisos de vencimento.
+Quem não registou nenhum não tem por onde o receber, e isso fica no log em vez
+de ficar em silêncio.
+
+Quatro decisões que o módulo existe para guardar:
+
+- 🛡️ **a resposta é sempre a mesma.** Exista a conta ou não, tenha contacto ou
+  não, quem pede recebe "se existir uma conta, enviámos o link". Um
+  "utilizador não encontrado" fazia da rota um oráculo sobre quem tem conta
+  neste servidor — o oposto da mensagem única do login;
+- 🛡️ **o que fica na base de dados é o RESUMO do token** (`PasswordReset`).
+  Quem lesse a base de dados — ou um ZIP de backup, que é só um ficheiro —
+  ficava com uma porta aberta por cada pedido válido;
+- 🛡️ **o link vale minutos e serve uma vez.** Pedir de novo invalida o anterior,
+  e um pedido cuja notificação NENHUM canal aceitou é descartado: um token
+  válido à solta sem dono é pior do que não ter pedido nenhum;
+- 🛡️ **pedir tem um intervalo mínimo por conta.** Sem ele, a rota era um botão
+  para encher o Telegram de outra pessoa com mensagens que o painel assina.
+
+⚠️ **No Jellyfin são DOIS pedidos, e entre eles a conta fica sem palavra-passe.**
+O painel não conhece a antiga e o servidor exige-a para a trocar; a saída é a da
+interface do próprio Jellyfin: `ResetPassword: true` apaga-a, e só então se
+grava a nova. Se o segundo pedido falhar fica um ERROR a dizê-lo em voz alta —
+deixar a pessoa a pensar que está tudo bem, com a conta aberta, seria pior.
+
 ### Pagamentos
 
 Três gateways (`efi_manager`, `mercado_pago_manager`, `gates2b_manager`) com a

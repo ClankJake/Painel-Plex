@@ -281,6 +281,15 @@ def cleanup_job():
             days_links = config.get("SHORT_LINK_MAX_AGE_DAYS", 30)
             extensions.data_manager.delete_old_short_links(days_links)
 
+        # Pedidos de reposição de palavra-passe: os usados e os que expiraram.
+        # Não é uma questão de segurança (o que lá está é o RESUMO do token, e
+        # um pedido expirado já não serve) — é para a tabela não crescer para
+        # sempre com linhas que ninguém volta a ler.
+        try:
+            extensions.data_manager.limpar_pedidos_de_reposicao_antigos()
+        except Exception as e:
+            logger.error(f"Falha ao limpar pedidos de reposição de palavra-passe: {e}", exc_info=True)
+
         # 📧 Preenche os emails em falta a partir do Plex. Necessário para ligar
         # utilizadores ao Seerr e para notificações — sem isto, quem já estava no
         # servidor antes de existir o painel (ou foi adicionado como amigo

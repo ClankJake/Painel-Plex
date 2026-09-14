@@ -204,6 +204,44 @@ def account_page():
     """Página de gestão da conta, onde o utilizador logado vê o seu status."""
     return render_template('account.html')
 
+@main_bp.route('/password/forgot')
+def password_forgot_page():
+    """Onde se pede o link para repor a palavra-passe.
+
+    ⚠️ Não existe num painel cuja autenticação é delegada (o Plex): lá a
+    palavra-passe vive no plex.tv e o painel não tem nada que a repor. Uma
+    capacidade em falta ESCONDE a funcionalidade — e um marcador nos favoritos
+    tem de dar um redirecionamento, não uma página vazia.
+    """
+    from ..services.password_reset import servidor_repoe_palavras_passe
+
+    if not servidor_repoe_palavras_passe(extensions.media_server):
+        return redirect(url_for('auth.login'))
+
+    return render_template('password_forgot.html')
+
+
+@main_bp.route('/password/reset/<string:token>')
+def password_reset_page(token):
+    """O formulário da palavra-passe nova, aberto a partir do link.
+
+    O token é validado ANTES de se mostrar o formulário: escrever duas vezes uma
+    palavra-passe para só depois ouvir "o link expirou" é trabalho deitado fora.
+    """
+    from ..services.password_reset import servidor_repoe_palavras_passe
+
+    if not servidor_repoe_palavras_passe(extensions.media_server):
+        return redirect(url_for('auth.login'))
+
+    media_user_id, motivo = extensions.data_manager.ler_pedido_de_reposicao(token)
+
+    if not media_user_id:
+        logger.info(f"Link de reposição recusado ({motivo}).")
+        return render_template('password_forgot.html', link_invalido=motivo), 400
+
+    return render_template('password_reset.html', token=token)
+
+
 @main_bp.route('/pay/<string:token>')
 def payment_page(token):
     """

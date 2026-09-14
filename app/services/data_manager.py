@@ -1,6 +1,7 @@
 # app/services/data_manager.py
 
 import os
+import hashlib
 import json
 import logging
 import secrets
@@ -11,7 +12,7 @@ from functools import wraps
 
 from ..extensions import db
 from ..models import (
-    Invitation, BlockedUser, UserProfile, PixPayment, Notification, 
+    Invitation, BlockedUser, UserProfile, PixPayment, Notification, PasswordReset,
     UnlockedAchievement, ShortLink, Coupon, CouponUsage, Task, StreamTerminationLog
 )
 from sqlalchemy import func, String
@@ -897,6 +898,94 @@ class DataManager:
                 [novo if normalize_user_id(i) == antigo else i for i in ids]
             )
             db.session.add(convite)
+
+    # =========================================================================
+    # REPOSIÇÃO DE PALAVRA-PASSE
+    # =========================================================================
+
+    # Meia hora: tempo de sobra para ler uma notificação e escrever uma
+    # palavra-passe nova, e curto o suficiente para um link esquecido num
+    # histórico de Telegram deixar de servir.
+    VALIDADE_DA_REPOSICAO_MINUTOS = 30
+
+    @staticmethod
+    def _resumo_do_token(token):
+        return hashlib.sha256(str(token or '').encode('utf-8')).hexdigest()
+
+    @db_transaction
+    def criar_pedido_de_reposicao(self, media_user_id):
+        """Cria um pedido e devolve o token EM CLARO, uma única vez.
+
+        🛡️ O que fica guardado é o resumo: a partir daqui, só quem recebeu a
+        notificação tem o token. Nem o administrador o consegue ler na base de
+        dados — o que é o objetivo.
+
+        Pedir de novo invalida o pedido anterior: dois links válidos ao mesmo
+        tempo é uma porta a mais aberta, e quem pediu outra vez está a usar o
+        último que recebeu.
+        """
+        media_user_id = normalize_user_id(media_user_id)
+        if not media_user_id:
+            raise ValueError("Um pedido de reposição precisa de um utilizador.")
+
+        PasswordReset.query.filter_by(media_user_id=media_user_id, used_at=None).delete()
+
+        token = secrets.token_urlsafe(32)
+        agora = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.add(PasswordReset(
+            token_hash=self._resumo_do_token(token),
+            media_user_id=media_user_id,
+            created_at=agora,
+            expires_at=agora + timedelta(minutes=self.VALIDADE_DA_REPOSICAO_MINUTOS),
+        ))
+        return token
+
+    def ler_pedido_de_reposicao(self, token):
+        """O pedido correspondente a este token, sem o consumir.
+
+        Serve a página do formulário, que precisa de saber se vale a pena
+        mostrá-lo. Devolve `(media_user_id, motivo)`: o motivo diz `'expirado'`,
+        `'usado'` ou `'invalido'` — são três coisas diferentes para quem está do
+        outro lado, e um "link inválido" para todas seria mentira em duas delas.
+        """
+        if not token:
+            return None, 'invalido'
+
+        pedido = PasswordReset.query.get(self._resumo_do_token(token))
+        if not pedido:
+            return None, 'invalido'
+        if pedido.used_at is not None:
+            return None, 'usado'
+        if pedido.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
+            return None, 'expirado'
+        return pedido.media_user_id, ''
+
+    @db_transaction
+    def consumir_pedido_de_reposicao(self, token):
+        """Marca o pedido como usado e devolve `(media_user_id, motivo)`.
+
+        ⚠️ Marcar ANTES de mudar a palavra-passe seria perder o pedido se o
+        servidor de média recusasse; marcar DEPOIS deixava a janela para dois
+        pedidos em paralelo usarem o mesmo token. Quem chama marca aqui e, se o
+        servidor recusar, diz à pessoa que peça outro — é o lado seguro do erro.
+        """
+        media_user_id, motivo = self.ler_pedido_de_reposicao(token)
+        if not media_user_id:
+            return None, motivo
+
+        pedido = PasswordReset.query.get(self._resumo_do_token(token))
+        pedido.used_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.add(pedido)
+        return media_user_id, ''
+
+    @db_transaction
+    def limpar_pedidos_de_reposicao_antigos(self, dias=7):
+        """Os pedidos usados e os expirados não têm de ficar para sempre."""
+        limite = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=dias)
+        apagados = PasswordReset.query.filter(PasswordReset.created_at < limite).delete()
+        if apagados:
+            logger.info(f"Limpeza: {apagados} pedido(s) de reposição de palavra-passe antigos removidos.")
+        return apagados
 
     @db_transaction
     def delete_user_profile(self, media_user_id):
