@@ -171,6 +171,11 @@ class JellyfinUserManager:
         perfil = self.data_manager.get_user_profile(user_id)
         if perfil is not None:
             perfil['libraries'] = json.dumps(library_titles or [])
+            # ⚠️ As duas metades da mesma decisão andam juntas: o que a pessoa
+            # pode ver e se pode levar consigo. Gravar só a primeira fazia a
+            # reativação repor as bibliotecas e perder o download.
+            if allow_sync is not None:
+                perfil['allow_downloads'] = bool(allow_sync)
             self.data_manager.set_user_profile(user_id, perfil)
 
         return {"success": True, "message": _("Bibliotecas atualizadas com sucesso.")}

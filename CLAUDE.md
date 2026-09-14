@@ -155,10 +155,18 @@ escrita era saltada em silêncio. O convite aplicava-as no servidor e o perfil
 ficava vazio; ao reativar, a conta voltava aberta e sem ver nada. Hoje é o
 `_criar_perfil_local` que as grava, na criação do perfil.
 
-🐛 O `allow_downloads` do convite **não** se grava: `user_profiles` não tem essa
-coluna. O backend do Plex escreve-a na mesma e ela é descartada em silêncio — é
-por isso que a permissão de download não sobrevive a uma reativação em nenhum
-dos dois backends. Fica por resolver, e não se finge que está guardada.
+🐛 **O `allow_downloads` andou a ser escrito e descartado em silêncio.** O
+convite guarda-o e o resgate mandava-o para `set_user_profile`, mas
+`user_profiles` não tinha a coluna — o SQLAlchemy ignorava a chave. O sintoma só
+aparecia meses depois, porque `restaurar_acesso` lê a permissão do PERFIL: quem
+tinha download e era bloqueado voltava, depois de pagar, sem poder descarregar
+nada. Valia nos dois backends. A coluna existe desde `d8f2b4e91c37`, a começar
+em 0 para quem já cá estava (conceder uma permissão que ninguém pediu era pior).
+
+⚠️ **As duas metades da mesma decisão andam juntas**: o que a pessoa pode ver
+(`libraries`) e se pode levar consigo (`allow_downloads`). `update_user_libraries`
+— a porta única para as mudar — grava as duas; gravar só a primeira fazia a
+reativação repor as bibliotecas e perder o download.
 
 ⚠️ **E se a conta já tiver sido apagada, é RECRIADA** — o `removal_job` apaga-a
 mesmo ao fim de `DAYS_TO_REMOVE_BLOCKED_USER` dias, e quem paga tem de voltar a
@@ -816,6 +824,20 @@ por isso `validate_backup_zip` lê a `alembic_version` de dentro do ZIP e recusa
   migrações deste painel: o Alembic pára com "Can't locate revision");
 - um backup **com dados e sem registo de versão** (instalação anterior às
   migrações: o `upgrade` tentaria criar tabelas que já lá estão).
+
+🛡️ **E há uma migração histórica que APAGA o que não conseguir mapear**
+(`a0b1c2d3e4f5`, a que troca a chave de `username` pelo id do Plex). O
+mapeamento vem de uma chamada ao servidor VIVO, e quem não estiver no mapa não é
+copiado para a tabela nova — por isso, com o Plex inacessível, ela deitava fora
+todos os perfis, pagamentos e histórico **sem uma única linha de erro**.
+Acontecia precisamente a quem restaura um backup com o servidor em baixo. Hoje
+recusa-se quando há perfis e o mapa vem vazio: a base de dados fica intacta e a
+migração corre outra vez assim que o Plex responder. ⚠️ Zero perfis continua a
+passar — é uma instalação nova, não há nada a perder, e abortar aí impedia o
+painel de arrancar de todo (foi o que aconteceu quando o `plex_manager` mudou de
+nome). Quem for descartado com o Plex a responder é NOMEADO no aviso — e o aviso
+vai para o stderr além do log, porque o `create_app()` que a própria migração
+chama reconfigura o logging por cima do Alembic e cala-o a meio.
 
 O caminho normal — um backup **mais antigo**, que é o de quem vem do painel
 só-Plex — passa de propósito: as migrações levam-no para a frente no arranque, e

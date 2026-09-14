@@ -868,6 +868,60 @@ class TestOQueOResgateGrava:
         politica = backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy')[-1]
         assert politica['EnabledFolders'] == ["lib-series"]
 
+    def test_o_download_do_convite_tambem_fica_no_perfil(self, cache_limpa, data_manager):
+        # 🐛 `user_profiles` não tinha coluna para isto, e a chave era
+        # descartada em silêncio pelo SQLAlchemy — nos DOIS backends.
+        backend = self._backend(data_manager)
+
+        self._resgatar(backend, allow_downloads=True)
+
+        assert data_manager.get_user_profile(GUID)['allow_downloads'] is True
+
+    def test_um_convite_sem_download_nao_o_concede(self, cache_limpa, data_manager):
+        backend = self._backend(data_manager)
+
+        self._resgatar(backend)
+
+        assert data_manager.get_user_profile(GUID)['allow_downloads'] is False
+
+    def test_reativar_repoe_o_download(self, cache_limpa, data_manager):
+        # É a consequência: `restaurar_acesso` lê-o do PERFIL, e lia sempre
+        # False — quem tinha download voltava, depois de pagar, sem ele.
+        backend = self._backend(data_manager)
+        self._resgatar(backend, allow_downloads=True)
+
+        # A conta passa a existir na lista do servidor, senão `restaurar_acesso`
+        # conclui que foi apagada e segue pelo caminho de a RECRIAR.
+        backend.conn.api.respostas['/Users'] = [
+            {"Id": GUID, "Name": "ana", "Policy": dict(POLITICA_BASE)},
+        ]
+        backend.conn.api.respostas[f'/Users/{GUID}'] = {
+            "Id": GUID, "Name": "ana",
+            "Policy": {**POLITICA_BASE, "EnableContentDownloading": False, "IsDisabled": True},
+        }
+        backend.users.invalidate_user_cache()
+        backend.users.block_user(GUID, "vencida")
+        backend.conn.api.enviados.clear()
+
+        backend.restaurar_acesso(GUID, data_manager.get_user_profile(GUID))
+
+        politica = backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy')[-1]
+        assert politica['EnableContentDownloading'] is True
+
+    def test_mudar_as_bibliotecas_grava_tambem_o_download(self, cache_limpa, data_manager):
+        # A porta única das bibliotecas decide as duas coisas; gravar só uma
+        # fazia a reativação repor as bibliotecas e perder o download.
+        backend = self._backend(data_manager)
+        self._resgatar(backend)
+        backend.conn.api.respostas['/Users'] = [
+            {"Id": GUID, "Name": "ana", "Policy": dict(POLITICA_BASE)},
+        ]
+        backend.users.invalidate_user_cache()
+
+        backend.users.update_user_libraries(GUID, ["Filmes"], allow_sync=True)
+
+        assert data_manager.get_user_profile(GUID)['allow_downloads'] is True
+
     # --- O período de teste -----------------------------------------------
 
     def test_um_convite_de_teste_marca_quando_acaba(self, cache_limpa, data_manager):

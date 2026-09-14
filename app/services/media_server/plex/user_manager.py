@@ -294,6 +294,11 @@ class PlexUserManager:
             profile = self.data_manager.get_user_profile(media_user_id)
             if profile:
                 profile['libraries'] = json.dumps(library_titles)
+                # ⚠️ As duas metades da mesma decisão andam juntas: o que a
+                # pessoa pode ver e se pode levar consigo. `allow_sync` já
+                # chegou aqui resolvido (o `None` foi substituído pelo que a
+                # partilha tinha), por isso é sempre um booleano.
+                profile['allow_downloads'] = bool(allow_sync)
                 self.data_manager.set_user_profile(media_user_id, profile)
             
             # 5. Otimização Bulk: Evita sobrecarga de API (sleep) e invalidações de cache constantes

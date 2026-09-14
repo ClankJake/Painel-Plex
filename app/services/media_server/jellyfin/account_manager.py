@@ -230,11 +230,9 @@ class JellyfinAccountManager(InvitationLifecycle):
             # "as bibliotecas do perfil", quem era bloqueado e pagava voltava
             # com a conta aberta e sem ver nada.
             'libraries': json.dumps(invitation.get('libraries') or []),
-            # ⚠️ O `allow_downloads` do convite NÃO se grava aqui: `user_profiles`
-            # não tem essa coluna. O backend do Plex escreve-a na mesma e ela é
-            # descartada em silêncio — é por isso que a permissão de download
-            # não sobrevive a uma reativação em nenhum dos dois. Fica de fora
-            # até haver coluna, em vez de parecer que está guardada.
+            # O mesmo vale para o download: `restaurar_acesso` lê-o do perfil, e
+            # sem ficar gravado aqui a permissão não sobrevivia à reativação.
+            'allow_downloads': bool(invitation.get('allow_downloads', False)),
         })
 
         # 🐛 Um convite de teste criava uma conta que NUNCA expirava: o abuso

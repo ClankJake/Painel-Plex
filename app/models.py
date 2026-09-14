@@ -1,4 +1,6 @@
 # app/models.py
+from sqlalchemy import text as sa_text
+
 from .extensions import db
 from .utils.identity import normalize_user_id
 from flask_login import UserMixin
@@ -156,6 +158,14 @@ class UserProfile(db.Model):
     screen_limit = db.Column(db.Integer, default=0, nullable=False)
     hide_from_leaderboard = db.Column(db.Boolean, default=False, nullable=False)
     libraries = db.Column(db.Text, nullable=True)
+    # 🐛 Andava a ser escrito e descartado em silêncio: o convite e as rotas de
+    # administração mandavam `allow_downloads` para `set_user_profile` e não
+    # havia coluna. O sintoma era a permissão de download NÃO sobreviver a uma
+    # reativação — `restaurar_acesso` lê-a daqui, e lia sempre False. Fica ao
+    # lado de `libraries` porque é a mesma decisão: o que esta pessoa pode ver,
+    # e se pode levar consigo.
+    allow_downloads = db.Column(db.Boolean, default=False, nullable=False,
+                                server_default=sa_text('0'))
     payment_token = db.Column(db.String, unique=True, nullable=True)
     status = db.Column(db.String(20), default='active', nullable=False, index=True)
     pending_invite_link = db.Column(db.String, nullable=True)
