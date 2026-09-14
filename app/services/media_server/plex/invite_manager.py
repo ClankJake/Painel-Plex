@@ -6,7 +6,6 @@ import time
 import json
 import re
 import requests
-from datetime import datetime, timezone, timedelta
 
 from plexapi.myplex import MyPlexAccount
 from plexapi.exceptions import BadRequest, NotFound
@@ -215,47 +214,6 @@ class PlexInviteManager(InvitationLifecycle):
             logger.error(f"Erro ao verificar histórico de testes do utilizador {username}: {e}")
             return False
 
-    def _resolve_pending_referral(self, plex_account):
-        """
-        Converte o código de indicação guardado na sessão no ID de quem indicou.
-
-        Devolve None (sem nunca lançar) em qualquer situação inválida: fora de um
-        contexto HTTP, sistema desativado, código inexistente ou auto-indicação.
-        Um problema no programa de indicações nunca pode impedir alguém de resgatar
-        um convite legítimo.
-        """
-        try:
-            from flask import session, has_request_context
-            from app.config import load_or_create_config
-            if not has_request_context():
-                return None
-
-            code = session.pop('pending_referral_code', None)
-            if not code:
-                return None
-
-            config = load_or_create_config()
-            if not config.get("REFERRAL_ENABLED", False):
-                return None
-
-            referrer = self.data_manager.get_user_profile_by_referral_code(code)
-            if not referrer:
-                logger.info(f"Código de indicação '{mask_code(code)}' não corresponde a nenhum utilizador. Ignorado.")
-                return None
-
-            referrer_id = referrer.get('media_user_id')
-            # 🛡️ Bloqueia a auto-indicação (usar o próprio código numa segunda conta
-            # é o abuso mais óbvio deste tipo de sistema).
-            if str(referrer_id) == str(plex_account.id):
-                logger.warning(f"Auto-indicação bloqueada no resgate do convite (ID {plex_account.id}).")
-                return None
-
-            logger.info(f"Indicação registada: '{plex_account.username}' foi indicado por '{referrer.get('username')}'.")
-            return referrer_id
-        except Exception as e:
-            logger.error(f"Erro ao resolver a indicação pendente: {e}", exc_info=True)
-            return None
-
     def _handle_telegram_linking(self, invitation, username):
         telegram_id = invitation.get('telegram_id')
         if telegram_id is None or str(telegram_id).strip() == "":
@@ -298,7 +256,7 @@ class PlexInviteManager(InvitationLifecycle):
         # (/r/CODIGO), o código ficou guardado na sessão. É neste momento — quando o
         # perfil é criado de facto — que a indicação é associada.
         # A recompensa NÃO é paga aqui: só quando ele efetuar o primeiro pagamento.
-        referred_by = self._resolve_pending_referral(plex_account)
+        referred_by = self.resolver_indicacao_pendente(plex_account.id, plex_account.username)
         if referred_by:
             profile_data['referred_by'] = referred_by
             profile_data['referral_rewarded'] = False
@@ -306,7 +264,7 @@ class PlexInviteManager(InvitationLifecycle):
         is_trial = False
         if invitation.get("trial_duration_minutes", 0) > 0:
             is_trial = True
-            trial_end_utc, job_id = self._schedule_trial_end(plex_account.id, invitation["trial_duration_minutes"])
+            trial_end_utc, job_id = self.agendar_fim_do_teste(plex_account.id, invitation["trial_duration_minutes"])
             profile_data.update({"trial_end_date": trial_end_utc.isoformat(), "trial_job_id": job_id})
 
         if invitation.get('overseerr_access'):
@@ -365,20 +323,6 @@ class PlexInviteManager(InvitationLifecycle):
             return False
 
         return True
-
-    def _schedule_trial_end(self, media_user_id, duration_minutes):
-        from app.extensions import scheduler
-        from app.scheduler import end_trial_job
-        
-        trial_end_utc = datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
-        naive_run_date = trial_end_utc.astimezone(scheduler.timezone).replace(tzinfo=None)
-        job_id = f"trial_end_{media_user_id}_{secrets.token_hex(4)}"
-        
-        scheduler.add_job(
-            id=job_id, func=end_trial_job, args=[media_user_id], 
-            trigger='date', run_date=naive_run_date, replace_existing=True
-        )
-        return trial_end_utc, job_id
 
     def _sync_local_user_data(self, plex_user):
         """Verifica e atualiza o email e username na BD local."""

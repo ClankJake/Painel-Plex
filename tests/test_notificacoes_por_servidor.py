@@ -138,3 +138,42 @@ class TestAMensagemDeReativacao:
 
         assert 'None' not in mensagem
         assert '2027' in mensagem
+
+
+class TestAMarcaNaPaginaDePagamento:
+    """A dica de "entre com a sua conta X" na página de pagamento público.
+
+    🐛 Estava escrita à mão ("conta Plex"): num painel Jellyfin era a marca
+    errada, e a pessoa era mandada entrar numa conta que nunca teve. É a mesma
+    armadilha dos templates de notificação, no mesmo sítio onde alguém vai
+    pagar.
+
+    ⚠️ E no BACKEND o atributo chama-se `SHORT_NAME`; `short_name` só existe no
+    contexto dos templates — pedi-lo ao objeto dava `AttributeError`.
+    """
+
+    def _dica(self, servidor, short_name):
+        from app import extensions
+        from app.blueprints.main import _
+        servidor(short_name)
+        return _(
+            "Você vai precisar entrar com a sua conta %(server_name)s.",
+            server_name=getattr(extensions.media_server, 'SHORT_NAME', 'Plex'),
+        )
+
+    def test_segue_o_servidor_do_painel(self, servidor, app_context):
+        assert "Jellyfin" in self._dica(servidor, "Jellyfin")
+        assert "Plex" not in self._dica(servidor, "Jellyfin")
+
+    def test_num_painel_plex_continua_a_dizer_plex(self, servidor, app_context):
+        assert "Plex" in self._dica(servidor, "Plex")
+
+    def test_os_backends_reais_respondem_a_SHORT_NAME(self):
+        # O teste acima usaria um duplo complacente sozinho: isto prende a
+        # afirmação aos backends verdadeiros.
+        from app.services.media_server.jellyfin.backend import JellyfinManager
+        from app.services.media_server.plex.backend import PlexManager
+
+        assert PlexManager.SHORT_NAME == 'Plex'
+        assert JellyfinManager.SHORT_NAME == 'Jellyfin'
+        assert not hasattr(PlexManager, 'short_name')

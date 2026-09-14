@@ -36,7 +36,7 @@ from typing import Any, Dict, List, Optional
 from ....utils.log_formatting import describe
 from .identity import chave_de
 from .playback_reporting import (
-    GUID_VALIDO, TIPOS, JellyfinPlaybackReporting, _literal_sql,
+    TIPOS, JellyfinPlaybackReporting, condicao_de_utilizador,
 )
 
 logger = logging.getLogger(__name__)
@@ -210,10 +210,10 @@ class JellyfinStatsApi:
             # ⚠️ O plugin pode ter gravado o id com ou sem hífenes, conforme a
             # versão. Comparar só com a forma do painel devolvia zero linhas —
             # e "zero linhas" aqui lê-se como "nunca viu nada".
-            grafias = self._grafias(user_id)
-            if not grafias:
+            condicao = condicao_de_utilizador(user_id)
+            if not condicao:
                 return []
-            condicoes.append("UserId IN (" + ", ".join(f"'{_literal_sql(g)}'" for g in grafias) + ")")
+            condicoes.append(condicao)
 
         linhas = self.plugin._consultar(
             "SELECT DateCreated, UserId, ItemId, ItemType, ItemName, ClientName, DeviceName, PlayDuration "
@@ -240,23 +240,6 @@ class JellyfinStatsApi:
                 'segundos': self._inteiro(segundos),
             })
         return reproducoes
-
-    @staticmethod
-    def _grafias(user_id: Any) -> List[str]:
-        """O mesmo GUID com e sem hífenes, se for mesmo um GUID.
-
-        🛡️ Um id que não pareça um GUID não chega ao SQL: o plugin só aceita
-        consultas em texto, e é a validação que fecha essa porta.
-        """
-        sem = chave_de(user_id)
-        if not sem or not GUID_VALIDO.match(str(user_id)):
-            logger.warning("Identificador de utilizador recusado antes da consulta: %r", user_id)
-            return []
-
-        grafias = [sem]
-        if len(sem) == 32:
-            grafias.append(f"{sem[0:8]}-{sem[8:12]}-{sem[12:16]}-{sem[16:20]}-{sem[20:]}")
-        return grafias
 
     # --- Fonte 2: o núcleo -----------------------------------------------
 

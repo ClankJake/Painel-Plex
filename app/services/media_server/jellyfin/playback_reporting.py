@@ -33,6 +33,7 @@ from flask_babel import gettext as _
 
 from ....utils.log_formatting import describe
 from .api_client import JellyfinApiError
+from .identity import chave_de
 from .plugins import plugin_instalado
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,42 @@ NOME_DO_PLUGIN = 'playback reporting'
 GUID_VALIDO = re.compile(r'^[0-9a-fA-F-]{8,64}$')
 
 TIPOS = ("Movie", "Episode")
+
+
+def grafias_do_guid(user_id: Any) -> List[str]:
+    """O mesmo GUID com e sem hífenes, se for mesmo um GUID.
+
+    ⚠️ **O plugin pode ter gravado qualquer uma das duas grafias**, conforme a
+    versão instalada — e o painel guarda sempre a forma sem hífenes. Comparar
+    só com uma delas devolvia ZERO linhas, que é indistinguível de "esta pessoa
+    nunca viu nada": a página do histórico ficava vazia para sempre e não havia
+    sequer recurso ao registo do núcleo, porque uma consulta bem-sucedida e
+    vazia não é uma falha.
+
+    🛡️ Um id que não pareça um GUID não chega ao SQL: o plugin só aceita
+    consultas em texto, e é esta validação que fecha essa porta.
+    """
+    sem = chave_de(user_id)
+    if not sem or not GUID_VALIDO.match(str(user_id or '')):
+        logger.warning("Identificador de utilizador recusado antes da consulta: %r", user_id)
+        return []
+
+    grafias = [sem]
+    if len(sem) == 32:
+        grafias.append(f"{sem[0:8]}-{sem[8:12]}-{sem[12:16]}-{sem[16:20]}-{sem[20:]}")
+    return grafias
+
+
+def condicao_de_utilizador(user_id: Any) -> str:
+    """O `UserId IN (...)` com as duas grafias, já escapadas.
+
+    Devolve vazio quando o id é recusado — quem chama trata isso como "não há
+    consulta a fazer".
+    """
+    grafias = grafias_do_guid(user_id)
+    if not grafias:
+        return ''
+    return "UserId IN (" + ", ".join(f"'{_literal_sql(g)}'" for g in grafias) + ")"
 
 
 def _literal_sql(valor: str) -> str:
@@ -119,7 +156,10 @@ class JellyfinPlaybackReporting:
 
     def _clausula_where(self, user_id: Any, search: str) -> str:
         tipos = ", ".join(f"'{t}'" for t in TIPOS)
-        partes = [f"UserId = '{_literal_sql(user_id)}'", f"ItemType IN ({tipos})"]
+        # ⚠️ As DUAS grafias do GUID (ver `grafias_do_guid`): com uma só, um
+        # plugin que tivesse gravado com hífenes deixava o histórico vazio
+        # para sempre, sem erro nenhum e sem cair para o registo do núcleo.
+        partes = [condicao_de_utilizador(user_id), f"ItemType IN ({tipos})"]
         if search:
             partes.append(f"ItemName LIKE '%{_literal_sql(search)}%'")
         return " AND ".join(partes)

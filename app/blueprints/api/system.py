@@ -222,6 +222,12 @@ def api_settings():
             'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_ENABLED', 'TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE',
             'TELEGRAM_RENEWAL_MESSAGE_TEMPLATE', 'TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE', 'DAYS_TO_NOTIFY_EXPIRATION', 'APP_BASE_URL',
             'TAUTULLI_URL', 'TAUTULLI_API_KEY',
+            # 🐛 Estes dois estavam na página de Conexões, editáveis, e não
+            # estavam aqui: gravar descartava-os em silêncio e o
+            # `jellyfin_changed` lá abaixo nunca podia ser verdade. Os do Plex
+            # não aparecem nesta lista porque têm tratamento próprio (chegam
+            # em minúsculas, do assistente); os do Jellyfin não tinham nenhum.
+            'JELLYFIN_URL', 'JELLYFIN_API_KEY',
             'EFI_CLIENT_ID', 'EFI_CLIENT_SECRET', 'EFI_CERTIFICATE', 'EFI_SANDBOX', 'EFI_PIX_KEY',
             'EFI_USE_MTLS', 'EFI_WEBHOOK_HMAC_SECRET',
             'MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_WEBHOOK_SECRET', 'MERCADOPAGO_MIN_AMOUNT',
@@ -492,6 +498,10 @@ def api_settings():
     sensitive_keys = [
         'SECRET_KEY', 'PLEX_TOKEN', 'INTERNAL_TRIGGER_KEY',
         'TELEGRAM_BOT_TOKEN', 'TAUTULLI_API_KEY', 'EFI_CLIENT_SECRET',
+        # 🛡️ A chave da API do Jellyfin é uma credencial de administrador do
+        # servidor de média — dá acesso a tudo lá dentro. Era a única que
+        # descia em claro para o navegador na resposta das definições.
+        'JELLYFIN_API_KEY',
         'MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_WEBHOOK_SECRET', 'GATES2B_AUTH_TOKEN', 'OVERSEERR_API_KEY',
         # A chave da API de WhatsApp é uma credencial: nunca deve viajar em claro
         # para o navegador, tal como as restantes.

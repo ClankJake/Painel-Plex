@@ -260,6 +260,21 @@ class TestAMigracaoDeIdentidade:
 
         assert data_manager.get_user_profile('outra-pessoa')['referred_by'] == NOVO
 
+    def test_um_pedido_de_reposicao_em_curso_segue_a_pessoa(self, app_context, db_session,
+                                                             data_manager, perfil):
+        # 🐛 `password_resets` é uma chave estrangeira NOVA para
+        # `user_profiles.media_user_id` e ficou de fora de
+        # `_TABELAS_COM_IDENTIDADE`: a linha ficava a apontar para um perfil que
+        # já não existe, e o link que a pessoa tinha acabado de receber deixava
+        # de funcionar sem explicação nenhuma.
+        perfil()
+        token = data_manager.criar_pedido_de_reposicao(ANTIGO)
+
+        data_manager.migrar_identidade(ANTIGO, NOVO)
+
+        dono, _motivo = data_manager.consumir_pedido_de_reposicao(token)
+        assert dono == NOVO
+
     def test_o_convite_ja_resgatado_continua_resgatado(self, app_context, db_session,
                                                         data_manager, perfil):
         # 🛡️ `claimed_by_ids` é uma lista JSON, não uma coluna de ID: deixá-la

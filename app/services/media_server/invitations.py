@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 
 from flask_babel import gettext as _
 
+from ...utils.identity import same_user
 from ...utils.log_sanitizer import mask_code
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,76 @@ class InvitationLifecycle:
 
     Quem herda tem de ter `self.data_manager`.
     """
+
+    # =========================================================================
+    # O QUE O RESGATE FAZ, EM QUALQUER SERVIDOR
+    # =========================================================================
+    #
+    # 🐛 Estas duas viviam só no backend do Plex, e o do Jellyfin nasceu sem
+    # elas: um convite de teste criava uma conta que nunca expirava, e o
+    # "Indique e Ganhe" nunca chegava a saber quem tinha indicado quem. Nada
+    # nelas é do Plex — é a sessão, o config e o agendador — por isso a casa é
+    # aqui, onde um backend novo as herda em vez de as reescrever.
+
+    def agendar_fim_do_teste(self, media_user_id, duration_minutes):
+        """Marca a hora a que este acesso de teste termina.
+
+        Devolve `(fim_em_utc, id_da_tarefa)` para quem chama gravar no perfil:
+        sem os DOIS, o `end_trial_job` não tem como ser cancelado se a pessoa
+        entretanto pagar.
+        """
+        from ...extensions import scheduler
+        from ...scheduler import end_trial_job
+
+        fim_utc = datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
+        quando = fim_utc.astimezone(scheduler.timezone).replace(tzinfo=None)
+        id_da_tarefa = f"trial_end_{media_user_id}_{secrets.token_hex(4)}"
+
+        scheduler.add_job(
+            id=id_da_tarefa, func=end_trial_job, args=[media_user_id],
+            trigger='date', run_date=quando, replace_existing=True,
+        )
+        return fim_utc, id_da_tarefa
+
+    def resolver_indicacao_pendente(self, media_user_id, username=''):
+        """Converte o código de indicação guardado na sessão no ID de quem indicou.
+
+        Devolve None (sem nunca lançar) em qualquer situação inválida: fora de
+        um contexto HTTP, sistema desativado, código inexistente ou
+        auto-indicação. Um problema no programa de indicações nunca pode
+        impedir alguém de resgatar um convite legítimo.
+        """
+        try:
+            from flask import session, has_request_context
+            from ...config import load_or_create_config
+
+            if not has_request_context():
+                return None
+
+            codigo = session.pop('pending_referral_code', None)
+            if not codigo:
+                return None
+
+            if not load_or_create_config().get("REFERRAL_ENABLED", False):
+                return None
+
+            quem_indicou = self.data_manager.get_user_profile_by_referral_code(codigo)
+            if not quem_indicou:
+                logger.info(f"Código de indicação '{mask_code(codigo)}' não corresponde a nenhum utilizador. Ignorado.")
+                return None
+
+            id_de_quem_indicou = quem_indicou.get('media_user_id')
+            # 🛡️ Bloqueia a auto-indicação (usar o próprio código numa segunda
+            # conta é o abuso mais óbvio deste tipo de sistema).
+            if same_user(id_de_quem_indicou, media_user_id):
+                logger.warning(f"Auto-indicação bloqueada no resgate do convite (ID {media_user_id}).")
+                return None
+
+            logger.info(f"Indicação registada: '{username}' foi indicado por '{quem_indicou.get('username')}'.")
+            return id_de_quem_indicou
+        except Exception as e:
+            logger.error(f"Erro ao resolver a indicação pendente: {e}", exc_info=True)
+            return None
 
     def create_invitation(self, **kwargs):
         if not kwargs.get('library_titles'):

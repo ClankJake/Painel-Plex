@@ -22,6 +22,7 @@ O ciclo de vida do convite em si (código, vagas, validade) é partilhado e vem
 de `InvitationLifecycle`.
 """
 
+import json
 import logging
 import secrets
 from typing import Any, Dict
@@ -222,7 +223,37 @@ class JellyfinAccountManager(InvitationLifecycle):
             'media_server_type': 'jellyfin',
             'status': 'active',
             'screen_limit': invitation.get('screen_limit', 0),
+            # 🐛 As bibliotecas do convite eram aplicadas no SERVIDOR e nunca
+            # chegavam aqui: quem as grava é `update_user_libraries`, e a
+            # gravação dele está atrás de um `if perfil is not None` — no
+            # resgate o perfil ainda não existe. Como `restaurar_acesso` repõe
+            # "as bibliotecas do perfil", quem era bloqueado e pagava voltava
+            # com a conta aberta e sem ver nada.
+            'libraries': json.dumps(invitation.get('libraries') or []),
+            # ⚠️ O `allow_downloads` do convite NÃO se grava aqui: `user_profiles`
+            # não tem essa coluna. O backend do Plex escreve-a na mesma e ela é
+            # descartada em silêncio — é por isso que a permissão de download
+            # não sobrevive a uma reativação em nenhum dos dois. Fica de fora
+            # até haver coluna, em vez de parecer que está guardada.
         })
+
+        # 🐛 Um convite de teste criava uma conta que NUNCA expirava: o abuso
+        # era verificado (`_verificar_abuso_de_teste`) e o fim do teste nunca
+        # era agendado. Sem as DUAS chaves, o `end_trial_job` não tem como ser
+        # cancelado se a pessoa pagar entretanto.
+        minutos = invitation.get('trial_duration_minutes', 0) or 0
+        if minutos > 0:
+            fim_utc, id_da_tarefa = self.agendar_fim_do_teste(user_id, minutos)
+            perfil['trial_end_date'] = fim_utc.isoformat()
+            perfil['trial_job_id'] = id_da_tarefa
+
+        # 🐛 E a indicação pendente não era resolvida em lado nenhum: o
+        # `referred_by` ficava sempre vazio, por isso o "Indique e Ganhe"
+        # nunca podia pagar a quem tinha indicado.
+        quem_indicou = self.resolver_indicacao_pendente(user_id, username)
+        if quem_indicou:
+            perfil['referred_by'] = quem_indicou
+
         acesso_aos_pedidos = self._dar_acesso_aos_pedidos(user_id, username, email, invitation)
         perfil['overseerr_access'] = acesso_aos_pedidos
         gravado = self.data_manager.set_user_profile(user_id, perfil) or {}

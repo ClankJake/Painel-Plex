@@ -293,7 +293,16 @@ def payment_page(token):
                     action_hint = None
                 else:
                     action_url = url_for('auth.login', next=url_for('main.account_page'))
-                    action_hint = _("Vai ser-lhe pedido para entrar com sua conta Plex.")
+                    # ⚠️ A marca estava escrita à mão: num painel Jellyfin era a
+                    # marca errada a aparecer a quem vai pagar. E "Vai ser-lhe
+                    # pedido" é português europeu — o teste de vocabulário não
+                    # apanha a ênclise, mas quem lê apanha.
+                    action_hint = _(
+                        "Você vai precisar entrar com a sua conta %(server_name)s.",
+                        # ⚠️ No BACKEND o atributo é `SHORT_NAME`; `short_name` só
+                        # existe no contexto dos templates (ver `create_app`).
+                        server_name=getattr(extensions.media_server, 'SHORT_NAME', 'Plex'),
+                    )
 
                 return render_template('payment_unavailable.html',
                                        reason_title=_("Renovação Indisponível no Momento"),

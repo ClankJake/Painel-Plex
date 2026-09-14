@@ -88,7 +88,13 @@ sobrevive) e reinicia com `_agendar_reinicio()`.
 - `app/services/media_server/jellyfin/` — o mesmo para o Jellyfin.
 - `app/services/media_server/invitations.py` — o ciclo de vida de um convite
   (código, vagas, validade), que é igual em todos os servidores e por isso não
-  vive em nenhum deles.
+  vive em nenhum deles. 🐛 **Também o que o RESGATE faz além de dar acesso**:
+  agendar o fim de um período de teste (`agendar_fim_do_teste`) e resolver a
+  indicação pendente (`resolver_indicacao_pendente`). Nada nelas é do Plex — é
+  a sessão, o config e o agendador — mas viviam lá, e o backend do Jellyfin
+  nasceu sem: um convite de teste criava uma conta que **nunca expirava**, e o
+  `referred_by` ficava sempre vazio, por isso o "Indique e Ganhe" nunca podia
+  pagar. Um backend novo herda-as em vez de as reescrever.
 
 Nos templates, o contexto global expõe `media_server.type`, `.name` e
 `.capabilities` — use-os para esconder o que não se aplica
@@ -141,6 +147,18 @@ Repor o acesso é agora do contrato (`restaurar_acesso`): no Plex convida-se
 outra vez e fica um `link_pendente` (é ele que faz aparecer o botão de
 confirmação manual na página de pagamento); onde as contas são locais tira-se o
 `IsDisabled`, repõem-se as bibliotecas do perfil, e não há nada para aceitar.
+
+⚠️ **"As bibliotecas do perfil" só lá estão se alguém as puser.** Quem as grava
+é `update_user_libraries`, e a gravação dele está atrás de um
+`if perfil is not None` — no RESGATE o perfil ainda não existe, por isso a
+escrita era saltada em silêncio. O convite aplicava-as no servidor e o perfil
+ficava vazio; ao reativar, a conta voltava aberta e sem ver nada. Hoje é o
+`_criar_perfil_local` que as grava, na criação do perfil.
+
+🐛 O `allow_downloads` do convite **não** se grava: `user_profiles` não tem essa
+coluna. O backend do Plex escreve-a na mesma e ela é descartada em silêncio — é
+por isso que a permissão de download não sobrevive a uma reativação em nenhum
+dos dois backends. Fica por resolver, e não se finge que está guardada.
 
 ⚠️ **E se a conta já tiver sido apagada, é RECRIADA** — o `removal_job` apaga-a
 mesmo ao fim de `DAYS_TO_REMOVE_BLOCKED_USER` dias, e quem paga tem de voltar a
@@ -682,6 +700,13 @@ mesma pessoa aparecia duas vezes — ou nenhuma. Tudo o que sai dali passa por
 `chave_de()`, e a consulta procura pelas DUAS grafias, porque não se sabe qual
 delas a versão instalada do plugin gravou.
 
+🐛 Havia DUAS consultas ao plugin e só uma fazia isso: o HISTÓRICO comparava
+com uma grafia só. Com a errada, devolvia zero linhas — que não é `None`, por
+isso nem caía para o registo do núcleo: a página ficava vazia para sempre, sem
+erro nenhum. Hoje a rotina é uma só (`condicao_de_utilizador`, em
+`playback_reporting.py`, ao lado do `GUID_VALIDO` e do escape de SQL), usada
+pelos dois.
+
 ⚠️ **A data do plugin não traz fuso** (`2026-09-12 20:23:28`). Lê-se como UTC,
 que é o que `history.py` já fazia com as mesmas linhas — o que não pode haver é
 duas leituras diferentes da mesma data no mesmo painel.
@@ -744,6 +769,16 @@ completo (com os valores padrão) está em `load_or_create_config()` em
 `app/config.py` — é lá que se acrescenta uma definição nova. `CONFIG_DIR` é
 redirecionável por `PAINEL_PLEX_CONFIG_DIR`, e é assim que os testes não tocam
 na instalação real.
+
+⚠️ **Uma definição nova precisa de DUAS listas em `save_settings`**
+(`app/blueprints/api/system.py`): `fields_to_update`, ou não é gravada de todo —
+foi o que aconteceu ao `JELLYFIN_URL` e à `JELLYFIN_API_KEY`, editáveis nas
+Conexões e descartadas em silêncio ao gravar, com a recarga seletiva a nunca
+disparar. E, se for uma credencial, `sensitive_keys`, ou desce em claro para o
+navegador na resposta das definições — a chave do Jellyfin era a única que o
+fazia, e dá acesso de administrador a todo o servidor de média. (Os campos do
+Plex não estão em `fields_to_update` porque têm tratamento próprio: chegam em
+minúsculas, do assistente.)
 
 Os managers leem o config de duas formas, e a diferença é fonte de bugs:
 guardam uma cópia em `self.config` no `__init__` **ou** chamam

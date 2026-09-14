@@ -202,8 +202,35 @@ class TestSegurancaDaConsulta:
         backend = _backend([])
 
         backend.get_watch_history(OUTRO)
+        sql = _sql_das_linhas(backend)
 
-        assert f"UserId = '{OUTRO}'" in _sql_das_linhas(backend)
+        assert OUTRO in sql
+        assert 'UserId IN (' in sql
+
+    def test_a_consulta_procura_pelas_DUAS_grafias_do_guid(self, cache_limpa):
+        # 🐛 REGRESSÃO: comparava-se com UMA grafia só. O plugin grava com ou
+        # sem hífenes conforme a versão, e o painel guarda sem — com a grafia
+        # errada a consulta devolvia ZERO linhas, que não é um erro: o
+        # histórico ficava vazio para sempre e nem sequer caía para o núcleo.
+        backend = _backend([])
+
+        backend.get_watch_history(OUTRO)
+        sql = _sql_das_linhas(backend)
+
+        com_hifenes = f"{OUTRO[0:8]}-{OUTRO[8:12]}-{OUTRO[12:16]}-{OUTRO[16:20]}-{OUTRO[20:]}"
+        assert f"'{OUTRO}'" in sql
+        assert f"'{com_hifenes}'" in sql
+
+    def test_o_id_com_hifenes_e_aceite_e_normalizado(self, cache_limpa):
+        # Quem chega pelo URL traz a grafia do servidor; o painel guarda a sua.
+        backend = _backend([])
+        com_hifenes = f"{OUTRO[0:8]}-{OUTRO[8:12]}-{OUTRO[12:16]}-{OUTRO[16:20]}-{OUTRO[20:]}"
+
+        backend.get_watch_history(com_hifenes)
+        sql = _sql_das_linhas(backend)
+
+        assert f"'{OUTRO}'" in sql
+        assert f"'{com_hifenes}'" in sql
 
 
 class TestLinhas:

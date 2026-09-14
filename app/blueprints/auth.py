@@ -184,7 +184,7 @@ def _login_user_session(account, role, redirect_endpoint, from_settings=False, p
 
     # 🎁 INDIQUE E GANHE: quem chega por um link de indicação tem o código guardado
     # na sessão. A indicação NÃO é registada aqui, e sim no resgate do convite
-    # (ver PlexInviteManager._resolve_pending_referral) — porque o programa premeia
+    # (ver InvitationLifecycle.resolver_indicacao_pendente) — porque o programa premeia
     # trazer utilizadores NOVOS. Se registássemos no login, um utilizador que já
     # tem acesso podia abrir o link de um amigo e gerar-lhe uma recompensa
     # indevida na sua próxima renovação.

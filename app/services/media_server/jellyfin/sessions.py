@@ -235,11 +235,16 @@ class JellyfinSessionsProvider:
         recurso ao próprio item quando não existe.
         """
         etiquetas = item.get('ImageTags') or {}
-        if etiquetas.get('Primary') and item.get('Id'):
-            return f"jellyfin:/Items/{item['Id']}/Images/Primary?tag={etiquetas['Primary']}"
 
+        # ⚠️ A ordem importa e estava trocada: a `Primary` de um EPISÓDIO é o
+        # fotograma dele, e era sempre essa que ganhava. O painel mostra a capa
+        # da série em todo o lado (`history.py`, o provider do Plex), por isso
+        # aqui aparecia outra imagem para a mesma reprodução.
         if item.get('SeriesPrimaryImageTag') and item.get('SeriesId'):
             return f"jellyfin:/Items/{item['SeriesId']}/Images/Primary?tag={item['SeriesPrimaryImageTag']}"
+
+        if etiquetas.get('Primary') and item.get('Id'):
+            return f"jellyfin:/Items/{item['Id']}/Images/Primary?tag={etiquetas['Primary']}"
 
         if item.get('Id'):
             return f"jellyfin:/Items/{item['Id']}/Images/Primary"

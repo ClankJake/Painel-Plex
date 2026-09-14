@@ -6,6 +6,8 @@ devolveria e regista o que foi enviado, que é onde estão os erros que
 interessam (uma política gravada pela metade, um comando de paragem sem aviso).
 """
 
+import json
+
 import pytest
 
 from app.services.media_server.base import (
@@ -526,6 +528,29 @@ class TestSessoes:
         assert sessao.subtitle == "S02 · E05 - Segredos"
         assert sessao.media_title == "Dark S02E05 - Segredos"
 
+    def test_a_capa_de_um_episodio_e_a_da_SERIE(self, cache_limpa):
+        # 🐛 A ordem estava trocada: a `Primary` de um episódio é o FOTOGRAMA
+        # dele, e ganhava sempre. O painel mostra a capa da série em todo o
+        # lado (`history.py`, o provider do Plex), por isso o "Reproduzindo
+        # Agora" mostrava outra imagem para a mesma reprodução.
+        bruta = self._sessao_bruta(NowPlayingItem={
+            "Id": "ep-1", "Name": "Segredos", "Type": "Episode",
+            "SeriesName": "Dark", "SeriesId": "serie-9",
+            "SeriesPrimaryImageTag": "tag-serie",
+            "ImageTags": {"Primary": "tag-fotograma"},
+            "RunTimeTicks": 1_200_000_000,
+        })
+
+        sessao = self._provider([bruta]).list_sessions()[0]
+
+        assert "serie-9" in sessao.artwork_source
+        assert "tag-fotograma" not in sessao.artwork_source
+
+    def test_um_filme_usa_a_capa_do_proprio_item(self, cache_limpa):
+        sessao = self._provider([self._sessao_bruta()]).list_sessions()[0]
+
+        assert "item-1" in sessao.artwork_source and "tag1" in sessao.artwork_source
+
     def test_encerrar_avisa_antes_de_cortar(self, cache_limpa):
         # O Stop do Jellyfin não leva motivo: a mensagem é o que mais se
         # aproxima do 'reason' do Plex, e vai primeiro.
@@ -776,6 +801,137 @@ class TestCriacaoDeContas:
 
     def test_este_servidor_nao_tem_convites_pendentes(self):
         assert JellyfinManager(data_manager=None).invites.accept_invite_via_token("x")['success'] is False
+
+
+class TestOQueOResgateGrava:
+    """🐛 REGRESSÃO: o resgate do Jellyfin nasceu sem metade do que o do Plex faz.
+
+    Nada disto é conhecimento do Plex — é a sessão, o config e o agendador —
+    mas vivia só lá, e este backend nasceu sem. Hoje as três coisas são do
+    `InvitationLifecycle`, que os dois herdam.
+    """
+
+    def _backend(self, data_manager):
+        return montar({
+            '/Users': [],
+            '/Users/New': {"Id": GUID, "Name": "ana"},
+            '/Library/VirtualFolders': BIBLIOTECAS,
+            f'/Users/{GUID}': {"Id": GUID, "Name": "ana", "Policy": dict(POLITICA_BASE)},
+        }, data_manager=data_manager)
+
+    def _resgatar(self, backend, **convite):
+        backend.create_invitation(**{'library_titles': ["Filmes"], **convite})
+        codigo = backend.list_invitations()[0]['code']
+        return backend.claim_invitation(codigo, TestCriacaoDeContas.Registo("ana", "segredo", "ana@exemplo.com"))
+
+    # --- As bibliotecas ---------------------------------------------------
+
+    def test_as_bibliotecas_do_convite_ficam_no_perfil(self, cache_limpa, data_manager):
+        # 🐛 Eram aplicadas no SERVIDOR e nunca chegavam ao perfil: quem as
+        # grava é `update_user_libraries`, e a gravação dele está atrás de um
+        # `if perfil is not None` — no resgate o perfil ainda não existe.
+        backend = self._backend(data_manager)
+
+        self._resgatar(backend, library_titles=["Séries"])
+
+        assert json.loads(data_manager.get_user_profile(GUID)['libraries']) == ["Séries"]
+
+    def test_reativar_repoe_as_bibliotecas_que_o_convite_deu(self, cache_limpa, data_manager):
+        # É a consequência: `restaurar_acesso` repõe "as bibliotecas do
+        # perfil", por isso um perfil sem elas devolvia a conta a ver nada.
+        backend = self._backend(data_manager)
+        self._resgatar(backend, library_titles=["Séries"])
+
+        # A conta passa a existir na lista do servidor (o duplo do `/Users/New`
+        # não a acrescenta sozinho), senão `restaurar_acesso` conclui que ela
+        # foi apagada e segue pelo caminho de a RECRIAR.
+        backend.conn.api.respostas['/Users'] = [
+            {"Id": GUID, "Name": "ana", "Policy": dict(POLITICA_BASE)},
+        ]
+        backend.users.invalidate_user_cache()
+
+        # O caminho real: bloqueada por falta de pagamento, depois paga.
+        backend.users.block_user(GUID, "vencida")
+
+        # ⚠️ O servidor perdeu as bibliotecas (é o que acontece quando a conta
+        # chega a ser apagada e recriada). Sem isto o teste era vazio: a
+        # política que o bloqueio grava já lá tinha as bibliotecas certas, e
+        # passava mesmo sem a correção — quem as tem de repor é o PERFIL.
+        backend.conn.api.respostas[f'/Users/{GUID}'] = {
+            "Id": GUID, "Name": "ana",
+            "Policy": {**POLITICA_BASE, "EnabledFolders": [], "IsDisabled": True},
+        }
+        backend.conn.api.enviados.clear()
+
+        backend.restaurar_acesso(GUID, data_manager.get_user_profile(GUID))
+
+        politica = backend.conn.api.corpos_enviados(f'/Users/{GUID}/Policy')[-1]
+        assert politica['EnabledFolders'] == ["lib-series"]
+
+    # --- O período de teste -----------------------------------------------
+
+    def test_um_convite_de_teste_marca_quando_acaba(self, cache_limpa, data_manager):
+        # 🐛 O abuso era verificado e o FIM nunca era agendado: a conta de
+        # teste ficava com acesso grátis para sempre.
+        backend = self._backend(data_manager)
+
+        self._resgatar(backend, trial_duration_minutes=60)
+
+        perfil = data_manager.get_user_profile(GUID)
+        assert perfil['trial_end_date']
+        # ⚠️ Sem o id da tarefa não há como a cancelar se a pessoa pagar antes.
+        assert perfil['trial_job_id']
+
+    def test_o_fim_do_teste_fica_mesmo_agendado(self, cache_limpa, data_manager):
+        from app.extensions import scheduler
+
+        backend = self._backend(data_manager)
+        self._resgatar(backend, trial_duration_minutes=60)
+
+        job_id = data_manager.get_user_profile(GUID)['trial_job_id']
+        assert scheduler.get_job(job_id) is not None
+        scheduler.remove_job(job_id)
+
+    def test_um_convite_normal_nao_marca_fim_nenhum(self, cache_limpa, data_manager):
+        backend = self._backend(data_manager)
+
+        self._resgatar(backend)
+
+        assert not data_manager.get_user_profile(GUID).get('trial_end_date')
+
+    # --- A indicação -------------------------------------------------------
+
+    def test_a_indicacao_pendente_e_registada(self, cache_limpa, data_manager, client, config_file):
+        # 🐛 `referred_by` ficava sempre vazio, por isso o "Indique e Ganhe"
+        # nunca podia pagar a quem indicou.
+        config_file(REFERRAL_ENABLED=True)
+        data_manager.set_user_profile(OUTRO, {'username': 'bruno'})
+        data_manager.set_user_referral_code(OUTRO, 'BRUNO10')
+
+        backend = self._backend(data_manager)
+        with client.session_transaction() as sessao:
+            sessao['pending_referral_code'] = 'BRUNO10'
+
+        with client.application.test_request_context('/'):
+            from flask import session
+            session['pending_referral_code'] = 'BRUNO10'
+            self._resgatar(backend)
+
+        assert data_manager.get_user_profile(GUID)['referred_by'] == OUTRO
+
+    def test_a_auto_indicacao_e_bloqueada(self, cache_limpa, data_manager, client, config_file):
+        # 🛡️ Usar o próprio código numa segunda conta é o abuso mais óbvio.
+        config_file(REFERRAL_ENABLED=True)
+        data_manager.set_user_profile(GUID, {'username': 'ana'})
+        data_manager.set_user_referral_code(GUID, 'ANA10')
+        backend = self._backend(data_manager)
+
+        with client.application.test_request_context('/'):
+            from flask import session
+            session['pending_referral_code'] = 'ANA10'
+            self._resgatar(backend)
+
+        assert not data_manager.get_user_profile(GUID).get('referred_by')
 
 
 class TestAcessoAosPedidos:

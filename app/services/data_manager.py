@@ -385,7 +385,11 @@ class DataManager:
         local_tz = get_app_timezone()
 
         # 1. Delimitar o mês atual usando o fuso horário local
-        _, last_day = calendar.monthrange(year, month)
+        # 🐛 Era `_, last_day = ...`: o `_` do gettext ficava a valer um INTEIRO
+        # para o resto da função, e a linha que escreve "Hoje" (um vencimento
+        # que cai no próprio dia) rebentava com
+        # `TypeError: 'int' object is not callable`.
+        _dia_da_semana, last_day = calendar.monthrange(year, month)
         local_start = local_tz.localize(datetime(year, month, 1, 0, 0, 0))
         local_end = local_tz.localize(datetime(year, month, last_day, 23, 59, 59, 999999))
 
@@ -820,6 +824,10 @@ class DataManager:
         ('notifications', 'media_user_id'),
         ('unlocked_achievements', 'media_user_id'),
         ('stream_termination_logs', 'media_user_id'),
+        # Um pedido de reposição em curso quando a conta é recriada: sem isto
+        # ficava a apontar para um perfil que já não existe, e o link que a
+        # pessoa tinha acabado de receber deixava de funcionar sem explicação.
+        ('password_resets', 'media_user_id'),
         # Quem indicou quem: aponta para um perfil sem ser chave estrangeira.
         ('user_profiles', 'referred_by'),
     )
