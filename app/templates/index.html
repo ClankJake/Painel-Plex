@@ -30,10 +30,21 @@
     .platform-atv, .platform-tvos { background-color: #a2aaad; background-image: url(/static/images/platforms/atv.svg); }
     .platform-chrome { background-color: #db4437; background-image: url(/static/images/platforms/chrome.svg); }
     .platform-chromecast { background-color: #4285f4; background-image: url(/static/images/platforms/chromecast.svg); }
+    /* 'default.svg' é o LOGÓTIPO DO PLEX. Como ícone de recurso serve num
+       painel ligado ao Plex; num ligado ao Jellyfin era a marca errada em
+       todos os aparelhos que não se conseguem classificar. A comparação
+       aqui é pela MARCA (é um logótipo), não por uma funcionalidade. */
+    {% if media_server.type == 'jellyfin' %}
+    .platform-default { background-color: #00a4dc; background-image: url(/static/images/platforms/jellyfin.svg); }
+    {% else %}
     .platform-default { background-color: #e5a00d; background-image: url(/static/images/platforms/default.svg); }
+    {% endif %}
     .platform-dlna { background-color: #4ba32f; background-image: url(/static/images/platforms/dlna.svg); }
     .platform-firefox { background-color: #ff7139; background-image: url(/static/images/platforms/firefox.svg); }
     .platform-gtv { background-color: #008bcf; background-image: url(/static/images/platforms/gtv.svg); }
+    /* O Jellyfin não tinha ícone próprio: qualquer cliente dele caía no
+       .platform-default, que é o LOGÓTIPO DO PLEX. */
+    .platform-jellyfin { background-color: #00a4dc; background-image: url(/static/images/platforms/jellyfin.svg); }
     .platform-ie { background-color: #18bcef; background-image: url(/static/images/platforms/ie.svg); }
     .platform-ios { background-color: #a2aaad; background-image: url(/static/images/platforms/ios.svg); }
     .platform-kodi { background-color: #30aada; background-image: url(/static/images/platforms/kodi.svg); }
@@ -84,7 +95,7 @@
         <div class="absolute inset-0 rounded-full border-t-2 border-yellow-500 animate-spin"></div>
         <div class="absolute inset-2 rounded-full border-r-2 border-blue-500 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
     </div>
-    <p class="text-lg font-medium text-gray-500 dark:text-gray-400">{{ _('Carregando base de dados...') }}</p>
+    <p class="text-lg font-medium text-gray-500 dark:text-gray-400">{{ _('Carregando banco de dados...') }}</p>
 </div>
 
 <!-- Container de Erro -->
@@ -292,15 +303,15 @@
         data-i18n-disabled="{{ _('Desativado') }}"
         data-i18n-running="{{ _('Em Execução') }}"
         data-i18n-stopped="{{ _('Parado') }}"
-        data-i18n-plex-server="{{ _('Servidor Plex') }}"
+        data-i18n-media-server="{{ _('Servidor %(nome)s', nome=media_server.short_name) }}"
         data-i18n-tautulli="{{ _('Tautulli') }}"
         data-i18n-payment-efi="{{ _('Pagamentos (Efí)') }}"
         data-i18n-payment-mp="{{ _('Pagamentos (Mercado Pago)') }}"
         data-i18n-payment-gates2b="{{ _('Pagamentos (Gates2b)') }}"
         data-i18n-scheduler="{{ _('Agendador de Tarefas') }}"
-        data-i18n-connecting="{{ _('A conectar...') }}"
+        data-i18n-connecting="{{ _('Conectando...') }}"
         data-i18n-connected="{{ _('Conectado') }}"
-        data-i18n-reconnecting="{{ _('A reconectar...') }}"
+        data-i18n-reconnecting="{{ _('Reconectando...') }}"
         data-i18n-disconnected="{{ _('Desconectado') }}"
         data-i18n-confirm-bulk-send-title="{{ _('Confirmar Envio em Massa') }}"
         data-i18n-confirm-bulk-send-message="{{ _('Tem a certeza de que deseja enviar esta mensagem? Esta ação não pode ser desfeita.') }}"
@@ -318,11 +329,12 @@
         data-i18n-bulk-send-error="{{ _('Ocorreu um erro no envio em massa') }}"
         data-i18n-now-playing="{{ _('Sessões Ativas') }}"
         data-i18n-no-active-streams="{{ _('Nenhuma reprodução ativa no momento.') }}"
-        data-i18n-streams-unavailable="{{ _('Não foi possível obter as sessões ativas. Verifique a ligação ao Plex.') }}"
+        data-i18n-streams-unavailable="{{ _('Não foi possível obter as sessões ativas. Verifique a conexão com o Plex.') }}"
         data-i18n-close="{{ _('Fechar') }}"
         data-i18n-no-terminated-sessions="{{ _('Nenhuma sessão terminada recentemente.') }}"
         data-i18n-reason-blocked="{{ _('Bloqueado') }}"
         data-i18n-reason-limit-exceeded="{{ _('Limite de telas') }}"
+        data-i18n-reason-plugin-limit-blocked="{{ _('Limite de telas (bloqueado pelo servidor)') }}"
         data-i18n-reason-blocked-manual="{{ _('Bloqueado (Administrador)') }}"
         data-i18n-reason-blocked-expired="{{ _('Bloqueado (Vencimento)') }}"
         data-i18n-reason-blocked-trial-expired="{{ _('Bloqueado (Teste Expirado)') }}"

@@ -231,7 +231,65 @@ class TestFindUserByEmail:
         assert manager.find_user_by_email("ana@exemplo.com") is None
 
 
+class TestFindUserPorNome:
+    """⚠️ O email é OPCIONAL nas contas locais do Jellyfin.
+
+    Quem não o preencheu nunca era encontrado: a aba "Meus Pedidos" ficava
+    vazia para sempre, sem erro nenhum, e retirar-lhe o acesso não fazia nada.
+    """
+
+    def _pagina(self, utilizadores):
+        return RespostaFalsa({"results": utilizadores, "pageInfo": {"results": len(utilizadores)}})
+
+    def test_encontra_pelo_nome_do_jellyfin(self, manager, monkeypatch):
+        chamadas = responder(monkeypatch, [self._pagina([
+            {"id": 7, "email": "", "username": "", "jellyfinUsername": "ana"},
+        ])])
+
+        assert manager.find_user(username="ana")["id"] == 7
+        assert chamadas[0]["params"]["q"] == "ana"
+
+    def test_a_pesquisa_parcial_do_seerr_nao_engana(self, manager, monkeypatch):
+        # O 'q' faz correspondência parcial: 'ana' traz também 'joana'. Aceitar
+        # o primeiro resultado mostrava os pedidos de OUTRA pessoa.
+        responder(monkeypatch, [self._pagina([{"id": 3, "username": "joana"}])])
+
+        assert manager.find_user(username="ana") is None
+
+    def test_o_email_tem_precedencia(self, manager, monkeypatch):
+        chamadas = responder(monkeypatch, [self._pagina([{"id": 7, "email": "ana@exemplo.com"}])])
+
+        assert manager.find_user(email="ana@exemplo.com", username="ana")["id"] == 7
+        # Encontrado pelo email: o nome nem chega a ser procurado.
+        assert len(chamadas) == 1
+
+    def test_o_nome_e_a_segunda_tentativa(self, manager, monkeypatch):
+        chamadas = responder(monkeypatch, [
+            self._pagina([]),
+            self._pagina([{"id": 7, "username": "ana"}]),
+        ])
+
+        assert manager.find_user(email="ana@exemplo.com", username="ana")["id"] == 7
+        assert chamadas[-1]["params"]["q"] == "ana"
+
+    def test_sem_email_nem_nome_nao_faz_pedidos(self, manager, monkeypatch):
+        chamadas = responder(monkeypatch, [self._pagina([])])
+
+        assert manager.find_user() is None
+        assert chamadas == []
+
+
 class TestRemoveUser:
+    def test_remove_pelo_nome_quando_nao_ha_email(self, manager, monkeypatch):
+        pagina = RespostaFalsa({"results": [{"id": 7, "username": "ana"}], "pageInfo": {"results": 1}})
+        chamadas = responder(monkeypatch, [pagina, RespostaFalsa({}, texto="")])
+
+        resultado = manager.remove_user("", username="ana")
+
+        assert resultado["success"] is True
+        assert chamadas[-1]["method"] == "DELETE"
+        assert chamadas[-1]["url"].endswith("/user/7")
+
     def test_remove_e_limpa_a_cache(self, manager, monkeypatch):
         pagina = RespostaFalsa({"results": [{"id": 7, "email": "ana@exemplo.com"}], "pageInfo": {"results": 1}})
         chamadas = responder(monkeypatch, [pagina, RespostaFalsa({}, texto="")])
@@ -250,25 +308,66 @@ class TestRemoveUser:
         assert manager.remove_user("ana@exemplo.com")["success"] is True
 
 
-class TestImportFromPlex:
-    def test_importa_pelo_plex_id(self, manager, monkeypatch):
+class TestImportUser:
+    def test_importa_pelo_id_do_plex(self, manager, monkeypatch):
         chamadas = responder(monkeypatch, [RespostaFalsa({}, texto="")])
 
-        resultado = manager.import_from_plex({"id": 42, "username": "ana", "email": "ana@exemplo.com"})
+        resultado = manager.import_user({"id": 42, "username": "ana", "email": "ana@exemplo.com"}, 'plex')
 
         assert resultado["success"] is True
+        assert chamadas[0]["url"].endswith("/user/import-from-plex")
         assert chamadas[0]["json"] == {"plexIds": ["42"]}
 
-    def test_sem_plex_id(self, manager, monkeypatch):
+    def test_importa_pelo_guid_do_jellyfin(self, manager, monkeypatch):
+        # ⚠️ Cada servidor entra pela SUA porta: mandar um GUID do Jellyfin para
+        # `import-from-plex` não importava ninguém, e sem erro visível.
+        chamadas = responder(monkeypatch, [RespostaFalsa({}, texto="")])
+        guid = "44874bdd3e0f4c0a9b1d2e3f4a5b6c7d"
+
+        resultado = manager.import_user({"id": guid, "username": "ana", "email": ""}, 'jellyfin')
+
+        assert resultado["success"] is True
+        assert chamadas[0]["url"].endswith("/user/import-from-jellyfin")
+        assert chamadas[0]["json"] == {"jellyfinUserIds": [guid]}
+
+    def test_servidor_desconhecido_usa_o_plex(self, manager, monkeypatch):
+        chamadas = responder(monkeypatch, [RespostaFalsa({}, texto="")])
+
+        manager.import_user({"id": 42, "username": "ana"}, 'emby')
+
+        assert chamadas[0]["url"].endswith("/user/import-from-plex")
+
+    def test_sem_identificador(self, manager, monkeypatch):
         chamadas = responder(monkeypatch, [RespostaFalsa({})])
 
-        assert manager.import_from_plex({"username": "ana"})["success"] is False
+        assert manager.import_user({"username": "ana"})["success"] is False
         assert chamadas == []
 
     def test_falha_da_api_e_propagada(self, manager, monkeypatch):
         responder(monkeypatch, [RespostaFalsa({"message": "recusado"}, status_code=400)])
 
-        assert manager.import_from_plex({"id": 42, "username": "ana"})["success"] is False
+        assert manager.import_user({"id": 42, "username": "ana"})["success"] is False
+
+    def test_sem_email_nao_deita_fora_a_cache_de_toda_a_gente(self, manager, monkeypatch):
+        # ⚠️ `invalidate_user_cache(None)` limpa TUDO, e numa conta local do
+        # Jellyfin o email costuma faltar: importar uma pessoa obrigava todas as
+        # outras a ser procuradas de novo, sem que nada o explicasse.
+        manager._user_cache["bruno@exemplo.com"] = (overseerr_module.time.time(), {"id": 9})
+        responder(monkeypatch, [RespostaFalsa({}, texto="")])
+
+        manager.import_user({"id": "guid", "username": "ana", "email": ""}, 'jellyfin')
+
+        assert "bruno@exemplo.com" in manager._user_cache
+
+    def test_a_cache_do_nome_tambem_e_invalidada(self, manager, monkeypatch):
+        # Sem isto, quem tinha sido procurado pelo nome ANTES de existir ficava
+        # dez minutos com o "não existe" em cache, já depois de ser importado.
+        manager._user_cache["ana"] = (overseerr_module.time.time(), {"id": 1})
+        responder(monkeypatch, [RespostaFalsa({}, texto="")])
+
+        manager.import_user({"id": 42, "username": "ana"}, 'plex')
+
+        assert "ana" not in manager._user_cache
 
 
 class TestTestConnection:
@@ -400,7 +499,7 @@ class TestWebhook:
                 self.enviadas.append((perfil, dados))
 
         dados = FakeDataManager(profiles={
-            1: {"plex_user_id": 1, "username": "ana", "email": "ana@exemplo.com"},
+            1: {"media_user_id": 1, "username": "ana", "email": "ana@exemplo.com"},
         })
         notifier = NotifierEspiao()
         monkeypatch.setattr(extensions, "data_manager", dados)
@@ -437,8 +536,36 @@ class TestWebhook:
         assert conteudo["media_url"] == "https://seerr.exemplo.com/movie/438631"
         assert conteudo["notification_type"] == "MEDIA_APPROVED"
 
-    def test_sem_email_nao_da_para_identificar(self, manager, extensoes):
-        payload = self._payload(request={"requestedBy_username": "ana"})
+    def test_sem_email_o_nome_identifica_o_utilizador(self, manager, extensoes):
+        # ⚠️ Num painel Jellyfin o email é opcional, e o Jellyseerr manda o
+        # 'requestedBy_email' vazio para quem não o tem. O nome vem no mesmo
+        # payload: sem o usar, o pedido era aprovado e ninguém era avisado.
+        _dados, notifier = extensoes
+        payload = self._payload(request={"requestedBy_email": "", "requestedBy_username": "ana"})
+
+        resultado = manager.handle_notification_webhook(payload)
+
+        assert resultado["success"] is True
+        perfil, _conteudo = notifier.enviadas[0]
+        assert perfil["username"] == "ana"
+
+    def test_email_desconhecido_cai_para_o_nome(self, manager, extensoes):
+        # O email do Seerr pode ser outro (o da conta dele) e continuar a ser a
+        # mesma pessoa: o nome é a segunda tentativa, não a única.
+        _dados, notifier = extensoes
+        payload = self._payload(request={
+            "requestedBy_email": "outro@exemplo.com",
+            "requestedBy_username": "ana",
+        })
+
+        resultado = manager.handle_notification_webhook(payload)
+
+        assert resultado["success"] is True
+        perfil, _conteudo = notifier.enviadas[0]
+        assert perfil["username"] == "ana"
+
+    def test_sem_email_e_sem_nome_nao_da_para_identificar(self, manager, extensoes):
+        payload = self._payload(request={"request_id": 3})
 
         assert manager.handle_notification_webhook(payload)["success"] is False
 
@@ -459,7 +586,10 @@ class TestWebhook:
 
     def test_email_desconhecido_e_ignorado_com_sucesso(self, manager, extensoes):
         _dados, notifier = extensoes
-        payload = self._payload(request={"requestedBy_email": "outro@exemplo.com"})
+        payload = self._payload(request={
+            "requestedBy_email": "outro@exemplo.com",
+            "requestedBy_username": "outro",
+        })
 
         resultado = manager.handle_notification_webhook(payload)
 

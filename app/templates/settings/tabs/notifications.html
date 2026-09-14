@@ -127,6 +127,33 @@
                             </div>
                             <textarea id="TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE" rows="3" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow shadow-inner resize-y"></textarea>
                         </div>
+                        {# ⚠️ Só num servidor de contas locais: uma conta apagada e recriada
+                           volta com uma palavra-passe NOVA, que só o painel conhece. Este é
+                           o único sítio do painel por onde uma palavra-passe viaja. #}
+                        {% if media_server.capabilities.cria_contas %}
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="TELEGRAM_CREDENTIALS_MESSAGE_TEMPLATE" class="block text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Mensagem de Credenciais Novas (conta recriada no servidor)') }}</label>
+                                <button type="button" class="show-help-button text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 p-1" title="Ver Variáveis Mágicas">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                                </button>
+                            </div>
+                            <textarea id="TELEGRAM_CREDENTIALS_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow shadow-inner resize-y"></textarea>
+                        </div>
+                        {% endif %}
+                        {# Também só num servidor de contas locais: é o link do
+                           "esqueci-me da palavra-passe". #}
+                        {% if media_server.capabilities.cria_contas %}
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="TELEGRAM_PASSWORD_RESET_MESSAGE_TEMPLATE" class="block text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Mensagem de Redefinir a Senha (link de "esqueci minha senha")') }}</label>
+                                <button type="button" class="show-help-button text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 p-1" title="Ver Variáveis Mágicas">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                                </button>
+                            </div>
+                            <textarea id="TELEGRAM_PASSWORD_RESET_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white transition-shadow shadow-inner resize-y"></textarea>
+                        </div>
+                        {% endif %}
                     </div>
                 
                     
@@ -234,6 +261,33 @@
                             </div>
                             <textarea id="DISCORD_TRIAL_END_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900/80 dark:border-gray-600 dark:text-gray-300 transition-shadow shadow-inner resize-y"></textarea>
                         </div>
+                        {# ⚠️ Só num servidor de contas locais: uma conta apagada e recriada
+                           volta com uma palavra-passe NOVA, que só o painel conhece. Este é
+                           o único sítio do painel por onde uma palavra-passe viaja. #}
+                        {% if media_server.capabilities.cria_contas %}
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="DISCORD_CREDENTIALS_MESSAGE_TEMPLATE" class="block text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Mensagem de Credenciais Novas (JSON)') }}</label>
+                                <button type="button" class="show-help-button text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 p-1" title="Ver Variáveis Mágicas">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                                </button>
+                            </div>
+                            <textarea id="DISCORD_CREDENTIALS_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900/80 dark:border-gray-600 dark:text-gray-300 transition-shadow shadow-inner resize-y"></textarea>
+                        </div>
+                        {% endif %}
+                        {# Também só num servidor de contas locais: é o link do
+                           "esqueci-me da palavra-passe". #}
+                        {% if media_server.capabilities.cria_contas %}
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="DISCORD_PASSWORD_RESET_MESSAGE_TEMPLATE" class="block text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Mensagem de Redefinir a Senha (JSON)') }}</label>
+                                <button type="button" class="show-help-button text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 p-1" title="Ver Variáveis Mágicas">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                                </button>
+                            </div>
+                            <textarea id="DISCORD_PASSWORD_RESET_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-900/80 dark:border-gray-600 dark:text-gray-300 transition-shadow shadow-inner resize-y"></textarea>
+                        </div>
+                        {% endif %}
                     </div>
                 
                     
@@ -343,6 +397,33 @@
                             </div>
                             <textarea id="WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 font-mono focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-gray-900/80 dark:border-gray-600 dark:text-gray-300 transition-shadow shadow-inner resize-y"></textarea>
                         </div>
+                        {# ⚠️ Só num servidor de contas locais: uma conta apagada e recriada
+                           volta com uma palavra-passe NOVA, que só o painel conhece. Este é
+                           o único sítio do painel por onde uma palavra-passe viaja. #}
+                        {% if media_server.capabilities.cria_contas %}
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="WEBHOOK_CREDENTIALS_MESSAGE_TEMPLATE" class="block text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Payload de Credenciais Novas (JSON)') }}</label>
+                                <button type="button" class="show-help-button text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 p-1" title="Ver Variáveis Mágicas">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                                </button>
+                            </div>
+                            <textarea id="WEBHOOK_CREDENTIALS_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 font-mono focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-gray-900/80 dark:border-gray-600 dark:text-gray-300 transition-shadow shadow-inner resize-y"></textarea>
+                        </div>
+                        {% endif %}
+                        {# Também só num servidor de contas locais: é o link do
+                           "esqueci-me da palavra-passe". #}
+                        {% if media_server.capabilities.cria_contas %}
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="WEBHOOK_PASSWORD_RESET_MESSAGE_TEMPLATE" class="block text-sm font-semibold text-gray-700 dark:text-gray-300">{{ _('Payload de Redefinir a Senha (JSON)') }}</label>
+                                <button type="button" class="show-help-button text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 p-1" title="Ver Variáveis Mágicas">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                                </button>
+                            </div>
+                            <textarea id="WEBHOOK_PASSWORD_RESET_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 font-mono focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-gray-900/80 dark:border-gray-600 dark:text-gray-300 transition-shadow shadow-inner resize-y"></textarea>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -461,6 +542,32 @@
                             </div>
                             <textarea id="WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE" rows="3" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
                         </div>
+                        {# ⚠️ Só num servidor de contas locais: uma conta apagada e recriada
+                           volta com uma palavra-passe NOVA, que só o painel conhece. #}
+                        {% if media_server.capabilities.cria_contas %}
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="WHATSAPP_CREDENTIALS_MESSAGE_TEMPLATE" class="block text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Credenciais Novas (conta recriada)') }}</label>
+                                <button type="button" class="show-help-button text-emerald-500 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 p-1" title="Ver Variáveis Mágicas">
+                                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                            </button>
+                            </div>
+                            <textarea id="WHATSAPP_CREDENTIALS_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        {% endif %}
+                        {# Também só num servidor de contas locais: é o link do
+                           "esqueci-me da palavra-passe". #}
+                        {% if media_server.capabilities.cria_contas %}
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="WHATSAPP_PASSWORD_RESET_MESSAGE_TEMPLATE" class="block text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Redefinir a Senha') }}</label>
+                                <button type="button" class="show-help-button text-emerald-500 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 p-1" title="Ver Variáveis Mágicas">
+                                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                                </button>
+                            </div>
+                            <textarea id="WHATSAPP_PASSWORD_RESET_MESSAGE_TEMPLATE" rows="4" class="block w-full p-3 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white resize-y"></textarea>
+                        </div>
+                        {% endif %}
                     </div>
                 
                     

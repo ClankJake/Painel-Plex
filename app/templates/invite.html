@@ -142,7 +142,7 @@
         <div class="flex items-center gap-3 px-5 py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg">
             <span class="text-2xl flex-shrink-0" aria-hidden="true">🎁</span>
             <p class="text-sm font-medium text-left">
-                {{ _('Você está a usar o convite de %(name)s. Conclua o registro abaixo para garantir o seu acesso.', name=referrer_html) | safe }}
+                {{ _('Você está usando o convite de %(name)s. Conclua o registro abaixo para garantir seu acesso.', name=referrer_html) | safe }}
             </p>
         </div>
         {% endif %}
@@ -194,18 +194,39 @@
     data-i18n-auth-denied="{{ _('A autenticação com o Plex foi negada.') }}"
     data-i18n-auth-check-error="{{ _('Ocorreu um erro ao verificar a autenticação com o Plex.') }}"
     data-i18n-auth-timeout="{{ _('Tempo de autenticação esgotado. Clique novamente para tentar de novo.') }}"
-    data-i18n-popup-blocked="{{ _('Não foi possível abrir a janela de login. Verifique se o seu navegador está a bloquear janelas pop-up e tente novamente.') }}"
+    data-i18n-popup-blocked="{{ _('Não foi possível abrir a janela de login. Verifique se o seu navegador está bloqueando janelas pop-up e tente novamente.') }}"
     data-i18n-invalid-invite="{{ _('Convite Inválido') }}"
     data-i18n-validate-fail="{{ _('Não foi possível validar o convite.') }}"
     data-i18n-you-are-invited="{{ _('Você foi convidado!') }}"
     data-i18n-what-is-plex="{{ _('O que é o Plex?') }}"
-    data-i18n-plex-desc="{{ _('O Plex é como um centro de comando para todo o seu conteúdo digital. Ele organiza os filmes e séries partilhados consigo e permite que os acesse de qualquer lugar, em praticamente qualquer dispositivo.') }}"
+    data-i18n-plex-desc="{{ _('O Plex é como um centro de comando para todo o seu conteúdo digital. Ele organiza os filmes e séries compartilhados com você e permite que os acesse de qualquer lugar, em praticamente qualquer dispositivo.') }}"
     data-i18n-how-to-start="{{ _('Próximos Passos') }}"
     data-i18n-step1-text="{{ _('Se você ainda não tem,') }}"
-    data-i18n-step1-link="{{ _('crie a sua conta Plex gratuita aqui') }}"
+    data-i18n-step1-link="{{ _('crie sua conta Plex gratuita aqui') }}"
     data-i18n-step1-end="{{ _('. É rápido e fácil.') }}"
     data-i18n-step2="{{ _('Volte para esta página e clique no botão abaixo para entrar com sua conta e aceitar o convite.') }}"
     data-i18n-login-to-redeem="{{ _('Entrar com Plex para Resgatar') }}"
+    data-config-creates-accounts="{{ 'true' if media_server.capabilities.cria_contas else 'false' }}"
+    data-i18n-create-account="{{ _('Criar sua conta') }}"
+    data-i18n-create-account-desc="{{ _('Escolha o usuário e a senha com que você vai entrar no servidor. Anote-as: são as credenciais da sua conta.') }}"
+    data-i18n-username="{{ _('Usuário') }}"
+    data-i18n-password="{{ _('Senha') }}"
+    data-i18n-email-optional="{{ _('E-mail (opcional)') }}"
+    data-i18n-email-help="{{ _('Usado para avisos de vencimento e para recuperar seu acesso.') }}"
+    data-i18n-create-and-redeem="{{ _('Criar conta e resgatar') }}"
+    data-i18n-creating="{{ _('Criando a conta...') }}"
+    data-i18n-password-too-short="{{ _('A senha precisa ter pelo menos 6 caracteres.') }}"
+    {# ⚠️ NUNCA termine um `data-*` com '-' seguido de um NÚMERO. O browser só
+       come o traço quando o que vem a seguir é uma letra minúscula, por isso
+       `data-i18n-step-local-1` chega ao dataset como `i18nStepLocal-1` — e o
+       JavaScript, que pede `stepLocal1`, recebia `undefined`. Era o que esta
+       secção mostrava, escrito por extenso. Há um teste que guarda a regra
+       (`tests/test_assets_frontend.py`). #}
+    data-i18n-how-to-start-local="{{ _('Como começar') }}"
+    data-i18n-what-is-local="{{ _('O %(servidor)s guarda os filmes e as séries compartilhados com você e permite assistir no computador, no celular ou na TV. Sua conta é criada aqui mesmo, em três passos.', servidor=media_server.name) }}"
+    data-i18n-step-local-one="{{ _('Escolha abaixo o usuário e a senha da sua conta no %(servidor)s.', servidor=media_server.name) }}"
+    data-i18n-step-local-two="{{ _('Anote essas credenciais: é com elas que você vai entrar, e o painel não consegue recuperá-las depois.') }}"
+    data-i18n-step-local-three="{{ _('Instale o aplicativo do %(servidor)s no seu dispositivo (ou use o navegador) e entre com o endereço do servidor, que mostramos aqui assim que o convite for aceito.', servidor=media_server.name) }}"
     data-i18n-waiting-auth="{{ _('Aguardando autenticação...') }}"
     data-i18n-attention="{{ _('Atenção:') }}"
     data-i18n-invite-expires="{{ _('Este convite expira') }}"
@@ -215,11 +236,18 @@
     data-i18n-invite-expired="{{ _('Este convite já expirou.') }}"
     data-i18n-invite-expired-desc="{{ _('Peça um novo convite a quem lhe enviou este link.') }}"
     data-i18n-welcome-user="{{ _('Bem-vindo, {username}!') }}"
-    data-i18n-welcome-user-trial="{{ _('O seu período de teste está ativo e termina em {date} às {time}.') }}"
-    data-i18n-access-valid-until="{{ _('O seu acesso é válido até {date}.') }}"
+    data-i18n-welcome-user-trial="{{ _('Seu período de teste está ativo e termina em {date} às {time}.') }}"
+    data-i18n-access-valid-until="{{ _('Seu acesso é válido até {date}.') }}"
     data-i18n-renew-now="{{ _('Antecipar Assinatura') }}"
     data-i18n-next-steps="{{ _('Próximos Passos') }}"
     data-i18n-step1-onboarding="{{ _('Baixe o aplicativo Plex no seu dispositivo favorito para começar a assistir.') }}"
+    {# ⚠️ O passo acima estava a ser mostrado nos DOIS servidores: quem acabava de
+       criar uma conta no Jellyfin era mandado buscar a aplicação do Plex. #}
+    data-i18n-step1-onboarding-local="{{ _('Instale o aplicativo do %(servidor)s no seu dispositivo e entre com as credenciais que você acabou de escolher.', servidor=media_server.name) }}"
+    data-i18n-your-username-is="{{ _('Seu usuário é {username} — é com ele que você vai entrar.') }}"
+    data-i18n-password-help="{{ _('Anote-a: esta senha não pode ser recuperada, apenas substituída pelo administrador.') }}"
+    data-i18n-show-password="{{ _('Mostrar a senha') }}"
+    data-i18n-hide-password="{{ _('Esconder a senha') }}"
     data-i18n-step3-overseerr="{{ _('Pode pedir novos filmes e séries {link}.') }}"
     data-i18n-step3-link-overseerr="{{ _('clicando aqui') }}"
     data-i18n-enjoy-anywhere="{{ _('Aproveite em qualquer lugar') }}"

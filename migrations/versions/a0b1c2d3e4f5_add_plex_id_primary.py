@@ -6,6 +6,7 @@ Create Date: 2025-09-17 11:10:00.000000
 
 """
 import logging
+import sys
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import text, inspect
@@ -14,6 +15,19 @@ import json
 # Configuração do logger
 logger = logging.getLogger('alembic.env')
 
+
+def avisar(mensagem):
+    """Diz isto ao administrador, aconteça o que acontecer ao logging.
+
+    ⚠️ `get_plex_user_id_map()` chama `create_app()`, e o arranque do painel
+    reconfigura o logging por cima do que o Alembic montou — a partir daí, o
+    `logger` daqui escreve para o vazio. Um aviso sobre PERDA DE DADOS não pode
+    depender disso, por isso vai também para o stderr, que é onde a saída do
+    `flask db upgrade` é lida (consola ou log do contentor).
+    """
+    logger.warning(mensagem)
+    print(f"[MIGRAÇÃO a0b1c2d3e4f5] {mensagem}", file=sys.stderr, flush=True)
+
 # revision identifiers, used by Alembic.
 revision = 'a0b1c2d3e4f5'
 down_revision = 'e5f6a7b8c9d0'
@@ -21,16 +35,37 @@ branch_labels = None
 depends_on = None
 
 def get_plex_user_id_map():
-    """Busca os dados dos utilizadores do Plex para mapear username para ID."""
+    """Busca os dados dos utilizadores do Plex para mapear username para ID.
+
+    ⚠️ Esta migração histórica lê a aplicação viva, por isso tem de acompanhar
+    as renomeações do código: quando 'plex_manager' passou a 'media_server', o
+    import falhava, a função devolvia None e o `flask db upgrade` de uma
+    INSTALAÇÃO NOVA abortava — o painel deixava de arrancar de todo. Se voltar a
+    mexer nos nomes dos managers, confirme que este ficheiro continua a correr.
+
+    ⚠️ **Um mapa VAZIO não quer dizer a mesma coisa em todos os casos.** Uma
+    instalação nova ainda não tem ligação ao Plex e também não tem nada para
+    migrar; um painel a funcionar cujo Plex esteja em baixo tem tudo para
+    perder. Aqui devolve-se `{}` nos dois; quem distingue é o `upgrade()`, que
+    sabe se há linhas na base de dados. O log diz qual dos dois casos é.
+    """
     try:
         from app import create_app
-        from app.extensions import plex_manager
+        from app.extensions import media_server
         app = create_app()
         with app.app_context():
-            plex_manager.reload_connections(from_job=True)
-            all_users = plex_manager.get_all_plex_users(force_refresh=True)
+            media_server.reload_connections(from_job=True)
+
+            if not media_server.is_connected():
+                avisar(
+                    "Sem ligação ao Plex durante a migração: o mapeamento de IDs fica vazio. "
+                    "Numa instalação nova isto é normal; num painel com utilizadores, é um problema."
+                )
+                return {}
+
+            all_users = media_server.get_all_users(force_refresh=True)
             if not all_users:
-                logger.warning("Nenhum utilizador encontrado no Plex. O mapeamento de ID estará vazio.")
+                logger.warning("O Plex respondeu e não tem utilizadores partilhados. O mapeamento de ID estará vazio.")
                 return {}
             return {user['username']: int(user['id']) for user in all_users}
     except Exception as e:
@@ -84,6 +119,36 @@ def upgrade():
         sa.UniqueConstraint('username')
     )
     profiles = bind.execute(text("SELECT * FROM user_profiles")).mappings().all()
+
+    # 🛡️ **Um mapa vazio com perfis na base de dados é perda TOTAL de dados.**
+    # A chave passa de `username` para o id do Plex, e quem não estiver no mapa
+    # não é copiado para a tabela nova — por isso, sem mapeamento nenhum, esta
+    # migração apagava todos os perfis, todos os pagamentos e todo o histórico
+    # sem uma única linha de erro. Acontecia sempre que o Plex estivesse
+    # inacessível no arranque, que é precisamente quando alguém corre um
+    # restauro. Recusar é muito melhor: a base de dados fica intacta e a
+    # migração corre outra vez assim que o Plex responder.
+    #
+    # ⚠️ Zero perfis é outra coisa: é uma instalação nova, e aí não há nada a
+    # perder — tem de passar, ou o painel não arranca de todo.
+    if profiles and not user_id_map:
+        raise Exception(
+            f"A migração foi abortada para evitar perda de dados: há {len(profiles)} perfis "
+            "na base de dados e não foi possível obter nenhum utilizador do Plex. "
+            "Garanta que o Plex está acessível e configurado, e arranque o painel de novo."
+        )
+
+    # ⚠️ Um perfil que não esteja no mapa é DESCARTADO — é a única forma de
+    # mudar a chave para o id do Plex. Costuma ser alguém que já não está no
+    # servidor, mas o administrador tem de ficar a saber quem foi, em vez de
+    # dar pela falta meses depois.
+    sem_correspondencia = [p['username'] for p in profiles if not user_id_map.get(p['username'])]
+    if sem_correspondencia:
+        avisar(
+            f"{len(sem_correspondencia)} perfis não têm conta correspondente no Plex e vão ser "
+            f"DESCARTADOS por esta migração: {', '.join(sorted(sem_correspondencia))}"
+        )
+
     for profile in profiles:
         plex_id = user_id_map.get(profile['username'])
         if plex_id:

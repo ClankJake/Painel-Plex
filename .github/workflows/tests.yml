@@ -3,6 +3,12 @@
 # Executa a suíte de testes (pytest) a cada push e pull request nas branches
 # principais, para que uma alteração que quebre a aplicação seja detetada antes
 # de a imagem Docker ser publicada.
+#
+# ⚠️ O FRONTEND também corre aqui. Durante muito tempo isto era só pytest, e um
+# `npm install` inutilizável passou despercebido: o lockfile versionado tinha os
+# hashes de tarballs re-empacotados por um espelho, o install morria com
+# EINTEGRITY em quem clonasse o repositório, e nada no CI dava por isso. O
+# Dockerfile disfarçava o problema porque resolvia de fresco, sem o lockfile.
 
 name: Testes
 
@@ -43,3 +49,43 @@ jobs:
 
       - name: Executar os testes
         run: pytest --cov=app --cov-report=term-missing
+
+  frontend:
+    name: build do frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar o Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      # `npm ci` e não `npm install`: instala exatamente o que o lockfile fixa
+      # e falha se ele estiver dessincronizado do package.json — que é a única
+      # forma de este passo apanhar um lockfile partido.
+      - name: Instalar as dependências do frontend
+        run: npm ci
+
+      - name: Gerar o CSS e copiar as bibliotecas
+        run: npm run build
+
+      # Os testes de Python verificam as DECLARAÇÕES (que o `copy:vendor` cobre
+      # o que os templates pedem); este passo verifica o RESULTADO, que só
+      # existe depois de o build correr mesmo.
+      - name: Configurar o Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Verificar que os assets ficaram em app/static/dist/
+        env:
+          PAINEL_EXIGE_DIST: "1"
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pytest tests/test_assets_frontend.py -q

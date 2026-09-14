@@ -155,6 +155,28 @@
                     </div>
                     </div><!-- fim da grid dos dois cartões -->
 
+                    <!-- Último recurso para clientes que ignoram a ordem de parar -->
+                    {# ⚠️ Só existe onde o servidor tem alguma coisa MAIS FORTE do que
+                       pedir para parar (no Jellyfin, revogar o acesso do aparelho). O
+                       Plex não tem nada — `force_terminate()` devolve sempre False — e
+                       a definição aparecia lá na mesma, a prometer um comportamento que
+                       nunca acontecia. Uma capacidade em falta ESCONDE a funcionalidade. #}
+                    {% if media_server.capabilities.corte_forcado %}
+                    <div class="bg-rose-50/50 dark:bg-rose-900/10 p-4 rounded-xl border border-rose-100 dark:border-rose-800/30">
+                        <div class="flex items-center justify-between">
+                            <label for="FORCE_STREAM_TERMINATION" class="block text-sm font-semibold text-rose-800 dark:text-rose-400 flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                {{ _('Forçar o encerramento em dispositivos que ignoram o comando') }}
+                            </label>
+                            <label class="relative inline-flex items-center cursor-pointer" title="{{ _('Habilitar/Desabilitar') }}">
+                                <input id="FORCE_STREAM_TERMINATION" type="checkbox" class="sr-only peer">
+                                <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-rose-500"></div>
+                            </label>
+                        </div>
+                        <p class="text-xs text-rose-600/70 dark:text-rose-500/70 mt-2">{{ _('Alguns reprodutores recebem a ordem de parar e continuam a transmitir (o reprodutor integrado do aplicativo Android do Jellyfin é um deles). Depois de algumas tentativas sem resposta, o painel revoga o acesso daquele dispositivo — o que encerra a transmissão, mas obriga o usuário a entrar novamente nele. Desligado, o painel apenas registra o aviso no log.') }}</p>
+                    </div>
+                    {% endif %}
+
                     <hr class="border-gray-200 dark:border-gray-700/60">
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -167,7 +189,7 @@
                                 </label>
                                 <button type="button" class="show-help-button text-cyan-600 hover:text-cyan-700 p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
                             </div>
-                            <textarea id="TERMINATION_MSG_BLOCKED_MANUAL" rows="2" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow resize-y" placeholder="{{ _('O seu acesso foi bloqueado.') }}"></textarea>
+                            <textarea id="TERMINATION_MSG_BLOCKED_MANUAL" rows="2" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow resize-y" placeholder="{{ _('Seu acesso foi bloqueado.') }}"></textarea>
                         </div>
 
                         <!-- Assinatura Expirada -->
@@ -179,7 +201,7 @@
                                 </label>
                                 <button type="button" class="show-help-button text-cyan-600 hover:text-cyan-700 p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
                             </div>
-                            <textarea id="TERMINATION_MSG_BLOCKED_EXPIRED" rows="2" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow resize-y" placeholder="{{ _('A sua subscrição expirou.') }}"></textarea>
+                            <textarea id="TERMINATION_MSG_BLOCKED_EXPIRED" rows="2" class="block w-full p-2.5 text-sm rounded-xl border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white transition-shadow resize-y" placeholder="{{ _('Sua assinatura expirou.') }}"></textarea>
                         </div>
 
                         <!-- Teste Terminado -->

@@ -17,8 +17,8 @@ from requests.adapters import HTTPAdapter
 from urllib.parse import urlparse, parse_qs, urljoin, urlunparse
 
 # Importa os gestores para aceder às configurações e tokens de forma segura
-from ..extensions import plex_manager, tautulli_manager, limiter
-from ..utils.url_safety import is_plex_tv_host, match_domain, normalize_host
+from ..extensions import media_server, stats_manager, limiter
+from ..utils.url_safety import match_domain, normalize_host
 
 logger = logging.getLogger(__name__)
 image_bp = Blueprint('image', __name__)
@@ -135,17 +135,18 @@ def _extra_allowed_hosts() -> Tuple[str, ...]:
 
 def _configured_endpoints() -> Tuple[Tuple[str, Optional[int]], ...]:
     """
-    Hosts do próprio Plex/Tautulli, tal como configurados no painel.
+    Hosts do próprio servidor de média e do Tautulli, tal como configurados no
+    painel.
 
-    São destinos legítimos do proxy (o Plex serve as capas a partir do endereço
-    onde está instalado), por isso entram na allowlist em tempo de execução em
-    vez de ficarem escritos no código.
+    São destinos legítimos do proxy (o servidor serve as capas a partir do
+    endereço onde está instalado), por isso entram na allowlist em tempo de
+    execução em vez de ficarem escritos no código.
     """
     endpoints = []
 
     for base_url in (
-        getattr(getattr(plex_manager, 'plex', None), '_baseurl', None) if plex_manager else None,
-        getattr(getattr(tautulli_manager, 'api_client', None), 'base_url', None) if tautulli_manager else None,
+        media_server.get_base_url() if media_server else None,
+        getattr(getattr(stats_manager, 'api_client', None), 'base_url', None) if stats_manager else None,
     ):
         if not base_url:
             continue
@@ -371,29 +372,11 @@ def build_final_url(source: str, image_path: str) -> Tuple[Optional[str], dict]:
     final_url = None
     params = {}
     
-    if source == 'plex':
-        if plex_manager and plex_manager.plex:
-            final_url = plex_manager.plex.url(image_path, includeToken=False)
-            params['X-Plex-Token'] = plex_manager.plex._token
-            
-    elif source == 'plex_account':
-         if plex_manager and plex_manager.account:
-            # FIX DE SEGURANÇA: Obriga as imagens a serem relativas a plex.tv
-            if image_path.startswith('http://') or image_path.startswith('https://'):
-                parsed = urlparse(image_path)
-                # `'plex.tv' in parsed.netloc` aceitava 'plex.tv.atacante.com' e
-                # entregava-lhe o token da conta Plex.
-                if is_plex_tv_host(parsed.hostname):
-                    image_path = parsed.path + ("?" + parsed.query if parsed.query else "")
-                else:
-                    raise ValueError("URL absoluto inválido para o prefixo plex_account.")
-            
-            if not image_path.startswith('/'):
-                image_path = '/' + image_path
-                
-            final_url = f"https://plex.tv{image_path}"
-            params['X-Plex-Token'] = plex_manager.account._token
-            
+    # As fontes do servidor de média são autorizadas pelo próprio backend: o
+    # proxy não sabe (nem deve saber) que credencial é injetada nem onde.
+    if media_server and source in getattr(media_server, 'IMAGE_SOURCES', ()):
+        final_url, params = media_server.authorize_image_url(source, image_path)
+
     elif source == 'url':
         # FIX DE SEGURANÇA (SSRF): o URL é reconstruído a partir da allowlist de
         # domínios do servidor. O pedido escolhe o destino de uma lista fechada,
@@ -401,12 +384,16 @@ def build_final_url(source: str, image_path: str) -> Tuple[Optional[str], dict]:
         final_url = build_authorized_image_url(image_path)
         
     elif source == 'tautulli':
-        # Protege contra Tautulli não configurado/carregado no boot
-        if tautulli_manager and getattr(tautulli_manager, 'api_client', None) and tautulli_manager.api_client.is_configured:
+        # Protege contra Tautulli não configurado/carregado no boot — e contra
+        # uma fonte de estatísticas que não é o Tautulli: num painel Jellyfin
+        # ela não tem URL nem chave, e nenhuma imagem devia chegar aqui com
+        # este prefixo (quem o escolhe é a própria fonte, em `image_payload`).
+        cliente = getattr(stats_manager, 'api_client', None) if stats_manager else None
+        if cliente is not None and getattr(cliente, 'is_configured', False) and getattr(cliente, 'base_url', None):
             parsed_path = urlparse(image_path)
             query_params = parse_qs(parsed_path.query)
-            final_url = f"{tautulli_manager.api_client.base_url}/api/v2"
-            params['apikey'] = tautulli_manager.api_client.api_key
+            final_url = f"{cliente.base_url}/api/v2"
+            params['apikey'] = cliente.api_key
             params['cmd'] = 'pms_image_proxy'
             for key, values in query_params.items():
                 params[key] = values[0]

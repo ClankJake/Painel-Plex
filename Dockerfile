@@ -7,17 +7,27 @@ FROM node:20-bookworm-slim AS frontend-builder
 WORKDIR /build
 
 # Copia os ficheiros de definição de dependências e configuração do frontend
-COPY package.json ./
+#
+# ⚠️ O `package-lock.json` vem JUNTO de propósito. Sem ele, o `npm install`
+# resolvia de fresco a cada build: a imagem podia sair com versões diferentes
+# das de ontem sem que nada mudasse no repositório — e foi por isso que ninguém
+# reparou que o lockfile versionado estava inutilizável (os hashes eram de
+# tarballs re-empacotados por um espelho, e o registo público recusava-os).
+COPY package.json package-lock.json ./
 COPY tailwind.config.js .
 
-# Instala as dependências de frontend
-RUN npm install
+# `npm ci` e não `npm install`: instala EXATAMENTE o que o lockfile fixa e
+# recusa-se a continuar se ele estiver dessincronizado do package.json. Um build
+# que falha alto é melhor do que uma imagem que ninguém sabe do que é feita.
+RUN npm ci
 
 # Copia o código-fonte da aplicação que contém as classes do Tailwind
 COPY app ./app
 
-# Executa o build do CSS, colocando o resultado no diretório 'dist'
-RUN npm run build:css
+# Gera o CSS e copia as bibliotecas de terceiros para 'dist'.
+# É o mesmo comando que se corre em desenvolvimento: os caminhos das
+# bibliotecas ficam só no package.json, e não repetidos aqui.
+RUN npm run build
 
 
 # --- Estágio 2: Aplicação Python ---
@@ -90,19 +100,75 @@ COPY migrations ./migrations
 COPY run.py .
 COPY babel.cfg .
 
-# Copia os assets construídos e as dependências do estágio de frontend para o diretório final correto
-COPY --from=frontend-builder /build/app/static/dist/output.css ./app/static/dist/output.css
-COPY --from=frontend-builder /build/node_modules/chart.js/dist/chart.umd.js ./app/static/dist/chart.umd.js
-COPY --from=frontend-builder /build/node_modules/chart.js/dist/chart.umd.js.map ./app/static/dist/chart.umd.js.map
-COPY --from=frontend-builder /build/node_modules/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js ./app/static/dist/chartjs-adapter-date-fns.bundle.min.js
-COPY --from=frontend-builder /build/node_modules/socket.io-client/dist/socket.io.min.js ./app/static/dist/socket.io.min.js
-COPY --from=frontend-builder /build/node_modules/socket.io-client/dist/socket.io.min.js.map ./app/static/dist/socket.io.min.js.map
+# Copia os assets construídos do estágio de frontend.
+# 🐛 Estas eram seis linhas, a repetir os caminhos das bibliotecas que o
+# package.json também precisava de saber. As duas listas divergiram: o
+# Docker copiava as bibliotecas, o desenvolvimento local não, e quem corria
+# o painel fora do contentor tinha 'io is not defined' e 'Chart is not
+# defined' no navegador. Agora quem sabe os caminhos é só o package.json.
+COPY --from=frontend-builder /build/app/static/dist ./app/static/dist
 
 
 # Expor a Porta: Informa ao Docker que a aplicação irá escutar na porta definida pela variável de ambiente.
 EXPOSE ${APP_PORT}
 
-# Comando de Execução: Executa a migração da base de dados e depois inicia o Gunicorn.
-# O Gunicorn agora usa a variável de ambiente $APP_PORT para definir a porta de escuta.
-# ADICIONADO: --preload flag para inicializar a app antes de fazer fork dos workers.
-CMD ["sh", "-c", "flask db upgrade && gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --worker-connections 1000 --timeout 120 --preload --bind 0.0.0.0:${APP_PORT} run:app"]
+# Comando de Execução: aplica as migrações e sobe o Gunicorn na porta $APP_PORT.
+#
+# 🐛 **O `--preload` estava aqui e era a causa de dois erros de uma vez.** Com ele,
+# o `create_app()` corre no processo MESTRE e os workers são um `fork` dessa
+# memória — o que quer dizer que a aplicação é lida UMA vez, no arranque do
+# contentor, e nunca mais.
+#
+# O painel conta com o contrário. Trocar de servidor de média obriga a reiniciar
+# (os blueprints guardam a referência ao backend POR VALOR), e a forma de o
+# fazer é o processo pedir a própria morte: `_agendar_reinicio()` manda um
+# SIGTERM a si mesmo e conta com o supervisor para o levantar de novo. Só que
+# quem morre é o WORKER, e o mestre volta a fazer `fork` da memória PRÉ-CARREGADA
+# — com o config antigo lá dentro. Depois de escolher o Jellyfin no assistente, a
+# página de login continuava a ser a do Plex, e continuaria a sê-lo até alguém
+# reiniciar o contentor à mão.
+#
+# O segundo erro vinha do mesmo `fork`: o Flask-Limiter arranca um
+# `threading.Timer` no construtor do armazenamento em memória, e sob gevent isso
+# é um greenlet. Pré-carregar cria-o no MESTRE; o worker herda-o já marcado como
+# "stopped" pelo `threading._after_fork` (que o tira do `_active`) e, quando ele
+# acorda, o `Thread._bootstrap` faz `del _active[get_ident()]` sobre uma chave
+# que já não existe:
+#
+#     KeyError: 271255370948160
+#     <Greenlet ...: <bound method Thread._bootstrap of
+#      <Timer(Thread-1, stopped ...)>>> failed with KeyError
+#
+# O `Thread-1` é a assinatura: é o PRIMEIRO thread do processo, criado antes do
+# `fork`. Sem `--preload` não há nada em voo para herdar.
+#
+# E não se perde nada: o `--preload` serve para poupar memória entre VÁRIOS
+# workers, e aqui há **um** de propósito (gevent + SocketIO sem `message_queue`).
+# Em troca, o agendador passa a correr no worker — que é onde o resto do painel
+# vive — em vez de correr no mestre, onde ficava por causa do `fork` (as threads
+# não sobrevivem a um, por isso o worker ficava com um `scheduler.running` a
+# dizer que sim sobre uma thread que já não existia).
+#
+# O `--graceful-timeout` é a outra metade do reinício. Por omissão são 30
+# segundos, e o worker gasta-os todos SEMPRE que há um separador aberto: ele só
+# sai quando não houver ligações a ser servidas, e uma ligação keep-alive (ou um
+# websocket do dashboard) nunca fecha sozinha. O assistente dizia "aguarde" e o
+# painel demorava meio minuto a voltar.
+#
+# 🔇 O `--no-control-socket` cala um ERROR que não era nosso e não tinha
+# conserto de dentro do painel:
+#
+#     [ERROR] Control server error: [Errno 13] Permission denied: '/.gunicorn'
+#
+# A partir da 25.1.0 o gunicorn abre por omissão um socket de gestão para a
+# ferramenta `gunicornc`, em `$XDG_RUNTIME_DIR` ou, faltando esse,
+# `$HOME/.gunicorn/`. Num contentor lançado com `--user` (o PUID/PGID desta
+# imagem) o Docker põe `HOME=/`, e criar `/.gunicorn` sem ser root é proibido —
+# por isso a linha repete-se a cada worker que nasce. O painel nunca usa o
+# `gunicornc`: reinicia-se por SIGTERM. Um socket de gestão que não se usa é
+# ruído no log e superfície a mais.
+#
+# ⚠️ A flag obriga a `gunicorn>=25.1.0` no requirements.txt: nas versões
+# anteriores ela não existe e o gunicorn recusa-se a arrancar. Há um teste que
+# prende as duas pontas (`tests/test_reinicio_do_painel.py`).
+CMD ["sh", "-c", "flask db upgrade && gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --worker-connections 1000 --timeout 120 --graceful-timeout 10 --no-control-socket --bind 0.0.0.0:${APP_PORT} run:app"]

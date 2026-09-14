@@ -46,12 +46,27 @@ def load_or_create_config():
             "LAST_NOTIFICATION_CHECK": "1970-01-01T00:00:00",
             "ADMIN_USER": "",
             "ADMIN_USER_ID": "",
+            # Qual o servidor de média que este painel administra. Ver
+            # app/services/media_server/factory.py para os valores suportados.
+            "MEDIA_SERVER_TYPE": "plex",
             "PLEX_URL": "",
             "PLEX_TOKEN": "",
+            "JELLYFIN_URL": "",
+            "JELLYFIN_API_KEY": "",
             "TAUTULLI_URL": "",
             "TAUTULLI_API_KEY": "",
             "STREAM_CHECK_INTERVAL_SECONDS": 15,
             "SCREEN_LIMIT_TERMINATION_STRATEGY": "oldest",
+            # Há clientes que recebem a ordem de parar e continuam a reproduzir.
+            # Com isto ativo, o painel passa a usar o meio mais forte que o
+            # servidor oferecer — no Jellyfin, revogar o acesso do aparelho, o
+            # que obriga a pessoa a autenticar-se lá de novo. Fica desligado por
+            # omissão porque é agressivo e não tem volta pelo painel.
+            "FORCE_STREAM_TERMINATION": False,
+            # Reparação de uma vez: marca que já se tirou do servidor o
+            # `MaxActiveSessions` que o painel lá pôs a pensar que era um limite
+            # de telas. Ver `clear_session_limits`.
+            "JELLYFIN_SESSION_LIMIT_CLEARED": False,
             "DAYS_TO_REMOVE_BLOCKED_USER": 0,
             "EXPIRATION_NOTIFICATION_TIME": "09:00",
             "BLOCK_REMOVAL_TIME": "02:00",
@@ -61,24 +76,30 @@ def load_or_create_config():
             "WEBHOOK_AUTHORIZATION_HEADER": "",
             "WEBHOOK_ENABLED": False,
             "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
-            "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
-            "WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi reativada. Novo vencimento: {new_date}. Acesse o servidor: {invite_link}"}',
+            "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A assinatura de {username} foi renovada. Novo vencimento: {new_date}."}',
+            "WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "✅ A assinatura de {username} foi reativada. Novo vencimento: {new_date}. Acesse o servidor: {invite_link}"}',
             "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}',
+            "WEBHOOK_CREDENTIALS_MESSAGE_TEMPLATE": '{"content": "A conta de {username} foi criada novamente no servidor. Usuário: {new_username} — Senha: {new_password}"}',
+            "WEBHOOK_PASSWORD_RESET_MESSAGE_TEMPLATE": '{"content": "{username} pediu para redefinir a senha. Link válido {reset_minutes} min: {reset_link}"}',
             "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}',
             "TELEGRAM_BOT_TOKEN": "",
             "TELEGRAM_CHAT_ID": "", 
             "TELEGRAM_ENABLED": False,
             "TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nEste é um lembrete de que sua fatura está com o vencimento próximo.\nVencimento: *{date}*\nValor: *{price}*\nPlano: *{plan_name}*\nAcesso: `{email}`\n\nNa data do vencimento o sistema poderá bloquear o acesso. Para evitar a interrupção, realize o pagamento clicando no botão abaixo:",
-            "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\n\nOlá {name}!\nA sua subscrição foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
-            "TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE": "✅ *Conta Reativada*\n\nOlá {name}!\nA sua subscrição foi renovada e a sua conta reativada com sucesso.\nNovo vencimento: *{new_date}*\n\nPara acessar o servidor, aceite o convite no link abaixo:\n{invite_link}",
-            "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n\n{name}, o seu período de teste terminou.\nPara manter o seu acesso, realize a renovação no botão abaixo:",
+            "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\n\nOlá {name}!\nSua assinatura foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
+            "TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE": "✅ *Conta Reativada*\n\nOlá {name}!\nSua assinatura foi renovada e sua conta reativada com sucesso.\nNovo vencimento: *{new_date}*\n\nPara voltar a acessar, use o link abaixo:\n{invite_link}",
+            "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n\n{name}, seu período de teste terminou.\nPara manter seu acesso, realize a renovação no botão abaixo:",
+            "TELEGRAM_CREDENTIALS_MESSAGE_TEMPLATE": "🔑 *Acesso Restaurado*\n\nOlá {name}!\nSua conta no {server_name} foi criada novamente, por isso a senha mudou.\n\nUsuário: `{new_username}`\nSenha: `{new_password}`\n\nEntre em {invite_link} e troque a senha assim que puder.",
+            "TELEGRAM_PASSWORD_RESET_MESSAGE_TEMPLATE": "🔑 *Redefinir a senha*\n\nOlá {name}!\nVocê pediu para redefinir a senha dsua conta no {server_name}.\n\nAbra este link e escolha uma nova:\n{reset_link}\n\nO link vale {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem — nada muda até alguém abrir o link.",
             "TELEGRAM_BULK_MESSAGE_TEMPLATE": "📢 *Aviso do Servidor*\n\nOlá {name},\n\n{message}",
             "DISCORD_ENABLED": False,
             "DISCORD_WEBHOOK_URL": "",
-            "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
-            "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
-            "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi reativada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para aceitar o convite do Plex]({invite_link})", "color": 65280}]}',
-            "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
+            "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nSeu acesso ao **{server_name}** está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
+            "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nSua assinatura foi renovada com sucesso. Seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
+            "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nSua assinatura foi reativada com sucesso. Seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para voltar a acessar]({invite_link})", "color": 65280}]}',
+            "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nSeu período de teste gratuito terminou. Para continuar com acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
+            "DISCORD_CREDENTIALS_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Acesso Restaurado", "description": "Olá **{username}**! 🔑\\n\\nSua conta no **{server_name}** foi criada novamente, por isso a senha mudou.\\n\\nUsuário: `{new_username}`\\nSenha: `{new_password}`\\n\\nTroque a senha assim que puder.", "color": 3447003}]}',
+            "DISCORD_PASSWORD_RESET_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Redefinir a senha", "description": "Olá **{username}**! 🔑\\n\\nVocê pediu para redefinir a senha dsua conta no **{server_name}**.\\n\\n[Clique aqui para escolher uma nova]({reset_link})\\n\\nO link vale {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem.", "color": 3447003}]}',
             "DISCORD_BULK_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}',
             "DAYS_TO_NOTIFY_EXPIRATION": 2,
             "EFI_ENABLED": False,
@@ -223,6 +244,11 @@ def load_or_create_config():
                     config_was_modified = True
 
             _set_default("ADMIN_USER_ID", "")
+            # Instalações anteriores à camada de servidores de média não têm esta
+            # chave: todas elas são, por definição, instalações Plex.
+            _set_default("MEDIA_SERVER_TYPE", "plex")
+            _set_default("JELLYFIN_URL", "")
+            _set_default("JELLYFIN_API_KEY", "")
             _set_default("INTERNAL_TRIGGER_KEY", secrets.token_hex(32))
             _set_default("APP_BASE_URL", "")
             _set_default("LOG_LEVEL", "INFO")
@@ -232,6 +258,10 @@ def load_or_create_config():
             _set_default("LOG_DEDUP_SECONDS", 60)
             _set_default("STREAM_CHECK_INTERVAL_SECONDS", 15)
             _set_default("SCREEN_LIMIT_TERMINATION_STRATEGY", "oldest")
+            _set_default("FORCE_STREAM_TERMINATION", False)
+            # Numa instalação já existente fica a False de propósito: é
+            # justamente onde a limpeza tem de correr.
+            _set_default("JELLYFIN_SESSION_LIMIT_CLEARED", False)
             _set_default("TERMINATION_MSG_BLOCKED_MANUAL", "O seu acesso ao servidor foi bloqueado pelo administrador.")
             _set_default("TERMINATION_MSG_BLOCKED_EXPIRED", "A sua subscrição para o utilizador {username} expirou. Por favor, renove para continuar.")
             _set_default("TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED", "O seu período de teste para {username} terminou. Renove para continuar.")
@@ -392,25 +422,33 @@ def load_or_create_config():
                 "TELEGRAM_MEDIA_REQUEST_MESSAGE_TEMPLATE": "🍿 *Novo Conteúdo Solicitado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acesse o pedido:*\n{media_url}",
                 "WHATSAPP_MEDIA_REQUEST_MESSAGE_TEMPLATE": "🍿 *Novo Conteúdo Solicitado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acesse o pedido:*\n{media_url}",
                 "DISCORD_MEDIA_REQUEST_MESSAGE_TEMPLATE": '{"embeds": [{"title": "🍿 Novo Conteúdo Solicitado", "description": "**{title}**\\n\\n📝 {overview}", "color": 10181046, "fields": [{"name": "👤 Usuário", "value": "{username}", "inline": true}, {"name": "📊 Status", "value": "{status}", "inline": true}], "url": "{media_url}"}]}',
-                "WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nO seu acesso vence em {days} dia(s), no dia {date}.\nPlano: {plan_name}\nValor: {price}\n\nRenove aqui para não perder o acesso:\n{payment_link}",
-                "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "✅ Renovação confirmada!\n\nOlá {name}, a sua subscrição foi renovada com sucesso.\nNovo vencimento: {new_date}\n\nBom entretenimento!",
-                "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "✅ Conta reativada!\n\nOlá {name}, a sua conta foi reativada.\nNovo vencimento: {new_date}\n\nAceite o convite para voltar a aceder:\n{invite_link}",
-                "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "⌛ O seu período de teste terminou\n\nOlá {name}, esperamos que tenha gostado!\nPara continuar com acesso, faça a sua assinatura aqui:\n{payment_link}",
+                "WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nSeu acesso vence em {days} dia(s), no dia {date}.\nPlano: {plan_name}\nValor: {price}\n\nRenove aqui para não perder o acesso:\n{payment_link}",
+                "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "✅ Renovação confirmada!\n\nOlá {name}, sua assinatura foi renovada com sucesso.\nNovo vencimento: {new_date}\n\nBom entretenimento!",
+                "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "✅ Conta reativada!\n\nOlá {name}, sua conta foi reativada.\nNovo vencimento: {new_date}\n\nUse o link abaixo para voltar a acessar:\n{invite_link}",
+                "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "⌛ Seu período de teste terminou\n\nOlá {name}, esperamos que tenha gostado!\nPara continuar com acesso, faça sua assinatura aqui:\n{payment_link}",
+                "WHATSAPP_CREDENTIALS_MESSAGE_TEMPLATE": "🔑 Acesso restaurado\n\nOlá {name}, sua conta no {server_name} foi criada novamente, por isso a senha mudou.\n\nUsuário: {new_username}\nSenha: {new_password}\n\nEntre em {invite_link} e troque a senha assim que puder.",
+                "WHATSAPP_PASSWORD_RESET_MESSAGE_TEMPLATE": "🔑 Redefinir a senha\n\nOlá {name}, você pediu para redefinir a senha dsua conta no {server_name}.\n\nAbra este link e escolha uma nova:\n{reset_link}\n\nVale {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem.",
                 "WHATSAPP_BULK_MESSAGE_TEMPLATE": "📢 Aviso do servidor\n\nOlá {name},\n\n{message}",
                 "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
-                "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
-                "WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi reativada. Novo vencimento: {new_date}. Acesse o servidor: {invite_link}"}',
+                "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A assinatura de {username} foi renovada. Novo vencimento: {new_date}."}',
+                "WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "✅ A assinatura de {username} foi reativada. Novo vencimento: {new_date}. Acesse o servidor: {invite_link}"}',
                 "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}',
+                "WEBHOOK_CREDENTIALS_MESSAGE_TEMPLATE": '{"content": "A conta de {username} foi criada novamente no servidor. Usuário: {new_username} — Senha: {new_password}"}',
+                "WEBHOOK_PASSWORD_RESET_MESSAGE_TEMPLATE": '{"content": "{username} pediu para redefinir a senha. Link válido {reset_minutes} min: {reset_link}"}',
                 "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}',
                 "TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nEste é um lembrete de que sua fatura está com o vencimento próximo.\nVencimento: *{date}*\nValor: *{price}*\nPlano: *{plan_name}*\nAcesso: `{email}`\n\nNa data do vencimento o sistema poderá bloquear o acesso. Para evitar a interrupção, realize o pagamento clicando no botão abaixo:",
-                "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\n\nOlá {name}!\nA sua subscrição foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
-                "TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE": "✅ *Conta Reativada*\n\nOlá {name}!\nA sua subscrição foi renovada e a sua conta reativada com sucesso.\nNovo vencimento: *{new_date}*\n\nPara acessar o servidor, aceite o convite no link abaixo:\n{invite_link}",
-                "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n\n{name}, o seu período de teste terminou.\nPara manter o seu acesso, realize a renovação no botão abaixo:",
+                "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\n\nOlá {name}!\nSua assinatura foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
+                "TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE": "✅ *Conta Reativada*\n\nOlá {name}!\nSua assinatura foi renovada e sua conta reativada com sucesso.\nNovo vencimento: *{new_date}*\n\nPara voltar a acessar, use o link abaixo:\n{invite_link}",
+                "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n\n{name}, seu período de teste terminou.\nPara manter seu acesso, realize a renovação no botão abaixo:",
+                "TELEGRAM_CREDENTIALS_MESSAGE_TEMPLATE": "🔑 *Acesso Restaurado*\n\nOlá {name}!\nSua conta no {server_name} foi criada novamente, por isso a senha mudou.\n\nUsuário: `{new_username}`\nSenha: `{new_password}`\n\nEntre em {invite_link} e troque a senha assim que puder.",
+                "TELEGRAM_PASSWORD_RESET_MESSAGE_TEMPLATE": "🔑 *Redefinir a senha*\n\nOlá {name}!\nVocê pediu para redefinir a senha dsua conta no {server_name}.\n\nAbra este link e escolha uma nova:\n{reset_link}\n\nO link vale {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem — nada muda até alguém abrir o link.",
                 "TELEGRAM_BULK_MESSAGE_TEMPLATE": "📢 *Aviso do Servidor*\n\nOlá {name},\n\n{message}",
-                "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
-                "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
-                "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi reativada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para aceitar o convite do Plex]({invite_link})", "color": 65280}]}',
-                "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
+                "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nSeu acesso ao **{server_name}** está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
+                "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nSua assinatura foi renovada com sucesso. Seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
+                "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nSua assinatura foi reativada com sucesso. Seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para voltar a acessar]({invite_link})", "color": 65280}]}',
+                "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nSeu período de teste gratuito terminou. Para continuar com acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
+                "DISCORD_CREDENTIALS_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Acesso Restaurado", "description": "Olá **{username}**! 🔑\\n\\nSua conta no **{server_name}** foi criada novamente, por isso a senha mudou.\\n\\nUsuário: `{new_username}`\\nSenha: `{new_password}`\\n\\nTroque a senha assim que puder.", "color": 3447003}]}',
+                "DISCORD_PASSWORD_RESET_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Redefinir a senha", "description": "Olá **{username}**! 🔑\\n\\nVocê pediu para redefinir a senha dsua conta no **{server_name}**.\\n\\n[Clique aqui para escolher uma nova]({reset_link})\\n\\nO link vale {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem.", "color": 3447003}]}',
                 "DISCORD_BULK_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}',
             }
             for key, default_value in message_template_defaults.items():

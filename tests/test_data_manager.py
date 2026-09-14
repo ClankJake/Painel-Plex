@@ -46,12 +46,12 @@ class TestPerfis:
     def test_procura_por_username_ignora_maiusculas(self, data_manager):
         data_manager.set_user_profile(1, {"username": "Ana"})
 
-        assert data_manager.get_user_profile_by_username("ana")["plex_user_id"] == 1
+        assert data_manager.get_user_profile_by_username("ana")["media_user_id"] == "1"
 
     def test_procura_por_email_ignora_maiusculas_e_espacos(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana", "email": "Ana@Exemplo.com"})
 
-        assert data_manager.get_user_profile_by_email("  ana@exemplo.com ")["plex_user_id"] == 1
+        assert data_manager.get_user_profile_by_email("  ana@exemplo.com ")["media_user_id"] == "1"
 
     def test_procura_por_email_vazio(self, data_manager):
         assert data_manager.get_user_profile_by_email(None) is None
@@ -60,8 +60,8 @@ class TestPerfis:
         # A coluna do perfil chama-se 'telegram_user' (não 'telegram_id').
         data_manager.set_user_profile(1, {"username": "ana", "telegram_user": "123456"})
 
-        assert data_manager.get_user_profile_by_telegram(123456)["plex_user_id"] == 1
-        assert data_manager.get_user_profile_by_telegram(" 123456 ")["plex_user_id"] == 1
+        assert data_manager.get_user_profile_by_telegram(123456)["media_user_id"] == "1"
+        assert data_manager.get_user_profile_by_telegram(" 123456 ")["media_user_id"] == "1"
 
     @pytest.mark.parametrize("valor", [None, "", "   "])
     def test_procura_por_telegram_vazio(self, data_manager, valor):
@@ -70,7 +70,7 @@ class TestPerfis:
     def test_procura_por_codigo_de_indicacao(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana", "referral_code": "ABCD2345"})
 
-        assert data_manager.get_user_profile_by_referral_code("abcd2345")["plex_user_id"] == 1
+        assert data_manager.get_user_profile_by_referral_code("abcd2345")["media_user_id"] == "1"
         assert data_manager.get_user_profile_by_referral_code("ZZZZ") is None
 
     def test_lista_de_indicados(self, data_manager):
@@ -158,8 +158,8 @@ class TestPerfis:
         data_manager.set_user_profile(1, {"username": "ana", "expiration_date": iso(10)})
         data_manager.set_user_profile(2, {"username": "bruno", "trial_end_date": iso(1)})
 
-        assert list(data_manager.get_all_user_expirations()) == [1]
-        assert list(data_manager.get_all_trial_users()) == [2]
+        assert list(data_manager.get_all_user_expirations()) == ["1"]
+        assert list(data_manager.get_all_trial_users()) == ["2"]
 
 
 class TestCupoes:
@@ -297,7 +297,7 @@ class TestBloqueados:
 
         assert bloqueado["block_reason"] == "expired"
         assert data_manager.get_blocked_user(1) is not None
-        assert list(data_manager.get_blocked_users_dict()) == [1]
+        assert list(data_manager.get_blocked_users_dict()) == ["1"]
 
         assert data_manager.remove_blocked_user(1) is True
         assert data_manager.get_blocked_user(1) is None
@@ -419,11 +419,11 @@ class TestPagamentos:
     def test_limpeza_apaga_apenas_pendentes_antigas(self, db_session, data_manager):
         data_manager.set_user_profile(1, {"username": "ana"})
         db_session.add_all([
-            PixPayment(txid="antiga", user_plex_id=1, username="ana", value=10.0,
+            PixPayment(txid="antiga", media_user_id=1, username="ana", value=10.0,
                        status="ATIVA", created_at=iso(-10)),
-            PixPayment(txid="recente", user_plex_id=1, username="ana", value=10.0,
+            PixPayment(txid="recente", media_user_id=1, username="ana", value=10.0,
                        status="ATIVA", created_at=iso(-1)),
-            PixPayment(txid="paga", user_plex_id=1, username="ana", value=10.0,
+            PixPayment(txid="paga", media_user_id=1, username="ana", value=10.0,
                        status="CONCLUIDA", created_at=iso(-10)),
         ])
         db_session.commit()
@@ -448,18 +448,18 @@ class TestPagamentos:
 class TestNotificacoes:
     def test_criar_e_contar_por_utilizador(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana"})
-        data_manager.create_notification("Bem-vindo", user_plex_id=1)
+        data_manager.create_notification("Bem-vindo", media_user_id=1)
         data_manager.create_notification("Aviso global")
 
         assert data_manager.get_unread_notification_count(1) == 1
-        # Sem user_plex_id ficam as notificações do administrador.
+        # Sem media_user_id ficam as notificações do administrador.
         assert data_manager.get_unread_notification_count() == 1
         assert data_manager.get_notifications(1)[0]["message"] == "Bem-vindo"
 
     def test_marcar_todas_como_lidas(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana"})
-        data_manager.create_notification("A", user_plex_id=1)
-        data_manager.create_notification("B", user_plex_id=1)
+        data_manager.create_notification("A", media_user_id=1)
+        data_manager.create_notification("B", media_user_id=1)
 
         assert data_manager.mark_all_as_read(1) == 2
         assert data_manager.get_unread_notification_count(1) == 0
@@ -468,7 +468,7 @@ class TestNotificacoes:
 
     def test_apagar_todas(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana"})
-        data_manager.create_notification("A", user_plex_id=1)
+        data_manager.create_notification("A", media_user_id=1)
 
         assert data_manager.delete_all_notifications(1) == 1
         assert data_manager.get_notifications(1, include_read=True) == []
@@ -476,7 +476,7 @@ class TestNotificacoes:
     def test_limite_de_resultados(self, data_manager):
         data_manager.set_user_profile(1, {"username": "ana"})
         for i in range(5):
-            data_manager.create_notification(f"Aviso {i}", user_plex_id=1)
+            data_manager.create_notification(f"Aviso {i}", media_user_id=1)
 
         assert len(data_manager.get_notifications(1, limit=3)) == 3
 
@@ -505,6 +505,43 @@ class TestAuditoriaDeCortes:
 
         assert data_manager.clear_all_stream_termination_logs() == 2
         assert data_manager.get_stream_termination_logs() == []
+
+    def test_a_marca_de_agua_e_o_ultimo_corte_daquela_razao(self, data_manager):
+        """Quem importa cortes do servidor precisa de saber onde ficou.
+
+        Sem isto, cada leitura do log do Jellyfin voltava a gravar o que já lá
+        estava — e a auditoria enchia-se de repetições do mesmo bloqueio.
+        """
+        data_manager.set_user_profile(1, {"username": "ana"})
+        ontem = datetime.now(timezone.utc) - timedelta(days=1)
+
+        assert data_manager.get_last_termination_timestamp('plugin_limit_blocked') is None
+
+        data_manager.log_stream_termination(1, "ana", "Matrix", "Android", "limit_exceeded")
+        # A razão importa: a marca de água de quem importa não pode andar para
+        # a frente por causa de um corte que o próprio painel deu.
+        assert data_manager.get_last_termination_timestamp('plugin_limit_blocked') is None
+
+        data_manager.log_stream_termination(1, "ana", "Duna", "", "plugin_limit_blocked",
+                                            timestamp=ontem)
+        marca = data_manager.get_last_termination_timestamp('plugin_limit_blocked')
+
+        # ⚠️ Volta sem fuso (o SQLite não o guarda), mas é sempre UTC: quem a
+        # compara com uma hora com fuso tem de a marcar como tal.
+        assert marca is not None and marca.tzinfo is None
+        assert abs((marca.replace(tzinfo=timezone.utc) - ontem).total_seconds()) < 1
+
+    def test_a_hora_do_corte_pode_ser_a_de_quando_aconteceu(self, data_manager):
+        # Os cortes do plugin são lidos do log minutos depois: gravá-los com a
+        # hora da LEITURA punha-os todos no mesmo instante, fora de ordem.
+        data_manager.set_user_profile(1, {"username": "ana"})
+        quando = datetime.now(timezone.utc) - timedelta(hours=3)
+
+        data_manager.log_stream_termination(1, "ana", "Duna", "", "plugin_limit_blocked",
+                                            timestamp=quando)
+
+        guardado = data_manager.get_stream_termination_logs()[0]["timestamp"]
+        assert str(quando.replace(tzinfo=None))[:19] in str(guardado)
 
 
 class TestConquistas:

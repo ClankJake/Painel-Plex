@@ -64,10 +64,21 @@
     .platform-atv, .platform-tvos { background-color: #a2aaad; background-image: url(/static/images/platforms/atv.svg); }
     .platform-chrome { background-color: #db4437; background-image: url(/static/images/platforms/chrome.svg); }
     .platform-chromecast { background-color: #4285f4; background-image: url(/static/images/platforms/chromecast.svg); }
+    /* 'default.svg' é o LOGÓTIPO DO PLEX. Como ícone de recurso serve num
+       painel ligado ao Plex; num ligado ao Jellyfin era a marca errada em
+       todos os aparelhos que não se conseguem classificar. A comparação
+       aqui é pela MARCA (é um logótipo), não por uma funcionalidade. */
+    {% if media_server.type == 'jellyfin' %}
+    .platform-default { background-color: #00a4dc; background-image: url(/static/images/platforms/jellyfin.svg); }
+    {% else %}
     .platform-default { background-color: #e5a00d; background-image: url(/static/images/platforms/default.svg); }
+    {% endif %}
     .platform-dlna { background-color: #4ba32f; background-image: url(/static/images/platforms/dlna.svg); }
     .platform-firefox { background-color: #ff7139; background-image: url(/static/images/platforms/firefox.svg); }
     .platform-gtv { background-color: #008bcf; background-image: url(/static/images/platforms/gtv.svg); }
+    /* O Jellyfin não tinha ícone próprio: qualquer cliente dele caía no
+       .platform-default, que é o LOGÓTIPO DO PLEX. */
+    .platform-jellyfin { background-color: #00a4dc; background-image: url(/static/images/platforms/jellyfin.svg); }
     .platform-ie { background-color: #18bcef; background-image: url(/static/images/platforms/ie.svg); }
     .platform-ios { background-color: #a2aaad; background-image: url(/static/images/platforms/ios.svg); }
     .platform-kodi { background-color: #30aada; background-image: url(/static/images/platforms/kodi.svg); }
@@ -132,13 +143,20 @@
                     <h3 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
                         <span id="user-username"></span>
                         <span id="user-level-badge" class="hidden text-lg align-middle cursor-default" title=""></span>
+                        <!-- O dono do servidor não tem plano nem vencimento: dizê-lo
+                             é melhor do que deixar campos vazios à espera de explicação. -->
+                        <span id="user-admin-badge" class="hidden items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800/60">
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M2.5 5.5l2.6 2.2L8 4l2.9 3.7 2.6-2.2.9 8.5H1.6l.9-8.5z"/></svg>
+                            {{ _('Administrador') }}
+                        </span>
                     </h3>
                     <p class="text-sm text-gray-500 dark:text-gray-400 mb-2 sm:mb-4" id="user-email"></p>
                     
                     <div id="user-dates" class="text-sm text-gray-600 dark:text-gray-300 space-y-1">
-                        <p>{{ _('Membro desde:') }} <span id="user-join-date" class="font-semibold text-gray-900 dark:text-white"></span></p>
-                        <p>{{ _('Limite de Telas:') }} <span id="user-screen-limit" class="font-semibold text-gray-900 dark:text-white"></span></p>
+                        <p id="user-join-date-container">{{ _('Membro desde:') }} <span id="user-join-date" class="font-semibold text-gray-900 dark:text-white"></span></p>
+                        <p id="user-screen-limit-container">{{ _('Limite de Telas:') }} <span id="user-screen-limit" class="font-semibold text-gray-900 dark:text-white"></span></p>
                         <p id="user-expiration-container" class="hidden"></p>
+                        <p id="user-admin-note" class="hidden text-gray-500 dark:text-gray-400">{{ _('Dono do servidor — sem assinatura, sem vencimento e sem limite de telas.') }}</p>
                     </div>
                 </div>
             </div>
@@ -378,9 +396,64 @@
                         <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
                         {{ _('Dispositivos Vinculados') }}
                     </h3>
-                    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('Registro de aplicações e dispositivos que acederam ao Plex com a sua conta recentemente.') }}</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('Registro de aplicações e dispositivos associados à sua conta no %(servidor)s.', servidor=media_server.name) }}</p>
                     <div id="device-list-container" class="space-y-3 max-h-[500px] overflow-y-auto pr-2"></div>
                 </div>
+
+                {#  ⚠️ Só onde as contas são LOCAIS. Num painel Plex a palavra-passe
+                    vive no plex.tv — o painel nunca a vê (é para isso que o fluxo
+                    de PIN existe) e não a pode mudar. Uma capacidade em falta
+                    esconde a funcionalidade, nunca a mostra partida. #}
+                {% if media_server.capabilities.cria_contas %}
+                <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                        {{ _('Senha') }}
+                    </h3>
+                    {#  Não há duas palavras-passe: é a MESMA que abre o painel e o
+                        servidor. Dizê-lo evita a pergunta seguinte. #}
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                        {{ _('É a mesma senha que você usa para entrar no %(servidor)s e neste painel — alterar aqui altera nos dois.', servidor=media_server.name) }}
+                    </p>
+
+                    <form id="change-password-form" class="space-y-4 max-w-md" novalidate>
+                        <div>
+                            <label for="current-password" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Senha atual') }}</label>
+                            <input type="password" id="current-password" required autocomplete="current-password"
+                                   maxlength="256" spellcheck="false"
+                                   class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-900 dark:border-gray-600 dark:text-white shadow-sm">
+                        </div>
+                        <div>
+                            <label for="new-password" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Nova senha') }}</label>
+                            <div class="relative">
+                                <input type="password" id="new-password" required autocomplete="new-password"
+                                       minlength="6" maxlength="256" spellcheck="false"
+                                       class="block w-full px-3 py-2.5 pr-11 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-900 dark:border-gray-600 dark:text-white shadow-sm">
+                                <button type="button" id="toggle-new-password" tabindex="-1"
+                                        aria-label="{{ _('Mostrar a senha') }}" aria-pressed="false"
+                                        class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                    <svg id="new-icon-eye" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                    <svg id="new-icon-eye-off" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.477 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.477 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="confirm-password" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Confirme a nova senha') }}</label>
+                            <input type="password" id="confirm-password" required autocomplete="new-password"
+                                   minlength="6" maxlength="256" spellcheck="false"
+                                   class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-900 dark:border-gray-600 dark:text-white shadow-sm">
+                        </div>
+
+                        <button type="submit" id="change-password-submit"
+                                class="w-full sm:w-auto inline-flex justify-center items-center py-2.5 px-5 text-sm font-semibold rounded-xl text-white bg-purple-600 hover:bg-purple-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
+                            <svg id="change-password-spinner" class="w-4 h-4 mr-2 animate-spin hidden" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                            <span id="change-password-text">{{ _('Alterar a senha') }}</span>
+                        </button>
+
+                        <p id="change-password-result" class="text-sm min-h-[1.25rem]" role="alert" aria-live="polite"></p>
+                    </form>
+                </div>
+                {% endif %}
             </div>
 
             <!-- ========================================== -->
@@ -429,9 +502,17 @@
         data-update-account-profile-url="{{ url_for('users_api.update_account_profile') }}"
         data-get-account-devices-url="{{ url_for('users_api.get_account_devices') }}"
         data-update-privacy-url="{{ url_for('users_api.update_privacy_settings') }}"
+        data-change-password-url="{{ url_for('users_api.alterar_palavra_passe') }}"
+        data-i18n-password-saving="{{ _('Alterando...') }}"
+        data-i18n-password-save="{{ _('Alterar a senha') }}"
+        data-i18n-password-too-short="{{ _('A nova senha precisa ter pelo menos 6 caracteres.') }}"
+        data-i18n-password-mismatch="{{ _('As duas senhas novas não são iguais.') }}"
+        data-i18n-password-required="{{ _('Preencha todos os campos.') }}"
+        data-i18n-show-password="{{ _('Mostrar a senha') }}"
+        data-i18n-hide-password="{{ _('Esconder a senha') }}"
         data-get-payment-options-url="{{ url_for('payments_api.get_payment_options') }}"
         data-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
-        data-get-payment-history-url="{{ url_for('users_api.get_user_payments_history', plex_user_id=current_user.id) }}"
+        data-get-payment-history-url="{{ url_for('users_api.get_user_payments_history', media_user_id=current_user.id) }}"
         data-get-watch-history-url="{{ url_for('stats_api.get_user_watch_history_route') }}"
         data-validate-coupon-url="{{ url_for('payments_api.validate_coupon_route') }}"
         data-login-url="{{ url_for('auth.login') }}"
@@ -451,15 +532,15 @@
         data-i18n-polling-error="{{ _('A tentar conexão ao banco:') }}"
         data-i18n-code-copied="{{ _('Chave PIX Copiada!') }}"
         data-i18n-test-ended="{{ _('O Seu Período de Teste Terminou') }}"
-        data-i18n-test-ended-message="{{ _('Esperamos que tenha gostado! Para continuar a aceder ao servidor, por favor ative uma assinatura abaixo.') }}"
+        data-i18n-test-ended-message="{{ _('Esperamos que tenha gostado! Para continuar acessando o servidor, por favor ative uma assinatura abaixo.') }}"
         data-i18n-access-blocked="{{ _('Acesso Interrompido') }}"
-        data-i18n-access-blocked-message="{{ _('A sua conta encontra-se desativada por decisão administrativa.') }}"
+        data-i18n-access-blocked-message="{{ _('Sua conta encontra-se desativada por decisão administrativa.') }}"
         data-i18n-access-blocked-contact="{{ _('Por favor, contacte o administrador para mais informações.') }}"
         data-i18n-expired-signature="{{ _('Assinatura Inativa') }}"
         data-i18n-expired-signature-message="{{ _('O seu tempo de acesso terminou. Renove abaixo para voltar a assistir instantaneamente.') }}"
         data-i18n-expiring-access="{{ _('Atenção ao Vencimento') }}"
-        data-i18n-expiring-access-message="{{ _('O seu acesso expira em {days} dias ({date}).') }}"
-        data-i18n-expires-today-message="{{ _('A sua assinatura expira HOJE ({date}). Renove já para evitar interrupções.') }}"
+        data-i18n-expiring-access-message="{{ _('Seu acesso expira em {days} dias ({date}).') }}"
+        data-i18n-expires-today-message="{{ _('Sua assinatura expira HOJE ({date}). Renove já para evitar interrupções.') }}"
         data-i18n-no-shared-library="{{ _('Ainda não tem acesso a nenhuma biblioteca.') }}"
         data-i18n-expires-on="{{ _('Expira a:') }}"
         data-i18n-screen-singular="{{ _('Tela') }}"
@@ -476,7 +557,7 @@
         data-i18n-hours-ago="{{ _('{count} horas') }}"
         data-i18n-minutes-ago="{{ _('{count} min') }}"
         data-i18n-just-now="{{ _('Agora') }}"
-        data-i18n-no-devices-found="{{ _('Não existem aparelhos no seu histórico recente.') }}"
+        data-i18n-no-devices-found="{{ _('Não há dispositivos no seu histórico recente.') }}"
         data-i18n-saving="{{ _('Salvando...') }}"
         data-i18n-save-details="{{ _('Salvar Alterações') }}"
         data-i18n-coupon-applied-success="{{ _('Desconto Aplicado!') }}"
@@ -486,9 +567,9 @@
         data-i18n-next="{{ _('Próxima') }}"
         data-i18n-page-of="{{ _('Página {currentPage} / {totalPages}') }}"
         data-i18n-progress="{{ _('Progresso') }}"
-        data-i18n-player="{{ _('Aparelho') }}"
+        data-i18n-player="{{ _('Dispositivo') }}"
         data-i18n-title="{{ _('Filme / Série') }}"
-        data-i18n-loading-requests="{{ _('Verificando a base de dados central...') }}"
+        data-i18n-loading-requests="{{ _('Verificando o banco de dados central...') }}"
         data-i18n-no-requests-found="{{ _('Nenhum pedido condiz com este filtro.') }}"
         data-i18n-requested-on="{{ _('Pedido a') }}"
         data-i18n-overseerr-disabled="{{ _('Módulo de pedidos desativado no servidor.') }}"
@@ -503,7 +584,7 @@
         data-i18n-upgrade-now-title="{{ _('Faça upgrade agora, pagando só a diferença') }}"
         data-i18n-upgrade-now-desc="{{ _('Como faltam {days} dia(s) no seu plano atual, você paga apenas {price} e as telas ficam disponíveis imediatamente. O seu vencimento não muda.') }}"
         data-i18n-upgrade-use-proration="{{ _('Pagar apenas a diferença') }}"
-        data-i18n-upgrade-only-proration="{{ _('A troca de plano numa renovação completa fica disponível perto do vencimento.') }}"
+        data-i18n-upgrade-only-proration="{{ _('A troca de plano em uma renovação completa fica disponível perto do vencimento.') }}"
         data-i18n-upgrade-button="{{ _('Pagar diferença de R$ {price}') }}"
         data-i18n-upgrade-free-title="{{ _('Upgrade sem custo!') }}"
         data-i18n-upgrade-free-desc="{{ _('Faltam {days} dia(s) para o vencimento — o valor proporcional é tão baixo que o upgrade é gratuito.') }}"

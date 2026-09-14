@@ -1,3 +1,4 @@
+{% import 'partials/logo.html' as logo %}
 <!DOCTYPE html>
 <html lang="{{ current_locale.language }}">
 <head>
@@ -85,7 +86,7 @@
                         <div class="absolute inset-0 rounded-full border-t-2 border-yellow-500 animate-spin"></div>
                         <div class="absolute inset-2 rounded-full border-r-2 border-yellow-300 dark:border-yellow-700 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
                     </div>
-                    <p class="text-lg font-medium text-gray-500 dark:text-gray-400">{{ _('Carregando a sua conta...') }}</p>
+                    <p class="text-lg font-medium text-gray-500 dark:text-gray-400">{{ _('Carregando sua conta...') }}</p>
                 </div>
 
                 <!-- Estado de Erro -->
@@ -112,7 +113,7 @@
                             {{ _('Acesso Suspenso') }}
                         </div>
                         <h2 class="text-2xl font-black text-gray-900 dark:text-white tracking-tight" id="user-username">{{ _('Olá, %(username)s!', username=username) }}</h2>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm">{{ _('A sua assinatura terminou. Efetue o pagamento abaixo para reativar o seu acesso instantaneamente e voltar a assistir.') }}</p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm">{{ _('Sua assinatura terminou. Efetue o pagamento abaixo para reativar seu acesso instantaneamente e voltar a assistir.') }}</p>
                         {% else %}
                         <div class="inline-block px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
                             {{ _('Acesso Ativo') }}
@@ -172,11 +173,17 @@
                         <p id="success-message" class="text-base text-gray-600 dark:text-gray-400 font-medium"></p>
                         
                         <!-- Botão de Reativação Automática -->
+                        {# ⚠️ Este bloco é do fluxo de CONVITE: só existe onde o servidor
+                           convida contas que já existem noutro sítio (o Plex). Num
+                           servidor de contas locais não há convite para aceitar nem PIN
+                           para pedir — e o que aparecia era o símbolo do Plex e um
+                           "Entrar no Plex" a abrir um fluxo que não leva a lado nenhum. #}
+                        {% if media_server.capabilities.convites_nativos %}
                         <div id="reactivation-action-area" class="hidden pt-6 mt-6 border-t border-gray-100 dark:border-gray-700/50">
                             <div class="bg-blue-50 dark:bg-blue-900/10 p-5 rounded-2xl border border-blue-100 dark:border-blue-800/30">
                                 <p class="text-sm text-blue-800 dark:text-blue-300 mb-4 font-semibold">{{ _('Último passo! Clique abaixo para aceitar o convite e voltar a assistir:') }}</p>
                                 <button id="reactivate-plex-login-btn" class="w-full btn bg-[#e5a00d] hover:bg-[#c98c0b] text-white shadow-xl shadow-[#e5a00d]/30 py-3.5 text-base font-bold transform hover:-translate-y-0.5 transition-all flex justify-center items-center gap-2">
-                                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
+                                    {{ logo.simbolo('w-5 h-5') }}
                                     {{ _('Entrar no Plex') }}
                                 </button>
 
@@ -190,6 +197,19 @@
                                 </div>
                             </div>
                         </div>
+                        {% else %}
+                        {# A conta é local: o painel não a pode repor sozinho quando ela
+                           já foi apagada do servidor, porque teria de inventar uma
+                           palavra-passe nova e entregá-la. Dizer a verdade é melhor do
+                           que oferecer um botão que não faz nada. #}
+                        <div id="reactivation-action-area" class="hidden pt-6 mt-6 border-t border-gray-100 dark:border-gray-700/50">
+                            <div class="bg-amber-50 dark:bg-amber-900/10 p-5 rounded-2xl border border-amber-100 dark:border-amber-800/30">
+                                <p class="text-sm text-amber-800 dark:text-amber-300 font-semibold">
+                                    {{ _('O seu pagamento foi confirmado. Fale com o administrador para lhe devolver o acesso ao servidor.') }}
+                                </p>
+                            </div>
+                        </div>
+                        {% endif %}
 
                         <!-- Botão de Voltar padrão -->
                         <div class="pt-4" id="default-login-btn-container">
@@ -248,7 +268,7 @@
         data-i18n-no-plan-price="{{ _('O seu plano atual não possui um preço de renovação definido. Por favor, contacte o administrador.') }}"
         data-i18n-login-button-text="{{ _('Acessar Painel') }}"
         data-i18n-reactivation-success-title="{{ _('Conta Reativada com Sucesso!') }}"
-        data-i18n-reactivation-success-message="{{ _('Seu pagamento foi confirmado. Você já pode aceder ao seu painel.') }}"
+        data-i18n-reactivation-success-message="{{ _('Seu pagamento foi confirmado. Você já pode acessar o seu painel.') }}"
         data-i18n-renewal-success-title="{{ _('Renovação Confirmada!') }}"
         data-i18n-renewal-success-message="{{ _('Sua assinatura foi estendida com sucesso.') }}"
         data-i18n-reactivation-check-email-title="{{ _('Pagamento Recebido!') }}"

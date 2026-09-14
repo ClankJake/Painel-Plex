@@ -26,7 +26,7 @@ class TestCriacaoDaAplicacao:
 
         assert extensions.data_manager is not None
         assert extensions.pricing_manager is not None
-        assert extensions.plex_manager is not None
+        assert extensions.media_server is not None
         assert extensions.referral_manager is not None
         # Injeção tardia: o ReferralManager precisa do SubscriptionManager.
         assert extensions.referral_manager.subscription_manager is not None

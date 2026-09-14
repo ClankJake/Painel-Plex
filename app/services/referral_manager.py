@@ -39,7 +39,7 @@ class ReferralManager:
     def _generate_code(self):
         return ''.join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
 
-    def get_or_create_code(self, plex_user_id, max_attempts=10):
+    def get_or_create_code(self, media_user_id, max_attempts=10):
         """
         Devolve o código de referência do utilizador, criando-o na primeira vez
         que é pedido (geração preguiçosa — não precisamos de gerar códigos para
@@ -51,7 +51,7 @@ class ReferralManager:
         geravam dois códigos diferentes e o segundo apagava o primeiro, deixando
         a circular um link que já não pertencia a ninguém.
         """
-        profile = self.data_manager.get_user_profile(plex_user_id)
+        profile = self.data_manager.get_user_profile(media_user_id)
         if not profile:
             return None
 
@@ -62,7 +62,7 @@ class ReferralManager:
         for _attempt in range(max_attempts):
             code = self._generate_code()
             try:
-                stored = self.data_manager.set_user_referral_code(plex_user_id, code)
+                stored = self.data_manager.set_user_referral_code(media_user_id, code)
             except IntegrityError:
                 # Colisão com o código de outro utilizador (índice único): tenta outro.
                 logger.debug(f"[Referral] Código '{code}' já existia. A gerar outro.")
@@ -70,17 +70,17 @@ class ReferralManager:
 
             if stored:
                 if stored == code:
-                    logger.info(f"[Referral] Código '{code}' gerado para o utilizador ID {plex_user_id}.")
+                    logger.info(f"[Referral] Código '{code}' gerado para o utilizador ID {media_user_id}.")
                 return stored
 
-        logger.error(f"[Referral] Não foi possível gerar um código único para o utilizador ID {plex_user_id}.")
+        logger.error(f"[Referral] Não foi possível gerar um código único para o utilizador ID {media_user_id}.")
         return None
 
     # ------------------------------------------------------------------
     # REGISTO DA INDICAÇÃO
     # ------------------------------------------------------------------
 
-    def register_referral(self, new_user_plex_id, referral_code):
+    def register_referral(self, new_user_id, referral_code):
         """
         Associa um utilizador recém-criado a quem o indicou. Não paga nada ainda —
         a recompensa só é atribuída quando o indicado efetuar o primeiro pagamento
@@ -98,25 +98,25 @@ class ReferralManager:
         if not referrer:
             return {"success": False, "message": _("Código de indicação inválido.")}
 
-        referrer_id = referrer.get('plex_user_id')
+        referrer_id = referrer.get('media_user_id')
 
         # 🛡️ Auto-indicação: sem isto, qualquer pessoa ganharia recompensas
         # indicando-se a si própria numa segunda conta.
-        if str(referrer_id) == str(new_user_plex_id):
-            logger.warning(f"[Referral] Tentativa de auto-indicação bloqueada (ID {new_user_plex_id}).")
+        if str(referrer_id) == str(new_user_id):
+            logger.warning(f"[Referral] Tentativa de auto-indicação bloqueada (ID {new_user_id}).")
             return {"success": False, "message": _("Não pode usar o seu próprio código de indicação.")}
 
         # 🛡️ Indicação circular: se quem indica foi, ele próprio, indicado por
         # este utilizador, os dois passariam a "indicar-se" mutuamente e cada um
         # receberia a recompensa pela assinatura do outro — dois amigos a trocar
         # códigos ganhavam de graça, sem trazer ninguém de novo.
-        if referrer.get('referred_by') is not None and str(referrer.get('referred_by')) == str(new_user_plex_id):
+        if referrer.get('referred_by') is not None and str(referrer.get('referred_by')) == str(new_user_id):
             logger.warning(
-                f"[Referral] Indicação circular bloqueada entre os IDs {new_user_plex_id} e {referrer_id}."
+                f"[Referral] Indicação circular bloqueada entre os IDs {new_user_id} e {referrer_id}."
             )
             return {"success": False, "message": _("Não é possível indicar quem já o indicou a si.")}
 
-        profile = self.data_manager.get_user_profile(new_user_plex_id)
+        profile = self.data_manager.get_user_profile(new_user_id)
         if not profile:
             return {"success": False, "message": _("Usuário não encontrado.")}
 
@@ -128,9 +128,9 @@ class ReferralManager:
         # um cliente antigo podia introduzir o código de um amigo a qualquer
         # momento e fazer com que a sua própria renovação seguinte — que já ia
         # acontecer de qualquer forma — pagasse uma recompensa a alguém.
-        if self.data_manager.user_has_completed_payment(new_user_plex_id):
+        if self.data_manager.user_has_completed_payment(new_user_id):
             logger.info(
-                f"[Referral] Indicação recusada: o utilizador ID {new_user_plex_id} já tem pagamentos confirmados."
+                f"[Referral] Indicação recusada: o utilizador ID {new_user_id} já tem pagamentos confirmados."
             )
             return {
                 "success": False,
@@ -139,9 +139,9 @@ class ReferralManager:
 
         profile['referred_by'] = referrer_id
         profile['referral_rewarded'] = False
-        self.data_manager.set_user_profile(new_user_plex_id, profile)
+        self.data_manager.set_user_profile(new_user_id, profile)
 
-        logger.info(f"[Referral] Utilizador ID {new_user_plex_id} foi indicado por '{referrer.get('username')}' (ID {referrer_id}).")
+        logger.info(f"[Referral] Utilizador ID {new_user_id} foi indicado por '{referrer.get('username')}' (ID {referrer_id}).")
         return {"success": True, "referrer_username": referrer.get('username')}
 
     # ------------------------------------------------------------------
@@ -169,7 +169,7 @@ class ReferralManager:
             return True
         return False
 
-    def reward_referrer_on_payment(self, paying_user_plex_id):
+    def reward_referrer_on_payment(self, paying_user_id):
         """
         Chamado quando um pagamento é confirmado. Se este utilizador foi indicado
         por alguém e a recompensa ainda não foi paga, atribui-a a quem o indicou.
@@ -184,7 +184,7 @@ class ReferralManager:
             if not config.get("REFERRAL_ENABLED", False):
                 return {"success": False, "rewarded": False}
 
-            profile = self.data_manager.get_user_profile(paying_user_plex_id)
+            profile = self.data_manager.get_user_profile(paying_user_id)
             if not profile:
                 return {"success": False, "rewarded": False}
 
@@ -225,7 +225,7 @@ class ReferralManager:
             # dados). Só quem "ganha a corrida" continua: se o mesmo pagamento for
             # processado duas vezes em paralelo — algo que os webhooks fazem com
             # regularidade — a segunda passagem sai aqui, sem pagar a dobrar.
-            claimed = self.data_manager.claim_referral_reward(paying_user_plex_id)
+            claimed = self.data_manager.claim_referral_reward(paying_user_id)
             if not claimed:
                 return {"success": True, "rewarded": False, "message": "Recompensa já atribuída anteriormente."}
 
@@ -243,7 +243,7 @@ class ReferralManager:
                 self.data_manager.create_notification(
                     message=_("A sua indicação de %(username)s foi confirmada! Recebeu %(reward)s.",
                               username=profile.get('username', ''), reward=reward_desc),
-                    category='success', link="/account", user_plex_id=referrer_id
+                    category='success', link="/account", media_user_id=referrer_id
                 )
             except Exception as e:
                 logger.warning(f"[Referral] Não foi possível notificar quem indicou: {e}")
@@ -257,11 +257,11 @@ class ReferralManager:
             # "já recompensado" e quem o indicou nunca receberia nada.
             if claimed:
                 try:
-                    self.data_manager.release_referral_reward(paying_user_plex_id)
+                    self.data_manager.release_referral_reward(paying_user_id)
                 except Exception as release_error:
                     logger.error(
                         f"[Referral] Não foi possível reverter a marca de recompensa do utilizador "
-                        f"{paying_user_plex_id}: {release_error}"
+                        f"{paying_user_id}: {release_error}"
                     )
             return {"success": False, "rewarded": False}
 
@@ -269,18 +269,18 @@ class ReferralManager:
     # CONSULTA
     # ------------------------------------------------------------------
 
-    def get_referral_stats(self, plex_user_id):
+    def get_referral_stats(self, media_user_id):
         """Resumo do programa de indicações para o painel do utilizador."""
         config = load_or_create_config()
-        profile = self.data_manager.get_user_profile(plex_user_id) or {}
+        profile = self.data_manager.get_user_profile(media_user_id) or {}
 
-        referred = self.data_manager.get_users_referred_by(plex_user_id)
+        referred = self.data_manager.get_users_referred_by(media_user_id)
         confirmed = [r for r in referred if r.get('referral_rewarded')]
 
         balance = round(float(profile.get('referral_credit') or 0), 2)
         # Crédito já comprometido em cobranças abertas: mostrá-lo como disponível
         # levaria o utilizador a contar duas vezes com o mesmo dinheiro.
-        reserved = round(float(self.data_manager.get_reserved_referral_credit(plex_user_id) or 0), 2)
+        reserved = round(float(self.data_manager.get_reserved_referral_credit(media_user_id) or 0), 2)
 
         return {
             "enabled": bool(config.get("REFERRAL_ENABLED", False)),
@@ -303,13 +303,13 @@ class ReferralManager:
             ],
         }
 
-    def consume_credit(self, plex_user_id, amount):
+    def consume_credit(self, media_user_id, amount):
         """
         Abate crédito de indicações do saldo do utilizador (usado ao aplicar o
         desconto numa renovação). Devolve o valor efetivamente consumido, que
         nunca excede o saldo disponível.
         """
-        used = float(self.data_manager.consume_referral_credit(plex_user_id, amount) or 0)
+        used = float(self.data_manager.consume_referral_credit(media_user_id, amount) or 0)
         if used > 0:
-            logger.info(f"[Referral] Crédito de R$ {used:.2f} usado pelo utilizador ID {plex_user_id}.")
+            logger.info(f"[Referral] Crédito de R$ {used:.2f} usado pelo utilizador ID {media_user_id}.")
         return used

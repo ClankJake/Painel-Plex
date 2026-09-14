@@ -1,3 +1,4 @@
+{% import 'partials/logo.html' as logo %}
 <!DOCTYPE html>
 <html lang="{{ current_locale.language }}">
 <head>
@@ -57,6 +58,21 @@
         
         .adaptive-footer { color: #4b5563; }
         .dark .adaptive-footer { color: rgba(255, 255, 255, 0.6); }
+
+        /* A classe existia no formulário e não estava definida em lado nenhum:
+           as etiquetas herdavam a cor do corpo e quase desapareciam no tema
+           escuro. */
+        .adaptive-label { color: #374151; }
+        .dark .adaptive-label { color: rgba(255, 255, 255, 0.85); }
+
+        .campo-login {
+            transition: border-color .15s ease, box-shadow .15s ease;
+        }
+        .campo-login:focus {
+            outline: none;
+            border-color: #a855f7;
+            box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.25);
+        }
     </style>
 </head>
 <body class="bg-white dark:bg-transparent transition-colors duration-300">
@@ -65,9 +81,17 @@
         <div class="w-full max-w-md">
             <div class="login-card rounded-2xl shadow-2xl p-8 space-y-6">
                 <div class="text-center">
-                    <svg class="w-20 h-20 text-yellow-400 mx-auto dark:drop-shadow-lg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
+                    {{ logo.simbolo('w-20 h-20 text-yellow-400 mx-auto dark:drop-shadow-lg') }}
                     <h1 class="text-3xl font-extrabold adaptive-title dark:text-shadow mt-4">{{ app_title }}</h1>
-                    <p class="mt-2 text-lg adaptive-subtitle">{{ _('Acesse com sua conta Plex') }}</p>
+                    {# ⚠️ Dizia sempre "Plex". Num painel Jellyfin era a marca errada logo
+                       na primeira linha que a pessoa lê. Quem sabe o nome é o servidor. #}
+                    <p class="mt-2 text-lg adaptive-subtitle">
+                        {%- if media_server.capabilities.login_delegado -%}
+                            {{ _('Acesse com sua conta %(servidor)s', servidor=media_server.short_name) }}
+                        {%- else -%}
+                            {{ _('Entre com sua conta do %(servidor)s', servidor=media_server.short_name) }}
+                        {%- endif -%}
+                    </p>
                 </div>
 
                 {% if referrer_name %}
@@ -100,12 +124,58 @@
                 {% endwith %}
                 </div>
 
+                {% if not media_server.capabilities.login_delegado %}
+                <!-- Servidor de contas locais: entra-se com as credenciais do próprio servidor. -->
+                <form id="credentials-form" class="mt-6 space-y-4" autocomplete="on" novalidate>
+                    <div>
+                        <label for="login-username" class="block text-sm font-semibold mb-1 adaptive-label">{{ _('Usuário') }}</label>
+                        {# `maxlength` acompanha o que a rota aceita (MAX_UTILIZADOR / MAX_PALAVRA_PASSE
+                           em `auth.py`): o travão a sério é do servidor, este só evita a viagem. #}
+                        <input type="text" id="login-username" name="username" autocomplete="username" required
+                               maxlength="128" autocapitalize="off" autocorrect="off" spellcheck="false" autofocus
+                               class="campo-login block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm">
+                    </div>
+                    <div>
+                        <label for="login-password" class="block text-sm font-semibold mb-1 adaptive-label">{{ _('Senha') }}</label>
+                        <div class="relative">
+                            <input type="password" id="login-password" name="password" autocomplete="current-password" required
+                                   maxlength="256" spellcheck="false"
+                                   class="campo-login block w-full px-3 py-2.5 pr-11 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm">
+                            <button type="button" id="toggle-password" tabindex="-1"
+                                    aria-label="{{ _('Mostrar a senha') }}" aria-pressed="false"
+                                    class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                <svg id="icon-eye" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                <svg id="icon-eye-off" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.477 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.477 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit" id="credentials-submit"
+                            class="w-full flex justify-center items-center py-3 px-4 text-base font-semibold rounded-xl text-white bg-purple-600 hover:bg-purple-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-300 shadow-lg disabled:opacity-60 disabled:cursor-not-allowed">
+                        <svg id="credentials-spinner" class="w-5 h-5 mr-2 animate-spin hidden" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                        <span id="credentials-submit-text">{{ _('Entrar') }}</span>
+                    </button>
+                    {# `aria-live`: quem usa leitor de ecrã não via a mensagem de erro,
+                       que aparece sem a página mudar. #}
+                    <p id="credentials-error" class="text-sm text-red-500 text-center min-h-[1.25rem]"
+                       role="alert" aria-live="polite"></p>
+
+                    {# Só aqui: num painel cuja autenticação é delegada, a
+                       palavra-passe vive no plex.tv e o painel não a repõe. #}
+                    <p class="text-center text-sm">
+                        <a href="{{ url_for('main.password_forgot_page') }}"
+                           class="text-purple-600 dark:text-purple-400 hover:underline">
+                            {{ _('Esqueci minha senha') }}
+                        </a>
+                    </p>
+                </form>
+                {% else %}
                 <div class="mt-6">
                     <button id="login-button" type="button" class="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-base font-semibold rounded-xl text-gray-900 bg-yellow-400 hover:bg-yellow-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 focus:ring-offset-gray-100 dark:focus:ring-offset-gray-800 transition-all duration-300 transform hover:scale-105 shadow-lg">
                         <svg class="w-6 h-6 mr-3 text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
-                        <span id="login-button-text">{{ _('Entrar com a conta Plex') }}</span>
+                        <span id="login-button-text">{{ _('Entrar com a conta %(servidor)s', servidor=media_server.short_name) }}</span>
                     </button>
                 </div>
+                {% endif %}
             </div>
             <p class="mt-6 text-center text-xs adaptive-footer">
                 &copy; <span id="current-year"></span> {{ app_title }}. {{ _('Todos os direitos reservados.') }}
@@ -121,8 +191,14 @@
     data-i18n-error="{{ _('Erro') }}"
     data-i18n-auth-check-error="{{ _('Ocorreu um erro ao verificar a autenticação.') }}"
     data-i18n-auth-denied="{{ _('A autenticação com o Plex foi negada.') }}"
-    data-i18n-login-with-plex="{{ _('Entrar com a conta Plex') }}"
+    data-i18n-login-with-plex="{{ _('Entrar com a conta %(servidor)s', servidor=media_server.short_name) }}"
     data-i18n-waiting-auth="{{ _('Aguardando autenticação...') }}"
+    data-urls-login-credentials="{{ url_for('auth.login_with_credentials') }}"
+    data-i18n-signing-in="{{ _('Entrando...') }}"
+    data-i18n-sign-in="{{ _('Entrar') }}"
+    data-i18n-credentials-required="{{ _('Informe o usuário e a senha.') }}"
+    data-i18n-show-password="{{ _('Mostrar a senha') }}"
+    data-i18n-hide-password="{{ _('Esconder a senha') }}"
 ></script>
 
 <script>

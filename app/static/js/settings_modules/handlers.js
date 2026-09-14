@@ -10,6 +10,7 @@ import { i18n, fieldMap, urls } from './config.js';
 import { initGamificationSubtabs, addLevelRow, collectLevelsFromEditor, collectResetMonths, loadSeasonStatus, handleManualSeasonReset } from './gamification.js';
 import { collectOnlineMediaSources } from './online_media.js';
 import { showToast, fetchAPI, setButtonLoading, restoreButton as restoreButtonState, escapeHTML, copyToClipboard } from '../utils.js';
+import { aguardarReinicio } from '../reinicio.js';
 
 let pinCheckInterval = null;
 let authWindow = null;
@@ -291,7 +292,7 @@ async function handleBackupRestore(file) {
 
     // ⚠️ Ação destrutiva e irreversível: dupla confirmação antes de prosseguir.
     const firstConfirm = confirm(
-        (i18n.confirmRestoreStep1 || 'ATENÇÃO: Isto vai SUBSTITUIR o config.json e as bases de dados atuais pelos dados do ficheiro de backup selecionado.\n\nTodos os dados criados depois desse backup (novos utilizadores, pagamentos, etc.) serão PERDIDOS.\n\nA aplicação será reiniciada automaticamente em seguida.\n\nDeseja continuar?')
+        (i18n.confirmRestoreStep1 || 'ATENÇÃO: Isto vai SUBSTITUIR o config.json e os bancos de dados atuais pelos dados do arquivo de backup selecionado.\n\nTodos os dados criados depois desse backup (novos usuários, pagamentos, etc.) serão PERDIDOS.\n\nA aplicação será reiniciada automaticamente em seguida.\n\nDeseja continuar?')
     );
     if (!firstConfirm) return;
 
@@ -321,9 +322,15 @@ async function handleBackupRestore(file) {
 
         showToast(data.message || (i18n.restoreSuccess || 'Backup restaurado! A aplicação vai reiniciar...'), 'success');
 
-        // A aplicação reinicia sozinha no servidor (SIGTERM controlado). Damos um
-        // tempo generoso e recarregamos a página para o admin ver o app já de volta.
-        setTimeout(() => window.location.reload(), 8000);
+        // A aplicação reinicia sozinha no servidor (SIGTERM controlado), mas o
+        // processo antigo ainda responde enquanto não sai — recarregar por
+        // tempo mostrava o painel de ANTES do restauro. Esperamos que a marca
+        // do arranque mude.
+        aguardarReinicio({
+            url: urls.systemStatus,
+            bootId: data.boot_id,
+            aoVoltar: () => window.location.reload(),
+        });
     } catch (error) {
         showToast(`${i18n.restoreFailed || 'Falha ao restaurar'}: ${error.message}`, 'error');
         restoreButtonState(restoreBtn);
@@ -336,7 +343,7 @@ async function handleSaveSettings(e) {
 
     const originalText = dom.saveButton.textContent;
     dom.saveButton.disabled = true;
-    dom.saveButton.innerHTML = `${getSpinner()} ${i18n.saving || 'A guardar...'}`;
+    dom.saveButton.innerHTML = `${getSpinner()} ${i18n.saving || 'Salvando...'}`;
 
     const newConfig = {};
     const screenPrices = {};
@@ -537,6 +544,7 @@ export function initializeEventListeners() {
         dom.saveBulkTemplatesButton.addEventListener('click', handleSaveBulkTemplates);
     }
     
+
     if (dom.testTautulliButton) {
         dom.testTautulliButton.addEventListener('click', () => handleTestConnection(dom.testTautulliButton, 'testTautulli', () => ({ 
             url: document.getElementById('TAUTULLI_URL')?.value, 
@@ -544,6 +552,13 @@ export function initializeEventListeners() {
         })));
     }
     
+    if (dom.testJellyfinButton) {
+        dom.testJellyfinButton.addEventListener('click', () => handleTestConnection(dom.testJellyfinButton, 'testJellyfin', () => ({
+            url: document.getElementById('JELLYFIN_URL')?.value,
+            api_key: document.getElementById('JELLYFIN_API_KEY')?.value
+        })));
+    }
+
     if (dom.testOverseerrButton) {
         dom.testOverseerrButton.addEventListener('click', () => handleTestConnection(dom.testOverseerrButton, 'testOverseerr', () => ({ 
             url: document.getElementById('OVERSEERR_URL')?.value, 

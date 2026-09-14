@@ -37,6 +37,10 @@ class FakeApiClient:
     def get_metadata(self, rating_key):
         return self.metadata.get(str(rating_key))
 
+    def image_payload(self, thumb, width=300, height=450):
+        """O prefixo é da FONTE: o Tautulli diz `tautulli:`, o Jellyfin outro."""
+        return f"tautulli:/pms_image_proxy?img={thumb}&width={width}&height={height}" if thumb else None
+
 
 @pytest.fixture()
 def configurar(monkeypatch):
@@ -161,7 +165,7 @@ class TestGetLevelInfo:
 
 class TestSyncUserXp:
     def _handler(self, history=None, profiles=None, **kwargs):
-        dados = FakeDataManager(profiles=profiles or {1: {"plex_user_id": 1, "username": "ana"}})
+        dados = FakeDataManager(profiles=profiles or {1: {"media_user_id": 1, "username": "ana"}})
         return StatsHandler(FakeApiClient(history=history, **kwargs), data_manager=dados), dados
 
     def test_soma_xp_por_minuto_assistido(self, app_context, configurar):
@@ -172,7 +176,7 @@ class TestSyncUserXp:
 
         # 3600s = 60 min * 1 XP = 60
         assert handler.sync_user_xp(1, "ana") == 60
-        assert dados.profiles[1]["xp"] == 60
+        assert dados.profiles["1"]["xp"] == 60
 
     def test_bonus_por_item_concluido(self, app_context, configurar):
         configurar()
@@ -187,17 +191,17 @@ class TestSyncUserXp:
         configurar()
         handler, dados = self._handler(
             history=[{"date": 1700000000, "duration": 600, "percent_complete": 0}],
-            profiles={1: {"plex_user_id": 1, "username": "ana", "xp": 100, "lifetime_xp": 500}},
+            profiles={1: {"media_user_id": 1, "username": "ana", "xp": 100, "lifetime_xp": 500}},
         )
 
         assert handler.sync_user_xp(1, "ana") == 110
-        assert dados.profiles[1]["lifetime_xp"] == 510
+        assert dados.profiles["1"]["lifetime_xp"] == 510
 
     def test_nao_reprocessa_historico_ja_contado(self, app_context, configurar):
         configurar()
         handler, _dados = self._handler(
             history=[{"date": 1700000000, "duration": 600, "percent_complete": 0}],
-            profiles={1: {"plex_user_id": 1, "username": "ana", "xp": 50, "xp_last_sync_at": 1700000000}},
+            profiles={1: {"media_user_id": 1, "username": "ana", "xp": 50, "xp_last_sync_at": 1700000000}},
         )
 
         # O item é do próprio instante da última sincronização: não conta de novo.
@@ -212,14 +216,14 @@ class TestSyncUserXp:
 
         handler.sync_user_xp(1, "ana")
 
-        assert dados.profiles[1]["xp_last_sync_at"] == 1700009999
+        assert dados.profiles["1"]["xp_last_sync_at"] == 1700009999
 
     def test_historico_vazio_marca_a_sincronizacao(self, app_context, configurar):
         configurar()
         handler, dados = self._handler(history=[])
 
         assert handler.sync_user_xp(1, "ana") == 0
-        assert dados.profiles[1]["xp_last_sync_at"] > 0
+        assert dados.profiles["1"]["xp_last_sync_at"] > 0
 
     def test_primeira_sincronizacao_pede_todo_o_historico(self, app_context, configurar):
         configurar()
@@ -233,7 +237,7 @@ class TestSyncUserXp:
         configurar()
         handler, _dados = self._handler(
             history=[],
-            profiles={1: {"plex_user_id": 1, "username": "ana", "xp_last_sync_at": 1700000000}},
+            profiles={1: {"media_user_id": 1, "username": "ana", "xp_last_sync_at": 1700000000}},
         )
 
         handler.sync_user_xp(1, "ana")
@@ -244,13 +248,13 @@ class TestSyncUserXp:
         configurar()
         handler, dados = self._handler(
             history=[{"date": 1700000000, "duration": 60000, "percent_complete": 0}],
-            profiles={1: {"plex_user_id": 1, "username": "ana", "xp": 0}},
+            profiles={1: {"media_user_id": 1, "username": "ana", "xp": 0}},
         )
 
         handler.sync_user_xp(1, "ana")
 
         assert len(dados.notifications) == 1
-        assert dados.notifications[0]["user_plex_id"] == 1
+        assert dados.notifications[0]["media_user_id"] == 1
 
     def test_sem_subida_de_nivel_nao_notifica(self, app_context, configurar):
         configurar()
@@ -322,8 +326,8 @@ class TestResetSeason:
 
         monkeypatch.setattr(config_module, "save_app_config", lambda cfg: True)
         dados = FakeDataManager(profiles={
-            1: {"plex_user_id": 1, "xp": 500, "lifetime_xp": 500},
-            2: {"plex_user_id": 2, "xp": 100, "lifetime_xp": 100},
+            1: {"media_user_id": 1, "xp": 500, "lifetime_xp": 500},
+            2: {"media_user_id": 2, "xp": 100, "lifetime_xp": 100},
         })
         return StatsHandler(FakeApiClient(), data_manager=dados)
 
@@ -333,7 +337,7 @@ class TestResetSeason:
         resultado = handler.reset_season_if_due()
 
         assert resultado["reset"] is False
-        assert handler.data_manager.profiles[1]["xp"] == 500
+        assert handler.data_manager.profiles["1"]["xp"] == 500
 
     def test_mes_que_nao_e_de_reset(self, handler, configurar):
         mes_diferente = 12 if datetime.now(UTC).month != 12 else 1
@@ -359,14 +363,14 @@ class TestResetSeason:
 
         assert resultado["reset"] is True
         assert resultado["affected_users"] == 2
-        assert handler.data_manager.profiles[1]["xp"] == 0
+        assert handler.data_manager.profiles["1"]["xp"] == 0
 
     def test_o_lifetime_xp_nunca_e_reposto(self, handler, configurar):
         configurar()
 
         handler.reset_season_if_due(force=True)
 
-        assert handler.data_manager.profiles[1]["lifetime_xp"] == 500
+        assert handler.data_manager.profiles["1"]["lifetime_xp"] == 500
 
     def test_falha_na_base_de_dados_e_reportada(self, app_context, configurar, monkeypatch):
         configurar()
@@ -432,7 +436,7 @@ class TestAchievements:
         handler._calculate_achievements(self._stats(movie_count=5), 7, 1, "ana")
 
         assert len(handler.data_manager.notifications) == 1
-        assert handler.data_manager.notifications[0]["user_plex_id"] == 1
+        assert handler.data_manager.notifications[0]["media_user_id"] == 1
 
     def test_nao_notifica_duas_vezes_a_mesma_conquista(self, handler):
         handler._calculate_achievements(self._stats(movie_count=5), 7, 1, "ana")

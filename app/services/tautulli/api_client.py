@@ -48,8 +48,16 @@ class TautulliApiClient:
         
         if self.is_configured:
             logger.info("Configuração do TautulliApiClient carregada com sucesso.")
+        elif self.base_url or self.api_key:
+            # Meio preenchido é um engano, e vale o aviso: falta-lhe uma metade.
+            em_falta = "o URL" if not self.base_url else "a chave de API"
+            logger.warning(f"Configuração do Tautulli incompleta: falta {em_falta}.")
         else:
-            logger.warning("Configuração do TautulliApiClient ausente ou incompleta.")
+            # 🔇 Em branco é uma escolha legítima — num painel Jellyfin o
+            # Tautulli nem sequer se aplica, e num painel Plex o histórico e os
+            # aparelhos passam a ser lidos do próprio servidor. Isto era um
+            # WARNING em cada arranque a dizer que estava tudo bem.
+            logger.debug("Tautulli não configurado: o painel lê o histórico do próprio servidor de média.")
 
     def _make_request(self, params: Dict[str, Any], method: str = 'GET', data: Optional[Any] = None, timeout: int = 10) -> Any:
         """
@@ -109,6 +117,18 @@ class TautulliApiClient:
 
     def get_metadata(self, rating_key: str) -> Any:
         return self._make_request({"cmd": "get_metadata", "rating_key": rating_key})
+
+    def image_payload(self, thumb: Optional[str], width: int = 300, height: int = 450) -> Optional[str]:
+        """O `<prefixo>:<caminho>` que o proxy de imagens do painel entende.
+
+        Vive aqui porque o prefixo é conhecimento da FONTE: quem agrega as
+        estatísticas não tem de saber que estas capas se vão buscar ao Tautulli.
+        Era o que faltava para a mesma agregação servir outro servidor — a
+        alternativa seria um `if` por marca em cada sítio que mostra uma capa.
+        """
+        if not thumb:
+            return None
+        return f"tautulli:/pms_image_proxy?img={thumb}&width={width}&height={height}"
 
     # --- TESTE E VALIDAÇÃO ---
 

@@ -1,49 +1,127 @@
 # tests/test_stream_manager.py
-"""Controlo de streams: deteção de mudanças, sessões duplicadas e limite de telas."""
+"""Política de streams: sessões duplicadas, limite de telas e cache do painel.
+
+O motor de streams deixou de falar com o Plex: recebe `MediaSession` já
+traduzidas de um `SessionsProvider`. Estes testes exercitam só a política — o
+que conta como uma tela, quem é cortado primeiro, quando se reaproveita uma
+leitura. A tradução do vocabulário do Plex é testada em
+`tests/test_plex_sessions.py`.
+"""
+
+import time
 
 import pytest
 
+from app.services.media_server.base import MediaSession
 from app.services.stream_manager import StreamManager
+from app.utils.identity import normalize_user_id
 from tests.conftest import FakeDataManager
 
 
-class PlayerFalso:
-    def __init__(self, platform="", product="", title=""):
-        self.platform = platform
-        self.product = product
-        self.title = title
+def sessao(session_key="1", user_id=1, titulo="Matrix", plataforma="default",
+           view_offset=0, terminavel=True, playback_key=None, **extra):
+    """Uma sessão já traduzida, como o provider a entrega."""
+    campos = dict(
+        user_id=normalize_user_id(user_id),
+        username_fallback="ana",
+        user_email="ana@exemplo.com",
+        session_key=session_key,
+        playback_key=playback_key,
+        media_title=titulo,
+        title=titulo,
+        subtitle="",
+        media_type="movie",
+        state="playing",
+        platform=plataforma,
+        player="Plex Web - Portátil",
+        progress=0.0,
+        view_offset=view_offset,
+        duration=0,
+        raw={"terminavel": terminavel},
+    )
+    campos.update(extra)
+    return MediaSession(**campos)
 
 
-class UtilizadorFalso:
-    def __init__(self, id=1, title="ana", email="ana@exemplo.com"):
-        self.id = id
-        self.title = title
-        self.email = email
+class ProviderFalso:
+    """Um servidor de média qualquer: entrega sessões e regista os cortes."""
 
+    def __init__(self, sessoes=None, owner_id=None):
+        self._sessoes = sessoes or []
+        self.chamadas = 0
+        self.terminadas = {}
+        # O último recurso, para clientes que ignoram a ordem de parar.
+        self.forcadas = {}
+        # Uma entrada por CHAMADA (o dicionário acima é por sessão e não
+        # distingue uma tentativa de dez).
+        self.forcas_pedidas = []
+        self.forca_funciona = True
+        # ⚠️ Nem todos os servidores TÊM um último recurso: no Plex,
+        # `force_terminate()` devolve sempre False. Um duplo que não modele
+        # isto testa metade dos servidores — foi por isso que a definição
+        # "forçar o encerramento" apareceu num painel Plex, onde não faz nada.
+        self.ha_ultimo_recurso = True
+        self.ligado = True
+        self.owner_id = owner_id
+        self.avatares_pedidos = []
 
-class SessaoFalsa:
-    """Imita o suficiente de uma sessão do plexapi para os testes."""
+    # --- ligação ---
+    def is_connected(self):
+        return self.ligado
 
-    def __init__(self, session_key="1", user_id=1, titulo="Matrix", tipo="movie",
-                 plataforma="", view_offset=0, **extra):
-        self.sessionKey = session_key
-        self.user = UtilizadorFalso(id=user_id)
-        self.users = [self.user]
-        self.title = titulo
-        self.type = tipo
-        self.players = [PlayerFalso(platform=plataforma, product=plataforma)]
-        self.viewOffset = view_offset
-        self.parou_com = None
-        for chave, valor in extra.items():
-            setattr(self, chave, valor)
+    def reconnect(self):
+        return self.ligado, ""
 
-    def stop(self, reason=None):
-        self.parou_com = reason
+    def get_owner_id(self):
+        return self.owner_id
+
+    # --- sessões ---
+    def list_sessions(self):
+        self.chamadas += 1
+        return list(self._sessoes)
+
+    def terminate(self, session, reason):
+        # Uma sessão marcada como não terminável imita a do servidor que ainda
+        # não tem identificador interno (a carregar).
+        if isinstance(session.raw, dict) and not session.raw.get("terminavel", True):
+            return False
+        self.terminadas[session.session_key] = reason
+        return True
+
+    def suporta_corte_forcado(self):
+        return self.ha_ultimo_recurso
+
+    def force_terminate(self, session, reason):
+        self.forcadas[session.session_key] = reason
+        self.forcas_pedidas.append(session.playback_key)
+        return self.forca_funciona
+
+    def user_thumb_source(self, raw_thumb):
+        self.avatares_pedidos.append(raw_thumb)
+        return f"url:{raw_thumb}" if raw_thumb else None
+
+    def deduplicate_sessions(self, sessions):
+        # Um servidor que não duplica reproduções — como o Jellyfin. Fundir
+        # sessões é conhecimento do servidor, testado no provider de cada um.
+        return list(sessions)
+
+    # --- tempo real ---
+    def supports_realtime(self):
+        return False
+
+    def is_listener_healthy(self):
+        return True
+
+    def start_listener(self, on_change):
+        self.on_change = on_change
+
+    def stop_listener(self):
+        pass
 
 
 @pytest.fixture()
 def manager(app_context):
-    return StreamManager(plex_connection=None, data_manager=FakeDataManager(), user_manager=None)
+    return StreamManager(sessions_provider=ProviderFalso(), data_manager=FakeDataManager(), user_manager=None)
 
 
 @pytest.fixture()
@@ -56,193 +134,42 @@ def cache_limpa(app_context):
     cache.clear()
 
 
-class TestHasStateChanged:
-    def test_sessao_nova_conta_como_mudanca(self, manager):
-        assert manager._has_state_changed([{"sessionKey": "1", "state": "playing"}]) is True
-
-    def test_ping_de_progresso_e_ignorado(self, manager):
-        manager._has_state_changed([{"sessionKey": "1", "state": "playing"}])
-
-        # O Plex reenvia 'playing' de poucos em poucos segundos: nada mudou.
-        assert manager._has_state_changed([{"sessionKey": "1", "state": "playing"}]) is False
-
-    def test_transicao_de_estado_conta(self, manager):
-        manager._has_state_changed([{"sessionKey": "1", "state": "playing"}])
-
-        assert manager._has_state_changed([{"sessionKey": "1", "state": "paused"}]) is True
-
-    def test_fim_de_sessao_conta_e_esquece_a_sessao(self, manager):
-        manager._has_state_changed([{"sessionKey": "1", "state": "playing"}])
-
-        assert manager._has_state_changed([{"sessionKey": "1", "state": "stopped"}]) is True
-        assert "1" not in manager._last_session_states
-        # A mesma chave a voltar é uma sessão nova.
-        assert manager._has_state_changed([{"sessionKey": "1", "state": "playing"}]) is True
-
-    def test_estados_irrelevantes_sao_ignorados(self, manager):
-        assert manager._has_state_changed([{"sessionKey": "1", "state": "progress"}]) is False
-
-    def test_evento_sem_identificador_conta_por_precaucao(self, manager):
-        # Sem sessionKey não há como comparar: nunca se perde um evento real.
-        assert manager._has_state_changed([{"state": "playing"}]) is True
-
-    def test_entradas_invalidas_sao_ignoradas(self, manager):
-        assert manager._has_state_changed(["texto solto", None, 42]) is False
-
-    def test_varias_sessoes_sao_seguidas_em_separado(self, manager):
-        manager._has_state_changed([
-            {"sessionKey": "1", "state": "playing"},
-            {"sessionKey": "2", "state": "playing"},
+class TestAgrupamento:
+    def test_agrupa_por_utilizador(self, manager):
+        grupos = manager._group_sessions_by_user([
+            sessao(session_key="1", user_id=1),
+            sessao(session_key="2", user_id=1),
+            sessao(session_key="3", user_id=2),
         ])
 
-        assert manager._has_state_changed([{"sessionKey": "1", "state": "playing"}]) is False
-        assert manager._has_state_changed([{"sessionKey": "2", "state": "paused"}]) is True
-
-    def test_sessoes_sem_sinal_de_vida_sao_esquecidas(self, manager, monkeypatch):
-        import time as _time
-
-        from app.services import stream_manager as stream_module
-
-        manager._has_state_changed([{"sessionKey": "1", "state": "playing"}])
-
-        agora = _time.monotonic()
-        monkeypatch.setattr(
-            stream_module.time, "monotonic",
-            lambda: agora + manager.SESSION_STATE_TTL_SECONDS + 1,
-        )
-
-        # Um cliente que se desliga sem enviar 'stopped' não pode ficar memorizado.
-        manager._has_state_changed([])
-        assert manager._last_session_states == {}
-
-    def test_lista_vazia(self, manager):
-        assert manager._has_state_changed([]) is False
-
-
-class TestGetPlatformInfo:
-    @pytest.mark.parametrize("texto,esperado", [
-        ("Chrome", "chrome"),
-        ("Safari", "safari"),
-        ("Firefox", "firefox"),
-        ("Microsoft Edge", "msedge"),
-        ("Brave", "chrome"),
-        ("Android", "android"),
-        ("Roku", "roku"),
-        ("Apple TV", "atv"),
-        ("iOS", "ios"),
-        ("PlayStation 5", "playstation"),
-        ("Xbox One", "xbox"),
-        ("Samsung Tizen", "samsung"),
-        ("webOS", "lg"),
-        ("Kodi", "kodi"),
-        ("Chromecast", "chromecast"),
-        ("Plexamp", "plexamp"),
-        ("Windows", "windows"),
-        ("Linux", "linux"),
-        ("Plex Media Player", "plex"),
-    ])
-    def test_reconhece_as_plataformas(self, manager, texto, esperado):
-        assert manager._get_platform_info(SessaoFalsa(plataforma=texto)) == esperado
-
-    @pytest.mark.parametrize("texto", [
-        "Chromecast",
-        "Chromecast Ultra",
-        "Android Chromecast built-in",  # Chromecast com Google TV
-    ])
-    def test_um_chromecast_nao_e_confundido_com_o_browser_chrome(self, manager, texto):
-        # 'chrome' está contido em 'chromecast': a verificação do Chromecast tem
-        # de vir primeiro, senão o filtro de sessões duplicadas de Cast nunca atua.
-        assert manager._get_platform_info(SessaoFalsa(plataforma=texto)) == "chromecast"
-
-    def test_o_browser_chrome_continua_a_ser_reconhecido(self, manager):
-        assert manager._get_platform_info(SessaoFalsa(plataforma="Chrome")) == "chrome"
-
-    def test_plataforma_desconhecida(self, manager):
-        assert manager._get_platform_info(SessaoFalsa(plataforma="AparelhoEstranho")) == "default"
-
-    def test_sessao_sem_leitor(self, manager):
-        sessao = SessaoFalsa()
-        sessao.players = []
-
-        assert manager._get_platform_info(sessao) == "default"
-
-
-class TestGetMediaTitle:
-    def test_filme(self, manager):
-        assert manager._get_media_title(SessaoFalsa(titulo="Duna")) == "Duna"
-
-    def test_episodio_com_temporada_e_numero(self, manager):
-        sessao = SessaoFalsa(
-            titulo="Segredos", tipo="episode",
-            grandparentTitle="Dark", parentIndex=2, index=5,
-        )
-
-        assert manager._get_media_title(sessao) == "Dark S02E05 - Segredos"
-
-    def test_episodio_sem_numeracao(self, manager):
-        sessao = SessaoFalsa(titulo="Piloto", tipo="episode", grandparentTitle="Dark")
-
-        assert manager._get_media_title(sessao) == "Dark - Piloto"
-
-    def test_episodio_com_numeracao_invalida(self, manager):
-        sessao = SessaoFalsa(
-            titulo="Piloto", tipo="episode",
-            grandparentTitle="Dark", parentIndex="abc", index="x",
-        )
-
-        assert manager._get_media_title(sessao) == "Dark - Piloto"
-
-
-class TestSessionHelpers:
-    def test_id_do_utilizador(self, manager):
-        assert manager._get_session_user_id(SessaoFalsa(user_id=42)) == 42
-
-    def test_sessao_sem_utilizador(self, manager):
-        sessao = SessaoFalsa()
-        sessao.user = None
-        sessao.users = []
-
-        assert manager._get_session_user_id(sessao) is None
-
-    def test_agrupa_por_utilizador(self, manager):
-        sessoes = [
-            SessaoFalsa(session_key="1", user_id=1),
-            SessaoFalsa(session_key="2", user_id=1),
-            SessaoFalsa(session_key="3", user_id=2),
-        ]
-
-        grupos = manager._group_sessions_by_user(sessoes)
-
-        assert len(grupos[1]) == 2
-        assert len(grupos[2]) == 1
+        assert len(grupos["1"]) == 2
+        assert len(grupos["2"]) == 1
 
     def test_sessoes_sem_utilizador_sao_descartadas(self, manager):
-        sem_utilizador = SessaoFalsa()
-        sem_utilizador.user = None
-        sem_utilizador.users = []
-
-        assert manager._group_sessions_by_user([sem_utilizador]) == {}
+        assert manager._group_sessions_by_user([sessao(user_id=None)]) == {}
 
 
-class TestFilterDuplicateCastSessions:
-    def test_remove_o_telemovel_que_comanda_o_chromecast(self, manager):
-        chromecast = SessaoFalsa(session_key="1", titulo="Duna", plataforma="Chromecast")
-        telemovel = SessaoFalsa(session_key="2", titulo="Duna", plataforma="Android")
+class TestFusaoDeSessoes:
+    """O motor não decide o que é a mesma reprodução — pergunta ao servidor.
 
-        restantes = manager._filter_duplicate_cast_sessions([chromecast, telemovel])
+    Reconhecer o par (o telemóvel que comanda um Chromecast) é conhecimento do
+    servidor e vive no provider; ver `tests/test_plex_sessions.py`.
+    """
 
-        assert restantes == [chromecast]
+    def test_respeita_o_que_o_provider_devolve(self, manager):
+        a = sessao(session_key="1", titulo="Duna")
+        b = sessao(session_key="2", titulo="Duna")
+        manager.sessions.deduplicate_sessions = lambda sessoes: [a]
 
-    def test_conteudos_diferentes_contam_as_duas(self, manager):
-        chromecast = SessaoFalsa(session_key="1", titulo="Duna", plataforma="Chromecast")
-        telemovel = SessaoFalsa(session_key="2", titulo="Matrix", plataforma="Android")
+        assert manager._filter_duplicate_cast_sessions([a, b]) == [a]
 
-        assert len(manager._filter_duplicate_cast_sessions([chromecast, telemovel])) == 2
-
-    def test_sem_chromecast_nada_e_removido(self, manager):
+    def test_um_servidor_que_nao_duplica_mantem_tudo(self, manager):
+        # 🐛 É a regressão reportada: com o Jellyfin, duas reproduções da MESMA
+        # mídia em aparelhos diferentes contavam como uma tela só, porque o
+        # motor aplicava a todos o filtro de Cast do Plex.
         sessoes = [
-            SessaoFalsa(session_key="1", titulo="Duna", plataforma="Android"),
-            SessaoFalsa(session_key="2", titulo="Duna", plataforma="Chrome"),
+            sessao(session_key="1", titulo="Duna", plataforma="android"),
+            sessao(session_key="2", titulo="Duna", plataforma="chrome"),
         ]
 
         assert len(manager._filter_duplicate_cast_sessions(sessoes)) == 2
@@ -255,7 +182,7 @@ class TestBuildPlaceholders:
     def test_marcadores_da_mensagem_de_corte(self, manager):
         perfil = {"name": "Ana Silva", "telegram_user": "@ana", "phone_number": "5511988887777"}
 
-        marcadores = manager._build_placeholders(1, "ana", perfil, SessaoFalsa(), context={"limit": 2})
+        marcadores = manager._build_placeholders(1, "ana", perfil, sessao(), context={"limit": 2})
 
         assert marcadores["username"] == "ana"
         assert marcadores["name"] == "Ana Silva"
@@ -264,7 +191,7 @@ class TestBuildPlaceholders:
         assert marcadores["greeting"]
 
     def test_sem_nome_usa_o_username(self, manager):
-        assert manager._build_placeholders(1, "ana", {}, SessaoFalsa())["name"] == "ana"
+        assert manager._build_placeholders(1, "ana", {}, sessao())["name"] == "ana"
 
 
 class TestEnforceScreenLimits:
@@ -278,55 +205,53 @@ class TestEnforceScreenLimits:
         return config
 
     def test_dentro_do_limite_nao_corta_nada(self, manager, cache_limpa):
-        sessoes = [SessaoFalsa(session_key="1"), SessaoFalsa(session_key="2")]
+        sessoes = [sessao(session_key="1"), sessao(session_key="2")]
 
         manager._enforce_screen_limits(1, "ana", sessoes, {"screen_limit": 2}, self._config())
 
-        assert all(s.parou_com is None for s in sessoes)
+        assert manager.sessions.terminadas == {}
 
     def test_limite_zero_significa_sem_limite(self, manager, cache_limpa):
-        sessoes = [SessaoFalsa(session_key=str(i)) for i in range(5)]
+        sessoes = [sessao(session_key=str(i)) for i in range(5)]
 
         manager._enforce_screen_limits(1, "ana", sessoes, {"screen_limit": 0}, self._config())
 
-        assert all(s.parou_com is None for s in sessoes)
+        assert manager.sessions.terminadas == {}
 
     def test_corta_o_excesso_comecando_pela_sessao_mais_antiga(self, manager, cache_limpa):
-        # Por omissão ("oldest"), o maior viewOffset é o que está a correr há mais tempo.
-        antiga = SessaoFalsa(session_key="1", view_offset=9000, session=type("S", (), {"id": "a"})())
-        recente = SessaoFalsa(session_key="2", view_offset=10, session=type("S", (), {"id": "b"})())
+        # Por omissão ("oldest"), o maior view_offset é o que está a correr há mais tempo.
+        antiga = sessao(session_key="1", view_offset=9000)
+        recente = sessao(session_key="2", view_offset=10)
 
         manager._enforce_screen_limits(1, "ana", [recente, antiga], {"screen_limit": 1}, self._config())
 
-        assert antiga.parou_com is not None
-        assert recente.parou_com is None
+        assert set(manager.sessions.terminadas) == {"1"}
 
     def test_estrategia_newest_preserva_quem_ja_estava_a_ver(self, manager, cache_limpa):
-        antiga = SessaoFalsa(session_key="1", view_offset=9000, session=type("S", (), {"id": "a"})())
-        recente = SessaoFalsa(session_key="2", view_offset=10, session=type("S", (), {"id": "b"})())
+        antiga = sessao(session_key="1", view_offset=9000)
+        recente = sessao(session_key="2", view_offset=10)
 
         manager._enforce_screen_limits(
             1, "ana", [antiga, recente], {"screen_limit": 1},
             self._config(SCREEN_LIMIT_TERMINATION_STRATEGY="newest"),
         )
 
-        assert recente.parou_com is not None
-        assert antiga.parou_com is None
+        assert set(manager.sessions.terminadas) == {"2"}
 
     def test_a_mensagem_de_corte_e_personalizada(self, manager, cache_limpa):
-        cortada = SessaoFalsa(session_key="1", view_offset=999, session=type("S", (), {"id": "a"})())
-        mantida = SessaoFalsa(session_key="2", view_offset=1, session=type("S", (), {"id": "b"})())
+        cortada = sessao(session_key="1", view_offset=999)
+        mantida = sessao(session_key="2", view_offset=1)
 
         manager._enforce_screen_limits(1, "ana", [cortada, mantida], {"screen_limit": 1}, self._config())
 
-        assert cortada.parou_com == "ana, excedeu o limite de 1 tela(s)."
+        assert manager.sessions.terminadas["1"] == "ana, excedeu o limite de 1 tela(s)."
 
     def test_o_corte_fica_registado_na_auditoria(self, manager, cache_limpa):
         registos = []
         manager.data_manager.log_stream_termination = lambda **kwargs: registos.append(kwargs)
         sessoes = [
-            SessaoFalsa(session_key="1", titulo="Duna", view_offset=100, session=type("S", (), {"id": "a"})()),
-            SessaoFalsa(session_key="2", titulo="Matrix", view_offset=10, session=type("S", (), {"id": "b"})()),
+            sessao(session_key="1", titulo="Duna", view_offset=100),
+            sessao(session_key="2", titulo="Matrix", view_offset=10),
         ]
 
         manager._enforce_screen_limits(1, "ana", sessoes, {"screen_limit": 1}, self._config())
@@ -339,59 +264,59 @@ class TestEnforceScreenLimits:
         # Sem o anti-spam, a mesma sessão seria cortada em cada verificação.
         cache_limpa.set("kill_spam_1", True, timeout=60)
         sessoes = [
-            SessaoFalsa(session_key="1", view_offset=100, session=type("S", (), {"id": "a"})()),
-            SessaoFalsa(session_key="2", view_offset=10, session=type("S", (), {"id": "b"})()),
+            sessao(session_key="1", view_offset=100),
+            sessao(session_key="2", view_offset=10),
         ]
 
         manager._enforce_screen_limits(1, "ana", sessoes, {"screen_limit": 1}, self._config())
 
-        assert all(s.parou_com is None for s in sessoes)
+        assert manager.sessions.terminadas == {}
 
-    def test_cast_a_partir_do_telemovel_conta_como_uma_tela(self, manager, cache_limpa):
+    def test_a_mesma_midia_em_dois_aparelhos_conta_duas_telas(self, manager, cache_limpa):
         """
-        Regressão do bug do Chromecast: o telemóvel que apenas comanda o Cast
-        aparece como uma segunda sessão no Plex. Se não for filtrado, um
-        utilizador com limite de 1 tela era cortado ao usar o Chromecast.
+        🐛 REGRESSÃO REPORTADA: um utilizador com limite de telas a reproduzir a
+        MESMA mídia em dois aparelhos não era cortado. O motor aplicava a todos
+        os servidores o filtro de Cast do Plex, que funde duas sessões do mesmo
+        utilizador com o mesmo título — e assim as duas contavam como uma.
         """
-        chromecast = SessaoFalsa(
-            session_key="1", titulo="Duna", plataforma="Chromecast",
-            view_offset=100, session=type("S", (), {"id": "a"})(),
-        )
-        telemovel = SessaoFalsa(
-            session_key="2", titulo="Duna", plataforma="Android",
-            view_offset=100, session=type("S", (), {"id": "b"})(),
-        )
+        primeiro = sessao(session_key="1", titulo="Duna", plataforma="android", view_offset=100)
+        segundo = sessao(session_key="2", titulo="Duna", plataforma="chrome", view_offset=5000)
 
         # Mesma sequência usada em 'check_and_enforce_streams'.
-        unicas = manager._filter_duplicate_cast_sessions([chromecast, telemovel])
+        unicas = manager._filter_duplicate_cast_sessions([primeiro, segundo])
         manager._enforce_screen_limits(1, "ana", unicas, {"screen_limit": 1}, self._config())
 
-        assert chromecast.parou_com is None
-        assert telemovel.parou_com is None
+        assert len(manager.sessions.terminadas) == 1
 
     def test_corta_varias_sessoes_de_uma_vez(self, manager, cache_limpa):
-        sessoes = [
-            SessaoFalsa(session_key=str(i), view_offset=i * 100, session=type("S", (), {"id": str(i)})())
-            for i in range(4)
-        ]
+        sessoes = [sessao(session_key=str(i), view_offset=i * 100) for i in range(4)]
 
         manager._enforce_screen_limits(1, "ana", sessoes, {"screen_limit": 1}, self._config())
 
-        assert sum(1 for s in sessoes if s.parou_com) == 3
+        assert len(manager.sessions.terminadas) == 3
 
 
-class ConexaoFalsa:
-    """Ligação mínima ao Plex: conta quantas leituras de sessões foram feitas."""
+class TestSessaoQueAindaNaoPodeSerCortada:
+    """Uma reprodução a carregar ainda não tem como ser encerrada."""
 
-    def __init__(self, sessoes=None):
-        self._sessoes = sessoes or []
-        self.chamadas = 0
-        self.account = None
-        self.plex = self
+    def test_o_corte_e_reagendado_em_vez_de_dado_por_feito(self, manager, cache_limpa, monkeypatch):
+        reagendamentos = []
+        monkeypatch.setattr(manager, '_schedule_delayed_check', lambda: reagendamentos.append(1))
 
-    def sessions(self):
-        self.chamadas += 1
-        return self._sessoes
+        manager._terminate_session(sessao(session_key="1", terminavel=False), "motivo")
+
+        assert manager.sessions.terminadas == {}
+        assert reagendamentos == [1]
+
+    def test_nao_se_reagenda_a_mesma_sessao_sem_parar(self, manager, cache_limpa, monkeypatch):
+        # Sem a trava, cada ciclo agendava uma nova verificação para a mesma sessão.
+        reagendamentos = []
+        monkeypatch.setattr(manager, '_schedule_delayed_check', lambda: reagendamentos.append(1))
+
+        manager._terminate_session(sessao(session_key="1", terminavel=False), "motivo")
+        manager._terminate_session(sessao(session_key="1", terminavel=False), "motivo")
+
+        assert reagendamentos == [1]
 
 
 class TestGetActiveStreamCount:
@@ -401,61 +326,110 @@ class TestGetActiveStreamCount:
     """
 
     def _manager(self, sessoes):
-        conn = ConexaoFalsa(sessoes)
-        gestor = StreamManager(plex_connection=conn, data_manager=FakeDataManager(), user_manager=None)
-        return gestor, conn
+        provider = ProviderFalso(sessoes)
+        gestor = StreamManager(sessions_provider=provider, data_manager=FakeDataManager(), user_manager=None)
+        return gestor, provider
 
     def test_sem_ligacao_devolve_zero(self, app_context):
-        conn = ConexaoFalsa([])
-        conn.plex = None
-        gestor = StreamManager(plex_connection=conn, data_manager=FakeDataManager(), user_manager=None)
+        gestor, provider = self._manager([])
+        provider.ligado = False
 
         assert gestor.get_active_stream_count() == 0
-        assert conn.chamadas == 0
+        assert provider.chamadas == 0
 
     def test_conta_as_sessoes_ativas(self, app_context):
-        gestor, conn = self._manager([
-            SessaoFalsa(session_key="1", user_id=1, titulo="Duna"),
-            SessaoFalsa(session_key="2", user_id=2, titulo="Matrix"),
+        gestor, provider = self._manager([
+            sessao(session_key="1", user_id=1, titulo="Duna"),
+            sessao(session_key="2", user_id=2, titulo="Matrix"),
         ])
 
         assert gestor.get_active_stream_count(use_cache=False) == 2
-        assert conn.chamadas == 1
+        assert provider.chamadas == 1
 
-    def test_o_telemovel_que_comanda_o_chromecast_conta_uma_vez(self, app_context):
-        """A contagem usa o mesmo critério da lista, para os dois não discordarem."""
-        gestor, _ = self._manager([
-            SessaoFalsa(session_key="1", user_id=1, titulo="Duna", plataforma="Chromecast"),
-            SessaoFalsa(session_key="2", user_id=1, titulo="Duna", plataforma="Android"),
+    def test_a_contagem_usa_a_fusao_do_servidor(self, app_context):
+        """A contagem e a lista têm de usar o mesmo critério, senão discordam."""
+        gestor, provider = self._manager([
+            sessao(session_key="1", user_id=1, titulo="Duna"),
+            sessao(session_key="2", user_id=1, titulo="Duna"),
         ])
+        provider.deduplicate_sessions = lambda sessoes: sessoes[:1]
 
         assert gestor.get_active_stream_count(use_cache=False) == 1
 
+    def test_a_mesma_midia_em_dois_aparelhos_conta_duas(self, app_context):
+        # 🐛 Num servidor que não duplica reproduções, as duas contam.
+        gestor, _ = self._manager([
+            sessao(session_key="1", user_id=1, titulo="Duna", plataforma="android"),
+            sessao(session_key="2", user_id=1, titulo="Duna", plataforma="chrome"),
+        ])
+
+        assert gestor.get_active_stream_count(use_cache=False) == 2
+
     def test_falha_de_rede_devolve_zero(self, app_context):
-        gestor, conn = self._manager([])
+        gestor, provider = self._manager([])
 
         def rebenta():
-            raise ConnectionError("Plex inacessível")
+            raise ConnectionError("servidor inacessível")
 
-        conn.sessions = rebenta
+        provider.list_sessions = rebenta
         assert gestor.get_active_stream_count(use_cache=False) == 0
 
     def test_reaproveita_a_contagem_ja_guardada(self, app_context):
-        """Com uma leitura recente em cache, não se volta a falar com o Plex."""
-        gestor, conn = self._manager([])
+        """Com uma leitura recente em cache, não se volta a falar com o servidor."""
+        gestor, provider = self._manager([])
         gestor._now_playing_cache = {"success": True, "stream_count": 3, "sessions": []}
-        gestor._now_playing_cached_at = __import__("time").monotonic()
+        gestor._now_playing_cached_at = time.monotonic()
 
         assert gestor.get_active_stream_count() == 3
-        assert conn.chamadas == 0
+        assert provider.chamadas == 0
+
+
+class TestNowPlayingPayload:
+    """O payload que o frontend consome, montado a partir das sessões traduzidas."""
+
+    def test_monta_a_sessao_para_o_painel(self, app_context):
+        class DiretorioFalso:
+            def list_users(self):
+                return [{"id": 1, "username": "ana", "thumb": "https://plex.tv/avatar.png"}]
+
+        provider = ProviderFalso([
+            sessao(session_key="7", user_id=1, titulo="Duna", plataforma="chrome",
+                   artwork_source="plex:/library/metadata/1/thumb"),
+        ])
+        gestor = StreamManager(sessions_provider=provider, data_manager=FakeDataManager(),
+                               user_manager=DiretorioFalso())
+
+        payload = gestor.get_now_playing(use_cache=False)
+
+        assert payload["success"] is True
+        assert payload["stream_count"] == 1
+        item = payload["sessions"][0]
+        assert item["session_key"] == "7"
+        assert item["user"] == "ana"
+        assert item["title"] == "Duna"
+        assert item["platform"] == "chrome"
+        # As imagens passam sempre pelo proxy do painel (o `url_for` prefixa o
+        # host quando há contexto de pedido, daí o "in" em vez do "startswith").
+        assert "/image/?source=" in item["thumb_url"]
+        assert "/image/?source=" in item["user_thumb"]
+
+    def test_utilizador_fora_do_diretorio_usa_o_nome_da_sessao(self, app_context):
+        class DiretorioVazio:
+            def list_users(self):
+                return []
+
+        provider = ProviderFalso([sessao(session_key="1", user_id=99)])
+        gestor = StreamManager(sessions_provider=provider, data_manager=FakeDataManager(),
+                               user_manager=DiretorioVazio())
+
+        assert gestor.get_now_playing(use_cache=False)["sessions"][0]["user"] == "ana"
 
 
 class TestNowPlayingCache:
     """Janela curta de reaproveitamento (ver NOW_PLAYING_CACHE_SECONDS)."""
 
     def _manager(self):
-        conn = ConexaoFalsa([])
-        return StreamManager(plex_connection=conn, data_manager=FakeDataManager(), user_manager=None)
+        return StreamManager(sessions_provider=ProviderFalso(), data_manager=FakeDataManager(), user_manager=None)
 
     def test_pedidos_seguidos_partilham_uma_leitura(self, app_context, monkeypatch):
         gestor = self._manager()
@@ -510,7 +484,7 @@ class TestNowPlayingCache:
         assert gestor.get_now_playing()["success"] is False
         assert gestor.get_now_playing()["success"] is True
 
-    def test_mudanca_de_estado_no_sse_descarta_a_cache(self, app_context, monkeypatch):
+    def test_mudanca_de_estado_descarta_a_cache(self, app_context, monkeypatch):
         """
         Um play/pausa real tem de chegar ao painel de imediato — a cache não pode
         servir o estado anterior ao pedido que vem logo a seguir ao sinal.
@@ -537,3 +511,296 @@ class TestNowPlayingCache:
         # Recua o relógio da cache para além da janela.
         gestor._now_playing_cached_at -= (StreamManager.NOW_PLAYING_CACHE_SECONDS + 1)
         assert gestor._get_cached_now_playing() is None
+
+
+class TestGuardaContraCorteRepetido:
+    """
+    🐛 REGRESSÃO REPORTADA (log de um Jellyfin real): os cortes apareciam
+    espaçados de 60 a 120 segundos em vez de a cada volta da verificação. O
+    utilizador era cortado, recomeçava o filme, e ficava um minuto inteiro sem
+    ser incomodado.
+
+    A guarda "já cortei esta" era gravada com o `session_key`. No Plex isso é a
+    REPRODUÇÃO (muda a cada play); no Jellyfin é o APARELHO, e sobrevive a
+    parar e recomeçar — por isso a guarda apanhava a reprodução seguinte.
+    """
+
+    def _config(self, intervalo=15):
+        return {
+            "STREAM_CHECK_INTERVAL_SECONDS": intervalo,
+            "SCREEN_LIMIT_TERMINATION_STRATEGY": "oldest",
+            "TERMINATION_MSG_SCREEN_LIMIT": "limite",
+        }
+
+    def test_recomecar_a_reproducao_volta_a_ser_cortado(self, manager, cache_limpa):
+        # Mesmo aparelho (mesma sessão), reprodução nova.
+        primeira = sessao(session_key="aparelho-1", playback_key="aparelho-1:reproducao-A", view_offset=900)
+        outra = sessao(session_key="aparelho-2", playback_key="aparelho-2:reproducao-B", view_offset=10)
+
+        manager._enforce_screen_limits(1, "ana", [primeira, outra], {"screen_limit": 1}, self._config())
+        assert set(manager.sessions.terminadas) == {"aparelho-1"}
+
+        # O utilizador recomeça no MESMO aparelho: é uma reprodução nova.
+        manager.sessions.terminadas.clear()
+        recomecada = sessao(session_key="aparelho-1", playback_key="aparelho-1:reproducao-C", view_offset=900)
+
+        manager._enforce_screen_limits(1, "ana", [recomecada, outra], {"screen_limit": 1}, self._config())
+
+        assert set(manager.sessions.terminadas) == {"aparelho-1"}
+
+    def test_a_mesma_reproducao_nao_e_cortada_duas_vezes_seguidas(self, manager, cache_limpa):
+        # A guarda continua a servir para o que existe: não repetir a ordem
+        # (nem a mensagem, nem a auditoria) enquanto o cliente obedece.
+        a_cortar = sessao(session_key="aparelho-1", playback_key="repro-A", view_offset=900)
+        outra = sessao(session_key="aparelho-2", playback_key="repro-B", view_offset=10)
+
+        manager._enforce_screen_limits(1, "ana", [a_cortar, outra], {"screen_limit": 1}, self._config())
+        manager.sessions.terminadas.clear()
+
+        manager._enforce_screen_limits(1, "ana", [a_cortar, outra], {"screen_limit": 1}, self._config())
+
+        assert manager.sessions.terminadas == {}
+
+    def test_a_janela_acompanha_o_intervalo_de_verificacao(self, manager):
+        # Duas voltas chegam para o cliente obedecer; um minuto fixo dava a
+        # quem fosse cortado um minuto de stream livre.
+        assert manager._janela_anti_repeticao(self._config(intervalo=15)) == 30
+        assert manager._janela_anti_repeticao(self._config(intervalo=30)) == 60
+        # Nunca menos de 30s, mesmo com um intervalo muito curto.
+        assert manager._janela_anti_repeticao(self._config(intervalo=5)) == 30
+
+    def test_sem_chave_de_reproducao_usa_a_da_sessao(self):
+        # Um servidor que não distinga os dois continua a funcionar como antes.
+        assert sessao(session_key="abc").playback_key == "abc"
+
+
+class TestClienteQueIgnoraAOrdemDeParar:
+    """
+    🐛 REGRESSÃO REPORTADA (log de um painel real ligado ao Jellyfin): o painel
+    via as duas reproduções, mandava parar a cada volta, o servidor aceitava a
+    ordem — e o stream seguia à mesma. O leitor integrado da aplicação Android
+    (ExoPlayer) recebe o comando e ignora-o; pelo navegador o corte funcionava.
+
+    Sem contagem, o painel pedia educadamente para sempre. Ao fim de algumas
+    tentativas assume-se que o cliente não vai obedecer e escala para o último
+    recurso do servidor — que é agressivo (no Jellyfin revoga o acesso do
+    aparelho), e por isso só acontece com FORCE_STREAM_TERMINATION ativo.
+    """
+
+    @pytest.fixture()
+    def forcar(self, manager, monkeypatch):
+        """Liga/desliga o FORCE_STREAM_TERMINATION visto pelo motor."""
+        config = {}
+
+        def definir(ativo):
+            config['FORCE_STREAM_TERMINATION'] = ativo
+
+        monkeypatch.setattr(
+            "app.services.stream_manager.load_or_create_config", lambda: config
+        )
+        return definir
+
+    def _insistir(self, manager, sessao_alvo, voltas):
+        for _ in range(voltas):
+            manager._terminate_session(sessao_alvo, "limite")
+
+    def test_as_primeiras_tentativas_sao_sempre_o_pedido_normal(self, manager, cache_limpa, forcar):
+        forcar(True)
+        alvo = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+
+        self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR)
+
+        assert manager.sessions.terminadas == {"exoplayer": "limite"}
+        assert manager.sessions.forcadas == {}
+
+    def test_ao_fim_das_tentativas_escala_para_o_ultimo_recurso(self, manager, cache_limpa, forcar):
+        forcar(True)
+        alvo = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+
+        self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 1)
+
+        assert manager.sessions.forcadas == {"exoplayer": "limite"}
+
+    def test_desligado_por_omissao_avisa_mas_nao_forca(self, manager, cache_limpa, forcar):
+        # Revogar o acesso de um aparelho não se desfaz a partir do painel: o
+        # administrador tem de pedir explicitamente.
+        forcar(False)
+        alvo = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+
+        self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 3)
+
+        assert manager.sessions.forcadas == {}
+        # E continua a pedir — desistir em silêncio seria pior.
+        assert manager.sessions.terminadas == {"exoplayer": "limite"}
+
+    def test_num_servidor_sem_ultimo_recurso_nao_se_tenta_nada(self, manager, cache_limpa, forcar):
+        # 🐛 No Plex, `force_terminate()` devolve sempre False: não há nada mais
+        # forte do que pedir para parar. Ligar a definição não muda isso — e o
+        # painel mostrava-a na mesma, a prometer um comportamento que nunca
+        # acontecia.
+        forcar(True)
+        manager.sessions.ha_ultimo_recurso = False
+        alvo = sessao(session_key="plex-web", playback_key="plex-web:repro-A")
+
+        self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 3)
+
+        assert manager.sessions.forcas_pedidas == []
+        # Continua a pedir educadamente: desistir em silêncio seria pior.
+        assert manager.sessions.terminadas == {"plex-web": "limite"}
+
+    def test_o_aviso_nao_manda_ligar_o_que_nao_existe(self, manager, cache_limpa, forcar, caplog):
+        # Mandar o administrador ligar uma definição que a página de
+        # Configurações nem lhe mostra é pior do que não dizer nada.
+        import logging
+
+        forcar(False)
+        manager.sessions.ha_ultimo_recurso = False
+        alvo = sessao(session_key="plex-web", playback_key="plex-web:repro-A")
+
+        with caplog.at_level(logging.WARNING):
+            self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 1)
+
+        assert "FORCE_STREAM_TERMINATION" not in caplog.text
+        assert "nada mais forte" in caplog.text
+
+    def test_onde_existe_o_aviso_continua_a_dizer_como_o_ligar(self, manager, cache_limpa, forcar, caplog):
+        import logging
+
+        forcar(False)
+        alvo = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+
+        with caplog.at_level(logging.WARNING):
+            self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 1)
+
+        assert "FORCE_STREAM_TERMINATION" in caplog.text
+
+    def test_um_ultimo_recurso_recusado_nao_e_repetido_a_cada_volta(self, manager, cache_limpa, forcar):
+        """
+        🐛 REGRESSÃO REPORTADA: com o FORCE_STREAM_TERMINATION ligado e um
+        aparelho que o servidor não aceita revogar, o painel repetia o pedido a
+        cada verificação — um 400 e um ERROR no log de 15 em 15 segundos, para
+        sempre. Tenta-se uma vez por reprodução; depois diz-se porquê e pára.
+        """
+        forcar(True)
+        manager.sessions.forca_funciona = False
+        alvo = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+
+        self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 5)
+
+        assert manager.sessions.forcas_pedidas == ["exoplayer:repro-A"]
+
+    def test_a_trava_e_por_reproducao(self, manager, cache_limpa, forcar):
+        # Uma reprodução nova merece a sua própria tentativa: o aparelho pode
+        # entretanto ter passado a ser conhecido pelo servidor.
+        forcar(True)
+        manager.sessions.forca_funciona = False
+        primeira = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+        self._insistir(manager, primeira, manager.TENTATIVAS_ANTES_DE_FORCAR + 2)
+
+        outra = sessao(session_key="exoplayer", playback_key="exoplayer:repro-B")
+        self._insistir(manager, outra, manager.TENTATIVAS_ANTES_DE_FORCAR + 1)
+
+        assert manager.sessions.forcas_pedidas == ["exoplayer:repro-A", "exoplayer:repro-B"]
+
+    def test_se_o_ultimo_recurso_falhar_volta_a_pedir(self, manager, cache_limpa, forcar):
+        # Um servidor sem nada mais forte a oferecer (o Plex, por exemplo)
+        # devolve False; o motor não pode dar o corte por feito.
+        forcar(True)
+        manager.sessions.forca_funciona = False
+        alvo = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+
+        self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 1)
+
+        assert manager.sessions.forcadas == {"exoplayer": "limite"}
+        assert manager.sessions.terminadas == {"exoplayer": "limite"}
+
+    def test_a_contagem_e_por_reproducao_e_nao_por_aparelho(self, manager, cache_limpa, forcar):
+        # No Jellyfin a sessão é do APARELHO e sobrevive a parar e recomeçar.
+        # Quem recomeça merece outra vez o pedido educado.
+        forcar(True)
+        primeira = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+        self._insistir(manager, primeira, manager.TENTATIVAS_ANTES_DE_FORCAR)
+
+        recomecada = sessao(session_key="exoplayer", playback_key="exoplayer:repro-B")
+        manager._terminate_session(recomecada, "limite")
+
+        assert manager.sessions.forcadas == {}
+
+
+class TestODebounceDosEventos:
+    """A verificação pesada, adiada enquanto os eventos continuam a chegar.
+
+    🐛 Isto era um `threading.Timer`. O painel corre em gevent com
+    monkey-patching, por isso cada Timer era um greenlet embrulhado na
+    contabilidade do `threading` — e ao encerrar (é o próprio assistente de
+    instalação que se manda reiniciar com SIGTERM) um timer ainda pendente
+    acordava com o `threading._active` já desmontado:
+
+        File "threading.py", line 1111, in _delete
+          del _active[get_ident()]
+        KeyError: 271255370948160
+
+    Não se perdia trabalho — o que faltava fazer era a verificação que o
+    encerramento tornou desnecessária — mas o log ficava com um traceback logo
+    a seguir a uma instalação BEM-SUCEDIDA.
+
+    ⚠️ O mecanismo não tinha teste nenhum, e é o que segura o servidor numa
+    rajada de eventos: sem ele, cada mudança de estado dava uma verificação.
+    """
+
+    @pytest.fixture()
+    def rapido(self, manager, monkeypatch):
+        """Os mesmos tempos, em milissegundos, para o teste não esperar 6 s."""
+        monkeypatch.setattr(type(manager), 'SSE_DEBOUNCE_SECONDS', 0.05)
+        monkeypatch.setattr(type(manager), 'SSE_MAX_DEBOUNCE_SECONDS', 0.20)
+
+        corridas = []
+        monkeypatch.setattr(manager, '_execute_debounced_check', lambda: corridas.append(1))
+        return manager, corridas
+
+    def test_a_verificacao_corre_depois_do_atraso(self, rapido):
+        import gevent
+
+        gestor, corridas = rapido
+        gestor._schedule_sse_check()
+
+        assert corridas == [], "não pode correr de imediato — é isso que o debounce evita"
+        gevent.sleep(0.12)
+        assert corridas == [1]
+
+    def test_uma_rajada_da_UMA_verificacao(self, rapido):
+        import gevent
+
+        gestor, corridas = rapido
+        for _ in range(10):
+            gestor._schedule_sse_check()
+            gevent.sleep(0.01)
+
+        gevent.sleep(0.25)
+        # O teto (SSE_MAX) garante que ela corre; o debounce garante que não
+        # corre dez vezes.
+        assert corridas == [1]
+
+    def test_encerrar_cancela_o_que_estava_marcado(self, rapido):
+        import gevent
+
+        gestor, corridas = rapido
+        gestor._schedule_sse_check()
+        gestor.stop_listener()
+
+        gevent.sleep(0.15)
+        assert corridas == []
+        assert gestor._sse_debounce_timer is None
+
+    def test_nao_deixa_nada_da_contabilidade_do_threading(self, rapido):
+        # A raiz do bug: era um `threading.Timer`, e o que rebentava era o
+        # `threading._active`. Um greenlet do gevent não entra lá.
+        import threading
+
+        gestor, _corridas = rapido
+        antes = set(threading._active)
+        gestor._schedule_sse_check()
+
+        assert set(threading._active) == antes
+        assert not isinstance(gestor._sse_debounce_timer, threading.Thread)
+        gestor.stop_listener()

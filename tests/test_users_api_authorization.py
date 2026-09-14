@@ -19,7 +19,7 @@ def configurada(config_file):
     return config_file(IS_CONFIGURED=True, ADMIN_USER="dono", ADMIN_USER_ID="1")
 
 
-def _criar_perfil(plex_user_id):
+def _criar_perfil(media_user_id):
     """
     Cria o perfil local do utilizador.
 
@@ -31,9 +31,9 @@ def _criar_perfil(plex_user_id):
     from app.models import UserProfile
 
     perfil = UserProfile(
-        plex_user_id=plex_user_id,
-        username=f"utilizador-{plex_user_id}",
-        email=f"utilizador-{plex_user_id}@exemplo.test",
+        media_user_id=media_user_id,
+        username=f"utilizador-{media_user_id}",
+        email=f"utilizador-{media_user_id}@exemplo.test",
         status="active",
     )
     db.session.add(perfil)
@@ -41,7 +41,7 @@ def _criar_perfil(plex_user_id):
     return perfil
 
 
-def _autenticar(client, plex_user_id, role):
+def _autenticar(client, media_user_id, role):
     """
     Coloca o cliente de teste autenticado como um utilizador concreto.
 
@@ -51,12 +51,12 @@ def _autenticar(client, plex_user_id, role):
     """
     with client.session_transaction() as sessao:
         sessao["user_details"] = {
-            "id": str(plex_user_id),
-            "username": f"utilizador-{plex_user_id}",
-            "email": f"utilizador-{plex_user_id}@exemplo.test",
+            "id": str(media_user_id),
+            "username": f"utilizador-{media_user_id}",
+            "email": f"utilizador-{media_user_id}@exemplo.test",
             "role": role,
         }
-        sessao["_user_id"] = str(plex_user_id)
+        sessao["_user_id"] = str(media_user_id)
         sessao["_fresh"] = True
 
 
@@ -70,7 +70,7 @@ class TestHistoricoDePagamentos:
 
     def test_recusa_ver_o_historico_de_outro_utilizador(self, client, configurada, db_session):
         _criar_perfil(111)
-        _autenticar(client, plex_user_id=111, role="user")
+        _autenticar(client, media_user_id=111, role="user")
 
         resposta = client.get("/api/users/payments/222")
 
@@ -79,7 +79,7 @@ class TestHistoricoDePagamentos:
 
     def test_permite_ver_o_proprio_historico(self, client, configurada, db_session):
         _criar_perfil(111)
-        _autenticar(client, plex_user_id=111, role="user")
+        _autenticar(client, media_user_id=111, role="user")
 
         resposta = client.get("/api/users/payments/111")
 
@@ -87,7 +87,7 @@ class TestHistoricoDePagamentos:
         assert resposta.get_json()["success"] is True
 
     def test_o_administrador_ve_o_historico_de_qualquer_um(self, client, configurada, db_session):
-        _autenticar(client, plex_user_id=1, role="admin")
+        _autenticar(client, media_user_id=1, role="admin")
 
         resposta = client.get("/api/users/payments/222")
 
@@ -115,7 +115,7 @@ class TestPaginaDeUtilizadores:
             ADMIN_USER_ID="1",
             APP_BASE_URL="https://painel.exemplo.test/",
         )
-        _autenticar(client, plex_user_id=1, role="admin")
+        _autenticar(client, media_user_id=1, role="admin")
 
         pagina = client.get("/users").get_data(as_text=True)
 
@@ -127,9 +127,322 @@ class TestPaginaDeUtilizadores:
         "Esgotado" de um convite, mas a chave nunca era renderizada — o texto
         ficava sempre na versão de reserva, em português, mesmo noutro idioma.
         """
-        _autenticar(client, plex_user_id=1, role="admin")
+        _autenticar(client, media_user_id=1, role="admin")
 
         pagina = client.get("/users").get_data(as_text=True)
 
         for chave in ("data-i18n-exhausted", "data-i18n-expired-on", "data-i18n-created-at"):
             assert chave in pagina, f"Falta o atributo {chave} na página de utilizadores."
+
+
+class TestLimiteDeTelas:
+    """
+    🐛 REGRESSÃO: estas rotas escreviam `profile['screen_limit']` diretamente na
+    base de dados, sem passar pela fachada. Nos servidores que sabem impor o
+    limite (o `MaxActiveSessions` do Jellyfin), o servidor ficava com o valor da
+    data do convite para sempre — e essa é a ÚNICA defesa que um reprodutor não
+    pode ignorar. Quem mudasse de plano continuava limitado (ou ilimitado) pelo
+    valor antigo do lado do servidor.
+    """
+
+    class FachadaEspia:
+        def __init__(self, utilizadores=None):
+            self.limites = []
+            self._utilizadores = utilizadores or []
+
+        def update_screen_limit(self, user_id, screens):
+            self.limites.append((str(user_id), screens))
+
+        def get_all_users(self):
+            return list(self._utilizadores)
+
+        def get_user_by_id(self, user_id):
+            return next((u for u in self._utilizadores if str(u['id']) == str(user_id)), None)
+
+    @pytest.fixture()
+    def espia(self, monkeypatch):
+        from app import extensions
+        from app.blueprints.api import decorators as decorators_module
+
+        def instalar(utilizadores=None):
+            fachada = self.FachadaEspia(utilizadores)
+            # O `user_lookup_by_id` guarda o backend POR VALOR (`from
+            # ...extensions import media_server`): sem o substituir também lá, o
+            # decorador continua a perguntar ao backend real e a rota nem chega
+            # a correr. É a mesma armadilha que obriga a reiniciar o painel ao
+            # trocar de servidor.
+            monkeypatch.setattr(extensions, "media_server", fachada)
+            monkeypatch.setattr(decorators_module, "media_server", fachada)
+            return fachada
+
+        return instalar
+
+    def test_alterar_o_limite_de_um_utilizador_passa_pela_fachada(self, client, configurada, db_session, espia):
+        _criar_perfil(111)
+        fachada = espia([{"id": "111", "username": "utilizador-111"}])
+        _autenticar(client, media_user_id=1, role="admin")
+
+        resposta = client.post("/api/users/update-limit", json={"media_user_id": "111", "screens": 3})
+
+        assert resposta.status_code == 200
+        assert fachada.limites == [("111", 3)]
+
+    def test_o_limite_global_passa_pela_fachada_para_cada_um(self, client, configurada, db_session, espia):
+        _criar_perfil(111)
+        _criar_perfil(222)
+        fachada = espia([
+            {"id": "111", "username": "utilizador-111"},
+            {"id": "222", "username": "utilizador-222"},
+        ])
+        _autenticar(client, media_user_id=1, role="admin")
+
+        resposta = client.post("/api/users/update-all-limits", json={"screens": 2})
+
+        assert resposta.status_code == 200
+        assert sorted(fachada.limites) == [("111", 2), ("222", 2)]
+
+    def test_o_limite_global_nao_se_aplica_ao_proprio_administrador(self, client, configurada, db_session, espia):
+        _criar_perfil(1)
+        _criar_perfil(111)
+        fachada = espia([
+            {"id": "1", "username": "dono"},
+            {"id": "111", "username": "utilizador-111"},
+        ])
+        _autenticar(client, media_user_id=1, role="admin")
+
+        client.post("/api/users/update-all-limits", json={"screens": 2})
+
+        assert fachada.limites == [("111", 2)]
+
+
+class TestMinhaContaDoAdministrador:
+    """
+    🐛 REGRESSÃO REPORTADA (AttributeError em `_get_expiration_details`): o
+    administrador abria a "Minha Conta" e a rota rebentava.
+
+    O administrador NÃO TEM PERFIL LOCAL, por desenho: o login dele devolve na
+    primeira ramificação de `_autorizar_e_iniciar_sessao`, antes da parte que
+    cria perfis, e a sincronização da lista de utilizadores salta-o de
+    propósito (`username != admin_username`). No Plex ele nem sequer aparece na
+    lista de amigos do servidor. Estas rotas assumiam um dicionário.
+    """
+
+    @pytest.fixture(autouse=True)
+    def sem_servicos_externos(self, monkeypatch):
+        """O Tautulli e o servidor de média não são o que está a ser testado."""
+        from app.blueprints.api import users as users_module
+
+        class Vazio:
+            def get_user_watch_details(self, **kwargs):
+                return {"success": True, "details": {}}
+
+            def get_user_libraries(self, user_id):
+                return {"success": True, "libraries": []}
+
+            def get_user_devices(self, user_id):
+                return {"success": True, "devices": []}
+
+            def get_watch_history(self, user_id, page=1, length=15, search=""):
+                return {"success": True, "history": [],
+                        "pagination": {"current_page": 1, "total_pages": 1, "total_records": 0}}
+
+        monkeypatch.setattr(users_module.extensions, "stats_manager", Vazio(), raising=False)
+        monkeypatch.setattr(users_module.extensions, "media_server", Vazio(), raising=False)
+
+    def test_os_detalhes_da_conta_respondem_sem_perfil(self, client, configurada, db_session):
+        _autenticar(client, media_user_id=1, role="admin")
+
+        resposta = client.get("/api/users/account/details")
+
+        assert resposta.status_code == 200
+        assert resposta.get_json()["success"] is True
+
+    def test_sem_perfil_o_limite_de_telas_e_ilimitado(self, client, configurada, db_session):
+        _autenticar(client, media_user_id=1, role="admin")
+
+        corpo = client.get("/api/users/account/details").get_json()
+
+        assert corpo["expiration_info"]["date"] is None
+        assert corpo["is_on_trial"] is False
+        assert corpo["profile_details"]["name"] is None
+
+    def test_gravar_o_perfil_cria_um_em_vez_de_rebentar(self, client, configurada, db_session):
+        _autenticar(client, media_user_id=1, role="admin")
+
+        resposta = client.post("/api/users/account/profile", json={"name": "Dono"})
+
+        assert resposta.status_code == 200
+        from app.extensions import db
+        from app.models import UserProfile
+        assert db.session.get(UserProfile, "1").name == "Dono"
+
+    def test_a_privacidade_tambem_se_guarda_sem_perfil(self, client, configurada, db_session):
+        _autenticar(client, media_user_id=1, role="admin")
+
+        resposta = client.post("/api/users/account/privacy", json={"hide": True})
+
+        assert resposta.status_code == 200
+        from app.extensions import db
+        from app.models import UserProfile
+        assert db.session.get(UserProfile, "1").hide_from_leaderboard is True
+
+    @pytest.mark.parametrize("rota", [
+        "/api/users/account/details",
+        "/api/payments/options",
+        "/api/users/account/devices",
+        "/api/users/payments/1",
+        "/api/users/referral/me",
+        "/api/statistics/user/history",
+    ])
+    def test_nenhum_pedido_da_pagina_rebenta(self, client, configurada, db_session, rota):
+        """
+        🐛 REGRESSÃO REPORTADA, segunda volta: corrigir só os `/account/*`
+        não chegou. A página faz vários pedidos em paralelo e o `fetchAPI`
+        levanta em qualquer resposta que não seja 2xx — um `Promise.all` com um
+        deles a falhar derruba o carregamento INTEIRO. Por isso o que se testa é
+        a página toda, e não uma rota de cada vez.
+        """
+        _autenticar(client, media_user_id=1, role="admin")
+
+        resposta = client.get(rota)
+
+        assert resposta.status_code == 200, f"{rota} devolveu {resposta.status_code}"
+
+    def test_o_administrador_nao_tem_planos_para_renovar(self, client, configurada, db_session):
+        # Sem assinatura não há nada a comprar — e isso não é um erro do pedido.
+        _autenticar(client, media_user_id=1, role="admin")
+
+        corpo = client.get("/api/payments/options").get_json()
+
+        assert corpo["success"] is True
+        assert corpo["prices"] == {}
+
+    def test_um_token_de_pagamento_invalido_continua_a_ser_um_erro(self, client, configurada, db_session):
+        # A correção não pode transformar um link de pagamento adulterado em
+        # "sem planos": isso esconderia o problema de quem o recebeu.
+        resposta = client.get("/api/payments/options?token=nao-existe")
+
+        assert resposta.status_code == 400
+
+    def test_quem_tem_perfil_continua_a_usa_lo(self, client, configurada, db_session):
+        # A correção não pode passar a ignorar o perfil de quem o tem.
+        perfil = _criar_perfil(111)
+        perfil.name = "Ana Silva"
+        from app.extensions import db
+        db.session.commit()
+        _autenticar(client, media_user_id=111, role="user")
+
+        corpo = client.get("/api/users/account/details").get_json()
+
+        assert corpo["profile_details"]["name"] == "Ana Silva"
+
+
+class TestAvatarDaSessao:
+    """
+    🐛 REGRESSÃO REPORTADA: `GET /Users/<id>/Images/Primary 404` no painel, e um
+    "?" no lugar do avatar do administrador.
+
+    O avatar é uma CÓPIA guardada no cookie da sessão, tirada no momento do
+    login. Daí saem dois problemas diferentes:
+
+    1. quem já estava autenticado quando o formato mudou continuou a carregar o
+       caminho cru do servidor — e o browser pede-o ao PAINEL, que dá 404;
+    2. quem coloca a imagem de perfil DEPOIS de entrar nunca a vê, porque a
+       sessão não se reescreve sozinha. Era o "?" do administrador.
+    """
+
+    class FachadaComAvatar:
+        """Um servidor onde a pessoa tem (ou não) uma imagem de perfil."""
+
+        def __init__(self, thumb=None):
+            self.thumb = thumb
+
+        def get_user_by_id(self, user_id):
+            return {"id": str(user_id), "username": "dono", "thumb": self.thumb}
+
+        def thumb_para_interface(self, thumb):
+            # O que já é do proxy volta intacto; o caminho cru é convertido.
+            if not thumb:
+                return None
+            return thumb if '/image/' in thumb else f"/image/?source=convertido"
+
+        def get_user_libraries(self, user_id):
+            return {"success": True, "libraries": []}
+
+        def get_user_devices(self, user_id):
+            return {"success": True, "devices": []}
+
+    @pytest.fixture()
+    def servidor(self, monkeypatch):
+        from app import extensions
+        from app.blueprints.api import users as users_module
+
+        class TautulliVazio:
+            def get_user_watch_details(self, **kwargs):
+                return {"success": True, "details": {}}
+
+        monkeypatch.setattr(users_module.extensions, "stats_manager", TautulliVazio(), raising=False)
+
+        def instalar(thumb=None):
+            fachada = self.FachadaComAvatar(thumb)
+            monkeypatch.setattr(extensions, "media_server", fachada)
+            monkeypatch.setattr(users_module.extensions, "media_server", fachada, raising=False)
+            return fachada
+
+        return instalar
+
+    def _autenticar_com_thumb(self, client, thumb):
+        with client.session_transaction() as sessao:
+            sessao["user_details"] = {
+                "id": "1", "username": "dono", "email": "d@e.test",
+                "role": "admin", "thumb": thumb,
+            }
+            sessao["_user_id"] = "1"
+            sessao["_fresh"] = True
+
+    def test_uma_sessao_antiga_deixa_de_pedir_o_caminho_cru(self, client, configurada, db_session, servidor):
+        # O sintoma exato reportado: o browser a pedir /Users/... ao painel.
+        servidor()
+        self._autenticar_com_thumb(client, "/Users/44874bdd/Images/Primary?tag=a2f1")
+
+        pagina = client.get("/account").get_data(as_text=True)
+
+        assert "/Users/44874bdd/Images/Primary" not in pagina
+
+    def test_a_imagem_posta_depois_do_login_passa_a_aparecer(self, client, configurada, db_session, servidor):
+        # O "?" do administrador: entrou sem imagem, pôs uma a seguir.
+        servidor(thumb="/image/?source=nova")
+        self._autenticar_com_thumb(client, None)
+
+        corpo = client.get("/api/users/account/details").get_json()
+
+        assert corpo["thumb"] == "/image/?source=nova"
+
+    def test_a_imagem_nova_fica_na_sessao_para_o_cabecalho(self, client, configurada, db_session, servidor):
+        # Sem isto, a "Minha Conta" mostrava a imagem nova e o resto do painel
+        # continuava com a antiga.
+        servidor(thumb="/image/?source=nova")
+        self._autenticar_com_thumb(client, None)
+
+        client.get("/api/users/account/details")
+
+        with client.session_transaction() as sessao:
+            assert sessao["user_details"]["thumb"] == "/image/?source=nova"
+
+    def test_um_servidor_que_nao_responde_mantem_o_avatar_que_havia(self, client, configurada, db_session, servidor):
+        # Melhor um avatar antigo do que nenhum.
+        fachada = servidor()
+        def rebenta(user_id):
+            raise RuntimeError("servidor em baixo")
+        fachada.get_user_by_id = rebenta
+        self._autenticar_com_thumb(client, "/image/?source=antiga")
+
+        corpo = client.get("/api/users/account/details").get_json()
+
+        assert corpo["thumb"] == "/image/?source=antiga"
+
+    def test_quem_nao_tem_avatar_em_lado_nenhum_continua_sem(self, client, configurada, db_session, servidor):
+        servidor(thumb=None)
+        self._autenticar_com_thumb(client, None)
+
+        assert client.get("/api/users/account/details").get_json()["thumb"] is None

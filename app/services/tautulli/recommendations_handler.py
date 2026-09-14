@@ -28,23 +28,22 @@ Notas de desenho:
 * O índice (catálogo + matriz) é construído UMA vez para o servidor inteiro e
   reaproveitado por todos os utilizadores — é a parte cara (uma chamada ao
   Tautulli e, opcionalmente, alguns pedidos de metadados). Quem faz a cache é o
-  ``TautulliManager``; aqui só se calcula.
+  ``StatsManager``; aqui só se calcula.
 * A privacidade é respeitada: quem ativou "esconder do ranking" não entra na
   matriz como *vizinho* (o histórico dele nunca influencia o que os outros veem),
   mas continua a receber recomendações a partir do seu próprio histórico.
 * Nada do que é devolvido identifica *quem* viu o quê — apenas quantos.
 """
 
-import base64
 import logging
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from math import sqrt
 from typing import Any, Dict, List, Optional, Set
 
-from flask import url_for
-
 from app.config import load_or_create_config
+from ...utils.identity import normalize_user_ids
+from ...utils.image_proxy import proxied_image_url
 
 logger = logging.getLogger(__name__)
 
@@ -80,24 +79,21 @@ def _config_bool(config: Dict[str, Any], key: str) -> bool:
     return bool(value)
 
 
-def build_poster_url(thumb: Optional[str], width: int = 300, height: int = 450) -> Optional[str]:
+def build_poster_url(api: Any, thumb: Optional[str], width: int = 300, height: int = 450) -> Optional[str]:
     """
-    Constrói o URL do proxy interno de imagens para uma miniatura do Tautulli.
+    Constrói o URL do proxy interno de imagens para uma miniatura.
 
     O proxy recebe o caminho já codificado em base64 (ver ``blueprints/image.py``),
-    o que evita expor o URL/token do Tautulli ao browser do utilizador.
+    o que evita expor o URL/token da fonte ao browser do utilizador.
+
+    Quem diz de ONDE se pede a imagem é a fonte (``api.image_payload``): as
+    mesmas recomendações servem um servidor cujas capas vêm do Tautulli e outro
+    cujas capas vêm do próprio servidor de média.
     """
-    if not thumb:
+    if not thumb or api is None:
         return None
 
-    tautulli_path = f"/pms_image_proxy?img={thumb}&width={width}&height={height}"
-    b64_payload = base64.urlsafe_b64encode(f"tautulli:{tautulli_path}".encode("utf-8")).decode("utf-8")
-
-    # 🛡️ Fora de um pedido HTTP (ex: tarefa agendada) o url_for rebenta.
-    try:
-        return url_for("image.proxy_image", source=b64_payload)
-    except RuntimeError:
-        return f"/image/?source={b64_payload}"
+    return proxied_image_url(api.image_payload(thumb, width, height))
 
 
 def _item_identity(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -148,7 +144,7 @@ def _item_identity(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _percent_complete(item: Dict[str, Any]) -> float:
-    """Percentagem vista de uma sessão, tolerante a campos ausentes ou inválidos."""
+    """Porcentagem vista de uma sessão, tolerante a campos ausentes ou inválidos."""
     raw = item.get("percent_complete")
     if raw in (None, ""):
         # Versões antigas do Tautulli podem não expor a percentagem; nesse caso
@@ -253,7 +249,7 @@ class RecommendationsHandler:
         self._enrich_with_genres(config, catalog, item_users)
 
         for item in catalog.values():
-            item["poster_url"] = build_poster_url(item.pop("thumb", None))
+            item["poster_url"] = build_poster_url(self.api, item.pop("thumb", None))
 
         return {
             "catalog": catalog,
@@ -267,18 +263,17 @@ class RecommendationsHandler:
         if not self.data_manager or not _config_bool(config, "RECOMMENDATIONS_RESPECT_PRIVACY"):
             return set()
 
-        numeric_ids = []
-        for user_id in user_ids:
-            try:
-                numeric_ids.append(int(user_id))
-            except (TypeError, ValueError):
-                continue
+        # 🐛 Isto convertia cada ID para inteiro e descartava o que não coubesse.
+        # Com identidades em texto (um GUID do Jellyfin, por exemplo) descartava
+        # TODA a gente — e a privacidade deixava silenciosamente de ser
+        # respeitada, que é a pior forma de falhar numa funcionalidade destas.
+        ids_normalizados = normalize_user_ids(user_ids)
 
-        if not numeric_ids:
+        if not ids_normalizados:
             return set()
 
         try:
-            profiles = self.data_manager.get_user_profiles_by_id(numeric_ids) or {}
+            profiles = self.data_manager.get_user_profiles_by_id(ids_normalizados) or {}
         except Exception as e:  # pragma: no cover - defensivo
             logger.debug(f"Não foi possível ler os perfis para as recomendações: {e}")
             return set()
@@ -324,7 +319,7 @@ class RecommendationsHandler:
     # RECOMENDAÇÕES DE UM UTILIZADOR
     # ======================================================================
 
-    def recommend(self, index: Dict[str, Any], plex_user_id: str) -> Dict[str, Any]:
+    def recommend(self, index: Dict[str, Any], media_user_id: str) -> Dict[str, Any]:
         """
         Gera as secções "Porque assistiu X, pode gostar de Y" para um utilizador.
 
@@ -338,7 +333,7 @@ class RecommendationsHandler:
         min_co = _config_int(config, "RECOMMENDATIONS_MIN_CO_OCCURRENCE", minimum=1)
 
         catalog = index.get("catalog") or {}
-        user_items = (index.get("user_items") or {}).get(str(plex_user_id)) or {}
+        user_items = (index.get("user_items") or {}).get(str(media_user_id)) or {}
 
         if not user_items:
             return {"success": True, "sections": [], "reason": "no_history"}

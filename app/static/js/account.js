@@ -166,7 +166,7 @@ async function loadReferralCard() {
             const reservadoEl = document.getElementById('referral-credit-reserved');
             if (reservadoEl) {
                 if (reservado > 0) {
-                    reservadoEl.textContent = (state.i18n.referralCreditReserved || 'R$ {value} reservado numa cobrança em aberto')
+                    reservadoEl.textContent = (state.i18n.referralCreditReserved || 'R$ {value} reservado em uma cobrança em aberto')
                         .replace('{value}', reservado.toFixed(2));
                     reservadoEl.classList.remove('hidden');
                 } else {
@@ -213,6 +213,23 @@ const renderProfileBaseInfo = (data, expiration) => {
     document.getElementById('user-email').textContent = data.email;
     document.getElementById('user-join-date').textContent = data.join_date;
     document.getElementById('user-screen-limit').textContent = data.screen_limit;
+
+    // O administrador é o DONO do servidor: não tem data de entrada (nunca foi
+    // convidado), não tem plano e não é limitado pelo painel. Mostrar "Membro
+    // desde: Não disponível" e "Limite de Telas: Ilimitado" só levantava a
+    // pergunta de porquê — em vez disso, diz-se quem ele é.
+    const adminBadge = document.getElementById('user-admin-badge');
+    const adminNote = document.getElementById('user-admin-note');
+    const joinDateRow = document.getElementById('user-join-date-container');
+    const screenLimitRow = document.getElementById('user-screen-limit-container');
+
+    if (data.is_admin) {
+        adminBadge?.classList.remove('hidden');
+        adminBadge?.classList.add('inline-flex');
+        adminNote?.classList.remove('hidden');
+        joinDateRow?.classList.add('hidden');
+        screenLimitRow?.classList.add('hidden');
+    }
     // Guardado para detetar upgrades a meio do ciclo (pro-rata).
     state.currentScreens = parseInt(data.screen_limit, 10) || 0;
     
@@ -266,11 +283,15 @@ const renderDeviceList = (devices) => {
         return;
     }
 
-    const platformMap = ['alexa', 'android', 'atv', 'chrome', 'chromecast', 'dlna', 'firefox', 'gtv', 'ie', 'ios', 'kodi', 'lg', 'linux', 'macos', 'msedge', 'opera', 'playstation', 'plex', 'plexamp', 'roku', 'safari', 'samsung', 'tivo', 'windows', 'xbox'];
+    const platformMap = ['alexa', 'android', 'atv', 'chrome', 'chromecast', 'dlna', 'firefox', 'gtv', 'ie', 'ios', 'jellyfin', 'kodi', 'lg', 'linux', 'macos', 'msedge', 'opera', 'playstation', 'plex', 'plexamp', 'roku', 'safari', 'samsung', 'tivo', 'windows', 'xbox'];
 
     container.innerHTML = devices.map(device => {
         const lastSeen = new Date(device.last_seen * 1000);
-        const platform = (device.platform || '').toLowerCase().split(' ')[0];
+        // O servidor diz qual é o ícone quando sabe classificá-lo. Adivinhar
+        // pela primeira palavra do nome da aplicação só funciona por acaso:
+        // com o Jellyfin dava sempre 'jellyfin' ('Jellyfin Web', 'Jellyfin
+        // Android'...), que nem existia no catálogo.
+        const platform = (device.platform_key || device.platform || '').toLowerCase().split(' ')[0];
         const platformClass = platformMap.includes(platform) ? `platform-${platform}` : 'platform-default';
 
         return `
@@ -383,7 +404,7 @@ function renderProrationBox(quote) {
                              cheio com mais telas só é permitida perto do vencimento). -->
                         <input type="checkbox" id="proration-toggle" checked class="hidden">
                         <p class="text-xs text-emerald-700/70 dark:text-emerald-400/70 mt-3 italic">
-                            ${escapeHTML(state.i18n.upgradeOnlyProration || 'A troca de plano numa renovação completa fica disponível perto do vencimento.')}
+                            ${escapeHTML(state.i18n.upgradeOnlyProration || 'A troca de plano em uma renovação completa fica disponível perto do vencimento.')}
                         </p>
                     ` : `
                         <label class="flex items-center gap-2 mt-3 cursor-pointer">
@@ -584,7 +605,7 @@ async function fetchRequests(append = false) {
             `);
             document.getElementById('requests-load-more')?.addEventListener('click', (e) => {
                 e.target.disabled = true;
-                e.target.textContent = state.i18n.loadingRequests || 'A carregar...';
+                e.target.textContent = state.i18n.loadingRequests || 'Carregando...';
                 fetchRequests(true);
             });
         }
@@ -1031,6 +1052,96 @@ const fetchWatchHistory = async (page = 1, search = '') => {
     }
 };
 
+/**
+ * Alterar a palavra-passe a partir da "Minha Conta".
+ *
+ * ⚠️ Não há duas palavras-passe: a que aqui se grava é a do próprio servidor de
+ * média — a mesma que abre a aplicação dele E este painel. O painel não guarda
+ * nenhuma, em sítio nenhum.
+ *
+ * O formulário só existe onde as contas são locais (ver o `{% if %}` no
+ * template), por isso tudo aqui começa com um `?.` — num painel Plex não há
+ * nada a ligar.
+ */
+const initPasswordChange = () => {
+    const form = document.getElementById('change-password-form');
+    if (!form) return;
+
+    const botao = document.getElementById('change-password-submit');
+    const textoBotao = document.getElementById('change-password-text');
+    const spinner = document.getElementById('change-password-spinner');
+    const resultado = document.getElementById('change-password-result');
+
+    const mostrar = (mensagem, sucesso) => {
+        resultado.textContent = mensagem;
+        resultado.classList.toggle('text-green-500', !!sucesso);
+        resultado.classList.toggle('text-red-500', !sucesso);
+    };
+
+    form.addEventListener('submit', async (evento) => {
+        evento.preventDefault();
+
+        const atual = document.getElementById('current-password').value;
+        const nova = document.getElementById('new-password').value;
+        const confirmacao = document.getElementById('confirm-password').value;
+
+        if (!atual || !nova || !confirmacao) {
+            mostrar(state.i18n.passwordRequired, false);
+            return;
+        }
+        // Verificar aqui poupa uma viagem — e, sobretudo, poupa à pessoa gravar
+        // uma palavra-passe que escreveu mal nos dois campos de uma vez só.
+        if (nova.length < 6) {
+            mostrar(state.i18n.passwordTooShort, false);
+            return;
+        }
+        if (nova !== confirmacao) {
+            mostrar(state.i18n.passwordMismatch, false);
+            return;
+        }
+
+        botao.disabled = true;
+        spinner?.classList.remove('hidden');
+        if (textoBotao) textoBotao.textContent = state.i18n.passwordSaving;
+        mostrar('', true);
+
+        try {
+            const resposta = await fetch(state.urls.changePasswordUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ current_password: atual, new_password: nova }),
+            });
+            const dados = await resposta.json();
+
+            mostrar(dados.message || '', dados.success);
+            if (dados.success) {
+                showToast(dados.message, 'success');
+                form.reset();
+            }
+        } catch (e) {
+            mostrar(state.i18n.error || 'Erro', false);
+        } finally {
+            spinner?.classList.add('hidden');
+            botao.disabled = false;
+            if (textoBotao) textoBotao.textContent = state.i18n.passwordSave;
+        }
+    });
+
+    // Ver o que se escreveu, como no login e no convite.
+    const alternar = document.getElementById('toggle-new-password');
+    alternar?.addEventListener('click', () => {
+        const campo = document.getElementById('new-password');
+        const visivel = campo.type === 'text';
+
+        campo.type = visivel ? 'password' : 'text';
+        document.getElementById('new-icon-eye')?.classList.toggle('hidden', !visivel);
+        document.getElementById('new-icon-eye-off')?.classList.toggle('hidden', visivel);
+        alternar.setAttribute('aria-pressed', String(!visivel));
+        alternar.setAttribute('aria-label', visivel ? state.i18n.showPassword : state.i18n.hidePassword);
+        campo.focus();
+    });
+};
+
 const initGlobalEventListeners = () => {
     // Busca do histórico (Debounce)
     const searchInput = document.getElementById('historySearchInput');
@@ -1076,9 +1187,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
         // Obtenção Paralela dos Dados Fundamentais
+        //
+        // Os planos de renovação NÃO são fundamentais: quem não tem nenhum
+        // (o administrador, ou um painel sem preços configurados) via a página
+        // inteira falhar por causa deles, porque o `fetchAPI` levanta em
+        // qualquer resposta que não seja 2xx e o `Promise.all` rejeita com a
+        // primeira. O `if (paymentOptions.success)` mais abaixo já sabia lidar
+        // com a ausência — só nunca lá chegava.
         const [accountData, paymentOptions] = await Promise.all([
             fetchAPI(state.urls.getAccountDetailsUrl),
-            fetchAPI(state.urls.getPaymentOptionsUrl)
+            fetchAPI(state.urls.getPaymentOptionsUrl).catch(() => ({ success: false }))
         ]);
 
         state.currentUser = { 
@@ -1099,18 +1217,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         initContactForm(accountData.profile_details);
 
-        // Fetch secundários e pesados não bloqueiam a UI primária
+        // Fetch secundários e pesados não bloqueiam a UI primária.
+        // O `.catch()` é preciso: sem ele, uma falha destes deixava uma
+        // rejeição por tratar na consola — a página ficava bem, mas o erro
+        // aparecia ao lado do que interessava e confundia quem o lia.
         fetchAPI(state.urls.getPaymentHistoryUrl).then(res => {
             if (res.success) renderPaymentHistory(res.payments);
-        });
+        }).catch(() => {});
 
         fetchAPI(state.urls.getAccountDevicesUrl).then(res => {
             if (res.success) renderDeviceList(res.devices);
-        });
+        }).catch(() => {});
 
         initTabs();
         initRequestsTab();
         initGlobalEventListeners();
+        initPasswordChange();
 
         // Reveal Interface
         if (dom.loadingIndicator) dom.loadingIndicator.style.display = 'none';

@@ -158,7 +158,7 @@
                 <div class="absolute inset-0 rounded-full border-t-2 border-blue-500 animate-spin"></div>
                 <div class="absolute inset-2 rounded-full border-r-2 border-yellow-500 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
             </div>
-            <p class="mt-2 font-medium text-gray-500 dark:text-gray-400">{{ _('Carregando a base de dados de usuários...') }}</p>
+            <p class="mt-2 font-medium text-gray-500 dark:text-gray-400">{{ _('Carregando o banco de dados de usuários...') }}</p>
         </div>
      </div>
 </div>
@@ -190,12 +190,12 @@
         data-url-api-invites-delete="{{ url_for('invites_api.delete_invite_route') }}"
         data-url-api-invites-reactivate="{{ url_for('invites_api.reactivate_invite_route') }}"
         data-url-api-users-update-limit="{{ url_for('users_api.update_limit_route') }}"
-        data-url-api-users-renew-base="{{ url_for('users_api.renew_user_subscription_route', plex_user_id=0) }}"
-        data-url-api-users-profile-base="{{ url_for('users_api.user_profile_route', plex_user_id=0) }}"
-        data-url-api-users-profile-set-base="{{ url_for('users_api.user_profile_route', plex_user_id=0) }}"
-        data-url-api-users-extend-trial-base="{{ url_for('users_api.extend_trial_route', plex_user_id=0) }}"
-        data-url-api-users-notify-base="{{ url_for('users_api.notify_user_route', plex_user_id=0) }}"
-        data-url-api-users-libraries-base="{{ url_for('users_api.get_user_libraries_route', plex_user_id=0) }}"
+        data-url-api-users-renew-base="{{ url_for('users_api.renew_user_subscription_route', media_user_id=0) }}"
+        data-url-api-users-profile-base="{{ url_for('users_api.user_profile_route', media_user_id=0) }}"
+        data-url-api-users-profile-set-base="{{ url_for('users_api.user_profile_route', media_user_id=0) }}"
+        data-url-api-users-extend-trial-base="{{ url_for('users_api.extend_trial_route', media_user_id=0) }}"
+        data-url-api-users-notify-base="{{ url_for('users_api.notify_user_route', media_user_id=0) }}"
+        data-url-api-users-libraries-base="{{ url_for('users_api.get_user_libraries_route', media_user_id=0) }}"
         data-url-api-users-update-libraries="{{ url_for('users_api.update_libraries_route') }}"
         data-url-api-users-remove="{{ url_for('users_api.remove_user_route') }}"
         data-url-api-users-block="{{ url_for('users_api.block_user_route') }}"
@@ -205,7 +205,7 @@
         data-url-api-users-toggle-overseerr="{{ url_for('users_api.toggle_overseerr_access_route') }}"
         data-url-api-users-update-all-limits="{{ url_for('users_api.update_all_limits_route') }}"
         data-url-api-users-update-all-libraries="{{ url_for('users_api.update_all_libraries_route') }}"
-        data-url-api-users-payments-base="{{ url_for('users_api.get_user_payments_history', plex_user_id=0) }}"
+        data-url-api-users-payments-base="{{ url_for('users_api.get_user_payments_history', media_user_id=0) }}"
         data-url-base-invite-page="/invite/"
         data-app-base-url="{{ app_base_url }}"
         data-i18n-error="{{ _('Erro') }}"
@@ -252,7 +252,7 @@
         data-i18n-generating="{{ _('Gerando...') }}"
         data-i18n-select-one-library="{{ _('Pelo menos uma biblioteca deve ser selecionada.') }}"
         data-i18n-invite-link-generated="{{ _('Link de Convite Gerado') }}"
-        data-i18n-share-this-link="{{ _('Partilhe este link com o novo usuário.') }}"
+        data-i18n-share-this-link="{{ _('Compartilhe este link com o novo usuário.') }}"
         data-i18n-copy="{{ _('Copiar') }}"
         data-i18n-close="{{ _('Fechar') }}"
         data-i18n-confirm-remove-user="{{ _('Tem certeza que deseja remover') }}"
@@ -308,7 +308,7 @@
         data-i18n-expires-in-hours="{{ _('expira em {hours} horas') }}"
         data-i18n-expires-in-minutes="{{ _('expira em {minutes} minutos') }}"
         data-i18n-add-one-month="{{ _('+1 Mês') }}"
-        data-i18n-confirm-add-one-month="{{ _('Tem a certeza que deseja adicionar 1 mês à subscrição de') }}"
+        data-i18n-confirm-add-one-month="{{ _('Tem a certeza que deseja adicionar 1 mês à assinatura de') }}"
         data-i18n-confirm="{{ _('Confirmar') }}"
         data-i18n-payment-history="{{ _('Histórico de Pagamentos') }}"
         data-i18n-loading-history="{{ _('Carregando histórico...') }}"
@@ -331,7 +331,7 @@
         data-i18n-confirm-reactivate-button="{{ _('Sim, Reativar e Convidar') }}"
         data-i18n-delete-permanently-title="{{ _('Excluir Permanentemente') }}"
         data-i18n-confirm-delete-permanently="{{ _('Esta ação é IRREVERSÍVEL e irá excluir todos os dados associados a') }}"
-        data-i18n-select-libs-for-reactivation="{{ _('Selecione as bibliotecas para partilhar com {username} ao reativar o acesso.') }}"
+        data-i18n-select-libs-for-reactivation="{{ _('Selecione as bibliotecas para compartilhar com {username} ao reativar o acesso.') }}"
         data-i18n-reactivating="{{ _('Reativando...') }}"
         data-i18n-universal-time-active="{{ _('Horário universal ativo') }}"
         data-i18n-error-loading-profile="{{ _('Erro ao carregar perfil do usuário') }}"
@@ -355,14 +355,14 @@
         data-i18n-telegram-id-hint="{{ _('Se preenchido, a conta ficará logo vinculada a este ID.') }}"
         data-i18n-no-payment-token="{{ _('Este usuário ainda não tem um link de pagamento gerado.') }}"
         data-i18n-loading-libraries="{{ _('Acessando a biblioteca...') }}"
-        data-i18n-no-libraries-available="{{ _('Nenhuma biblioteca disponível para partilhar no seu Servidor Plex.') }}"
+        data-i18n-no-libraries-available="{{ _('Nenhuma biblioteca disponível para compartilhar no seu Servidor Plex.') }}"
         data-i18n-allow-downloads-short="{{ _('Permitir Downloads') }}"
-        data-i18n-saving="{{ _('A guardar...') }}"
-        data-i18n-save-changes="{{ _('Guardar Alterações') }}"
+        data-i18n-saving="{{ _('Salvando...') }}"
+        data-i18n-save-changes="{{ _('Salvar Alterações') }}"
         data-i18n-sending="{{ _('Enviando...') }}"
         data-i18n-sync-error="{{ _('Erro ao sincronizar') }}"
         data-i18n-not-available="{{ _('Não disponível') }}"
-        data-i18n-allow-downloads-hint="{{ _('Permite que o utilizador descarregue filmes e séries (Offline)') }}"
+        data-i18n-allow-downloads-hint="{{ _('Permite que o usuário baixe filmes e séries (Offline)') }}"
         data-i18n-select-allowed-access="{{ _('Selecione o acesso permitido:') }}"
 >
 </script>

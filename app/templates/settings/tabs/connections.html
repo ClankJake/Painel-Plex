@@ -12,6 +12,7 @@
     <div class="space-y-6">
 
         <!-- Cartão: Plex (Servidor + Fontes de Mídia Online, em sub-abas) -->
+        {% if media_server.type == 'plex' %}
         <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
             <div class="flex items-center gap-3 mb-4">
                 <div class="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
@@ -19,7 +20,7 @@
                 </div>
                 <div>
                     <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">{{ _('Plex Media Server') }}</h3>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Servidor principal de partilha de média.') }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Servidor principal de compartilhamento de mídia.') }}</p>
                 </div>
             </div>
 
@@ -27,7 +28,9 @@
             <div class="border-b border-gray-200 dark:border-gray-700 mb-6 pb-2">
                 <nav id="plex-tabs" class="flex space-x-2 overflow-x-auto horizontal-scroll">
                     <button type="button" data-subtab="plex-server" class="tab-button active bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-200 dark:ring-gray-600 whitespace-nowrap">{{ _('Servidor') }}</button>
+                    {% if media_server.capabilities.fontes_media_online %}
                     <button type="button" data-subtab="plex-online-media" class="tab-button text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ _('Fontes de Mídia Online') }}</button>
+                    {% endif %}
                 </nav>
             </div>
 
@@ -82,7 +85,7 @@
                         <p class="text-xs text-gray-500 dark:text-gray-400 col-span-full">{{ _('Carregando fontes...') }}</p>
                     </div>
                     <p id="online-media-unverified-note" class="hidden text-xs text-gray-500 dark:text-gray-400">
-                        {{ _('O Plex não devolveu nenhuma fonte agora, por isso a lista acima é o catálogo conhecido e não foi confirmada com a sua conta.') }}
+                        {{ _('O Plex não devolveu nenhuma fonte agora, por isso a lista acima é o catálogo conhecido e não foi confirmada com sua conta.') }}
                     </p>
                     <div class="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-lg p-3">
                         <svg class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -93,7 +96,63 @@
 
             </div><!-- /plex-tab-content -->
         </div>
+        {% endif %}
 
+        <!-- Cartão: Jellyfin -->
+        {% if media_server.type == 'jellyfin' %}
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                    <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"></path></svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">{{ _('Jellyfin') }}</h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Servidor principal de compartilhamento de mídia.') }}</p>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label for="JELLYFIN_URL" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('URL do Jellyfin') }}</label>
+                    <input type="text" id="JELLYFIN_URL" class="settings-input block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm" placeholder="http://192.168.1.10:8096">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('O endereço onde o painel alcança o servidor, incluindo a porta.') }}</p>
+                </div>
+
+                <div>
+                    <label for="JELLYFIN_API_KEY" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Chave da API (Jellyfin)') }}</label>
+                    <input type="password" id="JELLYFIN_API_KEY" class="settings-input block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm" placeholder="••••••••">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Gere-a no Jellyfin em Painel de Controlo → Chaves de API.') }}</p>
+                </div>
+
+                <!-- De onde vêm as estatísticas neste painel, e o que muda com o
+                     plugin. É aqui que o administrador decide se vale a pena. -->
+                <div class="flex gap-3 rounded-xl border border-purple-200 bg-purple-50 p-4 dark:border-purple-800/40 dark:bg-purple-900/10">
+                    <svg class="w-5 h-5 flex-shrink-0 text-purple-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    <div class="text-xs text-purple-800 dark:text-purple-300 space-y-1">
+                        <p class="font-semibold">{{ _('As estatísticas saem deste servidor — não é preciso Tautulli.') }}</p>
+                        <p>{{ _('Com o plugin Playback Reporting instalado, elas são exatas: uma linha por reprodução, com o tempo que foi mesmo visto e o dispositivo onde foi.') }}</p>
+                        <p>{{ _('Sem ele, o Jellyfin só sabe que itens cada pessoa já deu por vistos: conta-se uma reprodução por item, com a duração do próprio item. Serve para o pódio e para o XP, mas é uma aproximação.') }}</p>
+                    </div>
+                </div>
+
+                <button type="button" id="testJellyfinButton" class="btn bg-purple-600 hover:bg-purple-500 text-white py-2 px-5 rounded-xl shadow-sm text-sm font-bold transition-all flex items-center gap-2">
+                    {{ _('Testar Conexão') }}
+                </button>
+                <span id="jellyfin-test-result" class="text-sm ml-2"></span>
+            </div>
+        </div>
+        {% endif %}
+
+        {# O Tautulli só fala com o Plex. Num painel cujas estatísticas saem do
+           próprio servidor de média, o cartão inteiro sai: pedir credenciais de
+           um serviço que não vai ser usado era pior do que o aviso que aqui
+           estava.
+
+           ⚠️ A condição é `estatisticas_externas` (a fonte é um serviço à
+           parte), e não `media_server.estatisticas`: esse só é verdadeiro
+           quando o Tautulli já está configurado, e o cartão desaparecia
+           justamente a quem falta configurá-lo. #}
+        {% if media_server.capabilities.estatisticas_externas %}
         <!-- Cartão: Tautulli -->
         <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
             <div class="flex items-center gap-3 mb-4">
@@ -102,7 +161,18 @@
                 </div>
                 <div>
                     <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">{{ _('Tautulli') }}</h3>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Necessário para o ranking de estatísticas e controlo de sessões ativas.') }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ _('Necessário para o ranking de estatísticas e controle de sessões ativas.') }}</p>
+                </div>
+            </div>
+
+            <!-- O que acontece sem ele: o painel continua a funcionar, e o
+                 administrador tem de saber o que está a trocar. -->
+            <div class="mb-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/40 dark:bg-amber-900/10">
+                <svg class="w-5 h-5 flex-shrink-0 text-amber-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <div class="text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                    <p class="font-semibold">{{ _('Deixar em branco não parte nada — mas fica mais lento.') }}</p>
+                    <p>{{ _('Sem o Tautulli, o histórico e os dispositivos vinculados passam a ser lidos diretamente do Plex. O carregamento demora mais (cada página é uma consulta ao servidor), não há porcentagem de progresso — o Plex só regista o que foi dado por visto — e a pesquisa do histórico cobre apenas as reproduções mais recentes.') }}</p>
+                    <p>{{ _('As estatísticas (pódio, XP, conquistas, recomendações e Wrapped) continuam a existir, lidas do próprio Plex: cada item dado por visto conta como uma reprodução, com a duração do item — o Plex não guarda quanto tempo a pessoa ficou a ver. É uma aproximação, e cobre apenas as reproduções mais recentes.') }}</p>
                 </div>
             </div>
             
@@ -133,6 +203,7 @@
                 </button>
             </div>
         </div>
+        {% endif %}
 
         <!-- Cartão: Seerr -->
         <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">

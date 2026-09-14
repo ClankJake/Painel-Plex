@@ -1,6 +1,7 @@
 # app/services/data_manager.py
 
 import os
+import hashlib
 import json
 import logging
 import secrets
@@ -11,7 +12,7 @@ from functools import wraps
 
 from ..extensions import db
 from ..models import (
-    Invitation, BlockedUser, UserProfile, PixPayment, Notification, 
+    Invitation, BlockedUser, UserProfile, PixPayment, Notification, PasswordReset,
     UnlockedAchievement, ShortLink, Coupon, CouponUsage, Task, StreamTerminationLog
 )
 from sqlalchemy import func, String
@@ -19,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from flask_babel import gettext as _, ngettext
 from collections import defaultdict
 from tzlocal import get_localzone_name
+from ..utils.identity import normalize_user_id
 from ..utils.log_sanitizer import mask_code
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,23 @@ RESERVED_COUPON_MAX_AGE_MINUTES = 30
 
 # Quantas transações são trazidas de cada vez ao exportar o relatório CSV.
 EXPORT_BATCH_SIZE = 500
+
+
+def tipo_de_servidor_configurado():
+    """Que servidor de média este painel administra, para marcar o que grava.
+
+    Lê-se do config e não do manager: isto corre em jobs de fundo e em rotas,
+    e a camada de dados não deve depender de um objeto que pode ainda não ter
+    sido construído.
+    """
+    try:
+        from ..config import load_or_create_config
+        from .media_server import resolve_media_server_type
+
+        return resolve_media_server_type(load_or_create_config().get('MEDIA_SERVER_TYPE'))
+    except Exception as e:  # pragma: no cover - defensivo
+        logger.debug(f"Não foi possível determinar o tipo de servidor: {e}")
+        return None
 
 
 def normalize_coupon_code(code):
@@ -158,13 +177,13 @@ class DataManager:
         return None
 
     @db_transaction
-    def record_coupon_usage(self, code, plex_user_id):
+    def record_coupon_usage(self, code, media_user_id):
         """
         Regista o uso de um cupão. É IDEMPOTENTE: registar duas vezes o mesmo par
         (utilizador, cupão) não faz nada e não levanta erro.
 
         ⚠️ Isto não é um detalhe: 'coupon_usages' tem uma restrição de unicidade
-        em (user_plex_id, coupon_id) e este método é chamado ao confirmar um
+        em (media_user_id, coupon_id) e este método é chamado ao confirmar um
         pagamento. Uma segunda inserção levantava IntegrityError, que subia até ao
         processamento do pagamento e o marcava como 'FALHOU' — DEPOIS de a
         assinatura já ter sido renovada. O cliente pagava, era renovado, e a
@@ -172,35 +191,35 @@ class DataManager:
         """
         normalizado = normalize_coupon_code(code)
         coupon = Coupon.query.filter(func.upper(Coupon.code) == normalizado).first() if normalizado else None
-        if not coupon or not plex_user_id:
+        if not coupon or not media_user_id:
             logger.warning(f"Tentativa de registar o uso de um cupão inválido ('{code}') ou para um utilizador inválido.")
             return False
 
         ja_registado = db.session.query(CouponUsage.id).filter(
             CouponUsage.coupon_id == coupon.id,
-            CouponUsage.user_plex_id == int(plex_user_id)
+            CouponUsage.media_user_id == media_user_id
         ).first()
         if ja_registado:
             logger.info(
-                f"Uso do cupão '{coupon.code}' pelo utilizador ID {plex_user_id} já estava registado. "
+                f"Uso do cupão '{coupon.code}' pelo utilizador ID {media_user_id} já estava registado. "
                 "Nada a fazer (registo idempotente)."
             )
             return False
 
         coupon.use_count += 1
-        new_usage = CouponUsage(user_plex_id=int(plex_user_id), coupon_id=coupon.id)
+        new_usage = CouponUsage(media_user_id=media_user_id, coupon_id=coupon.id)
         db.session.add(new_usage)
-        logger.info(f"Uso do cupão '{coupon.code}' registado para o utilizador ID {plex_user_id}. Contagem: {coupon.use_count}.")
+        logger.info(f"Uso do cupão '{coupon.code}' registado para o utilizador ID {media_user_id}. Contagem: {coupon.use_count}.")
         return True
 
-    def has_user_used_coupon(self, plex_user_id, code):
+    def has_user_used_coupon(self, media_user_id, code):
         # 🚀 OTIMIZAÇÃO: Busca apenas o ID para ser instantâneo, em vez de carregar a linha toda
         normalizado = normalize_coupon_code(code)
         if not normalizado:
             return False
         usage_exists = db.session.query(CouponUsage.id).join(Coupon).filter(
             func.upper(Coupon.code) == normalizado,
-            CouponUsage.user_plex_id == plex_user_id
+            CouponUsage.media_user_id == media_user_id
         ).first()
         return usage_exists is not None
 
@@ -233,7 +252,7 @@ class DataManager:
         except Exception:
             return 0
 
-    def has_user_pending_coupon_charge(self, plex_user_id, code,
+    def has_user_pending_coupon_charge(self, media_user_id, code,
                                        max_age_minutes=RESERVED_COUPON_MAX_AGE_MINUTES):
         """
         Indica se o utilizador já tem uma cobrança aberta com este cupão.
@@ -244,12 +263,12 @@ class DataManager:
         gerar um segundo em paralelo enquanto o primeiro não expira.
         """
         normalizado = normalize_coupon_code(code)
-        if not normalizado or not plex_user_id:
+        if not normalizado or not media_user_id:
             return False
         try:
             cutoff = (datetime.now(timezone.utc) - timedelta(minutes=int(max_age_minutes))).isoformat()
             existe = db.session.query(PixPayment.txid).filter(
-                PixPayment.user_plex_id == int(plex_user_id),
+                PixPayment.media_user_id == media_user_id,
                 func.upper(PixPayment.coupon_code) == normalizado,
                 PixPayment.status.in_(('ATIVA', 'PROCESSANDO')),
                 PixPayment.created_at >= cutoff
@@ -259,15 +278,15 @@ class DataManager:
             return False
 
     # --- MÉTODOS DE GAMIFICAÇÃO ---
-    def get_unlocked_achievements(self, plex_user_id):
-        achievements = UnlockedAchievement.query.filter_by(user_plex_id=plex_user_id).all()
+    def get_unlocked_achievements(self, media_user_id):
+        achievements = UnlockedAchievement.query.filter_by(media_user_id=media_user_id).all()
         return {ach.achievement_id for ach in achievements}
 
     @db_transaction
-    def add_unlocked_achievements(self, plex_user_id, username, achievements_to_add):
+    def add_unlocked_achievements(self, media_user_id, username, achievements_to_add):
         for ach_data in achievements_to_add:
             new_achievement = UnlockedAchievement(
-                user_plex_id=plex_user_id,
+                media_user_id=media_user_id,
                 username=username,
                 achievement_id=ach_data['id']
             )
@@ -275,39 +294,39 @@ class DataManager:
 
     # --- MÉTODOS DE NOTIFICAÇÃO ---
     @db_transaction
-    def create_notification(self, message, category='info', link=None, user_plex_id=None):
+    def create_notification(self, message, category='info', link=None, media_user_id=None):
         notification = Notification(
             message=message, category=category, link=link,
-            user_plex_id=user_plex_id, timestamp=datetime.now(timezone.utc)
+            media_user_id=media_user_id, timestamp=datetime.now(timezone.utc)
         )
         db.session.add(notification)
         db.session.flush() 
         return self._row_to_dict(notification)
 
-    def get_notifications(self, user_plex_id=None, limit=10, include_read=False):
-        query = Notification.query.filter_by(user_plex_id=user_plex_id).order_by(Notification.timestamp.desc())
+    def get_notifications(self, media_user_id=None, limit=10, include_read=False):
+        query = Notification.query.filter_by(media_user_id=media_user_id).order_by(Notification.timestamp.desc())
         if not include_read:
             query = query.filter_by(is_read=False)
         notifications = query.limit(limit).all()
         return [self._row_to_dict(n) for n in notifications]
 
-    def get_unread_notification_count(self, user_plex_id=None):
-        return Notification.query.filter_by(user_plex_id=user_plex_id, is_read=False).count()
+    def get_unread_notification_count(self, media_user_id=None):
+        return Notification.query.filter_by(media_user_id=media_user_id, is_read=False).count()
 
     @db_transaction
-    def mark_all_as_read(self, user_plex_id=None):
+    def mark_all_as_read(self, media_user_id=None):
         # 🚀 OTIMIZAÇÃO: synchronize_session=False previne consumo excessivo de RAM
-        updated_rows = Notification.query.filter_by(user_plex_id=user_plex_id, is_read=False).update({'is_read': True}, synchronize_session=False)
+        updated_rows = Notification.query.filter_by(media_user_id=media_user_id, is_read=False).update({'is_read': True}, synchronize_session=False)
         return updated_rows
             
     @db_transaction
-    def delete_all_notifications(self, user_plex_id=None):
-        num_rows_deleted = db.session.query(Notification).filter_by(user_plex_id=user_plex_id).delete(synchronize_session=False)
+    def delete_all_notifications(self, media_user_id=None):
+        num_rows_deleted = db.session.query(Notification).filter_by(media_user_id=media_user_id).delete(synchronize_session=False)
         return num_rows_deleted
 
     @db_transaction
-    def update_user_notification_timestamp(self, plex_user_id):
-        profile = UserProfile.query.get(plex_user_id)
+    def update_user_notification_timestamp(self, media_user_id):
+        profile = UserProfile.query.get(media_user_id)
         if profile:
             profile.last_notification_sent = datetime.now(timezone.utc).isoformat()
             return True
@@ -315,13 +334,34 @@ class DataManager:
 
     # --- MÉTODOS DE AUDITORIA ---
     @db_transaction
-    def log_stream_termination(self, plex_user_id, username, media_title, platform, reason):
+    def log_stream_termination(self, media_user_id, username, media_title, platform, reason,
+                               timestamp=None):
+        """Regista um corte na auditoria.
+
+        `timestamp` existe para os cortes que NÃO foram do painel: os que o
+        plugin StreamLimiter deu sozinho são lidos do log do Jellyfin minutos
+        depois de acontecerem, e gravá-los com a hora da leitura punha-os todos
+        empilhados no mesmo instante, fora de ordem com os restantes.
+        """
         log_entry = StreamTerminationLog(
-            user_plex_id=plex_user_id, username=username, media_title=media_title,
-            platform=platform, reason=reason, timestamp=datetime.now(timezone.utc)
+            media_user_id=media_user_id, username=username, media_title=media_title,
+            platform=platform, reason=reason,
+            timestamp=timestamp or datetime.now(timezone.utc)
         )
         db.session.add(log_entry)
         return self._row_to_dict(log_entry)
+
+    def get_last_termination_timestamp(self, reason):
+        """Quando foi o último corte registado com esta razão (None se nenhum).
+
+        É a marca de água de quem importa cortes de fora: sem ela, cada leitura
+        do log do servidor voltava a gravar o que já lá estava.
+        """
+        ultimo = (StreamTerminationLog.query
+                  .filter(StreamTerminationLog.reason == reason)
+                  .order_by(StreamTerminationLog.timestamp.desc())
+                  .first())
+        return ultimo.timestamp if ultimo else None
 
     def get_stream_termination_logs(self, limit=20):
         logs = StreamTerminationLog.query.order_by(StreamTerminationLog.timestamp.desc()).limit(limit).all()
@@ -345,7 +385,11 @@ class DataManager:
         local_tz = get_app_timezone()
 
         # 1. Delimitar o mês atual usando o fuso horário local
-        _, last_day = calendar.monthrange(year, month)
+        # 🐛 Era `_, last_day = ...`: o `_` do gettext ficava a valer um INTEIRO
+        # para o resto da função, e a linha que escreve "Hoje" (um vencimento
+        # que cai no próprio dia) rebentava com
+        # `TypeError: 'int' object is not callable`.
+        _dia_da_semana, last_day = calendar.monthrange(year, month)
         local_start = local_tz.localize(datetime(year, month, 1, 0, 0, 0))
         local_end = local_tz.localize(datetime(year, month, last_day, 23, 59, 59, 999999))
 
@@ -398,7 +442,7 @@ class DataManager:
         search_end_str = (datetime.now(timezone.utc) + timedelta(days=renewal_days + 2)).isoformat()
         
         expiring_users_query = db.session.query(UserProfile).outerjoin(BlockedUser).filter(
-            BlockedUser.user_plex_id == None, 
+            BlockedUser.media_user_id == None, 
             UserProfile.expiration_date.isnot(None), 
             UserProfile.expiration_date != '',
             UserProfile.expiration_date >= search_start_str, 
@@ -467,16 +511,16 @@ class DataManager:
         for payment in query.yield_per(int(batch_size)):
             yield self._row_to_dict(payment)
 
-    def get_latest_completed_payment(self, plex_user_id):
+    def get_latest_completed_payment(self, media_user_id):
         payment = PixPayment.query.filter_by(
-            user_plex_id=plex_user_id,
+            media_user_id=media_user_id,
             status='CONCLUIDA'
         ).order_by(PixPayment.created_at.desc()).first()
         return self._row_to_dict(payment) if payment else None
         
     # --- MÉTODOS para Perfis de Utilizador ---
-    def get_user_profile(self, plex_user_id):
-        profile = UserProfile.query.get(plex_user_id)
+    def get_user_profile(self, media_user_id):
+        profile = UserProfile.query.get(media_user_id)
         return self._row_to_dict(profile) if profile else None
 
     def get_user_profile_by_username(self, username):
@@ -540,10 +584,10 @@ class DataManager:
         except Exception:
             return None
 
-    def get_users_referred_by(self, plex_user_id):
+    def get_users_referred_by(self, media_user_id):
         """Lista os utilizadores indicados por alguém."""
         try:
-            profiles = UserProfile.query.filter(UserProfile.referred_by == int(plex_user_id)).all()
+            profiles = UserProfile.query.filter(UserProfile.referred_by == media_user_id).all()
             return [self._row_to_dict(p) for p in profiles]
         except Exception:
             return []
@@ -562,7 +606,7 @@ class DataManager:
     #     mudar entre a leitura e a escrita.
 
     @db_transaction
-    def set_user_referral_code(self, plex_user_id, code):
+    def set_user_referral_code(self, media_user_id, code):
         """
         Atribui um código de indicação, mas só se o utilizador ainda não tiver um.
         Devolve o código que ficou efetivamente em vigor — o novo, ou o que já lá
@@ -571,9 +615,9 @@ class DataManager:
         Propaga IntegrityError se o código colidir com o de outro utilizador
         (há um índice único na coluna); quem chama deve gerar outro e tentar de novo.
         """
-        uid = int(plex_user_id)
+        uid = media_user_id
         updated = UserProfile.query.filter(
-            UserProfile.plex_user_id == uid,
+            UserProfile.media_user_id == uid,
             (UserProfile.referral_code.is_(None)) | (UserProfile.referral_code == '')
         ).update({UserProfile.referral_code: code}, synchronize_session=False)
 
@@ -582,18 +626,18 @@ class DataManager:
 
         # Já tinha código (ou o perfil não existe): devolve o que está gravado.
         row = db.session.query(UserProfile.referral_code).filter(
-            UserProfile.plex_user_id == uid
+            UserProfile.media_user_id == uid
         ).first()
         return row[0] if row else None
 
     @db_transaction
-    def add_referral_credit(self, plex_user_id, amount):
+    def add_referral_credit(self, media_user_id, amount):
         """Soma crédito de indicações ao saldo. Devolve o valor somado."""
         value = round(float(amount or 0), 2)
         if value <= 0:
             return 0.0
         updated = UserProfile.query.filter(
-            UserProfile.plex_user_id == int(plex_user_id)
+            UserProfile.media_user_id == media_user_id
         ).update(
             {UserProfile.referral_credit: func.coalesce(UserProfile.referral_credit, 0.0) + value},
             synchronize_session=False
@@ -601,12 +645,12 @@ class DataManager:
         return value if updated else 0.0
 
     @db_transaction
-    def consume_referral_credit(self, plex_user_id, amount):
+    def consume_referral_credit(self, media_user_id, amount):
         """
         Abate crédito do saldo e devolve o valor efetivamente consumido. O saldo
         nunca fica negativo: se o pedido exceder o disponível, consome só o resto.
         """
-        uid = int(plex_user_id)
+        uid = media_user_id
         wanted = round(max(0.0, float(amount or 0)), 2)
         if wanted <= 0:
             return 0.0
@@ -614,7 +658,7 @@ class DataManager:
         # Caso normal: há saldo suficiente. O WHERE garante que dois abatimentos
         # simultâneos nunca gastam o mesmo crédito duas vezes.
         if UserProfile.query.filter(
-            UserProfile.plex_user_id == uid,
+            UserProfile.media_user_id == uid,
             UserProfile.referral_credit >= wanted
         ).update(
             {UserProfile.referral_credit: UserProfile.referral_credit - wanted},
@@ -624,21 +668,21 @@ class DataManager:
 
         # Saldo insuficiente: leva o que restar e deixa o saldo a zero.
         row = db.session.query(UserProfile.referral_credit).filter(
-            UserProfile.plex_user_id == uid
+            UserProfile.media_user_id == uid
         ).first()
         available = round(float(row[0] or 0), 2) if row else 0.0
         if available <= 0:
             return 0.0
 
         if UserProfile.query.filter(
-            UserProfile.plex_user_id == uid,
+            UserProfile.media_user_id == uid,
             UserProfile.referral_credit > 0,
             UserProfile.referral_credit <= wanted
         ).update({UserProfile.referral_credit: 0.0}, synchronize_session=False):
             return available
         return 0.0
 
-    def get_reserved_referral_credit(self, plex_user_id, exclude_txid=None,
+    def get_reserved_referral_credit(self, media_user_id, exclude_txid=None,
                                      max_age_hours=RESERVED_CREDIT_MAX_AGE_HOURS):
         """
         Crédito já comprometido em cobranças geradas e ainda por pagar.
@@ -656,7 +700,7 @@ class DataManager:
             query = db.session.query(
                 func.coalesce(func.sum(PixPayment.referral_credit_used), 0.0)
             ).filter(
-                PixPayment.user_plex_id == int(plex_user_id),
+                PixPayment.media_user_id == media_user_id,
                 PixPayment.status.in_(('ATIVA', 'PROCESSANDO')),
                 PixPayment.referral_credit_used > 0,
                 PixPayment.created_at >= cutoff
@@ -668,7 +712,7 @@ class DataManager:
             return 0.0
 
     @db_transaction
-    def claim_referral_reward(self, plex_user_id):
+    def claim_referral_reward(self, media_user_id):
         """
         Marca — de forma atómica — que a recompensa pela indicação DESTE utilizador
         já foi paga, e devolve True apenas a quem 'ganhou a corrida'.
@@ -678,37 +722,37 @@ class DataManager:
         processado duas vezes em simultâneo.
         """
         return bool(UserProfile.query.filter(
-            UserProfile.plex_user_id == int(plex_user_id),
+            UserProfile.media_user_id == media_user_id,
             UserProfile.referred_by.isnot(None),
             UserProfile.referral_rewarded.is_(False)
         ).update({UserProfile.referral_rewarded: True}, synchronize_session=False))
 
     @db_transaction
-    def release_referral_reward(self, plex_user_id):
+    def release_referral_reward(self, media_user_id):
         """
         Desfaz a marca de recompensa paga. Usado quando a entrega falha a meio:
         sem isto, o indicado ficava marcado como 'já recompensado' e quem o
         indicou nunca receberia nada.
         """
         return bool(UserProfile.query.filter(
-            UserProfile.plex_user_id == int(plex_user_id)
+            UserProfile.media_user_id == media_user_id
         ).update({UserProfile.referral_rewarded: False}, synchronize_session=False))
 
-    def count_rewarded_referrals(self, plex_user_id):
+    def count_rewarded_referrals(self, media_user_id):
         """Quantas indicações deste utilizador já foram efetivamente recompensadas."""
         try:
             return UserProfile.query.filter(
-                UserProfile.referred_by == int(plex_user_id),
+                UserProfile.referred_by == media_user_id,
                 UserProfile.referral_rewarded.is_(True)
             ).count()
         except Exception:
             return 0
 
-    def user_has_completed_payment(self, plex_user_id):
+    def user_has_completed_payment(self, media_user_id):
         """Indica se o utilizador já tem algum pagamento confirmado no histórico."""
         try:
             return bool(PixPayment.query.filter_by(
-                user_plex_id=int(plex_user_id), status='CONCLUIDA'
+                media_user_id=media_user_id, status='CONCLUIDA'
             ).first())
         except Exception:
             return False
@@ -727,18 +771,38 @@ class DataManager:
         affected = UserProfile.query.update({UserProfile.xp: 0}, synchronize_session=False)
         return affected
 
-    def get_user_profiles_by_id(self, plex_user_ids):
-        if not plex_user_ids: return {}
+    def get_user_profiles_by_id(self, media_user_ids):
+        if not media_user_ids: return {}
         try:
-            profiles = UserProfile.query.filter(UserProfile.plex_user_id.in_(plex_user_ids)).all()
-            return {p.plex_user_id: self._row_to_dict(p) for p in profiles}
+            profiles = UserProfile.query.filter(UserProfile.media_user_id.in_(media_user_ids)).all()
+            return {p.media_user_id: self._row_to_dict(p) for p in profiles}
         except Exception: return {}
 
     @db_transaction
-    def set_user_profile(self, plex_user_id, profile_data):
-        profile = UserProfile.query.get(plex_user_id)
+    def set_user_profile(self, media_user_id, profile_data):
+        """Cria ou atualiza o perfil local de um utilizador.
+
+        ⚠️ **Criar exige um `username`** — a coluna é NOT NULL. Quem chama isto
+        com um dicionário PARCIAL (só o XP, só o estado) está a contar que o
+        perfil já exista; quando não existia, o que aparecia no log era um
+        `IntegrityError` sobre um INSERT de trinta colunas, que não diz a
+        ninguém o que faltava. Diz-se aqui.
+        """
+        profile = UserProfile.query.get(media_user_id)
         if not profile:
-            profile = UserProfile(plex_user_id=plex_user_id)
+            if not (profile_data or {}).get('username'):
+                raise ValueError(
+                    f"Não se cria um perfil sem 'username' (media_user_id={media_user_id})."
+                )
+            profile = UserProfile(media_user_id=media_user_id)
+            # Que servidor de média criou este perfil. Sem isto, todos os
+            # perfis criados pelo painel ficavam com a coluna a NULL — e a
+            # coluna existe precisamente para não confundir um ID do Plex com
+            # um GUID do Jellyfin que por acaso coincida. Quem passa o valor
+            # explicitamente (o registo de contas do Jellyfin) manda.
+            profile.media_server_type = (
+                (profile_data or {}).get('media_server_type') or tipo_de_servidor_configurado()
+            )
         if not profile.payment_token:
             profile.payment_token = secrets.token_urlsafe(16)
         
@@ -749,9 +813,191 @@ class DataManager:
         db.session.add(profile)
         return self._row_to_dict(profile)
     
+    # As tabelas que guardam a identidade de um utilizador, e a coluna onde a
+    # guardam. Uma coluna nova que cite `user_profiles.media_user_id` tem de
+    # entrar aqui, ou uma migração de identidade deixa-a a apontar para um
+    # perfil que já não existe.
+    _TABELAS_COM_IDENTIDADE = (
+        ('coupon_usages', 'media_user_id'),
+        ('blocked_users', 'media_user_id'),
+        ('pix_payments', 'media_user_id'),
+        ('notifications', 'media_user_id'),
+        ('unlocked_achievements', 'media_user_id'),
+        ('stream_termination_logs', 'media_user_id'),
+        # Um pedido de reposição em curso quando a conta é recriada: sem isto
+        # ficava a apontar para um perfil que já não existe, e o link que a
+        # pessoa tinha acabado de receber deixava de funcionar sem explicação.
+        ('password_resets', 'media_user_id'),
+        # Quem indicou quem: aponta para um perfil sem ser chave estrangeira.
+        ('user_profiles', 'referred_by'),
+    )
+
     @db_transaction
-    def delete_user_profile(self, plex_user_id):
-        profile = UserProfile.query.get(plex_user_id)
+    def migrar_identidade(self, antigo, novo):
+        """Muda o `media_user_id` de um perfil e de tudo o que lhe aponta.
+
+        ⚠️ **Isto existe por uma razão só**: num servidor de contas locais, uma
+        conta apagada e recriada volta com um identificador NOVO — o Jellyfin
+        atribui um GUID ao criar e não aceita que se lhe imponha um. Sem migrar,
+        a pessoa reaparecia como um estranho: sem pagamentos, sem XP, sem
+        conquistas e sem a data de vencimento que acabou de pagar.
+
+        Não é uma fusão de perfis: se já existir um perfil com o identificador
+        novo, recusa-se. Juntar dois históricos é uma decisão de quem administra,
+        não de uma rotina automática.
+
+        🛡️ As chaves estrangeiras do SQLite não estão a ser impostas (o
+        `PRAGMA foreign_keys` fica no valor por omissão, que é OFF), por isso a
+        ordem das atualizações não tranca nada — mas todas correm na MESMA
+        transação: ou muda tudo, ou não muda nada. Metade migrada seria pior do
+        que não migrar.
+        """
+        from sqlalchemy import text
+
+        antigo = normalize_user_id(antigo)
+        novo = normalize_user_id(novo)
+
+        if not antigo or not novo:
+            raise ValueError("Migrar identidade exige os dois identificadores.")
+        if antigo == novo:
+            return False
+
+        if not UserProfile.query.get(antigo):
+            raise ValueError(f"Não há perfil com o identificador '{antigo}'.")
+        if UserProfile.query.get(novo):
+            raise ValueError(
+                f"Já existe um perfil com o identificador '{novo}': migrar juntaria "
+                "dois históricos numa só pessoa."
+            )
+
+        # O perfil primeiro: as outras tabelas citam-no.
+        db.session.execute(
+            text('UPDATE user_profiles SET media_user_id = :novo WHERE media_user_id = :antigo'),
+            {'novo': novo, 'antigo': antigo},
+        )
+
+        for tabela, coluna in self._TABELAS_COM_IDENTIDADE:
+            db.session.execute(
+                text(f'UPDATE "{tabela}" SET "{coluna}" = :novo WHERE "{coluna}" = :antigo'),
+                {'novo': novo, 'antigo': antigo},
+            )
+
+        self._migrar_identidade_nos_convites(antigo, novo)
+
+        logger.info(f"Identidade migrada: '{antigo}' passa a ser '{novo}'.")
+        return True
+
+    def _migrar_identidade_nos_convites(self, antigo, novo):
+        """`invitations.claimed_by_ids` é uma lista JSON, não uma coluna de ID.
+
+        É por ela que se sabe quem já resgatou um convite — deixá-la para trás
+        deixava a porta aberta a resgatar de novo um convite já usado.
+        """
+        for convite in Invitation.query.all():
+            try:
+                ids = json.loads(convite.claimed_by_ids or '[]')
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            if not isinstance(ids, list) or not any(normalize_user_id(i) == antigo for i in ids):
+                continue
+
+            convite.claimed_by_ids = json.dumps(
+                [novo if normalize_user_id(i) == antigo else i for i in ids]
+            )
+            db.session.add(convite)
+
+    # =========================================================================
+    # REPOSIÇÃO DE PALAVRA-PASSE
+    # =========================================================================
+
+    # Meia hora: tempo de sobra para ler uma notificação e escrever uma
+    # palavra-passe nova, e curto o suficiente para um link esquecido num
+    # histórico de Telegram deixar de servir.
+    VALIDADE_DA_REPOSICAO_MINUTOS = 30
+
+    @staticmethod
+    def _resumo_do_token(token):
+        return hashlib.sha256(str(token or '').encode('utf-8')).hexdigest()
+
+    @db_transaction
+    def criar_pedido_de_reposicao(self, media_user_id):
+        """Cria um pedido e devolve o token EM CLARO, uma única vez.
+
+        🛡️ O que fica guardado é o resumo: a partir daqui, só quem recebeu a
+        notificação tem o token. Nem o administrador o consegue ler na base de
+        dados — o que é o objetivo.
+
+        Pedir de novo invalida o pedido anterior: dois links válidos ao mesmo
+        tempo é uma porta a mais aberta, e quem pediu outra vez está a usar o
+        último que recebeu.
+        """
+        media_user_id = normalize_user_id(media_user_id)
+        if not media_user_id:
+            raise ValueError("Um pedido de reposição precisa de um utilizador.")
+
+        PasswordReset.query.filter_by(media_user_id=media_user_id, used_at=None).delete()
+
+        token = secrets.token_urlsafe(32)
+        agora = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.add(PasswordReset(
+            token_hash=self._resumo_do_token(token),
+            media_user_id=media_user_id,
+            created_at=agora,
+            expires_at=agora + timedelta(minutes=self.VALIDADE_DA_REPOSICAO_MINUTOS),
+        ))
+        return token
+
+    def ler_pedido_de_reposicao(self, token):
+        """O pedido correspondente a este token, sem o consumir.
+
+        Serve a página do formulário, que precisa de saber se vale a pena
+        mostrá-lo. Devolve `(media_user_id, motivo)`: o motivo diz `'expirado'`,
+        `'usado'` ou `'invalido'` — são três coisas diferentes para quem está do
+        outro lado, e um "link inválido" para todas seria mentira em duas delas.
+        """
+        if not token:
+            return None, 'invalido'
+
+        pedido = PasswordReset.query.get(self._resumo_do_token(token))
+        if not pedido:
+            return None, 'invalido'
+        if pedido.used_at is not None:
+            return None, 'usado'
+        if pedido.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
+            return None, 'expirado'
+        return pedido.media_user_id, ''
+
+    @db_transaction
+    def consumir_pedido_de_reposicao(self, token):
+        """Marca o pedido como usado e devolve `(media_user_id, motivo)`.
+
+        ⚠️ Marcar ANTES de mudar a palavra-passe seria perder o pedido se o
+        servidor de média recusasse; marcar DEPOIS deixava a janela para dois
+        pedidos em paralelo usarem o mesmo token. Quem chama marca aqui e, se o
+        servidor recusar, diz à pessoa que peça outro — é o lado seguro do erro.
+        """
+        media_user_id, motivo = self.ler_pedido_de_reposicao(token)
+        if not media_user_id:
+            return None, motivo
+
+        pedido = PasswordReset.query.get(self._resumo_do_token(token))
+        pedido.used_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.add(pedido)
+        return media_user_id, ''
+
+    @db_transaction
+    def limpar_pedidos_de_reposicao_antigos(self, dias=7):
+        """Os pedidos usados e os expirados não têm de ficar para sempre."""
+        limite = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=dias)
+        apagados = PasswordReset.query.filter(PasswordReset.created_at < limite).delete()
+        if apagados:
+            logger.info(f"Limpeza: {apagados} pedido(s) de reposição de palavra-passe antigos removidos.")
+        return apagados
+
+    @db_transaction
+    def delete_user_profile(self, media_user_id):
+        profile = UserProfile.query.get(media_user_id)
         if profile:
             db.session.delete(profile)
             return True
@@ -759,11 +1005,11 @@ class DataManager:
 
     def get_all_user_expirations(self):
         profiles = UserProfile.query.filter(UserProfile.expiration_date.isnot(None), UserProfile.expiration_date != '').all()
-        return {p.plex_user_id: self._row_to_dict(p) for p in profiles}
+        return {p.media_user_id: self._row_to_dict(p) for p in profiles}
 
     def get_all_trial_users(self):
         profiles = UserProfile.query.filter(UserProfile.trial_end_date.isnot(None), UserProfile.trial_end_date != '').all()
-        return {p.plex_user_id: self._row_to_dict(p) for p in profiles}
+        return {p.media_user_id: self._row_to_dict(p) for p in profiles}
 
     # --- MÉTODOS de Pagamento PIX ---
     def get_and_lock_pix_payment(self, txid):
@@ -774,9 +1020,9 @@ class DataManager:
             raise
 
     @db_transaction
-    def create_pix_payment(self, txid, plex_user_id, username, value, provider, screens, external_reference, coupon_code=None):
+    def create_pix_payment(self, txid, media_user_id, username, value, provider, screens, external_reference, coupon_code=None):
         payment = PixPayment.query.get(txid) or PixPayment(txid=txid)
-        payment.user_plex_id = plex_user_id
+        payment.media_user_id = media_user_id
         payment.username = username
         payment.value = value
         payment.provider = provider
@@ -821,15 +1067,15 @@ class DataManager:
             return True
         return False
 
-    def add_manual_payment(self, plex_user_id, username, value, description, payment_date_str):
+    def add_manual_payment(self, media_user_id, username, value, description, payment_date_str):
         txid = f"manual_{secrets.token_hex(12)}"
-        payment = PixPayment(txid=txid, user_plex_id=plex_user_id, username=username, value=float(value), status='CONCLUIDA', provider='Manual', description=description, created_at=payment_date_str, screens=0, external_reference=None)
+        payment = PixPayment(txid=txid, media_user_id=media_user_id, username=username, value=float(value), status='CONCLUIDA', provider='Manual', description=description, created_at=payment_date_str, screens=0, external_reference=None)
         db.session.add(payment)
         return self._row_to_dict(payment)
 
-    def get_payments_by_user(self, plex_user_id):
+    def get_payments_by_user(self, media_user_id):
         try:
-            return [self._row_to_dict(p) for p in PixPayment.query.filter_by(user_plex_id=plex_user_id, status='CONCLUIDA').order_by(PixPayment.created_at.desc()).all()]
+            return [self._row_to_dict(p) for p in PixPayment.query.filter_by(media_user_id=media_user_id, status='CONCLUIDA').order_by(PixPayment.created_at.desc()).all()]
         except Exception: return []
 
     @db_transaction
@@ -903,7 +1149,7 @@ class DataManager:
         return invitation is not None
 
     @db_transaction
-    def increment_invitation_use(self, code, username, plex_user_id=None):
+    def increment_invitation_use(self, code, username, media_user_id=None):
         """
         Incremento SEM verificação de limite. O resgate usa
         `reserve_invitation_use`, que valida as vagas de forma atómica; este
@@ -918,16 +1164,16 @@ class DataManager:
                 claimed_users.append(username)
             invitation.claimed_by_users = json.dumps(claimed_users)
 
-            if plex_user_id is not None:
+            if media_user_id is not None:
                 claimed_ids = json.loads(invitation.claimed_by_ids or '[]')
-                if str(plex_user_id) not in claimed_ids:
-                    claimed_ids.append(str(plex_user_id))
+                if str(media_user_id) not in claimed_ids:
+                    claimed_ids.append(str(media_user_id))
                     invitation.claimed_by_ids = json.dumps(claimed_ids)
             return True
         return False
             
     @db_transaction
-    def reserve_invitation_use(self, code, username, plex_user_id=None):
+    def reserve_invitation_use(self, code, username, media_user_id=None):
         """
         Reserva ATOMICAMENTE uma utilização do convite. Devolve False se já não
         houver vagas (ou o convite não existir), sem alterar nada.
@@ -974,15 +1220,15 @@ class DataManager:
 
             # O ID é a identidade estável: o username do Plex pode ser mudado
             # pelo próprio utilizador e deixaria de servir para reconhecê-lo.
-            if plex_user_id is not None:
+            if media_user_id is not None:
                 claimed_ids = json.loads(invitation.claimed_by_ids or '[]')
-                if str(plex_user_id) not in claimed_ids:
-                    claimed_ids.append(str(plex_user_id))
+                if str(media_user_id) not in claimed_ids:
+                    claimed_ids.append(str(media_user_id))
                     invitation.claimed_by_ids = json.dumps(claimed_ids)
         return True
 
     @db_transaction
-    def release_invitation_use(self, code, username, plex_user_id=None):
+    def release_invitation_use(self, code, username, media_user_id=None):
         """
         Devolve a vaga reservada por `reserve_invitation_use`.
 
@@ -1002,10 +1248,10 @@ class DataManager:
             claimed_users.remove(username)
             invitation.claimed_by_users = json.dumps(claimed_users)
 
-        if plex_user_id is not None:
+        if media_user_id is not None:
             claimed_ids = json.loads(invitation.claimed_by_ids or '[]')
-            if str(plex_user_id) in claimed_ids:
-                claimed_ids.remove(str(plex_user_id))
+            if str(media_user_id) in claimed_ids:
+                claimed_ids.remove(str(media_user_id))
                 invitation.claimed_by_ids = json.dumps(claimed_ids)
         return True
 
@@ -1032,15 +1278,15 @@ class DataManager:
             return True
         return False
 
-    def get_user_claim_date(self, plex_user_id):
-        profile = UserProfile.query.get(plex_user_id)
+    def get_user_claim_date(self, media_user_id):
+        profile = UserProfile.query.get(media_user_id)
         if not profile: return None
         invitation = Invitation.query.filter(Invitation.claimed_by_users.contains(profile.username)).order_by(Invitation.claimed_at.desc()).first()
         return invitation.claimed_at if invitation else None
 
     # --- MÉTODOS de Utilizadores Bloqueados ---
-    def get_blocked_user(self, plex_user_id):
-        return self._row_to_dict(BlockedUser.query.get(plex_user_id))
+    def get_blocked_user(self, media_user_id):
+        return self._row_to_dict(BlockedUser.query.get(media_user_id))
 
     def get_blocked_users_list(self):
         return [self._row_to_dict(u) for u in BlockedUser.query.all()]
@@ -1057,26 +1303,26 @@ class DataManager:
         return db.session.query(BlockedUser).count()
 
     def get_blocked_users_dict(self):
-        return {u.user_plex_id: self._row_to_dict(u) for u in BlockedUser.query.all()}
+        return {u.media_user_id: self._row_to_dict(u) for u in BlockedUser.query.all()}
 
-    def add_blocked_user(self, plex_user_id, username, reason='manual'):
+    def add_blocked_user(self, media_user_id, username, reason='manual'):
         """Adiciona ou atualiza um utilizador bloqueado. Protegido contra colisões de threads."""
         try:
-            user = BlockedUser.query.get(plex_user_id)
+            user = BlockedUser.query.get(media_user_id)
             if not user:
-                user = BlockedUser(user_plex_id=plex_user_id, username=username)
+                user = BlockedUser(media_user_id=media_user_id, username=username)
 
             user.blocked_at = datetime.now(timezone.utc).isoformat()
             user.block_reason = reason
             db.session.add(user)
             db.session.commit()
             
-            logger.info(f"Utilizador '{username}' (ID: {plex_user_id}) adicionado/atualizado na lista de bloqueados.")
+            logger.info(f"Utilizador '{username}' (ID: {media_user_id}) adicionado/atualizado na lista de bloqueados.")
             return self._row_to_dict(user)
             
         except IntegrityError:
             db.session.rollback()
-            user = BlockedUser.query.get(plex_user_id)
+            user = BlockedUser.query.get(media_user_id)
             if user:
                 user.blocked_at = datetime.now(timezone.utc).isoformat()
                 user.block_reason = reason
@@ -1091,8 +1337,8 @@ class DataManager:
             raise
 
     @db_transaction
-    def remove_blocked_user(self, plex_user_id):
-        user = BlockedUser.query.get(plex_user_id)
+    def remove_blocked_user(self, media_user_id):
+        user = BlockedUser.query.get(media_user_id)
         if user:
             db.session.delete(user)
             return True

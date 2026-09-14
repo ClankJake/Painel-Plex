@@ -26,10 +26,20 @@
         <div class="px-4 sm:px-6 pt-5 border-b border-gray-200 dark:border-gray-700/60">
             <nav class="flex gap-2 overflow-x-auto pb-2 gam-subtabs-scroll" id="gam-subtabs-nav"
                  style="-webkit-overflow-scrolling: touch; touch-action: pan-x; scrollbar-width: none;">
+                {# Conquistas, XP e Recomendações saem todas do histórico do Tautulli,
+                   que só fala com o Plex — e só quando está configurado. Sem ele os
+                   campos não teriam de onde vir: escondem-se em vez de dar erro.
+                   `media_server.estatisticas` é o que HÁ (ver `utils/estatisticas.py`),
+                   e não o que o servidor podia ter. "Indique e Ganhe" é de pagamentos
+                   e não depende de nada disto. #}
+                {% if media_server.estatisticas %}
                 <button type="button" data-subtab="achievements" class="gam-subtab-button tab-button active whitespace-nowrap flex-shrink-0">{{ _('Conquistas') }}</button>
                 <button type="button" data-subtab="xp" class="gam-subtab-button tab-button whitespace-nowrap flex-shrink-0">{{ _('Sistema de XP e Níveis') }}</button>
-                <button type="button" data-subtab="referral" class="gam-subtab-button tab-button whitespace-nowrap flex-shrink-0">{{ _('Indique e Ganhe') }}</button>
+                {% endif %}
+                <button type="button" data-subtab="referral" class="gam-subtab-button tab-button {% if not media_server.estatisticas %}active {% endif %}whitespace-nowrap flex-shrink-0">{{ _('Indique e Ganhe') }}</button>
+                {% if media_server.estatisticas %}
                 <button type="button" data-subtab="recommendations" class="gam-subtab-button tab-button whitespace-nowrap flex-shrink-0">{{ _('Recomendações') }}</button>
+                {% endif %}
             </nav>
         </div>
         <style>
@@ -38,6 +48,7 @@
         </style>
 
         <!-- Sub-aba: Conquistas -->
+        {% if media_server.estatisticas %}
         <div id="gam-subtab-content-achievements" class="gam-subtab-content">
         <!-- Corpo do Formulário (Grid de Missões) -->
         <div class="p-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -307,7 +318,9 @@
         <!-- Fim da Sub-aba: Conquistas -->
 
         <!-- Sub-aba: Indique e Ganhe (Referências) -->
-        <div id="gam-subtab-content-referral" class="gam-subtab-content hidden">
+        {% endif %}
+
+        <div id="gam-subtab-content-referral" class="gam-subtab-content{% if media_server.estatisticas %} hidden{% endif %}">
         <div class="p-6 space-y-6">
 
             <div class="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/10 dark:to-teal-900/10 rounded-xl p-5 border border-emerald-200 dark:border-emerald-800/40">
@@ -377,6 +390,7 @@
         <!-- Fim da Sub-aba: Indique e Ganhe -->
 
         <!-- Sub-aba: Recomendações ("Porque assistiu X, pode gostar de Y") -->
+        {% if media_server.estatisticas %}
         <div id="gam-subtab-content-recommendations" class="gam-subtab-content hidden">
         <div class="p-6 space-y-6">
 
@@ -404,7 +418,7 @@
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Quanto maior, mais dados para cruzar — e mais pesada a consulta ao Tautulli.') }}</p>
                     </div>
                     <div>
-                        <label for="RECOMMENDATIONS_MIN_PERCENT_WATCHED" class="block text-xs font-semibold text-purple-700 dark:text-purple-400 mb-1 pl-1">{{ _('Percentagem mínima assistida para contar') }}</label>
+                        <label for="RECOMMENDATIONS_MIN_PERCENT_WATCHED" class="block text-xs font-semibold text-purple-700 dark:text-purple-400 mb-1 pl-1">{{ _('Porcentagem mínima assistida para contar') }}</label>
                         <input type="number" id="RECOMMENDATIONS_MIN_PERCENT_WATCHED" min="0" max="100" class="block w-full p-2.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white">
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ _('Ignora quem abriu, viu dois minutos e desistiu — isso não é sinal de gosto.') }}</p>
                     </div>
@@ -474,7 +488,7 @@
                         <input type="number" id="XP_BONUS_PER_COMPLETED_ITEM" class="block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="0">
                     </div>
                     <div>
-                        <label for="XP_COMPLETION_THRESHOLD_PERCENT" class="block text-xs font-semibold text-indigo-700 dark:text-indigo-400 mb-1 pl-1">{{ _('Percentagem assistida para contar como concluído') }}</label>
+                        <label for="XP_COMPLETION_THRESHOLD_PERCENT" class="block text-xs font-semibold text-indigo-700 dark:text-indigo-400 mb-1 pl-1">{{ _('Porcentagem assistida para contar como concluído') }}</label>
                         <input type="number" id="XP_COMPLETION_THRESHOLD_PERCENT" class="block w-full p-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" min="1" max="100">
                     </div>
                 </div>
@@ -542,6 +556,7 @@
         </div>
         </div>
         <!-- Fim da Sub-aba: Sistema de XP e Níveis -->
+        {% endif %}
 
     </div>
 </div>

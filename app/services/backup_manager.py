@@ -23,6 +23,81 @@ MANIFEST_ENTRY_NAME = "backup_manifest.txt"
 # pertencem a este sistema (evita apagar ficheiros de terceiros por engano).
 BACKUP_FILENAME_PATTERN = re.compile(r"^painel-plex-backup-\d{8}-\d{6}\.zip$")
 
+# Onde estão as migrações deste painel, para saber que versões da base de dados
+# ele sabe ler. Daqui (`app/services/`) até à raiz do projeto são dois níveis.
+PASTA_DAS_MIGRACOES = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "migrations", "versions",
+)
+
+# `revision = 'abc123'` no topo de cada ficheiro de migração.
+REVISAO_NO_FICHEIRO = re.compile(r"^revision\s*=\s*['\"]([^'\"]+)['\"]", re.M)
+
+# Uma tabela que só existe depois de o painel ter corrido: serve para distinguir
+# "base de dados vazia" de "base de dados com dados mas sem versão".
+TABELA_DE_CONTROLO = "user_profiles"
+
+
+def _revisoes_conhecidas():
+    """As versões da base de dados que ESTE painel sabe aplicar.
+
+    Lê os ficheiros de migração em vez de perguntar ao Alembic: isto corre
+    dentro de um pedido HTTP, sem contexto de aplicação garantido, e uma
+    verificação de segurança não pode depender de conseguir montar a
+    configuração do Alembic. Se a pasta não existir, devolve um conjunto vazio
+    e a validação deixa passar — nunca se bloqueia um restauro por não se ter
+    conseguido ler o próprio código.
+    """
+    revisoes = set()
+    try:
+        for nome in os.listdir(PASTA_DAS_MIGRACOES):
+            if not nome.endswith(".py"):
+                continue
+            caminho = os.path.join(PASTA_DAS_MIGRACOES, nome)
+            with open(caminho, "r", encoding="utf-8", errors="replace") as ficheiro:
+                encontrada = REVISAO_NO_FICHEIRO.search(ficheiro.read())
+            if encontrada:
+                revisoes.add(encontrada.group(1))
+    except OSError as e:
+        logger.debug(f"[Backup] Não foi possível listar as migrações conhecidas: {e}")
+        return set()
+    return revisoes
+
+
+def _ler_esquema(dados_da_bd):
+    """A versão e o estado de uma base de dados que vem dentro de um ZIP.
+
+    Devolve `(revisao, tem_dados)`: a revisão do Alembic (None se a tabela de
+    versões não existir) e se a base de dados já tem tabelas do painel.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+        tmp.write(dados_da_bd)
+        caminho = tmp.name
+
+    try:
+        ligacao = sqlite3.connect(f"file:{caminho}?mode=ro", uri=True, timeout=10)
+        try:
+            tabelas = {
+                linha[0] for linha in
+                ligacao.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            revisao = None
+            if "alembic_version" in tabelas:
+                linha = ligacao.execute("SELECT version_num FROM alembic_version").fetchone()
+                revisao = linha[0] if linha else None
+            return revisao, TABELA_DE_CONTROLO in tabelas
+        finally:
+            ligacao.close()
+    except sqlite3.DatabaseError as e:
+        raise ValueError(
+            f"O 'app_data.db' dentro do ZIP não é uma base de dados SQLite utilizável ({e})."
+        )
+    finally:
+        try:
+            os.remove(caminho)
+        except OSError:
+            pass
+
 
 class BackupManager:
     """
@@ -109,9 +184,21 @@ class BackupManager:
 
             # 3. Manifesto simples, útil para diagnóstico e para confirmar
             # visualmente a origem/data de um backup ao restaurar.
+            # A versão da base de dados e o servidor de média ficam escritos:
+            # é o que permite perceber, meses depois, se um ZIP dá para
+            # restaurar num painel — e é o que a validação lê ao restaurar.
+            revisao = None
+            if app_db_bytes:
+                try:
+                    revisao, _tem_dados = _ler_esquema(app_db_bytes)
+                except ValueError as e:
+                    logger.warning(f"[Backup] Não foi possível ler a versão da base de dados: {e}")
+
             manifest = (
                 f"Painel-Plex — Backup\n"
                 f"Gerado em: {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"Versão da base de dados: {revisao or 'desconhecida'}\n"
+                f"Servidor de média: {self._tipo_de_servidor()}\n"
                 f"Contém: {CONFIG_ENTRY_NAME}"
                 f"{', ' + APP_DB_ENTRY_NAME if app_db_bytes else ''}"
                 f"{', ' + SCHEDULER_DB_ENTRY_NAME if scheduler_db_bytes else ''}\n"
@@ -120,6 +207,20 @@ class BackupManager:
 
         buffer.seek(0)
         return buffer.read()
+
+    def _tipo_de_servidor(self):
+        """O servidor de média deste painel, para o manifesto.
+
+        Lê-se do config.json em vez do manager: o backup pode ser gerado por um
+        job de fundo, e isto é informação para quem lê o ZIP.
+        """
+        try:
+            import json
+
+            with open(self.config_file, "r", encoding="utf-8") as ficheiro:
+                return json.load(ficheiro).get("MEDIA_SERVER_TYPE") or "plex"
+        except Exception:
+            return "desconhecido"
 
     def create_scheduled_backup(self, max_backups=7):
         """
@@ -225,9 +326,55 @@ class BackupManager:
                     json.loads(zf.read(CONFIG_ENTRY_NAME))
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     return False, "O 'config.json' dentro do ZIP está corrompido ou não é um JSON válido."
+
+                if APP_DB_ENTRY_NAME in names:
+                    return self._validar_esquema(zf.read(APP_DB_ENTRY_NAME))
                 return True, None
         except zipfile.BadZipFile:
             return False, "O ficheiro enviado não é um ZIP válido."
+
+    def _validar_esquema(self, dados_da_bd):
+        """A base de dados do backup é legível por ESTE painel?
+
+        🛡️ Restaurar é substituir a base de dados por baixo da aplicação; o
+        esquema só é acertado no arranque seguinte, por `flask db upgrade`. Há
+        dois casos em que esse arranque falharia — e um painel que não arranca
+        é pior do que um restauro recusado:
+
+        - **o backup é de uma versão MAIS RECENTE**: a revisão que ele traz não
+          existe nas migrações deste painel, e o Alembic pára com "Can't locate
+          revision". Recusa-se, e diz-se que é preciso atualizar primeiro;
+        - **o backup tem dados mas não tem versão nenhuma** (uma instalação
+          muito antiga, anterior às migrações): o `upgrade` tentaria criar
+          tabelas que já lá estão. Recusa-se também.
+
+        O caminho normal — um backup MAIS ANTIGO, que é o de quem vem do painel
+        só-Plex — passa: as migrações levam-no para a frente no arranque, e é
+        exatamente para isso que elas existem.
+        """
+        try:
+            revisao, tem_dados = _ler_esquema(dados_da_bd)
+        except ValueError as e:
+            return False, str(e)
+
+        if revisao is None:
+            if tem_dados:
+                return False, (
+                    "A base de dados deste backup tem dados mas não tem registo de versão "
+                    "(tabela 'alembic_version'). Restaurá-la deixaria o painel sem arrancar. "
+                    "Atualize o painel de origem, faça um backup novo e tente outra vez."
+                )
+            return True, None
+
+        conhecidas = _revisoes_conhecidas()
+        if conhecidas and revisao not in conhecidas:
+            return False, (
+                f"Este backup foi feito numa versão MAIS RECENTE do painel (versão de base de "
+                f"dados '{revisao}', desconhecida aqui). Atualize o painel antes de restaurar — "
+                "restaurar agora deixava-o sem arrancar."
+            )
+
+        return True, None
 
     def restore_from_zip(self, file_stream):
         """

@@ -1,6 +1,8 @@
 # tests/test_tautulli_api_client.py
 """Cliente HTTP do Tautulli: parâmetros, tratamento de erros e teste de ligação."""
 
+import logging
+
 import pytest
 import requests
 from requests.exceptions import RequestException
@@ -72,6 +74,35 @@ class TestReloadConfig:
         client.reload_config()
 
         assert client.is_configured is False
+
+
+class TestOQueSeDizNoLog:
+    """
+    🔇 Não configurar o Tautulli é uma escolha legítima — num painel Jellyfin
+    ele nem se aplica, e num painel Plex o histórico passa a ser lido do
+    próprio servidor. Era um WARNING em cada arranque a dizer que estava tudo
+    bem, e um WARNING desses ensina a ignorar os outros.
+    """
+
+    def test_em_branco_nao_e_um_aviso(self, app_context, configurar, caplog):
+        configurar(url="", api_key="")
+
+        with caplog.at_level(logging.WARNING):
+            TautulliApiClient()
+
+        assert caplog.records == []
+
+    @pytest.mark.parametrize("url,chave", [("", "chave"), ("http://x", "")])
+    def test_meio_preenchido_continua_a_avisar(self, app_context, configurar, caplog, url, chave):
+        # Isto é um engano: falta-lhe uma metade, e sem aviso ninguém percebe
+        # porque é que as estatísticas não aparecem.
+        configurar(url=url, api_key=chave)
+
+        with caplog.at_level(logging.WARNING):
+            TautulliApiClient()
+
+        assert [r.levelname for r in caplog.records] == ["WARNING"]
+        assert "incompleta" in caplog.records[0].message
 
 
 class TestMakeRequest:

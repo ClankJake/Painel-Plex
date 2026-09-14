@@ -215,7 +215,7 @@ async function _executeBulkNotification(payload) {
     const { i18n } = state;
     
     if (dom.sendBulkNotificationBtn) dom.sendBulkNotificationBtn.disabled = true;
-    if (dom.sendBulkBtnText) dom.sendBulkBtnText.textContent = i18n.sendingBulkNotification || 'A enviar...';
+    if (dom.sendBulkBtnText) dom.sendBulkBtnText.textContent = i18n.sendingBulkNotification || 'Enviando...';
     if (dom.progressContainer) dom.progressContainer.classList.remove('hidden');
     
     setProgressBarState('active', 0, i18n.bulkSendStart || 'A iniciar...');

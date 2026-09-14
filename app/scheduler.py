@@ -84,64 +84,64 @@ def expiration_notification_job():
     if not _app: return
     with _app.test_request_context('/'):
         from . import extensions
-        users_to_check = extensions.plex_manager.get_users_within_notification_window()
-        for plex_user_id in users_to_check:
-            user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+        users_to_check = extensions.media_server.get_users_within_notification_window()
+        for media_user_id in users_to_check:
+            user_info = extensions.media_server.get_user_by_id(media_user_id)
             if user_info:
                 # 🛡️ ISOLAMENTO DE FALHA: uma notificação que falhe (ex: webhook fora do ar)
                 # não pode impedir que os demais usuários do lote sejam notificados.
                 _execute_with_retry(
-                    action=lambda u=user_info: extensions.plex_manager.send_expiration_notification_if_needed(u),
-                    description=f"notificar vencimento para '{user_info.get('username', plex_user_id)}'"
+                    action=lambda u=user_info: extensions.media_server.send_expiration_notification_if_needed(u),
+                    description=f"notificar vencimento para '{user_info.get('username', media_user_id)}'"
                 )
 
-def end_trial_job(plex_user_id):
+def end_trial_job(media_user_id):
     """Tarefa dinâmica para finalizar períodos de teste."""
     if not _app: return
     with _app.test_request_context('/'):
         from . import extensions
-        user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
-        user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
+        user_info = extensions.media_server.get_user_by_id(media_user_id)
+        user_identifier = user_info['username'] if user_info else f"ID '{media_user_id}'"
         logger.info(f"Fim do período de teste para '{user_identifier}'. Acionando o bloqueio.")
         
         if user_info:
             success = _execute_with_retry(
-                action=lambda: extensions.plex_manager.block_user(plex_user_id, reason='trial_expired'),
+                action=lambda: extensions.media_server.block_user(media_user_id, reason='trial_expired'),
                 description=f"bloquear usuário por fim de teste '{user_identifier}'"
             )
             if success:
-                profile = extensions.data_manager.get_user_profile(plex_user_id)
+                profile = extensions.data_manager.get_user_profile(media_user_id)
                 if profile:
                     extensions.notifier_manager.send_trial_end_notification(user_info, profile)
                     profile['trial_job_id'] = None
-                    extensions.data_manager.set_user_profile(plex_user_id, profile)
+                    extensions.data_manager.set_user_profile(media_user_id, profile)
         else:
-            logger.warning(f"O usuário '{plex_user_id}' não foi encontrado durante a tarefa de fim de teste.")
+            logger.warning(f"O usuário '{media_user_id}' não foi encontrado durante a tarefa de fim de teste.")
 
-def end_subscription_job(plex_user_id):
+def end_subscription_job(media_user_id):
     """Tarefa individual acionada no fim exato da assinatura."""
     if not _app: return
     with _app.app_context():
         from . import extensions
-        user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
-        user_identifier = user_info['username'] if user_info else f"ID '{plex_user_id}'"
+        user_info = extensions.media_server.get_user_by_id(media_user_id)
+        user_identifier = user_info['username'] if user_info else f"ID '{media_user_id}'"
         logger.info(f"Fim da assinatura para '{user_identifier}'. Processando vencimento da conta.")
         
         try:
-            profile = extensions.data_manager.get_user_profile(plex_user_id)
+            profile = extensions.data_manager.get_user_profile(media_user_id)
             if profile and profile.get('expiration_job_id'):
                 profile['expiration_job_id'] = None
-                extensions.data_manager.set_user_profile(plex_user_id, profile)
+                extensions.data_manager.set_user_profile(media_user_id, profile)
         except Exception as e:
-            logger.error(f"Erro ao limpar o ID da tarefa '{plex_user_id}': {e}", exc_info=True)
+            logger.error(f"Erro ao limpar o ID da tarefa '{media_user_id}': {e}", exc_info=True)
 
         if user_info:
             _execute_with_retry(
-                action=lambda: extensions.plex_manager.block_user(plex_user_id, reason='expired'),
+                action=lambda: extensions.media_server.block_user(media_user_id, reason='expired'),
                 description=f"bloquear usuário por assinatura expirada '{user_identifier}'"
             )
         else:
-            logger.warning(f"O usuário '{plex_user_id}' não foi encontrado durante a tarefa de fim de assinatura.")
+            logger.warning(f"O usuário '{media_user_id}' não foi encontrado durante a tarefa de fim de assinatura.")
 
 @single_instance_job('removal_job')
 def removal_job():
@@ -150,7 +150,7 @@ def removal_job():
         from . import extensions
         config = load_or_create_config()
         logger.info("Iniciando a tarefa 'removal_job' para remover usuários bloqueados.")
-        users_to_remove = extensions.plex_manager.get_users_to_remove()
+        users_to_remove = extensions.media_server.get_users_to_remove()
         
         if not users_to_remove:
             logger.info("Nenhum usuário atingiu o prazo para remoção.")
@@ -160,9 +160,9 @@ def removal_job():
         admin_user = str(config.get("ADMIN_USER", "")).strip().lower()
         admin_id = str(config.get("ADMIN_USER_ID", "") or "").strip()
 
-        for plex_user_id in users_to_remove:
+        for media_user_id in users_to_remove:
             is_admin = False
-            user_info = extensions.plex_manager.get_user_by_id(plex_user_id)
+            user_info = extensions.media_server.get_user_by_id(media_user_id)
 
             # 🐛 CORREÇÃO IMPORTANTE: 'get_user_by_id' procura na lista de AMIGOS do
             # Plex — e o administrador é o DONO do servidor, por isso nunca aparece
@@ -173,19 +173,19 @@ def removal_job():
             # existe mesmo para utilizadores que já não estão no Plex.
             profile_dict = None
             try:
-                profile_dict = extensions.data_manager.get_user_profile(plex_user_id)
+                profile_dict = extensions.data_manager.get_user_profile(media_user_id)
             except Exception as e:
-                logger.warning(f"Não foi possível ler o perfil local do utilizador ID '{plex_user_id}': {e}")
+                logger.warning(f"Não foi possível ler o perfil local do utilizador ID '{media_user_id}': {e}")
 
             # Identificador legível: prioriza o Plex, cai para o perfil local, e só
             # em último caso usa o ID cru.
             username = (user_info or {}).get('username') or (profile_dict or {}).get('username')
             email = (user_info or {}).get('email') or (profile_dict or {}).get('email')
-            user_identifier = username or (f"ID '{plex_user_id}'")
+            user_identifier = username or (f"ID '{media_user_id}'")
 
             # Camada 1: comparação por ID do administrador (a mais fiável, imune a
             # mudanças de nome de utilizador ou email).
-            if admin_id and str(plex_user_id) == admin_id:
+            if admin_id and str(media_user_id) == admin_id:
                 is_admin = True
 
             # Camada 2: comparação por username/email do administrador, agora usando
@@ -205,21 +205,21 @@ def removal_job():
             # e damos o caso por encerrado.
             if not user_info:
                 logger.warning(
-                    f"Tarefa 'removal_job': utilizador '{user_identifier}' (ID {plex_user_id}) já não existe "
+                    f"Tarefa 'removal_job': utilizador '{user_identifier}' (ID {media_user_id}) já não existe "
                     f"na lista de amigos do Plex. A limpar o registo local em vez de tentar removê-lo de novo."
                 )
                 try:
                     if profile_dict:
                         profile_dict['status'] = 'inactive'
                         profile_dict['expiration_date'] = None
-                        extensions.data_manager.set_user_profile(plex_user_id, profile_dict)
-                    extensions.data_manager.remove_blocked_user(plex_user_id)
+                        extensions.data_manager.set_user_profile(media_user_id, profile_dict)
+                    extensions.data_manager.remove_blocked_user(media_user_id)
                 except Exception as e:
-                    logger.error(f"Falha ao limpar o registo local do utilizador ID '{plex_user_id}': {e}")
+                    logger.error(f"Falha ao limpar o registo local do utilizador ID '{media_user_id}': {e}")
                 continue
 
             success = _execute_with_retry(
-                action=lambda pid=plex_user_id: extensions.plex_manager.remove_user(pid),
+                action=lambda pid=media_user_id: extensions.media_server.remove_user(pid),
                 description=f"remover usuário '{user_identifier}'"
             )
             if success:
@@ -227,6 +227,46 @@ def removal_job():
         
         if removed_count > 0:
             logger.info(f"Tarefa 'removal_job' concluída: {removed_count} usuários removidos.")
+
+def limpar_limite_de_sessoes_do_servidor():
+    """Reparação de UMA VEZ: tira do servidor o limite de sessões do painel.
+
+    🐛 O painel escreveu `Policy.MaxActiveSessions` no Jellyfin a pensar que era
+    um limite de telas. Não é: limita AUTENTICAÇÕES. Não cortava ninguém que já
+    estivesse a ver, e trancava a pessoa fora do próprio painel — entrar no
+    painel autentica-se contra o servidor e ocupa uma sessão.
+
+    Corre uma vez e marca-se como feita, porque a partir daqui o painel não
+    administra este campo: repeti-la todos os dias seria desfazer, às escondidas,
+    um limite que o administrador tenha posto de propósito no Jellyfin.
+    """
+    from . import extensions
+    from .config import save_app_config
+
+    config = load_or_create_config()
+    if config.get("JELLYFIN_SESSION_LIMIT_CLEARED"):
+        return
+
+    try:
+        resultado = extensions.media_server.clear_session_limits()
+    except Exception as e:
+        logger.error(f"Falha ao limpar os limites de sessões do servidor: {e}", exc_info=True)
+        return
+
+    # Uma falha de ligação não pode dar a reparação por feita: tenta-se outra vez
+    # na próxima limpeza, quando o servidor estiver de volta.
+    if not resultado.get('success'):
+        return
+
+    if resultado.get('limpos'):
+        logger.info(
+            f"Limite de sessões removido do servidor para {resultado['limpos']} utilizador(es): "
+            "o `MaxActiveSessions` limita autenticações, não telas."
+        )
+
+    config["JELLYFIN_SESSION_LIMIT_CLEARED"] = True
+    save_app_config(config)
+
 
 @single_instance_job('cleanup_job')
 def cleanup_job():
@@ -241,15 +281,55 @@ def cleanup_job():
             days_links = config.get("SHORT_LINK_MAX_AGE_DAYS", 30)
             extensions.data_manager.delete_old_short_links(days_links)
 
+        # Pedidos de reposição de palavra-passe: os usados e os que expiraram.
+        # Não é uma questão de segurança (o que lá está é o RESUMO do token, e
+        # um pedido expirado já não serve) — é para a tabela não crescer para
+        # sempre com linhas que ninguém volta a ler.
+        try:
+            extensions.data_manager.limpar_pedidos_de_reposicao_antigos()
+        except Exception as e:
+            logger.error(f"Falha ao limpar pedidos de reposição de palavra-passe: {e}", exc_info=True)
+
         # 📧 Preenche os emails em falta a partir do Plex. Necessário para ligar
         # utilizadores ao Seerr e para notificações — sem isto, quem já estava no
         # servidor antes de existir o painel (ou foi adicionado como amigo
         # diretamente no Plex) ficava sem email na base de dados, mesmo nunca
         # tendo iniciado sessão.
         try:
-            extensions.plex_manager.sync_profiles_from_plex(only_missing=True)
+            extensions.media_server.sync_profiles_from_server(only_missing=True)
         except Exception as e:
             logger.error(f"Falha ao sincronizar perfis a partir do Plex: {e}", exc_info=True)
+
+        limpar_limite_de_sessoes_do_servidor()
+
+        # 🛡️ Repõe no servidor os limites de telas que divergirem do painel.
+        # Serve quem instala o StreamLimiter DEPOIS de já ter os limites
+        # definidos aqui — nada os voltaria a escrever sozinho.
+        try:
+            resultado = extensions.media_server.sync_screen_limits()
+            if resultado.get('corrigidos'):
+                logger.info(f"Limites de telas repostos no servidor: {resultado['corrigidos']}.")
+        except Exception as e:
+            logger.error(f"Falha ao sincronizar os limites de telas: {e}", exc_info=True)
+
+@single_instance_job('server_block_import_job')
+def server_block_import_job():
+    """Traz para a auditoria os cortes que o SERVIDOR deu sozinho.
+
+    Onde o painel é o único a cortar, isto não faz nada (ver
+    `importar_bloqueios_do_servidor` no contrato). Onde há o plugin
+    StreamLimiter, é a única forma de esses cortes aparecerem no painel: o
+    plugin recusa o pedido dentro do processo do Jellyfin e não passa por aqui.
+    """
+    if not _app: return
+    with _app.app_context():
+        from . import extensions
+
+        try:
+            extensions.media_server.importar_bloqueios_do_servidor()
+        except Exception as e:
+            logger.error(f"Falha ao importar os cortes do servidor: {e}", exc_info=True)
+
 
 @single_instance_job('cleanup_image_cache_job')
 def cleanup_image_cache_job():
@@ -296,21 +376,31 @@ def sync_xp_job():
     if not _app: return
     with _app.app_context():
         from . import extensions
+        from .utils.estatisticas import estatisticas_disponiveis
+
+        # 🔇 Sem fonte de estatísticas não há XP para sincronizar — e tentar
+        # dava um erro por utilizador, com repetições, todas as madrugadas: num
+        # painel Jellyfin o Tautulli nem se aplica, e num painel Plex pode
+        # simplesmente não estar configurado.
+        if not estatisticas_disponiveis():
+            logger.debug("[XP] Sem estatísticas disponíveis: nada a sincronizar.")
+            return
+
         profiles = extensions.data_manager.get_all_user_profiles()
         for profile in profiles:
-            plex_user_id = profile.get('plex_user_id')
+            media_user_id = profile.get('media_user_id')
             username = profile.get('username')
-            if not plex_user_id or not username:
+            if not media_user_id or not username:
                 continue
             # 🛡️ ISOLAMENTO DE FALHA: um utilizador com histórico problemático no
             # Tautulli não pode impedir a sincronização dos demais.
             _execute_with_retry(
-                action=lambda pid=plex_user_id, u=username: extensions.tautulli_manager.stats.sync_user_xp(pid, u),
+                action=lambda pid=media_user_id, u=username: extensions.stats_manager.stats.sync_user_xp(pid, u),
                 description=f"sincronizar XP para '{username}'"
             )
 
         try:
-            result = extensions.tautulli_manager.reset_season_if_due()
+            result = extensions.stats_manager.reset_season_if_due()
             if result.get("reset"):
                 logger.info(f"[XP] {result.get('message')}")
         except Exception as e:
@@ -369,6 +459,15 @@ def setup_scheduler(app):
         id='removal_job', func=removal_job,
         trigger=CronTrigger(hour=int(block_time_parts[0]), minute=int(block_time_parts[1]), timezone=tz_str),
         replace_existing=True, misfire_grace_time=3600
+    )
+
+    # Os cortes do plugin StreamLimiter (ver `server_block_import_job`). De
+    # cinco em cinco minutos: a auditoria não é tempo real, e o log do servidor
+    # é lido só a partir do ponto onde a leitura anterior parou.
+    extensions.scheduler.add_job(
+        id='server_block_import_job', func=server_block_import_job,
+        trigger='interval', minutes=5,
+        replace_existing=True, coalesce=True, misfire_grace_time=600
     )
 
     cleanup_time_parts = config.get("CLEANUP_TIME", "03:00").split(':')

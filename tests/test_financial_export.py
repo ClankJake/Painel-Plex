@@ -34,17 +34,17 @@ def admin(client, configurada):
 def _criar_pagamento(db_session, **campos):
     from app.models import PixPayment, UserProfile
 
-    plex_user_id = campos.pop("user_plex_id", 1)
-    if not UserProfile.query.get(plex_user_id):
+    media_user_id = campos.pop("media_user_id", 1)
+    if not UserProfile.query.get(media_user_id):
         db_session.add(UserProfile(
-            plex_user_id=plex_user_id,
-            username=campos.get("username", f"utilizador{plex_user_id}"),
+            media_user_id=media_user_id,
+            username=campos.get("username", f"utilizador{media_user_id}"),
         ))
         db_session.flush()
 
     valores = {
-        "txid": f"tx{plex_user_id}-{campos.get('created_at', '')}",
-        "user_plex_id": plex_user_id,
+        "txid": f"tx{media_user_id}-{campos.get('created_at', '')}",
+        "media_user_id": media_user_id,
         "username": "ana",
         "value": 25.0,
         "status": "CONCLUIDA",

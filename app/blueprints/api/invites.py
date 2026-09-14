@@ -2,12 +2,14 @@
 
 import logging
 import secrets
+from types import SimpleNamespace
+
 from flask import Blueprint, jsonify, request, url_for
 from plexapi.myplex import MyPlexAccount
 from flask_babel import gettext as _
 from flask_login import login_required
 
-from ...extensions import plex_manager, limiter
+from ...extensions import media_server, limiter
 from ..auth import admin_required
 from .decorators import validate_json
 from .schemas import CreateInviteSchema, CreateInviteBotSchema
@@ -23,7 +25,7 @@ invites_api_bp = Blueprint('invites_api', __name__)
 @validate_json(CreateInviteSchema)
 def create_invite_route(validated_data):
     data = validated_data.dict()
-    result = plex_manager.create_invitation(
+    result = media_server.create_invitation(
         library_titles=data.get('libraries', []), 
         screens=data.get('screens', 0), 
         allow_downloads=data.get('allow_downloads', False), 
@@ -79,7 +81,7 @@ def create_invite_for_bot(validated_data):
     libraries = data.get('libraries')
     if not libraries:
         try:
-            libraries_result = plex_manager.get_libraries()
+            libraries_result = media_server.get_libraries()
             libraries = [lib['title'] for lib in libraries_result.get('libraries', [])] if libraries_result.get('success') else []
         except Exception as e:
             logger.error(f"Não foi possível obter a lista de bibliotecas para o convite via bot: {e}")
@@ -88,10 +90,10 @@ def create_invite_for_bot(validated_data):
         if not libraries:
             return jsonify({
                 "success": False,
-                "message": _("Não foi possível determinar as bibliotecas automaticamente. Indique 'libraries' no pedido.")
+                "message": _("Não foi possível determinar as bibliotecas automaticamente. Informe 'libraries' na requisição.")
             }), 400
 
-    result = plex_manager.create_invitation(
+    result = media_server.create_invitation(
         library_titles=libraries,
         screens=data.get('screens', 0),
         allow_downloads=data.get('allow_downloads', False),
@@ -118,7 +120,7 @@ def create_invite_for_bot(validated_data):
 @admin_required
 @limiter.exempt # Adicionado para ignorar o limite de requisições nesta rota (polling do frontend)
 def list_invites_route():
-    return jsonify(plex_manager.list_invitations())
+    return jsonify(media_server.list_invitations())
 
 @invites_api_bp.route('/delete', methods=['POST'])
 @login_required
@@ -127,7 +129,7 @@ def delete_invite_route():
     code = (request.get_json(silent=True) or {}).get('code')
     if not code:
         return jsonify({"success": False, "message": "Código do convite não fornecido."}), 400
-    return jsonify(plex_manager.delete_invitation(code))
+    return jsonify(media_server.delete_invitation(code))
 
 # **NOVA ROTA**: Reativar convite (resetar uso)
 @invites_api_bp.route('/reactivate', methods=['POST'])
@@ -137,7 +139,7 @@ def reactivate_invite_route():
     code = (request.get_json(silent=True) or {}).get('code')
     if not code:
         return jsonify({"success": False, "message": "Código do convite não fornecido."}), 400
-    return jsonify(plex_manager.reactivate_invitation(code))
+    return jsonify(media_server.reactivate_invitation(code))
 
 @invites_api_bp.route('/details/<string:code>', methods=['GET'])
 @limiter.limit("30 per minute")
@@ -150,9 +152,16 @@ def get_invite_details_route(code):
     bruta. 30/min chega para qualquer utilização legítima (a página valida o
     convite uma vez ao abrir).
     """
-    invitation, message = plex_manager.get_invitation_by_code(code)
+    invitation, message = media_server.get_invitation_by_code(code)
     if not invitation: return jsonify({"success": False, "message": message}), 404
     return jsonify({"success": True, "details": {"expires_at": invitation.get("expires_at")}})
+
+# Os mesmos limites da rota de login: é o ponto onde o pedido para, antes de
+# haver viagem ao servidor de média.
+MAX_UTILIZADOR = 128
+MAX_PALAVRA_PASSE = 256
+MAX_EMAIL = 254
+
 
 @invites_api_bp.route('/claim', methods=['POST'])
 @limiter.limit("10 per minute")
@@ -163,13 +172,41 @@ def claim_invite_route():
     servia para testar códigos e tokens à vontade.
     """
     data = request.get_json(silent=True) or {}
+
+    # Num servidor de contas locais (Jellyfin), resgatar um convite é CRIAR a
+    # conta: em vez de um token de uma conta que já existe, chegam as
+    # credenciais que a pessoa acabou de escolher. Ver
+    # `JellyfinAccountManager.claim_invitation`.
+    if media_server.capabilities.cria_contas:
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+        email = (data.get('email') or '').strip()
+
+        if not username or not password:
+            return jsonify({"success": False, "message": _("Informe um nome de usuário e uma senha.")}), 400
+
+        if len(password) < 6:
+            return jsonify({"success": False, "message": _("A senha precisa ter pelo menos 6 caracteres.")}), 400
+
+        # 🛡️ Esta rota é PÚBLICA e o que aqui chega vai direto para o servidor de
+        # média (criar a conta) e para a base de dados (o perfil). Sem um limite
+        # ao tamanho, um nome ou uma palavra-passe de megabytes era lido para
+        # memória, enviado ao servidor e gravado — por quem nem precisa de ter
+        # sessão. Os limites acompanham os do login (`auth.py`).
+        if len(username) > MAX_UTILIZADOR or len(password) > MAX_PALAVRA_PASSE or len(email) > MAX_EMAIL:
+            logger.warning("Resgate de convite recusado: campos acima do tamanho aceite.")
+            return jsonify({"success": False, "message": _("Os dados indicados são longos demais.")}), 400
+
+        registo = SimpleNamespace(username=username, password=password, email=email)
+        return jsonify(media_server.claim_invitation(data.get('code'), registo))
+
     try:
         plex_token = data.get('plex_token')
         if not plex_token:
             return jsonify({"success": False, "message": _("Token do Plex não fornecido.")}), 400
         new_user_account = MyPlexAccount(token=plex_token)
         logger.info(f"Token do novo utilizador '{new_user_account.username}' validado com sucesso.")
-        return jsonify(plex_manager.claim_invitation(data.get('code'), new_user_account))
+        return jsonify(media_server.claim_invitation(data.get('code'), new_user_account))
     except Exception as e:
         logger.error(f"Falha ao validar o token do Plex do novo utilizador: {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Token do Plex inválido.")}), 401

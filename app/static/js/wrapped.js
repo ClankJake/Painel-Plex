@@ -419,7 +419,10 @@ function bindFinalSlideButtons() {
         // com fallback para copiar o texto para a área de transferência.
         if (navigator.share) {
             try {
-                await navigator.share({ title: `Plex Wrapped ${state.year}`, text });
+                // O nome do servidor vem do template: num painel Jellyfin, "Plex
+                // Wrapped" era a marca errada na partilha.
+                const titulo = `${i18n.shareTitle || 'Wrapped'} ${state.year}`;
+                await navigator.share({ title: titulo, text });
                 return;
             } catch { /* utilizador cancelou — cai no fallback */ }
         }

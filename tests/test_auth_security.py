@@ -276,7 +276,7 @@ def login_plex_simulado(monkeypatch):
         )
         monkeypatch.setattr(auth_module, "MyPlexAccount", lambda token=None: conta)
         monkeypatch.setattr(
-            auth_module.plex_manager, "get_all_plex_users", lambda: plex_users or []
+            auth_module.media_server, "get_all_users", lambda: plex_users or []
         )
 
         registados = dict(perfis or {})

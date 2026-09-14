@@ -4,6 +4,8 @@
   "description": "Frontend dependencies for Painel de Gestão Plex",
   "main": "index.js",
   "scripts": {
+    "build": "npm run copy:vendor && npm run build:css",
+    "copy:vendor": "mkdir -p ./app/static/dist && cp node_modules/socket.io-client/dist/socket.io.min.js node_modules/socket.io-client/dist/socket.io.min.js.map node_modules/chart.js/dist/chart.umd.js node_modules/chart.js/dist/chart.umd.js.map node_modules/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js ./app/static/dist/",
     "build:css": "mkdir -p ./app/static/dist && tailwindcss -i ./app/static/css/input.css -o ./app/static/dist/output.css",
     "watch:css": "mkdir -p ./app/static/dist && tailwindcss -i ./app/static/css/input.css -o ./app/static/dist/output.css --watch"
   },

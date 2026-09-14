@@ -194,7 +194,7 @@ export function renderSystemHealth(health) {
     if (!dom.systemHealthContainer) return;
     const { i18n } = state;
     const serviceMap = {
-        plex: i18n.plexServer, tautulli: i18n.tautulli, efi: i18n.paymentEfi,
+        media_server: i18n.mediaServer, tautulli: i18n.tautulli, efi: i18n.paymentEfi,
         mercado_pago: i18n.paymentMp, gates2b: i18n.paymentGates2b, scheduler: i18n.scheduler
     };
 

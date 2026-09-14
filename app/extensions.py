@@ -41,8 +41,12 @@ limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
 
 # Os 'managers' dos serviços são inicializados como None
 data_manager = None
-plex_manager = None
-tautulli_manager = None
+
+# O servidor de média ativo (ver app/services/media_server/). O painel fala
+# SEMPRE com este nome: nada fora de app/services/media_server/plex/ deve saber
+# que o servidor por baixo é o Plex.
+media_server = None
+stats_manager = None
 stream_manager = None 
 notifier_manager = None
 efi_manager = None

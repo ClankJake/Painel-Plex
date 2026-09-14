@@ -561,15 +561,15 @@ class TestEnvioTelegram:
         atualizacoes = []
 
         class GestorFalso:
-            def update_user_profile(self, plex_user_id, dados):
-                atualizacoes.append((plex_user_id, dados))
+            def update_user_profile(self, media_user_id, dados):
+                atualizacoes.append((media_user_id, dados))
 
         from app import extensions
 
         monkeypatch.setattr(extensions, "data_manager", GestorFalso(), raising=False)
 
         with pytest.raises(notifier_module.NotificationError):
-            notifier._send_telegram_notification("Olá", "123", "req", plex_user_id=7)
+            notifier._send_telegram_notification("Olá", "123", "req", media_user_id=7)
 
         assert atualizacoes == [(7, {"telegram_id": None, "telegram_user": None})]
 
@@ -685,7 +685,7 @@ class TestPrepareAndSend:
 
     def _perfil(self):
         return {
-            "plex_user_id": 1,
+            "media_user_id": 1,
             "name": "Ana",
             "telegram_id": "111",
             "discord_user_id": "222",

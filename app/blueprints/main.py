@@ -121,7 +121,7 @@ def referral_landing(ref_code):
     invite_code = str(config.get("REFERRAL_DEFAULT_INVITE_CODE", "") or "").strip()
     invite_available = False
     if invite_code:
-        invitation, invite_msg = extensions.plex_manager.invites.get_invitation_by_code(invite_code)
+        invitation, invite_msg = extensions.media_server.invites.get_invitation_by_code(invite_code)
         invite_available = invitation is not None
         if not invite_available:
             logger.warning(
@@ -137,16 +137,32 @@ def referral_landing(ref_code):
         ref_code=ref_code
     )
 
+def _tem_estatisticas() -> bool:
+    """As estatísticas vêm do Tautulli, que só fala com o Plex — e só quando
+    está configurado.
+
+    Esconder as ligações no menu não chega: um marcador nos favoritos, ou o
+    endereço escrito à mão, davam uma página vazia sem explicação.
+    """
+    from ..utils.estatisticas import estatisticas_disponiveis
+
+    return estatisticas_disponiveis()
+
+
 @main_bp.route('/statistics')
 @login_required
 def statistics_page():
     """Página de estatísticas de consumo do utilizador e globais."""
+    if not _tem_estatisticas():
+        return redirect(url_for('main.account_page'))
     return render_template('statistics.html')
 
 @main_bp.route('/wrapped')
 @login_required
 def wrapped_page():
     """Página de retrospectiva anual estilo 'Plex Wrapped'."""
+    if not _tem_estatisticas():
+        return redirect(url_for('main.account_page'))
     return render_template('wrapped.html', now_year=datetime.now(timezone.utc).year)
 
 @main_bp.route('/financial')
@@ -188,6 +204,44 @@ def account_page():
     """Página de gestão da conta, onde o utilizador logado vê o seu status."""
     return render_template('account.html')
 
+@main_bp.route('/password/forgot')
+def password_forgot_page():
+    """Onde se pede o link para repor a palavra-passe.
+
+    ⚠️ Não existe num painel cuja autenticação é delegada (o Plex): lá a
+    palavra-passe vive no plex.tv e o painel não tem nada que a repor. Uma
+    capacidade em falta ESCONDE a funcionalidade — e um marcador nos favoritos
+    tem de dar um redirecionamento, não uma página vazia.
+    """
+    from ..services.password_reset import servidor_repoe_palavras_passe
+
+    if not servidor_repoe_palavras_passe(extensions.media_server):
+        return redirect(url_for('auth.login'))
+
+    return render_template('password_forgot.html')
+
+
+@main_bp.route('/password/reset/<string:token>')
+def password_reset_page(token):
+    """O formulário da palavra-passe nova, aberto a partir do link.
+
+    O token é validado ANTES de se mostrar o formulário: escrever duas vezes uma
+    palavra-passe para só depois ouvir "o link expirou" é trabalho deitado fora.
+    """
+    from ..services.password_reset import servidor_repoe_palavras_passe
+
+    if not servidor_repoe_palavras_passe(extensions.media_server):
+        return redirect(url_for('auth.login'))
+
+    media_user_id, motivo = extensions.data_manager.ler_pedido_de_reposicao(token)
+
+    if not media_user_id:
+        logger.info(f"Link de reposição recusado ({motivo}).")
+        return render_template('password_forgot.html', link_invalido=motivo), 400
+
+    return render_template('password_reset.html', token=token)
+
+
 @main_bp.route('/pay/<string:token>')
 def payment_page(token):
     """
@@ -201,7 +255,7 @@ def payment_page(token):
         logger.warning(f"Tentativa de acesso com token de pagamento inválido ou expirado: {mask_token(token)}")
         return render_template('payment_unavailable.html', 
                                reason_title=_("Link de Pagamento Inválido"),
-                               reason_message=_("O link que tentou aceder não é válido ou já expirou. Por favor, solicite um novo link ao administrador.")), 404
+                               reason_message=_("O link que você tentou acessar não é válido ou já expirou. Por favor, solicite um novo link ao administrador.")), 404
 
     username = profile.username
     is_reactivation = (profile.status == 'inactive')
@@ -224,7 +278,7 @@ def payment_page(token):
 
             # 1. Proteção: Bloqueia a renovação se ainda faltar muito tempo para expirar
             if days_left > renewal_window:
-                message = _("A sua assinatura vence em %(days)d dias. A renovação só estará disponível quando faltarem %(window)d dias (ou menos) para o vencimento.", days=days_left, window=renewal_window)
+                message = _("Sua assinatura vence em %(days)d dias. A renovação só estará disponível quando faltarem %(window)d dias (ou menos) para o vencimento.", days=days_left, window=renewal_window)
 
                 # 🔁 Em vez de deixar o utilizador num beco sem saída, oferecemos um
                 # caminho: na área de conta ele pode antecipar o pagamento, mudar de
@@ -239,7 +293,16 @@ def payment_page(token):
                     action_hint = None
                 else:
                     action_url = url_for('auth.login', next=url_for('main.account_page'))
-                    action_hint = _("Vai ser-lhe pedido para entrar com a sua conta Plex.")
+                    # ⚠️ A marca estava escrita à mão: num painel Jellyfin era a
+                    # marca errada a aparecer a quem vai pagar. E "Vai ser-lhe
+                    # pedido" é português europeu — o teste de vocabulário não
+                    # apanha a ênclise, mas quem lê apanha.
+                    action_hint = _(
+                        "Você vai precisar entrar com a sua conta %(server_name)s.",
+                        # ⚠️ No BACKEND o atributo é `SHORT_NAME`; `short_name` só
+                        # existe no contexto dos templates (ver `create_app`).
+                        server_name=getattr(extensions.media_server, 'SHORT_NAME', 'Plex'),
+                    )
 
                 return render_template('payment_unavailable.html',
                                        reason_title=_("Renovação Indisponível no Momento"),
@@ -251,7 +314,7 @@ def payment_page(token):
             # 2. Proteção: Bloqueia o link se já passou demasiado tempo desde a expiração (Período de Carência)
             days_expired = -days_left
             if days_expired > grace_period:
-                flash(_("A sua assinatura expirou há muito tempo e este link foi desativado. Por favor, faça login para ver as opções atuais na sua conta."), "warning")
+                flash(_("Sua assinatura expirou há muito tempo e este link foi desativado. Por favor, faça login para ver as opções atuais na sua conta."), "warning")
                 
                 # Se for o próprio utilizador logado a aceder, encaminha para a conta dele
                 if current_user.is_authenticated and current_user.username == username:

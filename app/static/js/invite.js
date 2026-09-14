@@ -3,7 +3,7 @@
  * Lógica para a página de resgate de convites.
  */
 
-import { setButtonLoading, restoreButton, escapeHTML, buildPinCheckUrl } from './utils.js';
+import { setButtonLoading, restoreButton, escapeHTML, buildPinCheckUrl, chaveEmCamelCase } from './utils.js';
 
 // --- INICIALIZAÇÃO ---
 const scriptTag = document.getElementById('invite-script');
@@ -43,14 +43,30 @@ function formatTime(date) {
 // Mapeia os data-attributes para objetos para facilitar o acesso
 const urls = {};
 const i18n = {};
+const config = {};
+// 🐛 A conversão TEM de comer os traços que o browser deixou: ele só os
+// remove quando vêm seguidos de uma letra minúscula, e `data-i18n-step-local-1`
+// chega ao dataset como `i18nStepLocal-1`. Sem isto, a chave ficava
+// `stepLocal-1`, o consumidor pedia `stepLocal1` e a página escrevia
+// "undefined" no "Como começar". Ver `chaveEmCamelCase`.
 for (const key in scriptTag.dataset) {
-    if (key.startsWith('url')) {
-        const urlKey = key.charAt(3).toLowerCase() + key.slice(4);
-        urls[urlKey] = scriptTag.dataset[key];
+    if (key.startsWith('config')) {
+        config[chaveEmCamelCase(key, 6)] = scriptTag.dataset[key];
+    } else if (key.startsWith('url')) {
+        urls[chaveEmCamelCase(key, 3)] = scriptTag.dataset[key];
     } else if (key.startsWith('i18n')) {
-        const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
-        i18n[i18nKey] = scriptTag.dataset[key];
+        i18n[chaveEmCamelCase(key, 4)] = scriptTag.dataset[key];
     }
+}
+
+/**
+ * Um texto do dicionário, nunca `undefined`.
+ *
+ * Uma chave em falta é um erro de programação — mas escrevê-lo na cara de quem
+ * está a resgatar um convite é pior do que mostrar a frase incompleta.
+ */
+function texto(chave, alternativa = '') {
+    return i18n[chave] || alternativa;
 }
 
 let pinCheckInterval = null;
@@ -83,7 +99,7 @@ function createAppCard(title, href, svgPath) {
     `;
 }
 
-function showImprovedOnboarding(welcomeMessage, userData) {
+function showImprovedOnboarding(userData) {
     const desktopIcon = `<path d="M21 13H3a1 1 0 01-1-1V4a1 1 0 011-1h18a1 1 0 011 1v8a1 1 0 01-1 1zm-1-2V5H4v6h16z"></path><path d="M12 15H3.21a1 1 0 00-.97 1.24l1.39 4A1 1 0 004.59 21h14.82a1 1 0 00.97-.76l1.39-4A1 1 0 0020.79 15H12z"></path>`;
     const mobileIcon = `<path d="M17 2H7a3 3 0 00-3 3v14a3 3 0 003 3h10a3 3 0 003-3V5a3 3 0 00-3-3zm-1 16H8a1 1 0 010-2h8a1 1 0 010 2zm1-4H6V6a1 1 0 011-1h10a1 1 0 011 1v8z"></path>`;
     const tvIcon = `<path d="M21 16H3a1 1 0 010-2h18a1 1 0 010 2zM20 3H4a3 3 0 00-3 3v6a3 3 0 003 3h16a3 3 0 003-3V6a3 3 0 00-3-3zm1 9a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1h16a1 1 0 011 1v6z"></path>`;
@@ -131,17 +147,26 @@ function showImprovedOnboarding(welcomeMessage, userData) {
     // o interpolar — este era o ponto de XSS mais exposto de toda a página.
     const welcomeTitle = i18n.welcomeUser.replace('{username}', `<strong>${escapeHTML(userData.username)}</strong>`);
 
+    // Num servidor de contas locais, o nome que a pessoa escolheu É uma
+    // credencial — e é o que ela vai escrever na aplicação daqui a cinco
+    // minutos. Repeti-lo aqui poupa-lhe a dúvida.
+    const credenciaisHtml = criaContas() ? `
+        <div class="mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 border-l-4 border-purple-500 text-purple-800 dark:text-purple-200 text-sm text-left rounded-r-lg">
+            <p>${i18n.yourUsernameIs.replace('{username}', `<strong>${escapeHTML(userData.username || '')}</strong>`)}</p>
+        </div>` : '';
+
     mainContainer.innerHTML = `
         <svg class="w-16 h-16 text-green-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
         <h1 class="text-3xl font-bold text-green-500 mt-4">${i18n.success}</h1>
         <div class="mt-2 text-lg text-gray-600 dark:text-gray-300">${welcomeTitle}</div>
+        ${credenciaisHtml}
         ${expirationHtml}
         ${paymentButtonHtml}
 
         <div class="mt-8 text-left border-t border-gray-200 dark:border-gray-700/50 pt-6">
             <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 text-center">${i18n.nextSteps}</h2>
              <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-400 step-list">
-                <li>${i18n.step1Onboarding}</li>
+                <li>${criaContas() ? i18n.step1OnboardingLocal : i18n.step1Onboarding}</li>
                 ${overseerrStep}
             </ol>
         </div>
@@ -149,15 +174,10 @@ function showImprovedOnboarding(welcomeMessage, userData) {
         <div class="mt-8 text-left border-t border-gray-200 dark:border-gray-700/50 pt-6">
             <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 text-center">${i18n.enjoyAnywhere}</h2>
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-center">
-                ${createAppCard('Desktop', 'https://www.plex.tv/pt-br/media-server-downloads/#plex-app', desktopIcon)}
-                ${createAppCard('Android', 'https://play.google.com/store/apps/details?id=com.plexapp.android', mobileIcon)}
-                ${createAppCard('Apple (iOS)', 'https://apps.apple.com/us/app/plex-movies-tv-music-more/id383457673', mobileIcon)}
-                ${createAppCard('Smart TVs', 'https://www.plex.tv/pt-br/apps-devices/#tv', tvIcon)}
-                ${createAppCard('Consoles', 'https://www.plex.tv/pt-br/apps-devices/#console', tvIcon)}
-                ${createAppCard(i18n.webBrowser, 'https://app.plex.tv/desktop/#!/', desktopIcon)}
+                ${cartoesDeAplicacoes(desktopIcon, mobileIcon, tvIcon, userData.server_url)}
             </div>
             <div class="text-center mt-6">
-                <a href="https://www.plex.tv/pt-br/apps-devices/" target="_blank" rel="noopener noreferrer" class="text-sm text-yellow-500 hover:underline">${i18n.allDevices} &rarr;</a>
+                <a href="${criaContas() ? 'https://jellyfin.org/downloads/clients' : 'https://www.plex.tv/pt-br/apps-devices/'}" target="_blank" rel="noopener noreferrer" class="text-sm text-yellow-500 hover:underline">${i18n.allDevices} &rarr;</a>
             </div>
         </div>
     `;
@@ -176,7 +196,7 @@ async function claimInvite(plexToken) {
         });
         const result = await response.json();
         if (result.success) {
-            showImprovedOnboarding(result.message, result.user_data);
+            showImprovedOnboarding(result.user_data);
         } else {
             showMessage(i18n.error, result.message, true);
         }
@@ -273,7 +293,206 @@ function loginWithPlexToClaim() {
     if (!authWindow || authWindow.closed || typeof authWindow.closed === 'undefined') {
         window.removeEventListener('message', handleAuthMessage);
         restoreButton(loginButton);
-        showMessage(i18n.error, i18n.popupBlocked || 'Não foi possível abrir a janela de login. Verifique se o seu navegador está a bloquear pop-ups.', true);
+        showMessage(i18n.error, i18n.popupBlocked || 'Não foi possível abrir a janela de login. Verifique se o seu navegador está bloqueando pop-ups.', true);
+    }
+}
+
+// Num servidor de contas locais o resgate CRIA a conta: em vez de autenticar
+// uma conta que já existe, pede-se as credenciais que a pessoa vai passar a
+// usar. Ver `JellyfinAccountManager.claim_invitation`.
+function criaContas() {
+    return config.createsAccounts === 'true';
+}
+
+/**
+ * 🐛 Convite JÁ EXPIRADO: só desativava o botão do Plex. Num servidor de contas
+ * locais não há botão nenhum — há um FORMULÁRIO — e ele ficava a funcionar: a
+ * pessoa escolhia utilizador e palavra-passe, submetia, e só então descobria
+ * que o convite tinha expirado. Exatamente o que o aviso existe para evitar.
+ */
+function desativarResgate() {
+    const botao = document.getElementById('login-button');
+    if (botao) {
+        botao.disabled = true;
+        botao.classList.add('opacity-50', 'cursor-not-allowed');
+        botao.classList.remove('hover:scale-105', 'hover:bg-yellow-600');
+    }
+
+    const formulario = document.getElementById('register-form');
+    if (formulario) {
+        formulario.querySelectorAll('input, button').forEach((campo) => {
+            campo.disabled = true;
+        });
+        formulario.classList.add('opacity-50');
+    }
+}
+
+function cartoesDeAplicacoes(desktopIcon, mobileIcon, tvIcon, serverUrl) {
+    // Enviar alguém para descarregar a aplicação ERRADA é pior do que não
+    // sugerir nenhuma: os links seguem o servidor que o painel administra.
+    if (criaContas()) {
+        return `
+            ${createAppCard('Desktop', 'https://jellyfin.org/downloads/clients', desktopIcon)}
+            ${createAppCard('Android', 'https://play.google.com/store/apps/details?id=org.jellyfin.mobile', mobileIcon)}
+            ${createAppCard('Apple (iOS)', 'https://apps.apple.com/app/jellyfin-mobile/id1480192618', mobileIcon)}
+            ${createAppCard('Smart TVs', 'https://jellyfin.org/downloads/clients', tvIcon)}
+            ${createAppCard(i18n.webBrowser, safeUrl(serverUrl) || 'https://jellyfin.org/downloads/clients', desktopIcon)}`;
+    }
+
+    return `
+        ${createAppCard('Desktop', 'https://www.plex.tv/pt-br/media-server-downloads/#plex-app', desktopIcon)}
+        ${createAppCard('Android', 'https://play.google.com/store/apps/details?id=com.plexapp.android', mobileIcon)}
+        ${createAppCard('Apple (iOS)', 'https://apps.apple.com/us/app/plex-movies-tv-music-more/id383457673', mobileIcon)}
+        ${createAppCard('Smart TVs', 'https://www.plex.tv/pt-br/apps-devices/#tv', tvIcon)}
+        ${createAppCard('Consoles', 'https://www.plex.tv/pt-br/apps-devices/#console', tvIcon)}
+        ${createAppCard(i18n.webBrowser, 'https://app.plex.tv/desktop/#!/', desktopIcon)}`;
+}
+
+function comoComecarPlex() {
+    return `
+        <div class="text-left mt-6 border-t border-gray-200 dark:border-gray-700/50 pt-6">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">${i18n.whatIsPlex}</h2>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">${i18n.plexDesc}</p>
+
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mt-4 mb-2">${i18n.howToStart}</h3>
+            <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-400 step-list">
+                <li>${i18n.step1Text} <a href="https://www.plex.tv/pt-br/sign-up/" target="_blank" rel="noopener noreferrer" class="text-yellow-500 hover:underline font-semibold">${i18n.step1Link}</a>${i18n.step1End}</li>
+                <li>${i18n.step2}</li>
+            </ol>
+        </div>`;
+}
+
+function comoComecarLocal() {
+    // Num servidor de contas locais não há conta externa para criar primeiro: a
+    // conta nasce aqui, e os passos são outros — incluindo o que não existe no
+    // Plex: a palavra-passe é escolhida agora e não se recupera depois.
+    const passos = [
+        texto('stepLocalOne'),
+        texto('stepLocalTwo'),
+        texto('stepLocalThree'),
+    ].filter(Boolean);
+
+    return `
+        <div class="text-left mt-6 border-t border-gray-200 dark:border-gray-700/50 pt-6">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">${texto('howToStartLocal')}</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">${texto('whatIsLocal')}</p>
+            <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-400 step-list">
+                ${passos.map((passo) => `<li>${passo}</li>`).join('')}
+            </ol>
+        </div>`;
+}
+
+function botaoDeLoginPlex() {
+    return `
+        <div class="mt-8">
+            <button id="login-button" type="button" class="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-gray-900 bg-yellow-500 hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 transition-transform transform hover:scale-105">
+                 <svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
+                ${i18n.loginToRedeem}
+            </button>
+        </div>`;
+}
+
+function formularioDeRegisto() {
+    const campo = 'block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm';
+    return `
+        <form id="register-form" class="mt-8 text-left space-y-4">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">${i18n.createAccount}</h2>
+            <p class="text-sm text-gray-600 dark:text-gray-400">${i18n.createAccountDesc}</p>
+
+            <div>
+                <label for="register-username" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">${i18n.username}</label>
+                <!-- Os \`maxlength\` acompanham o que a rota de resgate aceita
+                     (MAX_UTILIZADOR / MAX_PALAVRA_PASSE / MAX_EMAIL em
+                     \`api/invites.py\`): o travão a sério é do servidor. -->
+                <input type="text" id="register-username" autocomplete="username" required
+                       maxlength="128" autocapitalize="off" autocorrect="off" spellcheck="false"
+                       class="${campo}">
+            </div>
+            <div>
+                <label for="register-password" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">${i18n.password}</label>
+                <div class="relative">
+                    <input type="password" id="register-password" autocomplete="new-password"
+                           minlength="6" maxlength="256" required spellcheck="false"
+                           class="${campo} pr-11">
+                    <button type="button" id="toggle-register-password" tabindex="-1"
+                            aria-label="${i18n.showPassword || ''}" aria-pressed="false"
+                            class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                        <svg id="register-icon-eye" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                        <svg id="register-icon-eye-off" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.477 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.477 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
+                    </button>
+                </div>
+                <!-- ⚠️ Esta palavra-passe não se recupera: o painel não a guarda
+                     nem tem como a repor. Ver o que se escreveu é a diferença
+                     entre entrar e ficar de fora. -->
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${i18n.passwordHelp || ''}</p>
+            </div>
+            <div>
+                <label for="register-email" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">${i18n.emailOptional}</label>
+                <input type="email" id="register-email" autocomplete="email" maxlength="254"
+                       autocapitalize="off" autocorrect="off" spellcheck="false" class="${campo}">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${i18n.emailHelp}</p>
+            </div>
+
+            <button type="submit" id="register-submit" class="w-full flex justify-center items-center py-3 px-4 text-sm font-semibold rounded-md text-white bg-purple-600 hover:bg-purple-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-transform transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                ${i18n.createAndRedeem}
+            </button>
+            <p id="register-error" class="text-sm text-red-500 text-center" role="alert"></p>
+        </form>`;
+}
+
+function ligarBotaoDeVerPalavraPasse() {
+    const botao = document.getElementById('toggle-register-password');
+    botao?.addEventListener('click', () => {
+        const campo = document.getElementById('register-password');
+        const visivel = campo.type === 'text';
+
+        campo.type = visivel ? 'password' : 'text';
+        document.getElementById('register-icon-eye')?.classList.toggle('hidden', !visivel);
+        document.getElementById('register-icon-eye-off')?.classList.toggle('hidden', visivel);
+        botao.setAttribute('aria-pressed', String(!visivel));
+        botao.setAttribute('aria-label', (visivel ? i18n.showPassword : i18n.hidePassword) || '');
+        campo.focus();
+    });
+}
+
+async function registarEResgatar(evento) {
+    evento.preventDefault();
+
+    const botao = document.getElementById('register-submit');
+    const erro = document.getElementById('register-error');
+    const username = document.getElementById('register-username').value.trim();
+    const password = document.getElementById('register-password').value;
+    const email = document.getElementById('register-email').value.trim();
+
+    erro.textContent = '';
+
+    if (password.length < 6) {
+        erro.textContent = i18n.passwordTooShort || '';
+        return;
+    }
+
+    botao.disabled = true;
+    const textoOriginal = botao.textContent;
+    botao.textContent = i18n.creating || '';
+
+    try {
+        const resposta = await fetch(urls.claimInvite, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: inviteCode, username, password, email }),
+        });
+        const dados = await resposta.json();
+
+        if (dados.success) {
+            showImprovedOnboarding(dados.user_data || {});
+            return;
+        }
+        erro.textContent = dados.message || i18n.claimFail;
+    } catch (e) {
+        erro.textContent = i18n.networkError || i18n.claimFail;
+    } finally {
+        botao.disabled = false;
+        botao.textContent = textoOriginal;
     }
 }
 
@@ -289,26 +508,17 @@ async function validateInvite() {
             <svg class="w-16 h-16 text-yellow-400 mx-auto" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z"/></svg>
             <h1 class="text-3xl font-bold text-gray-900 dark:text-white mt-4">${i18n.youAreInvited}</h1>
             
-            <div class="text-left mt-6 border-t border-gray-200 dark:border-gray-700/50 pt-6">
-                <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">${i18n.whatIsPlex}</h2>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">${i18n.plexDesc}</p>
-                
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mt-4 mb-2">${i18n.howToStart}</h3>
-                <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-400 step-list">
-                    <li>${i18n.step1Text} <a href="https://www.plex.tv/pt-br/sign-up/" target="_blank" rel="noopener noreferrer" class="text-yellow-500 hover:underline font-semibold">${i18n.step1Link}</a>${i18n.step1End}</li>
-                    <li>${i18n.step2}</li>
-                </ol>
-            </div>
+            ${criaContas() ? comoComecarLocal() : comoComecarPlex()}
             <div id="expiration-container"></div>
-            <div class="mt-8">
-                <button id="login-button" type="button" class="group relative w-full flex justify-center items-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-gray-900 bg-yellow-500 hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 transition-transform transform hover:scale-105">
-                     <svg class="w-6 h-6 mr-3" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02C11.64,12.02,11.64,12.02,11.64,12.02L9.36,7.66L9.35,7.63C9.35,7.63,9.35,7.63,9.35,7.63L11.64,12L9.35,16.38C9.35,16.38,9.35,16.38,9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
-                    ${i18n.loginToRedeem}
-                </button>
-            </div>
+            ${criaContas() ? formularioDeRegisto() : botaoDeLoginPlex()}
         `;
         
-        document.getElementById('login-button').onclick = loginWithPlexToClaim;
+        if (criaContas()) {
+            document.getElementById('register-form').addEventListener('submit', registarEResgatar);
+            ligarBotaoDeVerPalavraPasse();
+        } else {
+            document.getElementById('login-button').onclick = loginWithPlexToClaim;
+        }
         
         if (data.details && data.details.expires_at) {
             const expirationDate = new Date(data.details.expires_at);
@@ -320,12 +530,7 @@ async function validateInvite() {
             // então descobria que o convite tinha expirado — depois de todo o esforço.
             // Agora avisamos já, e desativamos o botão.
             if (diffMs <= 0) {
-                const btn = document.getElementById('login-button');
-                if (btn) {
-                    btn.disabled = true;
-                    btn.classList.add('opacity-50', 'cursor-not-allowed');
-                    btn.classList.remove('hover:scale-105', 'hover:bg-yellow-600');
-                }
+                desativarResgate();
                 document.getElementById('expiration-container').innerHTML = `
                     <div class="mt-6 p-4 bg-red-100 dark:bg-red-500/20 border-l-4 border-red-500 text-red-700 dark:text-red-200 text-sm text-left rounded-r-lg">
                         <p class="font-bold">${i18n.inviteExpired || 'Este convite já expirou.'}</p>

@@ -117,25 +117,36 @@ class NotificationError(Exception):
 # --- CONSTANTES DE TEMPLATES PADRÃO ---
 DEFAULT_TEMPLATES = {
     "TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nEste é um lembrete de que sua fatura está com o vencimento próximo.\nVencimento: *{date}*\nValor: *{price}*\nPlano: *{plan_name}*\nAcesso: `{email}`\n\nNa data do vencimento o sistema poderá bloquear o acesso. Para evitar a interrupção, realize o pagamento clicando no botão abaixo:",
-    "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\n\nOlá {name}!\nA sua subscrição foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
-    "TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE": "✅ *Conta Reativada*\n\nOlá {name}!\nA sua subscrição foi renovada e a sua conta reativada com sucesso.\nNovo vencimento: *{new_date}*\n\nPara acessar o servidor, clique no link abaixo e aceite o convite:\n{invite_link}",
-    "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n\n{name}, o seu período de teste terminou.\nPara manter o seu acesso, realize a renovação no botão abaixo:",
-    "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nO seu acesso ao Plex está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
-    "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi renovada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
-    "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nA sua assinatura foi reativada com sucesso. O seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para aceitar o convite do Plex]({invite_link})", "color": 65280}]}',
-    "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nO seu período de teste gratuito terminou. Para continuar a ter acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
+    "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\n\nOlá {name}!\nSua assinatura foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
+    "TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE": "✅ *Conta Reativada*\n\nOlá {name}!\nSua assinatura foi renovada e sua conta reativada com sucesso.\nNovo vencimento: *{new_date}*\n\nPara voltar a acessar, use o link abaixo:\n{invite_link}",
+    "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n\n{name}, seu período de teste terminou.\nPara manter seu acesso, realize a renovação no botão abaixo:",
+    # A conta teve de ser criada de novo no servidor e a palavra-passe é nova.
+    # ⚠️ Não há forma de recuperar a antiga, nem de pedir uma à pessoa: ela não
+    # está a ver o painel, está a pagar. É por isto que este evento existe.
+    "TELEGRAM_CREDENTIALS_MESSAGE_TEMPLATE": "🔑 *Acesso Restaurado*\n\nOlá {name}!\nSua conta no {server_name} foi criada novamente, por isso a senha mudou.\n\nUsuário: `{new_username}`\nSenha: `{new_password}`\n\nEntre em {invite_link} e troque a senha assim que puder.",
+    "TELEGRAM_PASSWORD_RESET_MESSAGE_TEMPLATE": "🔑 *Redefinir a senha*\n\nOlá {name}!\nVocê pediu para redefinir a senha da sua conta no {server_name}.\n\nAbra este link e escolha uma nova:\n{reset_link}\n\nO link vale {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem — nada muda até alguém abrir o link.",
+    "DISCORD_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso de Vencimento", "description": "Olá **{username}**! 👋\\n\\nSeu acesso ao **{server_name}** está prestes a expirar em **{days} dia(s)**, no dia **{date}**.\\n\\nPara evitar a interrupção do serviço, por favor, [clique aqui para renovar]({payment_link}).", "color": 16776960}]}',
+    "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nSua assinatura foi renovada com sucesso. Seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
+    "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nSua assinatura foi reativada com sucesso. Seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para voltar a acessar]({invite_link})", "color": 65280}]}',
+    "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nSeu período de teste gratuito terminou. Para continuar com acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
+    "DISCORD_CREDENTIALS_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Acesso Restaurado", "description": "Olá **{username}**! 🔑\\n\\nSua conta no **{server_name}** foi criada novamente, por isso a senha mudou.\\n\\nUsuário: `{new_username}`\\nSenha: `{new_password}`\\n\\nTroque a senha assim que puder.", "color": 3447003}]}',
+    "DISCORD_PASSWORD_RESET_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Redefinir a senha\", \"description\": \"Olá **{username}**! 🔑\\n\\nVocê pediu para redefinir a senha da sua conta no **{server_name}**.\\n\\n[Clique aqui para escolher uma nova]({reset_link})\\n\\nO link vale {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem.\", \"color\": 3447003}]}",
     "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
-    "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi renovada. Novo vencimento: {new_date}."}',
-    "WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "✅ A subscrição de {username} foi reativada. Novo vencimento: {new_date}. Link de acesso: {invite_link}"}',
+    "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A assinatura de {username} foi renovada. Novo vencimento: {new_date}."}',
+    "WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "✅ A assinatura de {username} foi reativada. Novo vencimento: {new_date}. Link de acesso: {invite_link}"}',
     "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}',
+    "WEBHOOK_CREDENTIALS_MESSAGE_TEMPLATE": '{"content": "A conta de {username} foi criada novamente no servidor. Usuário: {new_username} — Senha: {new_password}"}',
+    "WEBHOOK_PASSWORD_RESET_MESSAGE_TEMPLATE": "{\"content\": \"{username} pediu para redefinir a senha. Link válido {reset_minutes} min: {reset_link}\"}",
     "TELEGRAM_BULK_MESSAGE_TEMPLATE": "📢 *Aviso do Servidor*\n\nOlá {name},\n\n{message}",
     "DISCORD_BULK_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}',
     "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}',
     # --- WhatsApp (texto simples; sem markdown do Telegram nem JSON) ---
-    "WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nO seu acesso vence em {days} dia(s), no dia {date}.\nPlano: {plan_name}\nValor: {price}\n\nRenove aqui para não perder o acesso:\n{payment_link}",
-    "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "✅ Renovação confirmada!\n\nOlá {name}, a sua subscrição foi renovada com sucesso.\nNovo vencimento: {new_date}\n\nBom entretenimento!",
-    "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "✅ Conta reativada!\n\nOlá {name}, a sua conta foi reativada.\nNovo vencimento: {new_date}\n\nAceite o convite para voltar a aceder:\n{invite_link}",
-    "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "⌛ O seu período de teste terminou\n\nOlá {name}, esperamos que tenha gostado!\nPara continuar com acesso, faça a sua assinatura aqui:\n{payment_link}",
+    "WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}, {greeting}!\n\nSeu acesso vence em {days} dia(s), no dia {date}.\nPlano: {plan_name}\nValor: {price}\n\nRenove aqui para não perder o acesso:\n{payment_link}",
+    "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "✅ Renovação confirmada!\n\nOlá {name}, sua assinatura foi renovada com sucesso.\nNovo vencimento: {new_date}\n\nBom entretenimento!",
+    "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "✅ Conta reativada!\n\nOlá {name}, sua conta foi reativada.\nNovo vencimento: {new_date}\n\nUse o link abaixo para voltar a acessar:\n{invite_link}",
+    "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "⌛ Seu período de teste terminou\n\nOlá {name}, esperamos que tenha gostado!\nPara continuar com acesso, faça sua assinatura aqui:\n{payment_link}",
+    "WHATSAPP_CREDENTIALS_MESSAGE_TEMPLATE": "🔑 Acesso restaurado\n\nOlá {name}, sua conta no {server_name} foi criada novamente, por isso a senha mudou.\n\nUsuário: {new_username}\nSenha: {new_password}\n\nEntre em {invite_link} e troque a senha assim que puder.",
+    "WHATSAPP_PASSWORD_RESET_MESSAGE_TEMPLATE": "🔑 Redefinir a senha\n\nOlá {name}, você pediu para redefinir a senha da sua conta no {server_name}.\n\nAbra este link e escolha uma nova:\n{reset_link}\n\nVale {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem.",
     "WHATSAPP_BULK_MESSAGE_TEMPLATE": "📢 Aviso do servidor\n\nOlá {name},\n\n{message}",
     # --- Pedidos no Overseerr/Jellyseerr ---
     "TELEGRAM_MEDIA_REQUEST_MESSAGE_TEMPLATE": "🍿 *Novo Conteúdo Solicitado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acesse o pedido:*\n{media_url}",
@@ -301,7 +312,7 @@ class NotifierManager:
         # Um pedaco vazio (bloco so com espacos) seria recusado pela API.
         return [p for p in pedacos if p.strip()]
 
-    def _telegram_call(self, action, request_id, plex_user_id=None, max_retries=3):
+    def _telegram_call(self, action, request_id, media_user_id=None, max_retries=3):
         """
         Executa uma chamada à API do Telegram tratando o limite de ritmo (429) e
         o bloqueio do bot pelo utilizador (403).
@@ -325,11 +336,11 @@ class NotifierManager:
                     continue
 
                 if e.error_code == 403:
-                    if plex_user_id:
-                        logger.warning(f"[ID: {request_id}] Bot bloqueado pelo utilizador {plex_user_id}. A remover contacto.")
+                    if media_user_id:
+                        logger.warning(f"[ID: {request_id}] Bot bloqueado pelo utilizador {media_user_id}. A remover contacto.")
                         from .. import extensions
-                        extensions.data_manager.update_user_profile(plex_user_id, {'telegram_id': None, 'telegram_user': None})
-                    raise NotificationError(_("O utilizador bloqueou o bot no Telegram."))
+                        extensions.data_manager.update_user_profile(media_user_id, {'telegram_id': None, 'telegram_user': None})
+                    raise NotificationError(_("O usuário bloqueou o bot no Telegram."))
 
                 logger.error(f"[ID: {request_id}] Erro Telegram: {e.description}")
                 raise NotificationError(f"Telegram: {e.description}")
@@ -344,7 +355,7 @@ class NotifierManager:
         )
 
     def _send_telegram_notification(self, message, chat_id, request_id, reply_markup=None,
-                                    plex_user_id=None, photo_url=None, config=None):
+                                    media_user_id=None, photo_url=None, config=None):
         bot = self._get_bot(config)
         if not bot:
             # O canal está ligado mas sem token: comunicar isto como falha evita
@@ -360,7 +371,7 @@ class NotifierManager:
             try:
                 self._telegram_call(
                     lambda: bot.send_photo(chat_id=chat_id, photo=photo_url),
-                    request_id, plex_user_id
+                    request_id, media_user_id
                 )
             except NotificationError as e:
                 # A capa é acessória: se falhar, a mensagem ainda tem de sair.
@@ -373,7 +384,7 @@ class NotifierManager:
                     chat_id=chat_id, photo=photo_url, caption=html_message,
                     parse_mode='HTML', reply_markup=reply_markup
                 ),
-                request_id, plex_user_id
+                request_id, media_user_id
             )
             return
 
@@ -387,7 +398,7 @@ class NotifierManager:
                     chat_id=chat_id, text=p, parse_mode='HTML',
                     reply_markup=m, disable_web_page_preview=True
                 ),
-                request_id, plex_user_id
+                request_id, media_user_id
             )
 
     def _sleep(self, seconds):
@@ -636,7 +647,7 @@ class NotifierManager:
             if not phone:
                 # Só valida se a configuração está completa e coerente.
                 self._build_whatsapp_request(config, "5511999999999", "teste")
-                return {"success": True, "message": _("Configuração válida. Indique um número para enviar uma mensagem de teste real.")}
+                return {"success": True, "message": _("Configuração válida. Informe um número para enviar uma mensagem de teste real.")}
 
             self._send_whatsapp_notification(
                 phone,
@@ -661,7 +672,7 @@ class NotifierManager:
         """
         response = getattr(e, 'response', None)
         if response is None:
-            return _("Sem resposta do servidor (falha de ligação/timeout).")
+            return _("Sem resposta do servidor (falha de conexão/timeout).")
         body = response.text.strip() if response.text else "(corpo de resposta vazio)"
         return f"HTTP {response.status_code} - {truncate(body, 300)}"
 
@@ -855,7 +866,11 @@ class NotifierManager:
             'planname': plan_name,
             'date_time': now.strftime('%d/%m/%Y %H:%M'),
             'days_left': context.get('days', 0),
-            'invite_link': context.get('invite_link', '')
+            # `.get(chave, '')` devolve None quando a chave EXISTE com valor
+            # None — e ela existe sempre nas reativações, podendo vir vazia
+            # quando o servidor não sabe dizer um endereço. Quem o converte é o
+            # `_format_template`; isto deixa-o explícito aqui, onde se lê.
+            'invite_link': context.get('invite_link') or ''
         }
 
         def _entregar(canal, envio):
@@ -882,7 +897,7 @@ class NotifierManager:
             if message:
                 _entregar('Telegram', lambda: self._send_telegram_notification(
                     message, telegram_chat_id, request_id,
-                    reply_markup=markup, plex_user_id=user_profile.get('plex_user_id'),
+                    reply_markup=markup, media_user_id=user_profile.get('media_user_id'),
                     photo_url=photo_url, config=config
                 ))
 
@@ -971,7 +986,7 @@ class NotifierManager:
                     chat_id = user_profile.get('telegram_id') or user_profile.get('telegram_user')
                     self._send_telegram_notification(
                         msg, chat_id, request_id,
-                        plex_user_id=user_profile.get('plex_user_id'),
+                        media_user_id=user_profile.get('media_user_id'),
                         photo_url=image_url, config=config
                     )
             except Exception as e:
@@ -1059,8 +1074,61 @@ class NotifierManager:
     def send_trial_end_notification(self, user, user_profile):
         self._prepare_and_send('trial_end', user, user_profile, {})
 
+    def send_password_reset_notification(self, user, user_profile, link, validade_minutos):
+        """Entrega o link para repor a palavra-passe.
+
+        🛡️ O link É a credencial enquanto vive: quem o tiver muda a
+        palavra-passe da conta. Por isso vai pelos canais que a pessoa já
+        registou no painel e por mais nenhum — e não fica no log.
+
+        Devolve o resumo da entrega (`{'sent': [...], 'failed': [...]}`): quem
+        chama precisa de saber se ALGUM canal aceitou, para não criar um pedido
+        cujo link nunca chegou a ninguém.
+        """
+        if not link:
+            return {'sent': [], 'failed': []}
+
+        return self._prepare_and_send('password_reset', user, user_profile, {
+            'reset_link': link,
+            'reset_minutes': validade_minutos,
+        })
+
+    def send_credentials_notification(self, user, user_profile, credenciais, link=None):
+        """Entrega as credenciais de uma conta que teve de ser criada de novo.
+
+        🛡️ **É o único sítio do painel por onde uma palavra-passe viaja**, e é
+        por desenho: num servidor de contas locais, uma conta apagada e recriada
+        volta com uma palavra-passe nova que só o painel conhece. Não há como
+        recuperar a antiga nem como pedir uma à pessoa — ela não está a ver o
+        painel, está a pagar.
+
+        Por isso: nada disto vai para o log (nem aqui, nem em quem chama), e a
+        mensagem padrão pede à pessoa que a troque assim que puder.
+        """
+        if not (credenciais or {}).get('password'):
+            return {'sent': [], 'failed': []}
+
+        return self._prepare_and_send('credentials', user, user_profile, {
+            'new_username': credenciais.get('username') or user.get('username'),
+            'new_password': credenciais.get('password'),
+            'invite_link': link,
+        })
+
+    def _nome_do_servidor(self):
+        """Como se chama o servidor que esta pessoa usa.
+
+        ⚠️ Os templates padrão diziam "Plex" no meio da frase ("O seu acesso ao
+        Plex está prestes a expirar"). Num painel Jellyfin era a marca errada
+        entregue ao utilizador — o mesmo que aconteceu com o `default.svg` e com
+        o "Ver no Plex" das estatísticas. Quem sabe o nome é o servidor.
+        """
+        from .. import extensions
+
+        return getattr(extensions.media_server, 'SHORT_NAME', None) or 'Plex'
+
     def _build_placeholders(self, user, user_profile, context):
         return {
+            'server_name': self._nome_do_servidor(),
             'username': user.get('username'), 
             'name': user_profile.get('name') or user.get('username'),
             'email': user.get('email') or user_profile.get('email') or "",
@@ -1073,7 +1141,7 @@ class NotifierManager:
             # marcador, a menção era publicada tal e qual — literalmente
             # "<@{discord_user_id}>" — em vez de notificar quem devia.
             'discord_user_id': user_profile.get('discord_user_id', ''),
-            'plex_user_id': user_profile.get('plex_user_id') or user.get('id') or '',
+            'media_user_id': user_profile.get('media_user_id') or user.get('id') or '',
             **context
         }
 
@@ -1111,7 +1179,7 @@ class NotifierManager:
             config = load_or_create_config()
 
             alvos = self._get_bulk_target_users(payload, extensions)
-            all_profiles = {p['plex_user_id']: p for p in extensions.data_manager.get_all_user_profiles()}
+            all_profiles = {p['media_user_id']: p for p in extensions.data_manager.get_all_user_profiles()}
 
             elegiveis, ignorados = self._split_by_reachability(alvos, all_profiles, config)
             total_users = len(elegiveis)
@@ -1201,9 +1269,9 @@ class NotifierManager:
 
                 emit_ws('bulk_notification_start', {'total': total_users})
                 log("=========================================================")
-                log(_("🚀 INÍCIO DO ENVIO EM MASSA (%(n)d utilizadores elegíveis)", n=total_users))
+                log(_("🚀 INÍCIO DO ENVIO EM MASSA (%(n)d usuários elegíveis)", n=total_users))
                 if ignorados:
-                    log(_("⏭️ %(n)d ignorados por não terem contacto nos canais ativos.", n=len(ignorados)))
+                    log(_("⏭️ %(n)d ignorados por não terem contato nos canais ativos.", n=len(ignorados)))
                 log("=========================================================")
 
                 entregues = 0
@@ -1248,7 +1316,7 @@ class NotifierManager:
                     if intervalo and index < total_users:
                         self._sleep(intervalo)
 
-                resumo = _("%(ok)d entregues, %(erro)d com falha, %(skip)d sem contacto.",
+                resumo = _("%(ok)d entregues, %(erro)d com falha, %(skip)d sem contato.",
                            ok=entregues, erro=falhados, skip=len(ignorados))
 
                 extensions.data_manager.update_task(task_id, {
@@ -1285,9 +1353,9 @@ class NotifierManager:
         target_audience = payload.get('target_audience', 'active')
         target_user_ids = payload.get('user_ids', [])
         
-        all_plex_users = extensions.plex_manager.get_all_plex_users()
+        all_plex_users = extensions.media_server.get_all_users()
         if not all_plex_users: 
-            raise ValueError(_("Não foi possível obter a lista de utilizadores do Plex."))
+            raise ValueError(_("Não foi possível obter a lista de usuários do servidor."))
 
         if target_audience == 'specific': 
             alvos = set(map(str, target_user_ids or []))
@@ -1295,7 +1363,7 @@ class NotifierManager:
         elif target_audience == 'all': 
             return all_plex_users
         else:
-            blocked_ids = {str(u['user_plex_id']) for u in extensions.data_manager.get_blocked_users_list()}
+            blocked_ids = {str(u['media_user_id']) for u in extensions.data_manager.get_blocked_users_list()}
             if target_audience == 'blocked':
                 return [u for u in all_plex_users if str(u['id']) in blocked_ids]
             else: 

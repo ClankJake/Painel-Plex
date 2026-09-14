@@ -15,7 +15,7 @@ export const listInvites = () => fetchAPI(urls.apiInvitesList);
 export const deleteInvite = (code) => fetchAPI(urls.apiInvitesDelete, 'POST', { code });
 export const reactivateInvite = (code) => fetchAPI(urls.apiInvitesReactivate, 'POST', { code }); 
 export const createInvite = (payload) => fetchAPI(urls.apiInvitesCreate, 'POST', payload);
-export const updateUserLimit = (plexUserId, screens) => fetchAPI(urls.apiUsersUpdateLimit, 'POST', { plex_user_id: plexUserId, screens });
+export const updateUserLimit = (plexUserId, screens) => fetchAPI(urls.apiUsersUpdateLimit, 'POST', { media_user_id: plexUserId, screens });
 export const renewSubscription = (plexUserId, payload) => fetchAPI(urls.apiUsersRenewBase.replace('0', plexUserId), 'POST', payload);
 export const fetchUserProfile = (plexUserId) => fetchAPI(urls.apiUsersProfileBase.replace('0', plexUserId));
 export const updateUserProfile = (plexUserId, payload) => fetchAPI(urls.apiUsersProfileSetBase.replace('0', plexUserId), 'POST', payload);
@@ -26,14 +26,14 @@ export const fetchUserLibraries = (plexUserId) => fetchAPI(urls.apiUsersLibrarie
 // de "ativar/desativar downloads" (true/false).
 export const updateUserLibraries = (plexUserId, libraries, allowSync = null) => fetchAPI(
     urls.apiUsersUpdateLibraries, 'POST',
-    { plex_user_id: plexUserId, libraries, allow_sync: allowSync }
+    { media_user_id: plexUserId, libraries, allow_sync: allowSync }
 );
-export const removeUser = (plexUserId) => fetchAPI(urls.apiUsersRemove, 'POST', { plex_user_id: plexUserId });
-export const blockUser = (plexUserId) => fetchAPI(urls.apiUsersBlock, 'POST', { plex_user_id: plexUserId });
-export const unblockUser = (plexUserId) => fetchAPI(urls.apiUsersUnblock, 'POST', { plex_user_id: plexUserId });
-export const reactivateUser = (plexUserId, libraries) => fetchAPI(urls.apiUsersReactivate, 'POST', { plex_user_id: plexUserId, libraries: libraries });
-export const deleteUserPermanently = (plexUserId) => fetchAPI(urls.apiUsersDeletePermanently, 'POST', { plex_user_id: plexUserId });
-export const toggleOverseerr = (plexUserId, access) => fetchAPI(urls.apiUsersToggleOverseerr, 'POST', { plex_user_id: plexUserId, access });
+export const removeUser = (plexUserId) => fetchAPI(urls.apiUsersRemove, 'POST', { media_user_id: plexUserId });
+export const blockUser = (plexUserId) => fetchAPI(urls.apiUsersBlock, 'POST', { media_user_id: plexUserId });
+export const unblockUser = (plexUserId) => fetchAPI(urls.apiUsersUnblock, 'POST', { media_user_id: plexUserId });
+export const reactivateUser = (plexUserId, libraries) => fetchAPI(urls.apiUsersReactivate, 'POST', { media_user_id: plexUserId, libraries: libraries });
+export const deleteUserPermanently = (plexUserId) => fetchAPI(urls.apiUsersDeletePermanently, 'POST', { media_user_id: plexUserId });
+export const toggleOverseerr = (plexUserId, access) => fetchAPI(urls.apiUsersToggleOverseerr, 'POST', { media_user_id: plexUserId, access });
 export const updateAllLimits = (screens) => fetchAPI(urls.apiUsersUpdateAllLimits, 'POST', { screens });
 export const fetchPaymentHistory = (plexUserId) => fetchAPI(urls.apiUsersPaymentsBase.replace('0', plexUserId));
 export const updateAllLibraries = (libraries) => fetchAPI(urls.apiUsersUpdateAllLibraries, 'POST', { libraries });

@@ -174,7 +174,7 @@ class _UserManagerFalso:
     def invalidate_user_cache(self):
         pass
 
-    def get_all_plex_users(self):
+    def list_users(self):
         return [{"id": i} for i in self.ids_no_plex]
 
 
@@ -182,8 +182,8 @@ class _PlexManagerFalso:
     def __init__(self):
         self.limites = []
 
-    def update_screen_limit(self, plex_user_id, limite):
-        self.limites.append((plex_user_id, limite))
+    def update_screen_limit(self, media_user_id, limite):
+        self.limites.append((media_user_id, limite))
 
 
 class _ContaPlex:
@@ -198,7 +198,7 @@ def _gestor(data_manager, envio, aceite=None):
     Gestor de convites com as chamadas ao Plex substituídas, mas com o
     DataManager REAL — é a contabilização das vagas que está a ser testada.
     """
-    from app.services.plex.invite_manager import PlexInviteManager
+    from app.services.media_server.plex.invite_manager import PlexInviteManager
 
     gestor = PlexInviteManager(
         connection=None,
@@ -208,7 +208,7 @@ def _gestor(data_manager, envio, aceite=None):
         overseerr_manager=None,
         notifier_manager=None,
     )
-    gestor.send_plex_invite = lambda **kwargs: envio
+    gestor.send_invite = lambda **kwargs: envio
     gestor._accept_invite_v2 = lambda conta: aceite or {"success": True}
     gestor._apply_online_media_preferences = lambda conta: None
     gestor._setup_local_profile_and_integrations = lambda *a, **k: {"username": "ana"}
@@ -295,7 +295,7 @@ class TestResgateContabilizaUmaSoVez:
             return {"success": True}
 
         primeiro_gestor = _gestor(data_manager, envio={"success": True})
-        primeiro_gestor.send_plex_invite = envio_que_intercala
+        primeiro_gestor.send_invite = envio_que_intercala
 
         resultados["primeiro"] = primeiro_gestor.claim_invitation(
             "UNICO", _ContaPlex(10, "ana", "ana@exemplo.pt")
@@ -357,7 +357,7 @@ class TestAbusoDeTestesPorIdDoPlex:
         Ignorá-los reabriria a mesma brecha para quem já está no histórico.
         """
         data_manager.add_invitation("ANTIGO", detalhes(trial_duration_minutes=60))
-        data_manager.increment_invitation_use("ANTIGO", "ana")  # sem plex_user_id
+        data_manager.increment_invitation_use("ANTIGO", "ana")  # sem media_user_id
         data_manager.add_invitation("TESTE-2", detalhes(trial_duration_minutes=60))
 
         resultado = self._gestor_trial(data_manager).claim_invitation(
@@ -385,3 +385,58 @@ class TestAbusoDeTestesPorIdDoPlex:
         convite = data_manager.get_invitation("UNICO")
         assert convite["claimed_by_ids"] == []
         assert convite["claimed_by_users"] == []
+
+
+class TestAcessoAosPedidosNoResgate:
+    """🐛 O acesso ao Seerr era dado por garantido ao resgatar um convite.
+
+    O perfil ficava com `overseerr_access` a True mesmo quando a importação
+    falhava (Seerr em baixo, chave errada): o painel mostrava o acesso ligado,
+    a pessoa não conseguia pedir nada, e desligar-e-ligar era a única forma de
+    o repor.
+    """
+
+    class SeerrFalso:
+        def __init__(self, resultado=None, erro=None):
+            self.importados = []
+            self.resultado = resultado or {"success": True}
+            self.erro = erro
+
+        def import_user(self, user_info, tipo_servidor='plex'):
+            self.importados.append((user_info, tipo_servidor))
+            if self.erro:
+                raise self.erro
+            return self.resultado
+
+    def _gestor_com(self, seerr, data_manager):
+        gestor = _gestor(data_manager, envio={"success": True})
+        gestor.overseerr_manager = seerr
+        return gestor
+
+    def test_entra_pela_porta_do_plex(self, app_context, data_manager):
+        seerr = self.SeerrFalso()
+        gestor = self._gestor_com(seerr, data_manager)
+
+        assert gestor._dar_acesso_aos_pedidos(_ContaPlex(10, "ana", "ana@exemplo.pt")) is True
+        user_info, tipo = seerr.importados[0]
+        assert tipo == 'plex'
+        assert user_info == {"id": 10, "email": "ana@exemplo.pt", "username": "ana"}
+
+    def test_uma_recusa_do_seerr_nao_liga_o_acesso(self, app_context, data_manager):
+        seerr = self.SeerrFalso({"success": False, "message": "recusado"})
+
+        assert self._gestor_com(seerr, data_manager)._dar_acesso_aos_pedidos(
+            _ContaPlex(10, "ana", "ana@exemplo.pt")
+        ) is False
+
+    def test_o_seerr_em_baixo_nao_derruba_o_resgate(self, app_context, data_manager):
+        seerr = self.SeerrFalso(erro=RuntimeError("sem rede"))
+
+        assert self._gestor_com(seerr, data_manager)._dar_acesso_aos_pedidos(
+            _ContaPlex(10, "ana", "ana@exemplo.pt")
+        ) is False
+
+    def test_sem_seerr_configurado_nao_rebenta(self, app_context, data_manager):
+        gestor = _gestor(data_manager, envio={"success": True})
+
+        assert gestor._dar_acesso_aos_pedidos(_ContaPlex(10, "ana", "ana@exemplo.pt")) is False

@@ -12,8 +12,8 @@ class SubscriptionManagerEspiao:
     def __init__(self):
         self.chamadas = []
 
-    def add_days_to_subscription(self, plex_user_id, days):
-        self.chamadas.append((plex_user_id, days))
+    def add_days_to_subscription(self, media_user_id, days):
+        self.chamadas.append((media_user_id, days))
         return True
 
 
@@ -38,8 +38,8 @@ def cenario(app_context, configurar):
     """Dois utilizadores: o 1 indicou o 2."""
     configurar()
     dm = FakeDataManager(profiles={
-        1: {"plex_user_id": 1, "username": "ana", "referral_code": "ABCD2345"},
-        2: {"plex_user_id": 2, "username": "bruno"},
+        1: {"media_user_id": 1, "username": "ana", "referral_code": "ABCD2345"},
+        2: {"media_user_id": 2, "username": "bruno"},
     })
     subs = SubscriptionManagerEspiao()
     return ReferralManager(data_manager=dm, subscription_manager=subs), dm, subs
@@ -53,7 +53,7 @@ class TestGeracaoDeCodigos:
 
         assert len(codigo) == CODE_LENGTH
         assert set(codigo) <= set(CODE_ALPHABET)
-        assert dm.profiles[2]["referral_code"] == codigo
+        assert dm.profiles["2"]["referral_code"] == codigo
 
     def test_codigo_existente_e_reutilizado(self, cenario):
         gestor, _dm, _subs = cenario
@@ -78,14 +78,14 @@ class TestRegisterReferral:
 
         assert resultado["success"] is True
         assert resultado["referrer_username"] == "ana"
-        assert dm.profiles[2]["referred_by"] == 1
-        assert dm.profiles[2]["referral_rewarded"] is False
+        assert dm.profiles["2"]["referred_by"] == 1
+        assert dm.profiles["2"]["referral_rewarded"] is False
 
     def test_codigo_e_insensivel_a_maiusculas_e_espacos(self, cenario):
         gestor, dm, _subs = cenario
 
         assert gestor.register_referral(2, "  abcd2345 ")["success"] is True
-        assert dm.profiles[2]["referred_by"] == 1
+        assert dm.profiles["2"]["referred_by"] == 1
 
     def test_auto_indicacao_e_bloqueada(self, cenario):
         gestor, dm, _subs = cenario
@@ -93,7 +93,7 @@ class TestRegisterReferral:
         resultado = gestor.register_referral(1, "ABCD2345")
 
         assert resultado["success"] is False
-        assert "referred_by" not in dm.profiles[1]
+        assert "referred_by" not in dm.profiles["1"]
 
     def test_codigo_invalido(self, cenario):
         gestor, _dm, _subs = cenario
@@ -107,31 +107,31 @@ class TestRegisterReferral:
 
     def test_apenas_uma_indicacao_por_utilizador(self, cenario):
         gestor, dm, _subs = cenario
-        dm.profiles[2]["referred_by"] = 99
+        dm.profiles["2"]["referred_by"] = 99
 
         resultado = gestor.register_referral(2, "ABCD2345")
 
         assert resultado["success"] is False
-        assert dm.profiles[2]["referred_by"] == 99
+        assert dm.profiles["2"]["referred_by"] == 99
 
     def test_indicacao_circular_e_bloqueada(self, cenario):
         """Dois amigos a trocarem códigos entre si não podem premiar-se um ao outro."""
         gestor, dm, _subs = cenario
-        dm.profiles[1]["referred_by"] = 2
-        dm.profiles[2]["referral_code"] = "WXYZ6789"
+        dm.profiles["1"]["referred_by"] = 2
+        dm.profiles["2"]["referral_code"] = "WXYZ6789"
 
         resultado = gestor.register_referral(2, "ABCD2345")
 
         assert resultado["success"] is False
-        assert dm.profiles[2].get("referred_by") is None
+        assert dm.profiles["2"].get("referred_by") is None
 
     def test_quem_ja_pagou_nao_pode_usar_um_codigo(self, app_context, configurar):
         """O programa premeia assinaturas NOVAS, não a renovação de um cliente antigo."""
         configurar()
         dm = FakeDataManager(
             profiles={
-                1: {"plex_user_id": 1, "username": "ana", "referral_code": "ABCD2345"},
-                2: {"plex_user_id": 2, "username": "bruno"},
+                1: {"media_user_id": 1, "username": "ana", "referral_code": "ABCD2345"},
+                2: {"media_user_id": 2, "username": "bruno"},
             },
             paid_users=[2],
         )
@@ -139,19 +139,19 @@ class TestRegisterReferral:
         resultado = ReferralManager(dm).register_referral(2, "ABCD2345")
 
         assert resultado["success"] is False
-        assert dm.profiles[2].get("referred_by") is None
+        assert dm.profiles["2"].get("referred_by") is None
 
     def test_sistema_desativado(self, app_context, configurar):
         configurar(REFERRAL_ENABLED=False)
-        gestor = ReferralManager(FakeDataManager(profiles={1: {"plex_user_id": 1, "referral_code": "ABCD2345"}}))
+        gestor = ReferralManager(FakeDataManager(profiles={1: {"media_user_id": 1, "referral_code": "ABCD2345"}}))
 
         assert gestor.register_referral(2, "ABCD2345")["success"] is False
 
 
 class TestRecompensa:
     def _com_indicacao(self, dm):
-        dm.profiles[2]["referred_by"] = 1
-        dm.profiles[2]["referral_rewarded"] = False
+        dm.profiles["2"]["referred_by"] = 1
+        dm.profiles["2"]["referral_rewarded"] = False
 
     def test_dias_gratis_sao_somados_a_quem_indicou(self, cenario):
         gestor, dm, subs = cenario
@@ -161,19 +161,19 @@ class TestRecompensa:
 
         assert resultado["rewarded"] is True
         assert subs.chamadas == [(1, 7)]
-        assert dm.profiles[2]["referral_rewarded"] is True
+        assert dm.profiles["2"]["referral_rewarded"] is True
 
     def test_credito_e_somado_ao_saldo(self, app_context, configurar):
         configurar(REFERRAL_REWARD_TYPE="credit", REFERRAL_REWARD_CREDIT=5.0)
         dm = FakeDataManager(profiles={
-            1: {"plex_user_id": 1, "username": "ana", "referral_credit": 2.5},
-            2: {"plex_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
+            1: {"media_user_id": 1, "username": "ana", "referral_credit": 2.5},
+            2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
         })
 
         resultado = ReferralManager(dm).reward_referrer_on_payment(2)
 
         assert resultado["rewarded"] is True
-        assert dm.profiles[1]["referral_credit"] == 7.5
+        assert dm.profiles["1"]["referral_credit"] == 7.5
 
     def test_a_recompensa_e_paga_apenas_uma_vez(self, cenario):
         gestor, dm, subs = cenario
@@ -200,13 +200,13 @@ class TestRecompensa:
         gestor.reward_referrer_on_payment(2)
 
         assert len(dm.notifications) == 1
-        assert dm.notifications[0]["user_plex_id"] == 1
+        assert dm.notifications[0]["media_user_id"] == 1
 
     def test_sem_subscription_manager_nao_rebenta(self, app_context, configurar):
         configurar()
         dm = FakeDataManager(profiles={
-            1: {"plex_user_id": 1, "username": "ana"},
-            2: {"plex_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
+            1: {"media_user_id": 1, "username": "ana"},
+            2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
         })
 
         resultado = ReferralManager(dm, subscription_manager=None).reward_referrer_on_payment(2)
@@ -216,8 +216,8 @@ class TestRecompensa:
     def test_recompensa_de_zero_dias_nao_faz_nada(self, app_context, configurar):
         configurar(REFERRAL_REWARD_DAYS=0)
         dm = FakeDataManager(profiles={
-            1: {"plex_user_id": 1, "username": "ana"},
-            2: {"plex_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
+            1: {"media_user_id": 1, "username": "ana"},
+            2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
         })
         subs = SubscriptionManagerEspiao()
 
@@ -228,9 +228,9 @@ class TestRecompensa:
         """Com o teto atingido, quem indica deixa de acumular novas recompensas."""
         configurar(REFERRAL_MAX_REWARDS_PER_USER=1)
         dm = FakeDataManager(profiles={
-            1: {"plex_user_id": 1, "username": "ana"},
-            2: {"plex_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": True},
-            3: {"plex_user_id": 3, "username": "carla", "referred_by": 1, "referral_rewarded": False},
+            1: {"media_user_id": 1, "username": "ana"},
+            2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": True},
+            3: {"media_user_id": 3, "username": "carla", "referred_by": 1, "referral_rewarded": False},
         })
         subs = SubscriptionManagerEspiao()
 
@@ -239,7 +239,7 @@ class TestRecompensa:
         assert resultado["rewarded"] is False
         assert subs.chamadas == []
         # A oportunidade fica intacta: se o limite subir, a recompensa ainda pode ser paga.
-        assert dm.profiles[3]["referral_rewarded"] is False
+        assert dm.profiles["3"]["referral_rewarded"] is False
 
     def test_uma_entrega_falhada_nao_queima_a_recompensa(self, app_context, configurar):
         """
@@ -249,24 +249,24 @@ class TestRecompensa:
         configurar()
 
         class SubscriptionManagerQueRebenta:
-            def add_days_to_subscription(self, plex_user_id, days):
+            def add_days_to_subscription(self, media_user_id, days):
                 raise RuntimeError("Plex indisponível")
 
         dm = FakeDataManager(profiles={
-            1: {"plex_user_id": 1, "username": "ana"},
-            2: {"plex_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
+            1: {"media_user_id": 1, "username": "ana"},
+            2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
         })
 
         resultado = ReferralManager(dm, SubscriptionManagerQueRebenta()).reward_referrer_on_payment(2)
 
         assert resultado == {"success": False, "rewarded": False}
-        assert dm.profiles[2]["referral_rewarded"] is False
+        assert dm.profiles["2"]["referral_rewarded"] is False
 
     def test_falha_no_indicador_nunca_quebra_o_pagamento(self, app_context, configurar):
         configurar()
 
         class DataManagerQueRebenta(FakeDataManager):
-            def get_user_profile(self, plex_user_id):
+            def get_user_profile(self, media_user_id):
                 raise RuntimeError("base de dados indisponível")
 
         resultado = ReferralManager(DataManagerQueRebenta()).reward_referrer_on_payment(2)
@@ -278,9 +278,9 @@ class TestGetReferralStats:
     def test_resumo_do_programa(self, app_context, configurar):
         configurar()
         dm = FakeDataManager(profiles={
-            1: {"plex_user_id": 1, "username": "ana", "referral_code": "ABCD2345", "referral_credit": 10.0},
-            2: {"plex_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": True},
-            3: {"plex_user_id": 3, "username": "carla", "referred_by": 1, "referral_rewarded": False},
+            1: {"media_user_id": 1, "username": "ana", "referral_code": "ABCD2345", "referral_credit": 10.0},
+            2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": True},
+            3: {"media_user_id": 3, "username": "carla", "referred_by": 1, "referral_rewarded": False},
         })
 
         stats = ReferralManager(dm).get_referral_stats(1)
@@ -305,28 +305,28 @@ class TestGetReferralStats:
 class TestConsumeCredit:
     def test_abate_o_valor_pedido(self, app_context, configurar):
         configurar()
-        dm = FakeDataManager(profiles={1: {"plex_user_id": 1, "referral_credit": 10.0}})
+        dm = FakeDataManager(profiles={1: {"media_user_id": 1, "referral_credit": 10.0}})
 
         usado = ReferralManager(dm).consume_credit(1, 4.0)
 
         assert usado == 4.0
-        assert dm.profiles[1]["referral_credit"] == 6.0
+        assert dm.profiles["1"]["referral_credit"] == 6.0
 
     def test_nunca_consome_mais_do_que_o_saldo(self, app_context, configurar):
         configurar()
-        dm = FakeDataManager(profiles={1: {"plex_user_id": 1, "referral_credit": 3.0}})
+        dm = FakeDataManager(profiles={1: {"media_user_id": 1, "referral_credit": 3.0}})
 
         usado = ReferralManager(dm).consume_credit(1, 10.0)
 
         assert usado == 3.0
-        assert dm.profiles[1]["referral_credit"] == 0.0
+        assert dm.profiles["1"]["referral_credit"] == 0.0
 
     def test_valor_negativo_e_ignorado(self, app_context, configurar):
         configurar()
-        dm = FakeDataManager(profiles={1: {"plex_user_id": 1, "referral_credit": 3.0}})
+        dm = FakeDataManager(profiles={1: {"media_user_id": 1, "referral_credit": 3.0}})
 
         assert ReferralManager(dm).consume_credit(1, -5.0) == 0.0
-        assert dm.profiles[1]["referral_credit"] == 3.0
+        assert dm.profiles["1"]["referral_credit"] == 3.0
 
     def test_perfil_inexistente(self, app_context, configurar):
         configurar()

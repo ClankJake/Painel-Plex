@@ -119,6 +119,7 @@ Cada integração tem um guia próprio, com passo a passo e resolução de probl
 | **Gates2b** (PIX) | [docs/integracao-gates2b.md](docs/integracao-gates2b.md) | Chave de API, valor mínimo, migração da BPIX |
 | **Seerr** (pedidos) | [docs/integracao-seerr.md](docs/integracao-seerr.md) | Pedidos no portal, notificações com capa |
 | **API de Convites** | [docs/api-convites-bot.md](docs/api-convites-bot.md) | Criar convites via bot, vínculo de Telegram ID |
+| **Plugins do Jellyfin** | [docs/plugins-jellyfin.md](docs/plugins-jellyfin.md) | Limite de telas que qualquer aplicativo respeita, histórico por reprodução |
 
 As demais funcionalidades (notificações, gamificação, indicações, backup) são configuradas diretamente em **Configurações**, com explicações na própria interface.
 
@@ -150,7 +151,15 @@ Recomendada apenas para quem pretende contribuir com o desenvolvimento.
     pip install -r requirements.txt
     npm install
     ```
-4.  **Compile o CSS** (em um terminal separado):
+4.  **Gere os assets do frontend** (CSS e bibliotecas):
+    ```bash
+    npm run build
+    ```
+    > Este passo não é opcional. Nada em `app/static/dist/` está versionado —
+    > sem ele o navegador acusa `io is not defined` e `Chart is not defined`.
+
+    Durante o desenvolvimento, deixe o CSS a recompilar sozinho num terminal
+    separado:
     ```bash
     npm run watch:css
     ```

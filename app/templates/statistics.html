@@ -272,7 +272,7 @@
         <div class="absolute inset-0 rounded-full border-t-2 border-yellow-500 animate-spin"></div>
         <div class="absolute inset-2 rounded-full border-r-2 border-blue-500 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
     </div>
-    <p class="text-lg font-medium text-gray-600 dark:text-gray-300 mt-6 animate-pulse">{{ _('Processando os dados do Plex...') }}</p>
+    <p class="text-lg font-medium text-gray-600 dark:text-gray-300 mt-6 animate-pulse">{{ _('Processando os dados do %(servidor)s...', servidor=media_server.short_name) }}</p>
 </div>
 
 <!-- Container Principal de Estatísticas -->
@@ -434,7 +434,7 @@
         src="{{ url_for('static', filename='js/statistics.js') }}"
         data-current-user='{{ current_user.to_json() }}'
         data-stats-url="{{ url_for('stats_api.get_statistics_data') }}"
-        data-user-stats-url="{{ url_for('stats_api.get_user_statistics', plex_user_id=0) }}"
+        data-user-stats-url="{{ url_for('stats_api.get_user_statistics', media_user_id=0) }}"
         data-recently-added-url="{{ url_for('stats_api.get_recently_added_route') }}"
         data-recommendations-url="{{ url_for('stats_api.get_recommendations_route') }}"
         data-i18n-loading-failed="{{ _('Falha ao comunicar com o servidor.') }}"
@@ -471,6 +471,7 @@
         data-i18n-total-time-watched="{{ _('Tempo Total Assistido') }}"
         data-i18n-total-plays="{{ _('Total de Reproduções') }}"
         data-i18n-active-users="{{ _('Usuários Ativos') }}"
+        data-i18n-administrator="{{ _('Administrador') }}"
         data-i18n-period-champion="{{ _('Campeão do Período') }}"
         data-i18n-my-achievements="{{ _('As Minhas Conquistas') }}"
         data-i18n-user-achievements="{{ _('Conquistas de {username}') }}"
@@ -493,7 +494,7 @@
         data-i18n-match-viewers="{{ _('{count} pessoas que viram este título também viram') }}"
         data-i18n-match-viewers-one="{{ _('Uma pessoa que viu este título também viu') }}"
         data-i18n-match-genre="{{ _('Género parecido:') }}"
-        data-i18n-watch-on-plex="{{ _('Ver no Plex') }}"
+        data-i18n-watch-on-plex="{{ _('Ver no %(servidor)s', servidor=media_server.short_name) }}"
         data-i18n-movie="{{ _('Filme') }}"
         data-i18n-series="{{ _('Série') }}"
         data-i18n-recommendations-empty="{{ _('Ainda não há dados suficientes no servidor para gerar recomendações. Assista a mais alguns títulos e volte aqui!') }}"

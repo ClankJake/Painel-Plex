@@ -2,6 +2,7 @@ import os
 import logging
 import atexit
 import signal
+import uuid
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 from tzlocal import get_localzone_name
@@ -19,6 +20,8 @@ from .scheduler import setup_scheduler, set_app_for_jobs
 from . import models
 from . import sockets
 from .logging_config import setup_logging
+from .utils.navigation import endpoint_inicial_do_utilizador
+from .utils.estatisticas import estatisticas_disponiveis
 
 logger = logging.getLogger(__name__)
 
@@ -41,17 +44,116 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 
 @extensions.login_manager.user_loader
 def load_user(user_id):
-    """Carrega o utilizador para o Flask-Login a partir dos detalhes da sessão."""
+    """Carrega o utilizador para o Flask-Login a partir dos detalhes da sessão.
+
+    🐛 O avatar é uma CÓPIA guardada no cookie da sessão, tirada no momento do
+    login. Quando o formato do thumb mudou (passou a ir pelo proxy de imagens),
+    quem já estava autenticado continuou a carregar o caminho cru do servidor
+    de média — e o browser pedia-o ao PAINEL, que responde 404.
+    Reescrever a sessão a cada pedido seria caro; converter aqui é uma
+    operação de texto, e é o único sítio por onde uma sessão vira `current_user`.
+    """
     user_details = session.get('user_details')
-    if user_details and str(user_details.get('id')) == str(user_id):
-        return models.User(**user_details)
-    return None
+    if not user_details or str(user_details.get('id')) != str(user_id):
+        return None
+
+    detalhes = dict(user_details)
+    try:
+        backend = extensions.media_server
+        if backend and detalhes.get('thumb'):
+            detalhes['thumb'] = backend.thumb_para_interface(detalhes['thumb'])
+    except Exception as e:
+        # Um avatar não pode impedir alguém de entrar.
+        logger.debug(f"Não foi possível normalizar o avatar da sessão: {e}")
+
+    return models.User(**detalhes)
+
+def _parar_o_agendador():
+    """Pára o agendador sem terminar o processo. Silencioso se já estiver parado.
+
+    ⚠️ **Pausar ANTES de encerrar não é um detalhe.** O `shutdown()` fecha os
+    executores, mas o ciclo do APScheduler pode estar nesse instante a submeter
+    as tarefas que já estão na hora — e cada uma delas rebenta com
+    `RuntimeError: cannot schedule new futures after shutdown`, um erro por
+    tarefa, que assusta quem lê o log e não diz nada a ninguém. Com o
+    `pause()`, o ciclo vê que está em pausa e não submete nada.
+    """
+    try:
+        if not (extensions.scheduler and extensions.scheduler.running):
+            return
+        logger.info("A encerrar o Scheduler (APScheduler) de forma segura...")
+        extensions.scheduler.pause()
+        extensions.scheduler.shutdown(wait=False)
+    except Exception as e:
+        logger.debug(f"Aviso ao encerrar o agendador: {e}")
+
+
+def _parar_o_limitador():
+    """Desmarca a limpeza periódica do Flask-Limiter.
+
+    🐛 O armazenamento em MEMÓRIA do limitador (`limits.storage.MemoryStorage`)
+    mantém um `threading.Timer` que varre as contagens expiradas, e **volta a
+    marcá-lo a cada pedido** que passe pelo limitador. Sob gevent isso é um
+    greenlet embrulhado na contabilidade do `threading`: quando o processo é
+    terminado com um timer em voo — que é sempre, porque o assistente de
+    instalação manda-se reiniciar a si próprio com SIGTERM logo a seguir a
+    gravar — o greenlet acorda com o `threading._active` já desmontado e o log
+    fica com isto, logo depois de uma instalação BEM-SUCEDIDA:
+
+        File "threading.py", line 1111, in _delete
+          del _active[get_ident()]
+        KeyError: 271255370948160
+        <Greenlet ...: <bound method Thread._bootstrap of
+         <Timer(Thread-1, stopped ...)>>> failed with KeyError
+
+    Não se perde nada — o processo ia terminar de qualquer forma e a varredura
+    de contagens não tem nada a guardar — mas parece uma falha e não é.
+
+    ⚠️ O `timer` não faz parte da API pública do `limits`, e é por isso que isto
+    vai todo dentro de um `try`: se um dia deixar de existir, o pior que
+    acontece é o traceback voltar.
+    """
+    try:
+        armazenamento = getattr(extensions.limiter, 'storage', None)
+        temporizador = getattr(armazenamento, 'timer', None)
+        if temporizador is None:
+            return
+
+        # ⚠️ **Cancelar não o mata; acorda-o.** O `Timer.cancel()` marca o evento
+        # `finished`, e o que o timer faz a seguir é sair sem chamar a função —
+        # mas só quando lhe derem a vez. É precisamente essa saída que tem de
+        # acontecer AGORA, com o `threading._active` ainda de pé, em vez de
+        # durante o desmonte do interpretador. Por isso o `join` a seguir não é
+        # um extra: é ele que torna a correção determinística.
+        temporizador.cancel()
+        temporizador.join(timeout=2)
+    except Exception as e:
+        logger.debug(f"Aviso ao parar a limpeza do limitador: {e}")
+
+
+def parar_servicos_de_fundo():
+    """Cala tudo o que escreve na base de dados, sem terminar o processo.
+
+    🐛 Restaurar um backup TROCA os ficheiros `.db` por baixo de um agendador
+    que está a correr. O que acontecia a seguir: o APScheduler relia o jobstore
+    restaurado, encontrava lá as tarefas com a hora de execução no PASSADO (a
+    do momento em que o backup foi feito), tentava submetê-las todas ao mesmo
+    tempo — e apanhava com isso o encerramento que o próprio restauro agenda.
+    O log enchia-se de `cannot schedule new futures after shutdown` a seguir a
+    um restauro bem-sucedido.
+    """
+    _parar_o_agendador()
+    _parar_o_limitador()
+    try:
+        if extensions.stream_manager:
+            extensions.stream_manager.stop_listener()
+    except Exception as e:
+        logger.debug(f"Aviso ao encerrar o listener de eventos: {e}")
+
 
 def shutdown_scheduler(signum=None, frame=None):
     """Garante que o agendador é desligado de forma segura e elegante ao sair."""
-    if extensions.scheduler.running:
-        logger.info("A encerrar o Scheduler (APScheduler) de forma segura...")
-        extensions.scheduler.shutdown(wait=False)
+    _parar_o_agendador()
 
     # 📡 Encerra também o listener SSE do Plex. Sem isto, a thread do websocket e
     # eventuais timers de debounce ficavam a correr durante o encerramento,
@@ -61,6 +163,11 @@ def shutdown_scheduler(signum=None, frame=None):
             extensions.stream_manager.stop_listener()
     except Exception as e:
         logger.debug(f"Aviso ao encerrar o listener SSE: {e}")
+
+    # E a varredura periódica do limitador, pela mesma razão — ver
+    # `_parar_o_limitador`. É a que sobra depois de o assistente se mandar
+    # reiniciar, e a que aparece no log a seguir a uma instalação bem-sucedida.
+    _parar_o_limitador()
 
     # 🐛 CORREÇÃO: quando esta função é instalada como handler de SIGTERM/SIGINT,
     # ela SUBSTITUI o comportamento por omissão — que é terminar o processo. O
@@ -153,11 +260,45 @@ def start_background_services(app) -> bool:
     _register_shutdown_handlers()
     return extensions.scheduler.running
 
+def _fonte_de_estatisticas(tipo_de_servidor):
+    """De onde vêm as reproduções que alimentam as estatísticas.
+
+    ⚠️ Num painel Plex a fonte já NÃO é só o Tautulli: é ele quando está
+    configurado e o próprio servidor quando não está
+    (`plex/stats_api.py`). Esconder o pódio, o XP, as conquistas, as
+    recomendações e o Wrapped a quem não tem Tautulli era a resposta errada —
+    o Plex sabe o que cada pessoa viu, e o histórico já vinha de lá pela mesma
+    razão. A escolha entre as duas é feita a cada pergunta, para configurar o
+    Tautulli não obrigar a reiniciar o painel.
+    """
+    from .services.media_server import resolve_media_server_type
+
+    if resolve_media_server_type(tipo_de_servidor) == 'jellyfin':
+        from .services.media_server.jellyfin.stats_api import JellyfinStatsApi
+
+        return JellyfinStatsApi(lambda: extensions.media_server)
+
+    from .services.media_server.plex.stats_api import FonteDeEstatisticasDoPlex
+
+    return FonteDeEstatisticasDoPlex(lambda: extensions.media_server)
+
+
 def create_app() -> Flask:
     """
     Cria e configura a instância principal da aplicação Flask (Application Factory).
     """
     app = Flask(__name__)
+
+    # 🔁 A marca deste ARRANQUE. Serve para o navegador saber que o painel que
+    # lhe responde já é o processo NOVO, e não o antigo a acabar de morrer.
+    #
+    # 🐛 Sem ela, quem acabava o assistente (ou restaurava um backup) só tinha
+    # uma contagem de oito segundos e uma esperança. O worker demora a sair — só
+    # o faz quando não há ligações a ser servidas, e um separador aberto conta —
+    # por isso o navegador voltava a tempo de apanhar o processo ANTIGO, o que
+    # depois de escolher o Jellyfin queria dizer a página de login do Plex.
+    # Agora pergunta-se, e só se recarrega quando a marca muda.
+    app.config['BOOT_ID'] = uuid.uuid4().hex
 
     # ==========================================
     # CARREGAMENTO DE CONFIGURAÇÕES
@@ -253,7 +394,7 @@ def create_app() -> Flask:
     # INICIALIZAÇÃO DE MANAGERS E SERVIÇOS
     # ==========================================
     from .services import (
-        DataManager, TautulliManager, PlexManager, 
+        DataManager, StatsManager, create_media_server,
         NotifierManager, EfiManager, MercadoPagoManager,
         OverseerrManager, LinkShortener, Gates2bManager, StreamManager,
         PricingManager, BackupManager, ReferralManager
@@ -261,7 +402,15 @@ def create_app() -> Flask:
 
     extensions.data_manager = DataManager()
     extensions.pricing_manager = PricingManager(data_manager=extensions.data_manager)
-    extensions.tautulli_manager = TautulliManager(data_manager=extensions.data_manager)
+    # A fonte das estatísticas segue o servidor de média: o Tautulli num painel
+    # Plex, o próprio servidor num painel Jellyfin. O backend ainda não existe
+    # aqui (é construído mais abaixo, e precisa deste manager), por isso a fonte
+    # recebe uma função que o vai buscar quando for preciso — a mesma injeção
+    # tardia das outras dependências circulares.
+    extensions.stats_manager = StatsManager(
+        data_manager=extensions.data_manager,
+        api_client=_fonte_de_estatisticas(app_config.get('MEDIA_SERVER_TYPE')),
+    )
     extensions.link_shortener = LinkShortener()
     extensions.notifier_manager = NotifierManager(link_shortener_service=extensions.link_shortener, socketio_instance=extensions.socketio)
     extensions.efi_manager = EfiManager(data_manager=extensions.data_manager)
@@ -274,24 +423,27 @@ def create_app() -> Flask:
         notifier_manager=extensions.notifier_manager
     )
     
-    extensions.plex_manager = PlexManager(
-        data_manager=extensions.data_manager, 
-        tautulli_manager=extensions.tautulli_manager,
+    # O backend do servidor de média é escolhido pela configuração. Hoje só
+    # existe o Plex; a fábrica é o único sítio que precisa de saber disso.
+    extensions.media_server = create_media_server(
+        app_config.get('MEDIA_SERVER_TYPE'),
+        data_manager=extensions.data_manager,
+        stats_manager=extensions.stats_manager,
         notifier_manager=extensions.notifier_manager,
-        overseerr_manager=extensions.overseerr_manager
+        requests_manager=extensions.overseerr_manager,
     )
-    extensions.plex_manager.init_app(app)
+    extensions.media_server.init_app(app)
     
     extensions.stream_manager = StreamManager(
-        plex_connection=extensions.plex_manager.conn,
+        sessions_provider=extensions.media_server.sessions,
         data_manager=extensions.data_manager,
-        user_manager=extensions.plex_manager.users
+        user_manager=extensions.media_server.users
     )
-    extensions.plex_manager.stream_manager = extensions.stream_manager
+    extensions.media_server.stream_manager = extensions.stream_manager
 
     # 🔗 Injeção tardia: o ReferralManager precisa do SubscriptionManager para
-    # somar dias grátis, mas este só existe depois do PlexManager ser construído.
-    extensions.referral_manager.subscription_manager = extensions.plex_manager.subscriptions
+    # somar dias grátis, mas este só existe depois do servidor de média ser construído.
+    extensions.referral_manager.subscription_manager = extensions.media_server.subscriptions
 
     # ==========================================
     # CONFIGURAÇÃO DO SCHEDULER
@@ -311,10 +463,29 @@ def create_app() -> Flask:
 
     @app.context_processor
     def inject_global_vars():
+        # Os templates perguntam pelas CAPACIDADES do servidor, não pela marca:
+        # `{% if media_server.capabilities.fontes_media_online %}`. É o que
+        # permite esconder uma secção que não se aplica em vez de a mostrar
+        # partida — e evita uma cascata de `{% if tipo == 'plex' %}`.
+        backend = extensions.media_server
+        info_servidor = {
+            'type': getattr(backend, 'SERVER_TYPE', 'plex'),
+            'name': getattr(backend, 'DISPLAY_NAME', 'Plex Media Server'),
+            'short_name': getattr(backend, 'SHORT_NAME', 'Plex'),
+            # `capabilities` é o que o servidor PODE fazer; `estatisticas` é o
+            # que há AGORA (ver `utils/estatisticas.py`). Os templates escondem
+            # o pódio, o XP e o Wrapped pela segunda — a primeira é que mantém
+            # o cartão do Tautulli nas Conexões, para haver onde o configurar.
+            'capabilities': getattr(backend, 'capabilities', None),
+            'estatisticas': estatisticas_disponiveis(),
+        }
+
         return {
             'current_locale': get_locale(),
             'app_title': app.config.get('APP_TITLE', 'Painel Plex'),
-            'cache_buster': int(datetime.now().timestamp())
+            'cache_buster': int(datetime.now().timestamp()),
+            'media_server': info_servidor,
+            'endpoint_inicial_do_utilizador': endpoint_inicial_do_utilizador,
         }
 
     @app.errorhandler(429)
@@ -340,8 +511,15 @@ def create_app() -> Flask:
             'main.referral_landing',
             'system_api.test_tautulli_connection', 'system_api.test_overseerr_connection',
             'system_api.get_plex_servers',
+            # O assistente tem de poder validar um servidor Jellyfin antes de
+            # existir configuração — ambas as rotas se fecham sozinhas assim que
+            # o sistema fica configurado.
+            'system_api.test_jellyfin_connection', 'system_api.get_jellyfin_users_for_setup',
             'auth.get_plex_auth_context', 'auth.check_plex_pin', 
-            'auth.check_plex_pin_for_token', 'auth.auth_status'
+            'auth.check_plex_pin_for_token', 'auth.auth_status',
+            # Quem está à espera do reinício tem de poder perguntar se o painel
+            # já voltou — e nessa altura pode ainda não haver configuração.
+            'system_api.estado_do_processo'
         }
 
         # Força o ecrã de setup inicial se o config.json for virgem
@@ -358,7 +536,7 @@ def create_app() -> Flask:
             if not current_user.is_admin():
                 # A UI deve forçar este utilizador para o `/statistics` em vez do dashboard de admin (`/`)
                 if request.endpoint in ('main.index', 'main.settings_page', 'main.users_page'):
-                    return redirect(url_for('main.statistics_page'))
+                    return redirect(url_for(endpoint_inicial_do_utilizador()))
 
     # ==========================================
     # REGISTO DE ROTAS (BLUEPRINTS)
