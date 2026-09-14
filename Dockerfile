@@ -154,4 +154,21 @@ EXPOSE ${APP_PORT}
 # sai quando não houver ligações a ser servidas, e uma ligação keep-alive (ou um
 # websocket do dashboard) nunca fecha sozinha. O assistente dizia "aguarde" e o
 # painel demorava meio minuto a voltar.
-CMD ["sh", "-c", "flask db upgrade && gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --worker-connections 1000 --timeout 120 --graceful-timeout 10 --bind 0.0.0.0:${APP_PORT} run:app"]
+#
+# 🔇 O `--no-control-socket` cala um ERROR que não era nosso e não tinha
+# conserto de dentro do painel:
+#
+#     [ERROR] Control server error: [Errno 13] Permission denied: '/.gunicorn'
+#
+# A partir da 25.1.0 o gunicorn abre por omissão um socket de gestão para a
+# ferramenta `gunicornc`, em `$XDG_RUNTIME_DIR` ou, faltando esse,
+# `$HOME/.gunicorn/`. Num contentor lançado com `--user` (o PUID/PGID desta
+# imagem) o Docker põe `HOME=/`, e criar `/.gunicorn` sem ser root é proibido —
+# por isso a linha repete-se a cada worker que nasce. O painel nunca usa o
+# `gunicornc`: reinicia-se por SIGTERM. Um socket de gestão que não se usa é
+# ruído no log e superfície a mais.
+#
+# ⚠️ A flag obriga a `gunicorn>=25.1.0` no requirements.txt: nas versões
+# anteriores ela não existe e o gunicorn recusa-se a arrancar. Há um teste que
+# prende as duas pontas (`tests/test_reinicio_do_painel.py`).
+CMD ["sh", "-c", "flask db upgrade && gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --worker-connections 1000 --timeout 120 --graceful-timeout 10 --no-control-socket --bind 0.0.0.0:${APP_PORT} run:app"]

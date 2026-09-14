@@ -944,6 +944,20 @@ recebe-a na resposta, e `aguardarReinicio()` (`static/js/reinicio.js`) pergunta 
 assistente — é pedida de segundo a segundo e, num restauro, ainda não há
 configuração —, e não diz nada que a página de login já não mostre.
 
+🔇 **E um ERROR que não era nosso**, a repetir-se a cada worker que nascia:
+
+    Control server error: [Errno 13] Permission denied: '/.gunicorn'
+
+A partir da 25.1.0 o gunicorn abre por omissão um socket de gestão para a
+ferramenta `gunicornc`, em `$XDG_RUNTIME_DIR` ou, faltando esse, em
+`$HOME/.gunicorn/`. Num contentor lançado com `--user` (o PUID/PGID desta
+imagem) o Docker põe `HOME=/`, e criar `/.gunicorn` sem ser root é proibido. O
+painel nunca usa o `gunicornc` — reinicia-se por SIGTERM —, por isso o `CMD`
+leva `--no-control-socket`. ⚠️ Isso obriga a `gunicorn>=25.1.0` no
+`requirements.txt`: nas versões anteriores a flag não existe e o gunicorn
+RECUSA-SE A ARRANCAR ("unrecognized arguments"), o que é muito pior do que o
+aviso que se queria calar. As duas pontas têm um teste que as prende.
+
 ⚠️ **Primeiro calar, depois trocar.** `_restaurar_backup()` chama
 `parar_servicos_de_fundo()` ANTES de substituir os ficheiros. Sem isso, o
 agendador — que continua vivo — relia o jobstore restaurado, encontrava lá as

@@ -25,7 +25,11 @@ greenlet>=3.0.3
 cryptography==50.0.1
 gevent
 gevent-websocket
-gunicorn
+# ⚠️ O `>=` é preciso: o `CMD` do Dockerfile usa `--no-control-socket`, uma flag
+# que só existe a partir da 25.1.0. Numa versão anterior o gunicorn não a
+# reconhece e RECUSA-SE A ARRANCAR — o contentor morre no arranque, não é um
+# aviso. Mudar uma coisa obriga a mudar a outra.
+gunicorn>=25.1.0
 pydantic
 cachelib
 bleach==6.1.0

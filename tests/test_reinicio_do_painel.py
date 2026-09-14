@@ -57,6 +57,39 @@ class TestOComandoDoGunicorn:
         # a ter de ser pensada.
         assert re.search(r'-w\s+1\b', cmd)
 
+    def test_o_socket_de_gestao_esta_desligado(self, cmd):
+        # 🔇 A partir da 25.1.0 o gunicorn abre por omissão um socket para o
+        # `gunicornc`, em `$HOME/.gunicorn/`. Num contentor lançado com
+        # `--user`, o Docker põe `HOME=/` e criá-lo é proibido, por isso ficava
+        # um ERROR por cada worker que nascia:
+        #
+        #     Control server error: [Errno 13] Permission denied: '/.gunicorn'
+        #
+        # O painel não usa o `gunicornc` — reinicia-se por SIGTERM.
+        assert '--no-control-socket' in cmd
+
+    def test_a_flag_obriga_a_fixar_a_versao(self, cmd):
+        # ⚠️ As duas pontas andam juntas: nas versões anteriores à 25.1.0 a flag
+        # não existe e o gunicorn RECUSA-SE A ARRANCAR ("unrecognized
+        # arguments"). O contentor morria no arranque — o oposto de calar um
+        # aviso.
+        import re
+
+        if '--no-control-socket' not in cmd:
+            pytest.skip('A flag saiu do CMD; a versão mínima deixa de ser exigida.')
+
+        requisitos = (RAIZ / 'requirements.txt').read_text(encoding='utf-8')
+        linha = [l for l in requisitos.splitlines()
+                 if l.strip().lower().startswith('gunicorn')]
+
+        assert linha, 'O gunicorn tem de estar no requirements.txt.'
+        encontrado = re.search(r'gunicorn\s*>=\s*(\d+)\.(\d+)', linha[0])
+        assert encontrado, (
+            f"O gunicorn tem de ficar fixado em >=25.1 por causa do "
+            f"--no-control-socket; está '{linha[0].strip()}'."
+        )
+        assert (int(encontrado.group(1)), int(encontrado.group(2))) >= (25, 1)
+
     def test_tempo_de_cortesia_curto(self, cmd):
         # Sem isto são os 30 segundos por omissão, e o worker gasta-os SEMPRE
         # que há um separador aberto — é o tempo que o painel demorava a voltar.
