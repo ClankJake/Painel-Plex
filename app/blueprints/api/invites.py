@@ -156,6 +156,13 @@ def get_invite_details_route(code):
     if not invitation: return jsonify({"success": False, "message": message}), 404
     return jsonify({"success": True, "details": {"expires_at": invitation.get("expires_at")}})
 
+# Os mesmos limites da rota de login: é o ponto onde o pedido para, antes de
+# haver viagem ao servidor de média.
+MAX_UTILIZADOR = 128
+MAX_PALAVRA_PASSE = 256
+MAX_EMAIL = 254
+
+
 @invites_api_bp.route('/claim', methods=['POST'])
 @limiter.limit("10 per minute")
 def claim_invite_route():
@@ -173,6 +180,7 @@ def claim_invite_route():
     if media_server.capabilities.cria_contas:
         username = (data.get('username') or '').strip()
         password = data.get('password') or ''
+        email = (data.get('email') or '').strip()
 
         if not username or not password:
             return jsonify({"success": False, "message": _("Indique um nome de utilizador e uma palavra-passe.")}), 400
@@ -180,10 +188,16 @@ def claim_invite_route():
         if len(password) < 6:
             return jsonify({"success": False, "message": _("A palavra-passe tem de ter pelo menos 6 caracteres.")}), 400
 
-        registo = SimpleNamespace(
-            username=username, password=password,
-            email=(data.get('email') or '').strip(),
-        )
+        # 🛡️ Esta rota é PÚBLICA e o que aqui chega vai direto para o servidor de
+        # média (criar a conta) e para a base de dados (o perfil). Sem um limite
+        # ao tamanho, um nome ou uma palavra-passe de megabytes era lido para
+        # memória, enviado ao servidor e gravado — por quem nem precisa de ter
+        # sessão. Os limites acompanham os do login (`auth.py`).
+        if len(username) > MAX_UTILIZADOR or len(password) > MAX_PALAVRA_PASSE or len(email) > MAX_EMAIL:
+            logger.warning("Resgate de convite recusado: campos acima do tamanho aceite.")
+            return jsonify({"success": False, "message": _("Os dados indicados são demasiado longos.")}), 400
+
+        registo = SimpleNamespace(username=username, password=password, email=email)
         return jsonify(media_server.claim_invitation(data.get('code'), registo))
 
     try:
