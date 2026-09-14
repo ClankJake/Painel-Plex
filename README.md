@@ -1,22 +1,53 @@
-# Painel de Gestão Plex
+# Painel de Gestão Plex e Jellyfin
 
 ![Status do Projeto](https://img.shields.io/badge/status-ativo-brightgreen)
+![Servidores](https://img.shields.io/badge/servidores-Plex%20%7C%20Jellyfin-blueviolet)
 ![Linguagem](https://img.shields.io/badge/python-3.8%2B-blue)
 ![Framework](https://img.shields.io/badge/flask-2.x-orange)
 [![Build and Publish Docker Image to GHCR](https://github.com/ClankJake/Painel-Plex/actions/workflows/docker-publish.yml/badge.svg?branch=stable)](https://github.com/ClankJake/Painel-Plex/actions/workflows/docker-publish.yml)
 
-O Painel de Gestão Plex é uma aplicação web completa projetada para simplificar a administração de servidores Plex. Ele oferece uma interface centralizada para gerenciar usuários, convites, assinaturas, finanças e visualizar estatísticas detalhadas de uso, tudo com uma experiência moderna e interativa.
+Uma aplicação web completa para administrar o seu servidor de mídia. Ele oferece uma interface centralizada para gerenciar usuários, convites, assinaturas, finanças e visualizar estatísticas detalhadas de uso, tudo com uma experiência moderna e interativa.
+
+> 🆕 **Agora com suporte a Jellyfin, além do Plex.** Você escolhe o servidor no assistente de instalação e o painel inteiro passa a falar com ele — a mesma gestão de usuários, os mesmos pagamentos, as mesmas notificações. O que muda entre os dois está logo abaixo.
+
+## Plex ou Jellyfin
+
+O painel não fala com uma marca: fala com o servidor de mídia que você escolher em **Configurações → Conexões** (ou no assistente, na primeira execução). A diferença de fundo não é técnica, é de quem é a conta:
+
+-   **No Plex**, o usuário já tem uma conta no plex.tv e traz essa conta. O painel **convida** essa conta, e quem cuida da senha é a própria Plex — o painel nunca a vê.
+-   **No Jellyfin**, as contas são **locais ao servidor**. O painel **cria** a conta ao resgatar o convite e passa a ser responsável por entregar as credenciais, o que ele faz pelos canais de notificação (Telegram, Discord ou WhatsApp).
+
+Daí saem as diferenças que você vai notar na interface. Onde um recurso não existe no servidor escolhido, ele simplesmente **não aparece** — nada dá erro:
+
+| Recurso | Plex | Jellyfin |
+|---|:---:|:---:|
+| Convites | Convida uma conta que já existe | **Cria** a conta e envia as credenciais |
+| Login no painel | PIN do plex.tv | Usuário e senha do próprio servidor |
+| "Esqueci minha senha" | — (a senha é da Plex) | ✅ Link de uso único pelas notificações |
+| Trocar a senha pela "Minha Conta" | — | ✅ Muda no servidor, é a mesma dos dois lados |
+| Bloquear sem perder as bibliotecas | — (remove os compartilhamentos e repõe depois) | ✅ Suspende a conta |
+| Fontes de Mídia Online (TV ao Vivo, Discover) | ✅ | — (não existem) |
+| Estatísticas, XP, conquistas e Wrapped | ✅ | ✅ |
+| Fonte das estatísticas e do histórico | Tautulli, **ou o próprio Plex** se ele não estiver configurado | O próprio Jellyfin (exato com o plugin Playback Reporting) |
+| Aparelhos do usuário | Deduzidos do histórico | Lista real de aparelhos registrados |
+| Limite de telas | Encerramento pelo painel | Encerramento pelo painel **e** recusa na origem com o plugin StreamLimiter |
+| Último recurso contra clientes que ignoram o comando de parar | — | ✅ Revoga o acesso do aparelho |
+
+> ⚠️ **Trocar de servidor depois exige um reinício da aplicação**, e o painel faz isso sozinho ao salvar — aguarde alguns segundos e a página volta já apontada para o servidor novo.
+
+> ⚠️ **Um convite de teste no Jellyfin merece cuidado extra.** Como o painel cria a conta ali mesmo, criar uma conta nova não custa nada e nada liga duas contas à mesma pessoa. Se você oferece período de teste, exija um contato verificável (Telegram, por exemplo) no convite.
 
 ## Principais Funcionalidades
 
 ### Gestão e Acesso
 -   **Dashboard de Admin**: Visão geral em tempo real com streams ativos, contagem de usuários, receita mensal e próximas renovações.
 -   **Gestão de Usuários**: Visualize, filtre, pesquise e gerencie todos os usuários do seu servidor. Aplique ações como bloqueio, desbloqueio, remoção e edição de perfis.
--   **Sistema de Convites**: Crie links de convite seguros e personalizáveis com data de expiração, limite de telas, acesso a bibliotecas específicas e períodos de teste.
--   **Fontes de Mídia Online do Plex**: Opcionalmente, o painel desliga a TV ao Vivo, os Filmes e Programas de TV gratuitos e as restantes fontes da própria Plex na conta do usuário no momento em que ele aceita o convite — o aplicativo dele abre direto no seu conteúdo. É uma preferência da conta do usuário (ele pode reativá-la em plex.tv), não um bloqueio do servidor. Configure em **Configurações → Conexões**.
+-   **Sistema de Convites**: Crie links de convite seguros e personalizáveis com data de expiração, limite de telas, acesso a bibliotecas específicas e períodos de teste. No Plex o convite chega à conta que o usuário já tem; no Jellyfin ele cria a conta na hora e as credenciais vão pelo canal de notificação do usuário.
+-   **Fontes de Mídia Online** (somente Plex): Opcionalmente, o painel desliga a TV ao Vivo, os Filmes e Programas de TV gratuitos e as restantes fontes da própria Plex na conta do usuário no momento em que ele aceita o convite — o aplicativo dele abre direto no seu conteúdo. É uma preferência da conta do usuário (ele pode reativá-la em plex.tv), não um bloqueio do servidor. Configure em **Configurações → Conexões**.
 -   **API para Bots**: Gere convites automaticamente a partir de bots do Telegram ou outras automações, já vinculados ao ID do usuário.
 -   **Portal do Usuário**: Área dedicada para o usuário ver suas estatísticas, gerenciar privacidade, acompanhar pedidos e renovar o acesso.
--   **Controle de Telas**: Limite de streams simultâneos com encerramento automático da sessão excedente.
+-   **Controle de Telas**: Limite de streams simultâneos com encerramento automático da sessão excedente. Em servidores Jellyfin com o plugin **StreamLimiter**, o limite também é aplicado na origem — a reprodução é recusada antes do primeiro byte, o que nenhum aplicativo consegue ignorar.
+-   **Senha e "esqueci minha senha"** (servidores de contas locais, como o Jellyfin): O usuário troca a própria senha pela "Minha Conta" e recupera o acesso por um link de uso único enviado nos canais que ele já cadastrou. O painel não guarda senha nenhuma — ela é sempre a do servidor de mídia.
 
 ### Pagamentos e Assinaturas
 -   **Três gateways PIX**: **Efí**, **Mercado Pago** e **Gates2b**, com QR Code gerado dentro do próprio painel.
@@ -28,13 +59,13 @@ O Painel de Gestão Plex é uma aplicação web completa projetada para simplifi
 ### Engajamento
 -   **Indique e Ganhe**: Cada usuário recebe um link próprio. Quando um amigo assina por ele, o indicador ganha dias grátis ou crédito — configurável pelo administrador.
 -   **Gamificação**: Sistema de XP e níveis totalmente personalizáveis (adicione, remova ou renomeie níveis), com conquistas e reset periódico por temporada.
--   **Plex Wrapped**: Retrospectiva anual em modo história, com os destaques do ano do usuário e cartão compartilhável.
--   **Estatísticas Detalhadas**: Integração com o Tautulli para gráficos e rankings de conteúdo mais assistido, atividade por dia da semana e gêneros favoritos.
--   **Recomendações "Porque assistiu X, pode gostar de Y"**: O painel cruza o histórico de todos os usuários e encontra os títulos que costumam ser vistos pelas mesmas pessoas (filtro colaborativo item-item, com semelhança de cosseno para que "o filme que todo mundo viu" não seja recomendado a todo mundo). Em servidores pequenos, um plano B por gênero entra em ação. Cada sugestão explica o motivo e leva direto ao título no Plex — e quem ativou "esconder do ranking" deixa de influenciar as recomendações dos outros.
+-   **Wrapped**: Retrospectiva anual em modo história, com os destaques do ano do usuário e cartão compartilhável (o nome do seu servidor aparece no lugar certo, seja Plex ou Jellyfin).
+-   **Estatísticas Detalhadas**: Gráficos e rankings de conteúdo mais assistido, atividade por dia da semana e gêneros favoritos. Num painel Plex elas vêm do Tautulli quando ele está configurado e **do próprio servidor quando não está**; num painel Jellyfin vêm sempre do próprio servidor, e ficam exatas com o plugin Playback Reporting.
+-   **Recomendações "Porque assistiu X, pode gostar de Y"**: O painel cruza o histórico de todos os usuários e encontra os títulos que costumam ser vistos pelas mesmas pessoas (filtro colaborativo item-item, com semelhança de cosseno para que "o filme que todo mundo viu" não seja recomendado a todo mundo). Em servidores pequenos, um plano B por gênero entra em ação. Cada sugestão explica o motivo e leva direto ao título no seu servidor — e quem ativou "esconder do ranking" deixa de influenciar as recomendações dos outros.
 
 ### Notificações
 -   **Quatro canais**: **Telegram**, **WhatsApp** (via Evolution API, GOWA ou WAHA), **Discord** e **Webhook genérico**.
--   **Mensagens personalizáveis** por evento: vencimento, renovação, reativação, fim de teste e avisos em massa.
+-   **Mensagens personalizáveis** por evento: vencimento, renovação, reativação, fim de teste, credenciais de acesso, recuperação de senha e avisos em massa.
 -   **Disparo em massa com relatório real**: O console de envio mostra, por usuário, quais canais entregaram e quais falharam (com o motivo) — e o ritmo do disparo é ajustável em Comunicações > Avisos em Massa.
 -   **Pedidos do Seerr**: O usuário é avisado no canal pessoal dele — com a capa do filme/série — sempre que o pedido muda de estado (pendente, aprovado, disponível, recusado).
 
@@ -56,8 +87,9 @@ Esta é a forma mais simples e rápida de colocar a aplicação em funcionamento
 ### Pré-requisitos
 
 -   **Docker** e **Docker Compose** instalados na sua máquina.
--   **Plex Media Server** em funcionamento e acessível na sua rede.
--   **Tautulli** (opcional, mas necessário para as estatísticas e a gamificação).
+-   **Um servidor de mídia** em funcionamento e acessível na sua rede: **Plex Media Server** ou **Jellyfin**.
+-   **Tautulli** (opcional, e **somente para Plex**). Sem ele as estatísticas e o histórico continuam funcionando, lidos do próprio Plex — mais lentos, sem porcentagem de progresso e sobre uma janela das reproduções mais recentes. O painel avisa o que você está trocando no cartão do Tautulli, em **Configurações → Conexões**.
+-   **Plugins do Jellyfin** (opcionais, e somente para Jellyfin): o **StreamLimiter** faz o limite de telas valer em qualquer aplicativo, e o **Playback Reporting** dá histórico e estatísticas por reprodução. Veja [docs/plugins-jellyfin.md](docs/plugins-jellyfin.md).
 
 ### Passos
 
@@ -85,9 +117,9 @@ Esta é a forma mais simples e rápida de colocar a aplicação em funcionamento
 
     > O `restart: unless-stopped` é **necessário** para que a restauração de backup funcione: o painel reinicia sozinho após restaurar.
 
-    > **`IMAGE_PROXY_ALLOWED_HOSTS` (opcional).** O proxy de imagens só descarrega capas e avatares de uma lista de domínios conhecidos (`plex.tv`, `plex.direct`, `gravatar.com`, `tmdb.org`, entre outros, mais o endereço do seu Plex e do Tautulli). É essa lista que impede que o painel seja usado para fazer pedidos à sua rede interna (SSRF). Se alguma imagem legítima vier de outro domínio, acrescente-o aqui, separado por vírgulas: `IMAGE_PROXY_ALLOWED_HOSTS=cdn.exemplo.com,outro.net` (subdomínios são incluídos automaticamente).
+    > **`IMAGE_PROXY_ALLOWED_HOSTS` (opcional).** O proxy de imagens só descarrega capas e avatares de uma lista de domínios conhecidos (`plex.tv`, `plex.direct`, `gravatar.com`, `tmdb.org`, entre outros, mais o endereço do seu servidor de mídia e do Tautulli). É essa lista que impede que o painel seja usado para fazer pedidos à sua rede interna (SSRF). Se alguma imagem legítima vier de outro domínio, acrescente-o aqui, separado por vírgulas: `IMAGE_PROXY_ALLOWED_HOSTS=cdn.exemplo.com,outro.net` (subdomínios são incluídos automaticamente).
 
-    > **`IMAGE_PROXY_ALLOWED_PORTS` (opcional).** As portas aceites são a 80, a 443, a 32400 e a porta do seu Plex e do seu Tautulli — quem usa uma porta diferente da padrão não precisa de configurar nada. Só é necessário se as capas chegarem numa terceira porta (acontece quando a porta de acesso remoto do Plex difere da porta local): `IMAGE_PROXY_ALLOWED_PORTS=41234,8443`.
+    > **`IMAGE_PROXY_ALLOWED_PORTS` (opcional).** As portas aceitas são a 80, a 443, a 32400 e a porta do seu servidor de mídia e do seu Tautulli — quem usa uma porta diferente da padrão não precisa configurar nada. Só é necessário se as capas chegarem numa terceira porta (acontece quando a porta de acesso remoto do Plex difere da porta local): `IMAGE_PROXY_ALLOWED_PORTS=41234,8443`.
 
 2.  **Inicie a Aplicação:**
     ```bash
@@ -95,7 +127,12 @@ Esta é a forma mais simples e rápida de colocar a aplicação em funcionamento
     ```
 
 3.  **Configuração inicial:**
-    Acesse `http://SEU_ENDERECO_IP:5000`. Você será levado ao assistente de configuração, onde poderá conectar sua conta Plex, escolher o servidor e ligar os serviços opcionais.
+    Acesse `http://SEU_ENDERECO_IP:5000`. Você será levado ao assistente de configuração, onde o **primeiro passo é escolher o servidor de mídia**:
+
+    -   **Plex**: você autoriza com a sua conta plex.tv (por PIN, sem digitar a senha aqui) e escolhe qual dos seus servidores o painel vai administrar.
+    -   **Jellyfin**: você informa o endereço do servidor e uma **chave de API** (gerada no Jellyfin em *Painel → Chaves de API*) e escolhe qual conta será a administradora do painel.
+
+    Depois é só ligar os serviços opcionais.
 
     -   Uma pasta `config` é criada automaticamente. É onde ficam o `config.json` e o banco `app_data.db`.
     -   Se usar a Efí, coloque o certificado `.pem` na pasta `certs`.
@@ -170,9 +207,9 @@ Recomendada apenas para quem pretende contribuir com o desenvolvimento.
 
 ### Testes
 
-A suíte de testes usa **pytest** e corre sem depender de um servidor Plex, do
-Tautulli ou de qualquer gateway de pagamento — as integrações externas são
-substituídas por duplos de teste.
+A suíte de testes usa **pytest** e roda sem depender de um servidor Plex ou
+Jellyfin, do Tautulli ou de qualquer gateway de pagamento — as integrações
+externas são substituídas por duplos de teste.
 
 ```bash
 # instala as dependências de desenvolvimento (inclui as de produção)
@@ -213,7 +250,8 @@ Painel-Plex/
 ├── tests/           # suíte de testes (pytest)
 └── app/
     ├── blueprints/  # rotas (páginas e API)
-    ├── services/    # integrações: Plex, Tautulli, gateways, notificações
+    ├── services/    # servidores de mídia (Plex, Jellyfin), Tautulli,
+    │                  gateways de pagamento, notificações
     ├── templates/   # HTML (Jinja2)
     └── static/      # CSS, JavaScript
 ```
