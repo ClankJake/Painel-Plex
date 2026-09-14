@@ -1052,6 +1052,96 @@ const fetchWatchHistory = async (page = 1, search = '') => {
     }
 };
 
+/**
+ * Alterar a palavra-passe a partir da "Minha Conta".
+ *
+ * ⚠️ Não há duas palavras-passe: a que aqui se grava é a do próprio servidor de
+ * média — a mesma que abre a aplicação dele E este painel. O painel não guarda
+ * nenhuma, em sítio nenhum.
+ *
+ * O formulário só existe onde as contas são locais (ver o `{% if %}` no
+ * template), por isso tudo aqui começa com um `?.` — num painel Plex não há
+ * nada a ligar.
+ */
+const initPasswordChange = () => {
+    const form = document.getElementById('change-password-form');
+    if (!form) return;
+
+    const botao = document.getElementById('change-password-submit');
+    const textoBotao = document.getElementById('change-password-text');
+    const spinner = document.getElementById('change-password-spinner');
+    const resultado = document.getElementById('change-password-result');
+
+    const mostrar = (mensagem, sucesso) => {
+        resultado.textContent = mensagem;
+        resultado.classList.toggle('text-green-500', !!sucesso);
+        resultado.classList.toggle('text-red-500', !sucesso);
+    };
+
+    form.addEventListener('submit', async (evento) => {
+        evento.preventDefault();
+
+        const atual = document.getElementById('current-password').value;
+        const nova = document.getElementById('new-password').value;
+        const confirmacao = document.getElementById('confirm-password').value;
+
+        if (!atual || !nova || !confirmacao) {
+            mostrar(state.i18n.passwordRequired, false);
+            return;
+        }
+        // Verificar aqui poupa uma viagem — e, sobretudo, poupa à pessoa gravar
+        // uma palavra-passe que escreveu mal nos dois campos de uma vez só.
+        if (nova.length < 6) {
+            mostrar(state.i18n.passwordTooShort, false);
+            return;
+        }
+        if (nova !== confirmacao) {
+            mostrar(state.i18n.passwordMismatch, false);
+            return;
+        }
+
+        botao.disabled = true;
+        spinner?.classList.remove('hidden');
+        if (textoBotao) textoBotao.textContent = state.i18n.passwordSaving;
+        mostrar('', true);
+
+        try {
+            const resposta = await fetch(state.urls.changePasswordUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ current_password: atual, new_password: nova }),
+            });
+            const dados = await resposta.json();
+
+            mostrar(dados.message || '', dados.success);
+            if (dados.success) {
+                showToast(dados.message, 'success');
+                form.reset();
+            }
+        } catch (e) {
+            mostrar(state.i18n.error || 'Erro', false);
+        } finally {
+            spinner?.classList.add('hidden');
+            botao.disabled = false;
+            if (textoBotao) textoBotao.textContent = state.i18n.passwordSave;
+        }
+    });
+
+    // Ver o que se escreveu, como no login e no convite.
+    const alternar = document.getElementById('toggle-new-password');
+    alternar?.addEventListener('click', () => {
+        const campo = document.getElementById('new-password');
+        const visivel = campo.type === 'text';
+
+        campo.type = visivel ? 'password' : 'text';
+        document.getElementById('new-icon-eye')?.classList.toggle('hidden', !visivel);
+        document.getElementById('new-icon-eye-off')?.classList.toggle('hidden', visivel);
+        alternar.setAttribute('aria-pressed', String(!visivel));
+        alternar.setAttribute('aria-label', visivel ? state.i18n.showPassword : state.i18n.hidePassword);
+        campo.focus();
+    });
+};
+
 const initGlobalEventListeners = () => {
     // Busca do histórico (Debounce)
     const searchInput = document.getElementById('historySearchInput');
@@ -1142,6 +1232,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         initTabs();
         initRequestsTab();
         initGlobalEventListeners();
+        initPasswordChange();
 
         // Reveal Interface
         if (dom.loadingIndicator) dom.loadingIndicator.style.display = 'none';

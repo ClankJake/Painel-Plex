@@ -789,11 +789,35 @@ Configurações mantém o que lá tem: um padrão só vale para quem não escolh
 endereço para voltar a aceder" — é o `link` que `restaurar_acesso` devolve, e
 muda por servidor.
 
+### A palavra-passe: uma só, e é a do servidor
+
+⚠️ **Não há uma palavra-passe do painel e outra do servidor.** Num servidor de
+contas locais há UMA, a do servidor de média: é com ela que a pessoa entra na
+aplicação dele e também neste painel, porque o painel autentica contra ele
+(`authenticate()`). O painel não guarda palavra-passe nenhuma, em sítio nenhum —
+`definir_palavra_passe()` escreve direto no servidor. Mudá-la no painel muda-a
+nos dois, e é isso que a "Minha Conta" diz a quem lá está.
+
+Há dois caminhos para lá chegar, e a diferença entre eles é só como se prova a
+identidade:
+
+- **na "Minha Conta"** (`/api/users/account/password`), pedindo a palavra-passe
+  ATUAL e confirmando-a contra o servidor. Uma sessão do painel esquecida aberta
+  num computador partilhado não pode bastar para tomar a conta;
+- **pelo "esqueci-me"**, com um link de uso único enviado pelas notificações
+  (abaixo).
+
+🛡️ A palavra-passe entra pelo contrato e não sai: nem para o log, nem para a
+resposta. E a sessão do painel SOBREVIVE a uma mudança — é um cookie assinado
+pelo painel e não guarda credenciais —, por isso a mensagem não pode prometer
+que a pessoa vai ser desligada.
+
 ### Esqueci-me da palavra-passe
 
 ⚠️ **Só existe onde as contas são LOCAIS** (`capabilities.cria_contas`). Num
 painel Plex a palavra-passe vive no plex.tv — o painel nunca a vê, é para isso
-que o fluxo de PIN existe — e a ligação, a página e as rotas escondem-se todas.
+que o fluxo de PIN existe — e a ligação, a página, o cartão da "Minha Conta" e
+as rotas escondem-se todos.
 
 A regra de negócio vive em `app/services/password_reset.py`; o backend grava
 com `definir_palavra_passe()`, que é do contrato. **Não sai email daqui**: o

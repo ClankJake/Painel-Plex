@@ -20,7 +20,9 @@ from .decorators import user_lookup_by_id, validate_json
 from .schemas import RenewSubscriptionSchema, UpdateProfileSchema, UpdateAccountProfileSchema
 from ...models import UserProfile
 from ...extensions import limiter
+from ...services.password_reset import servidor_repoe_palavras_passe
 from ...utils.identity import normalize_user_id, same_user
+from ..auth import MAX_PALAVRA_PASSE, MIN_PALAVRA_PASSE
 
 logger = logging.getLogger(__name__)
 users_api_bp = Blueprint('users_api', __name__)
@@ -242,6 +244,65 @@ def update_privacy_settings():
     profile['hide_from_leaderboard'] = hide_setting
     extensions.data_manager.set_user_profile(media_user_id, profile)
     return jsonify({"success": True, "message": _("Configuração de privacidade atualizada com sucesso.")})
+
+@users_api_bp.route('/account/password', methods=['POST'])
+@login_required
+@limiter.limit("10 per minute")
+def alterar_palavra_passe():
+    """Muda a palavra-passe de quem está autenticado.
+
+    ⚠️ **Não há duas palavras-passe.** A que aqui se grava é a do próprio
+    servidor de média: é com ela que a pessoa entra na aplicação do servidor E
+    neste painel, porque o painel autentica contra ele (ver `authenticate`).
+    O painel não guarda palavra-passe nenhuma, em sítio nenhum.
+
+    🛡️ **Pede-se a ATUAL, e confirma-se contra o servidor.** Uma sessão do
+    painel esquecida aberta num computador partilhado não pode bastar para
+    tomar a conta — e quem pede a mudança tem de provar que é quem diz ser. É a
+    mesma verificação do login, o que também fecha a sessão que ela abre no
+    servidor.
+    """
+    if not servidor_repoe_palavras_passe(extensions.media_server):
+        return jsonify({
+            "success": False,
+            "message": _("Este servidor usa autenticação externa: a palavra-passe é gerida lá."),
+        }), 400
+
+    dados = request.get_json(silent=True) or {}
+    atual = dados.get('current_password') or ''
+    nova = dados.get('new_password') or ''
+
+    if not atual or not nova:
+        return jsonify({"success": False, "message": _("Preencha todos os campos.")}), 400
+
+    if len(nova) < MIN_PALAVRA_PASSE:
+        return jsonify({
+            "success": False,
+            "message": _("A nova palavra-passe tem de ter pelo menos %(minimo)d caracteres.",
+                         minimo=MIN_PALAVRA_PASSE),
+        }), 400
+
+    # O mesmo limite do login: o pedido para aqui, antes de ir à rede.
+    if len(atual) > MAX_PALAVRA_PASSE or len(nova) > MAX_PALAVRA_PASSE:
+        return jsonify({"success": False, "message": _("A palavra-passe é demasiado longa.")}), 400
+
+    if extensions.media_server.authenticate(current_user.username, atual) is None:
+        logger.warning(f"'{current_user.username}' falhou a confirmação da palavra-passe atual.")
+        return jsonify({"success": False, "message": _("A palavra-passe atual não está correta.")}), 403
+
+    resultado = extensions.media_server.definir_palavra_passe(normalize_user_id(current_user.id), nova)
+    if not resultado.get('success'):
+        return jsonify({
+            "success": False,
+            "message": resultado.get('message') or _("Não foi possível alterar a palavra-passe."),
+        }), 400
+
+    # ⚠️ A sessão do painel NÃO cai com isto: ela é um cookie assinado pelo
+    # painel e não guarda a palavra-passe. Quem está a ler esta resposta
+    # continua a entrar — é na aplicação do servidor que terá de usar a nova.
+    logger.info(f"'{current_user.username}' alterou a sua palavra-passe.")
+    return jsonify({"success": True, "message": _("Palavra-passe alterada. Use a nova da próxima vez que entrar.")})
+
 
 @users_api_bp.route('/account/requests')
 @login_required

@@ -43,6 +43,8 @@ class BackendFalso:
         )
         self._aceita = aceita
         self.definidas = []
+        self.autenticacoes = []
+        self.palavra_passe_atual = 'a-antiga'
         self.notifier_manager = self
         self.enviadas = []
         self.entrega = {'sent': ['Telegram'], 'failed': []}
@@ -53,6 +55,16 @@ class BackendFalso:
 
     def estatisticas_disponiveis(self):
         return False
+
+    def authenticate(self, username, password):
+        # ⚠️ É o que confirma a palavra-passe ATUAL: o duplo tem de o modelar,
+        # ou o teste passa por cima da verificação que interessa.
+        from app.services.media_server.base import OwnerAccount
+
+        self.autenticacoes.append((username, password))
+        if password != self.palavra_passe_atual:
+            return None
+        return OwnerAccount(id=GUID, username=username, email=None, thumb=None)
 
     def definir_palavra_passe(self, media_user_id, nova):
         self.definidas.append((media_user_id, nova))
@@ -497,3 +509,134 @@ class TestQuandoNenhumCanalAceita:
         client.post('/auth/password/forgot', json={"identifier": "ana"})
 
         assert PasswordReset.query.filter_by(used_at=None).count() == 0
+
+
+# --------------------------------------------------- alterar na "Minha Conta"
+
+class TestAlterarNaMinhaConta:
+    """Mudar a palavra-passe já autenticado, sem passar por link nenhum.
+
+    ⚠️ **É a MESMA palavra-passe do servidor de média** — a que abre a aplicação
+    dele e este painel, porque o painel autentica contra ele. O painel não
+    guarda nenhuma, em sítio nenhum: o que aqui se grava vai direto para o
+    servidor.
+    """
+
+    def _autenticar(self, client, username='ana', role='user'):
+        with client.session_transaction() as sessao:
+            sessao["user_details"] = {"id": GUID, "username": username,
+                                      "email": "ana@exemplo.test", "role": role}
+            sessao["_user_id"] = GUID
+            sessao["_fresh"] = True
+
+    def test_grava_no_servidor_de_media(self, client, db_session, servidor, pessoa):
+        backend = servidor()
+        pessoa()
+        self._autenticar(client)
+
+        resposta = client.post('/api/users/account/password',
+                               json={"current_password": "a-antiga", "new_password": "a-nova-boa"})
+
+        assert resposta.get_json()['success'] is True
+        assert backend.definidas == [(GUID, "a-nova-boa")]
+
+    def test_a_palavra_passe_atual_e_confirmada_contra_o_servidor(self, client, db_session,
+                                                                   servidor, pessoa):
+        # 🛡️ Uma sessão do painel esquecida aberta num computador partilhado não
+        # pode bastar para tomar a conta.
+        backend = servidor()
+        pessoa()
+        self._autenticar(client)
+
+        resposta = client.post('/api/users/account/password',
+                               json={"current_password": "errada", "new_password": "a-nova-boa"})
+
+        assert resposta.status_code == 403
+        assert backend.definidas == []
+
+    def test_sem_sessao_nao_se_muda_nada(self, client, db_session, servidor, pessoa):
+        backend = servidor()
+        pessoa()
+
+        resposta = client.post('/api/users/account/password',
+                               json={"current_password": "a", "new_password": "a-nova-boa"})
+
+        assert resposta.status_code in (302, 401, 403)
+        assert backend.definidas == []
+
+    def test_uma_palavra_passe_curta_e_recusada(self, client, db_session, servidor, pessoa):
+        backend = servidor()
+        pessoa()
+        self._autenticar(client)
+
+        resposta = client.post('/api/users/account/password',
+                               json={"current_password": "a-antiga", "new_password": "123"})
+
+        assert resposta.status_code == 400
+        assert backend.definidas == []
+
+    def test_num_painel_plex_a_rota_recusa(self, client, db_session, servidor, pessoa):
+        backend = servidor(cria_contas=False)
+        pessoa()
+        self._autenticar(client)
+
+        resposta = client.post('/api/users/account/password',
+                               json={"current_password": "a", "new_password": "a-nova-boa"})
+
+        assert resposta.status_code == 400
+        assert backend.definidas == []
+
+    def test_o_administrador_tambem_pode_mudar_a_dele(self, client, db_session, servidor, pessoa):
+        # Ele é um utilizador do Jellyfin como os outros — a conta dele tem
+        # palavra-passe e é a mesma que abre o painel.
+        backend = servidor()
+        pessoa()
+        self._autenticar(client, role='admin')
+
+        resposta = client.post('/api/users/account/password',
+                               json={"current_password": "a-antiga", "new_password": "a-nova-boa"})
+
+        assert resposta.get_json()['success'] is True
+
+    def test_a_sessao_do_painel_sobrevive(self, client, db_session, servidor, pessoa):
+        # ⚠️ A sessão é um cookie assinado pelo painel e não guarda a
+        # palavra-passe: quem acabou de a mudar continua a poder navegar. Dizer
+        # o contrário na mensagem seria mentira.
+        servidor()
+        pessoa()
+        self._autenticar(client)
+
+        client.post('/api/users/account/password',
+                    json={"current_password": "a-antiga", "new_password": "a-nova-boa"})
+
+        # A página da conta continua a abrir: a sessão não caiu.
+        assert client.get('/account').status_code == 200
+
+
+class TestOCartaoNaPagina:
+    def _autenticar(self, client):
+        with client.session_transaction() as sessao:
+            sessao["user_details"] = {"id": GUID, "username": "ana",
+                                      "email": "ana@exemplo.test", "role": "user"}
+            sessao["_user_id"] = GUID
+            sessao["_fresh"] = True
+
+    def test_aparece_num_servidor_de_contas_locais(self, client, db_session, servidor, pessoa):
+        servidor()
+        pessoa()
+        self._autenticar(client)
+
+        pagina = client.get('/account').get_data(as_text=True)
+
+        assert 'change-password-form' in pagina
+        # Não há duas palavras-passe, e a página tem de o dizer.
+        assert 'muda-a nos dois' in pagina
+
+    def test_nao_aparece_num_painel_plex(self, client, db_session, servidor, pessoa):
+        servidor(cria_contas=False)
+        pessoa()
+        self._autenticar(client)
+
+        pagina = client.get('/account').get_data(as_text=True)
+
+        assert 'change-password-form' not in pagina
