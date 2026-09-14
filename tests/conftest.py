@@ -200,6 +200,15 @@ class FakeDataManager:
                 return profile
         return None
 
+    def get_user_profile_by_username(self, username):
+        if not username:
+            return None
+        alvo = str(username).strip().lower()
+        for profile in self.profiles.values():
+            if (profile.get("username") or "").lower() == alvo:
+                return profile
+        return None
+
     def get_user_profile_by_referral_code(self, code):
         for profile in self.profiles.values():
             if (profile.get("referral_code") or "").upper() == str(code).strip().upper():

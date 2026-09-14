@@ -303,9 +303,38 @@ class JellyfinUserManager:
         self.data_manager.remove_blocked_user(user_id)
 
     def toggle_overseerr_access(self, user_id, access: bool) -> Dict[str, Any]:
-        """O Jellyseerr importa os utilizadores do Jellyfin diretamente.
+        """Dá ou tira o acesso ao sistema de pedidos (Jellyseerr).
 
-        Fica por implementar até à fase da integração de pedidos; devolver um
-        erro claro é melhor do que fingir que funcionou.
+        ⚠️ **Entra-se no Seerr pela porta do SERVIDOR de que a conta é.** O
+        painel só conhecia `import-from-plex`, e por isso isto era um `False`
+        com uma mensagem a dizer que não estava disponível. O Jellyseerr tem
+        `import-from-jellyfin`, que recebe os GUIDs das contas — é essa a porta
+        daqui (ver `OverseerrManager.import_user`).
+
+        ⚠️ E o email é OPCIONAL nas contas locais: retirar o acesso tem de poder
+        ser feito pelo nome, ou o painel dizia que tinha removido e a pessoa
+        continuava a poder pedir.
         """
-        return {"success": False, "message": _("Integração de pedidos ainda não disponível para o Jellyfin.")}
+        if not self.requests_manager:
+            return {"success": False, "message": _("Sistema de pedidos não configurado.")}
+
+        utilizador = self.get_user_by_id(user_id)
+        if not utilizador:
+            return {"success": False, "message": _("Usuário não encontrado.")}
+
+        perfil = self.data_manager.get_user_profile(user_id) or {}
+        email = utilizador.get('email') or perfil.get('email')
+        nome = utilizador.get('username') or perfil.get('username')
+
+        if access:
+            resultado = self.requests_manager.import_user(
+                {'id': user_id, 'email': email, 'username': nome}, 'jellyfin'
+            )
+        else:
+            resultado = self.requests_manager.remove_user(email, username=nome)
+
+        if not resultado.get('success'):
+            return resultado
+
+        self.data_manager.set_user_profile(user_id, {'overseerr_access': access})
+        return {"success": True, "message": resultado.get('message') or _("Acesso atualizado.")}

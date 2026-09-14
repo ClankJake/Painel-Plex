@@ -114,27 +114,51 @@ class OverseerrManager:
             logger.error(f"Falha no teste de conexão com Overseerr: {e}")
             return {'success': False, 'message': _("Falha na conexão. Verifique o URL e a Chave da API.")}
 
-    def import_from_plex(self, user_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Importa ou atualiza um utilizador no Overseerr a partir do Plex ID."""
+    # ⚠️ Cada servidor de média entra no Seerr pela SUA porta, e o corpo do
+    # pedido tem a chave com o nome dele. Não há um endpoint genérico: o
+    # `import-from-plex` só existe no Overseerr/Jellyseerr para contas do Plex,
+    # e o `import-from-jellyfin` só no Jellyseerr.
+    IMPORTACAO_POR_SERVIDOR = {
+        'plex': ('/user/import-from-plex', 'plexIds'),
+        'jellyfin': ('/user/import-from-jellyfin', 'jellyfinUserIds'),
+    }
+
+    def import_user(self, user_info: Dict[str, Any], tipo_servidor: str = 'plex') -> Dict[str, Any]:
+        """Importa (ou sincroniza) no Seerr um utilizador do servidor de média.
+
+        ⚠️ **A porta depende do servidor.** Durante muito tempo só havia
+        `import-from-plex`, e num painel Jellyfin isso significava mandar GUIDs
+        do Jellyfin para o endpoint das contas do Plex: o Seerr respondia com
+        erro ou, pior, aceitava e não importava ninguém. Hoje a porta e o nome
+        do campo saem de `IMPORTACAO_POR_SERVIDOR`.
+
+        Quem só tem Overseerr (sem Jellyfin) não tem a rota do Jellyfin: o erro
+        do servidor volta tal e qual, porque é ele que explica o que falta.
+        """
         # Um utilizador acabado de importar não pode ficar preso a uma cache
         # anterior que dizia 'não existe'.
-        self.invalidate_user_cache(user_info.get('email'))
-        plex_id = user_info.get('id')
+        self._esquecer(user_info.get('email'), user_info.get('username'))
+
+        media_user_id = user_info.get('id')
         username = user_info.get('username')
-        
-        if not plex_id:
-            logger.error(f"Falha na importação Overseerr: Plex ID de '{username}' não encontrado.")
-            return {"success": False, "message": _("ID do Plex não encontrado.")}
-            
-        logger.info(f"Overseerr: A tentar importar/sincronizar o utilizador '{username}' (Plex ID: {plex_id}).")
-        result = self._make_request("POST", "/user/import-from-plex", json={"plexIds": [str(plex_id)]})
-        
+
+        if not media_user_id:
+            logger.error(f"Falha na importação no Seerr: '{username}' não tem identificador no servidor.")
+            return {"success": False, "message": _("Usuário sem identificador no servidor de mídia.")}
+
+        endpoint, campo = self.IMPORTACAO_POR_SERVIDOR.get(
+            (tipo_servidor or 'plex').lower(), self.IMPORTACAO_POR_SERVIDOR['plex']
+        )
+
+        logger.info(f"Seerr: a importar '{username}' por {endpoint}.")
+        result = self._make_request("POST", endpoint, json={campo: [str(media_user_id)]})
+
         if result.get("success"):
-            logger.info(f"Overseerr: Utilizador '{username}' importado com sucesso.")
-            return {"success": True, "message": _("Acesso ao Overseerr concedido.")}
-        else:
-            logger.error(f"Overseerr: Falha ao importar '{username}': {result.get('message')}")
-            return {"success": False, "message": result.get('message')}
+            logger.info(f"Seerr: utilizador '{username}' importado com sucesso.")
+            return {"success": True, "message": _("Acesso ao sistema de pedidos concedido.")}
+
+        logger.error(f"Seerr: falha ao importar '{username}' por {endpoint}: {result.get('message')}")
+        return {"success": False, "message": result.get('message')}
 
     def find_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """
@@ -152,22 +176,61 @@ class OverseerrManager:
         O resultado é guardado em cache (10 min): o ID de um utilizador
         praticamente não muda.
         """
-        if not email:
+        return self.find_user(email=email)
+
+    def find_user(self, email: str = None, username: str = None) -> Optional[Dict[str, Any]]:
+        """Encontra o utilizador no Seerr pelo email OU pelo nome de utilizador.
+
+        ⚠️ **O email não é obrigatório em todos os servidores.** Num painel
+        Jellyfin, o convite pede o email como OPCIONAL — e quem não o preencheu
+        nunca era encontrado aqui: a aba "Meus Pedidos" ficava vazia para
+        sempre, sem erro nenhum, como se a pessoa nunca tivesse pedido nada.
+
+        A pesquisa do Seerr (`?q=`) cobre `username`, `email`, `plexUsername` e
+        `jellyfinUsername`, por isso o nome serve perfeitamente como segunda
+        tentativa. Só a procura por EMAIL confirma o email encontrado; a procura
+        por nome aceita o primeiro resultado da pesquisa nativa, que é o que o
+        Seerr considera corresponder.
+        """
+        for chave, por_email in ((email, True), (username, False)):
+            chave = (chave or '').lower().strip()
+            if not chave:
+                continue
+
+            # Cache em memória — evita repetir a procura em cada F5 da página.
+            with self._cache_lock:
+                cached = self._user_cache.get(chave)
+            if cached and (time.time() - cached[0]) < self.USER_CACHE_TTL:
+                return cached[1]
+
+            user = self._search_user(chave) if por_email else self._search_user_por_nome(chave)
+            if user:
+                with self._cache_lock:
+                    self._user_cache[chave] = (time.time(), user)
+                return user
+
+        return None
+
+    def _search_user_por_nome(self, nome_norm: str) -> Optional[Dict[str, Any]]:
+        """O primeiro resultado da pesquisa nativa, confirmando o nome.
+
+        ⚠️ Ao contrário do email, o nome não é único no Seerr — e há três campos
+        onde ele pode estar (`username`, `plexUsername`, `jellyfinUsername`).
+        Confirma-se contra os três em vez de aceitar o que vier: um utilizador
+        errado aqui mostrava os pedidos de OUTRA pessoa na conta desta.
+        """
+        resultados, _total = self._listar_utilizadores({"take": self.PAGE_SIZE, "q": nome_norm})
+        if not resultados:
             return None
 
-        email_norm = email.lower().strip()
-
-        # 1. Cache em memória — evita repetir a procura em cada F5 da página.
-        with self._cache_lock:
-            cached = self._user_cache.get(email_norm)
-        if cached and (time.time() - cached[0]) < self.USER_CACHE_TTL:
-            return cached[1]
-
-        user = self._search_user(email_norm)
-        if user:
-            with self._cache_lock:
-                self._user_cache[email_norm] = (time.time(), user)
-        return user
+        for utilizador in resultados:
+            nomes = {
+                str(utilizador.get(campo) or '').lower().strip()
+                for campo in ('username', 'plexUsername', 'jellyfinUsername', 'displayName')
+            }
+            if nome_norm in nomes:
+                return utilizador
+        return None
 
     def _search_user(self, email_norm: str) -> Optional[Dict[str, Any]]:
         """
@@ -251,6 +314,17 @@ class OverseerrManager:
             else:
                 self._user_cache.clear()
 
+    def _esquecer(self, *chaves):
+        """Esquece estas identidades — e SÓ estas.
+
+        ⚠️ `invalidate_user_cache(None)` limpa tudo, e chamá-lo com um email em
+        falta (o caso normal numa conta local do Jellyfin) deitava fora a cache
+        de toda a gente sem que ninguém percebesse porquê.
+        """
+        for chave in chaves:
+            if chave:
+                self.invalidate_user_cache(chave)
+
     def reload_credentials(self):
         """
         Relê a configuração e esvazia as caches.
@@ -267,40 +341,50 @@ class OverseerrManager:
             self._media_cache.clear()
         self._get_config()
 
-    def remove_user(self, email: str) -> Dict[str, Any]:
-        """Remove o utilizador do sistema de pedidos Overseerr."""
-        user = self.find_user_by_email(email)
+    def remove_user(self, email: str, username: str = None) -> Dict[str, Any]:
+        """Remove o utilizador do sistema de pedidos.
+
+        ⚠️ O `username` não é um extra: num painel Jellyfin há contas SEM email,
+        e sem ele o acesso ficava por retirar — o painel dizia que tinha
+        removido e a pessoa continuava a poder pedir.
+        """
+        etiqueta = mask_email(email) if email else (username or '?')
+        user = self.find_user(email=email, username=username)
         if not user:
-            logger.warning(f"Overseerr: Utilizador '{mask_email(email)}' não encontrado para remoção. A ignorar.")
-            return {"success": True, "message": _("Usuário não encontrado no Overseerr.")}
-        
+            logger.warning(f"Seerr: utilizador '{etiqueta}' não encontrado para remoção. A ignorar.")
+            return {"success": True, "message": _("Usuário não encontrado no sistema de pedidos.")}
+
         user_id = user.get("id")
-        logger.info(f"Overseerr: A remover o utilizador '{mask_email(email)}' (ID interno: {user_id}).")
-        
+        logger.info(f"Seerr: a remover o utilizador '{etiqueta}' (ID interno: {user_id}).")
+
         result = self._make_request("DELETE", f"/user/{user_id}")
         if result.get("success"):
             # O utilizador deixou de existir: a entrada em cache ficaria a apontar
             # para um ID inválido nas próximas consultas.
-            self.invalidate_user_cache(email)
-            logger.info(f"Overseerr: Utilizador '{mask_email(email)}' removido com sucesso.")
+            self._esquecer(email, username)
+            logger.info(f"Seerr: utilizador '{etiqueta}' removido com sucesso.")
             return {"success": True, "message": _("Acesso removido com sucesso.")}
-        else:
-            logger.error(f"Overseerr: Falha ao remover utilizador '{mask_email(email)}': {result.get('message')}")
-            return {"success": False, "message": result.get('message')}
+
+        logger.error(f"Seerr: falha ao remover o utilizador '{etiqueta}': {result.get('message')}")
+        return {"success": False, "message": result.get('message')}
 
     # --- LÓGICA DE PEDIDOS (OTIMIZADA) ---
 
-    def get_user_requests(self, email: str, limit: int = 10, filter: str = 'all', skip: int = 0) -> Dict[str, Any]:
+    def get_user_requests(self, email: str, limit: int = 10, filter: str = 'all', skip: int = 0,
+                          username: str = None) -> Dict[str, Any]:
         """
         Busca os pedidos de um utilizador. 
         Otimizado com processamento paralelo para buscar as imagens do TMDB rapidamente.
+
+        ⚠️ O `username` é a segunda tentativa, para quem não tem email — o caso
+        normal num painel Jellyfin, onde o convite pede o email como opcional.
         """
         if not self._get_config():
-            return {"success": False, "message": _("Integração com Overseerr desativada.")}
+            return {"success": False, "message": _("Integração com o sistema de pedidos desativada.")}
 
-        user = self.find_user_by_email(email)
+        user = self.find_user(email=email, username=username)
         if not user:
-            return {"success": False, "message": _("Usuário não encontrado no Overseerr.")}
+            return {"success": False, "message": _("Usuário não encontrado no sistema de pedidos.")}
         
         params = {
             "take": limit, "skip": skip, "filter": filter,
@@ -484,14 +568,24 @@ class OverseerrManager:
             logger.info("Webhook do Seerr: evento de 'issue'/comentário sem pedido associado. Ignorado.")
             return {"success": True, "message": "Evento sem pedido associado."}
 
-        if not email:
-            logger.warning("Webhook do Overseerr sem email de quem pediu; não é possível identificar o utilizador.")
-            return {"success": False, "message": "Pedido sem email do requerente."}
+        if not email and not username_seerr:
+            logger.warning("Webhook do Seerr sem email nem nome de quem pediu; não há como identificar o utilizador.")
+            return {"success": False, "message": "Pedido sem identificação do requerente."}
 
-        # Localiza o utilizador NO PAINEL pelo email (o mesmo que ele usa no Plex).
-        perfil = extensions.data_manager.get_user_profile_by_email(email)
+        # ⚠️ **O EMAIL PODE NÃO EXISTIR.** Num painel Jellyfin o convite pede-o
+        # como opcional, e o Jellyseerr manda o `requestedBy_email` vazio para
+        # quem não o tem. O painel dizia "pedido sem email do requerente" e não
+        # notificava ninguém — o pedido era aprovado, ficava disponível, e a
+        # pessoa nunca sabia. O nome vinha no mesmo payload, por usar.
+        perfil = None
+        if email:
+            perfil = extensions.data_manager.get_user_profile_by_email(email)
+        if not perfil and username_seerr:
+            perfil = extensions.data_manager.get_user_profile_by_username(username_seerr)
+
         if not perfil:
-            logger.info(f"Webhook do Overseerr: nenhum utilizador local corresponde a {mask_email(email)}. Ignorado.")
+            etiqueta = mask_email(email) if email else username_seerr
+            logger.info(f"Webhook do Seerr: nenhum utilizador local corresponde a {etiqueta}. Ignorado.")
             return {"success": True, "message": "Utilizador não encontrado no painel."}
 
         # Monta o URL para o item no Overseerr (o mesmo destino que a interface usa).

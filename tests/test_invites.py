@@ -385,3 +385,58 @@ class TestAbusoDeTestesPorIdDoPlex:
         convite = data_manager.get_invitation("UNICO")
         assert convite["claimed_by_ids"] == []
         assert convite["claimed_by_users"] == []
+
+
+class TestAcessoAosPedidosNoResgate:
+    """🐛 O acesso ao Seerr era dado por garantido ao resgatar um convite.
+
+    O perfil ficava com `overseerr_access` a True mesmo quando a importação
+    falhava (Seerr em baixo, chave errada): o painel mostrava o acesso ligado,
+    a pessoa não conseguia pedir nada, e desligar-e-ligar era a única forma de
+    o repor.
+    """
+
+    class SeerrFalso:
+        def __init__(self, resultado=None, erro=None):
+            self.importados = []
+            self.resultado = resultado or {"success": True}
+            self.erro = erro
+
+        def import_user(self, user_info, tipo_servidor='plex'):
+            self.importados.append((user_info, tipo_servidor))
+            if self.erro:
+                raise self.erro
+            return self.resultado
+
+    def _gestor_com(self, seerr, data_manager):
+        gestor = _gestor(data_manager, envio={"success": True})
+        gestor.overseerr_manager = seerr
+        return gestor
+
+    def test_entra_pela_porta_do_plex(self, app_context, data_manager):
+        seerr = self.SeerrFalso()
+        gestor = self._gestor_com(seerr, data_manager)
+
+        assert gestor._dar_acesso_aos_pedidos(_ContaPlex(10, "ana", "ana@exemplo.pt")) is True
+        user_info, tipo = seerr.importados[0]
+        assert tipo == 'plex'
+        assert user_info == {"id": 10, "email": "ana@exemplo.pt", "username": "ana"}
+
+    def test_uma_recusa_do_seerr_nao_liga_o_acesso(self, app_context, data_manager):
+        seerr = self.SeerrFalso({"success": False, "message": "recusado"})
+
+        assert self._gestor_com(seerr, data_manager)._dar_acesso_aos_pedidos(
+            _ContaPlex(10, "ana", "ana@exemplo.pt")
+        ) is False
+
+    def test_o_seerr_em_baixo_nao_derruba_o_resgate(self, app_context, data_manager):
+        seerr = self.SeerrFalso(erro=RuntimeError("sem rede"))
+
+        assert self._gestor_com(seerr, data_manager)._dar_acesso_aos_pedidos(
+            _ContaPlex(10, "ana", "ana@exemplo.pt")
+        ) is False
+
+    def test_sem_seerr_configurado_nao_rebenta(self, app_context, data_manager):
+        gestor = _gestor(data_manager, envio={"success": True})
+
+        assert gestor._dar_acesso_aos_pedidos(_ContaPlex(10, "ana", "ana@exemplo.pt")) is False

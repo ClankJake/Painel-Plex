@@ -378,7 +378,8 @@ class PlexUserManager:
         username, email = profile.get('username'), profile.get('email')
         try:
             if self.stream_manager: self.stream_manager.block_user_sessions(media_user_id, "A sua conta está a ser removida.")
-            if profile.get('overseerr_access') and email: self.overseerr_manager.remove_user(email)
+            if profile.get('overseerr_access') and (email or profile.get('username')):
+                self.overseerr_manager.remove_user(email, username=profile.get('username'))
             self._remove_plex_friend(media_user_id, email, username)
             self._deactivate_user_profile(media_user_id, profile)
             return {"success": True, "message": _("Usuário desativado."), "username": username}
@@ -420,8 +421,14 @@ class PlexUserManager:
         if not user_info: return {"success": False, "message": _("Usuário não encontrado.")}
         profile = self.data_manager.get_user_profile(media_user_id)
         
-        if access: result = self.overseerr_manager.import_from_plex(user_info)
-        else: result = self.overseerr_manager.remove_user(user_info['email'])
+        if access:
+            result = self.overseerr_manager.import_user(user_info, 'plex')
+        else:
+            # O nome como segunda via: uma conta sem email no Seerr continua a
+            # ser encontrada pela pesquisa nativa.
+            result = self.overseerr_manager.remove_user(
+                user_info.get('email'), username=user_info.get('username')
+            )
         
         if result.get("success"):
             profile['overseerr_access'] = access

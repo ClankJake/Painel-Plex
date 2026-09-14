@@ -29,6 +29,7 @@ from typing import Any, Dict
 from flask import url_for
 from flask_babel import gettext as _
 
+from ....config import load_or_create_config
 from ....utils.identity import normalize_user_id
 from ....utils.log_formatting import describe
 from ....utils.log_sanitizer import mask_code
@@ -222,14 +223,60 @@ class JellyfinAccountManager(InvitationLifecycle):
             'status': 'active',
             'screen_limit': invitation.get('screen_limit', 0),
         })
+        acesso_aos_pedidos = self._dar_acesso_aos_pedidos(user_id, username, email, invitation)
+        perfil['overseerr_access'] = acesso_aos_pedidos
         gravado = self.data_manager.set_user_profile(user_id, perfil) or {}
+
+        # ⚠️ O "Como começar" da página de convite só mostra o passo dos pedidos
+        # quando recebe o ENDEREÇO (ver `invite.js`). O backend do Plex mandava-o
+        # e este não: quem resgatava um convite com acesso aos pedidos ficava com
+        # ele e sem saber onde o usar. Só vai quando o acesso foi mesmo dado.
+        endereco_dos_pedidos = (load_or_create_config().get('OVERSEERR_URL') or '').strip().rstrip('/')
 
         # 🔒 O endereço do servidor vai APENAS na resposta de um resgate
         # concluído — quem a recebe acabou de ganhar acesso. Estava a ser
         # colocado no HTML da página de convite, que é pública: qualquer pessoa
         # com o código, mesmo sem o resgatar, ficava a saber onde está o
         # servidor.
-        return {**gravado, 'server_url': self.conn.api.base_url}
+        return {
+            **gravado,
+            'server_url': self.conn.api.base_url,
+            'overseerr_access': acesso_aos_pedidos,
+            'overseerr_url': endereco_dos_pedidos if endereco_dos_pedidos and acesso_aos_pedidos else None,
+        }
+
+    def _dar_acesso_aos_pedidos(self, user_id, username, email, invitation):
+        """O convite podia pedir acesso ao sistema de pedidos — e era ignorado.
+
+        🐛 O backend do Plex importava a conta no Seerr ao resgatar o convite
+        (ver `PlexInviteManager.claim_invitation`); aqui não havia nada. Um
+        convite criado com "Acesso ao Overseerr" marcado criava a conta no
+        Jellyfin e mais nada: a pessoa não aparecia no Jellyseerr, e o perfil
+        ficava com `overseerr_access` a falso sem ninguém perceber porquê.
+
+        Uma falha a importar não pode derrubar o resgate: a conta no servidor já
+        existe e o acesso à mídia é o que interessa. Fica no log, e o
+        administrador liga o acesso pela página de utilizadores.
+        """
+        if not invitation.get('overseerr_access') or not self.requests_manager:
+            return False
+
+        try:
+            resultado = self.requests_manager.import_user(
+                {'id': user_id, 'email': email, 'username': username}, 'jellyfin'
+            )
+        except Exception as e:
+            logger.error(f"Falha ao dar acesso aos pedidos a '{username}': {describe(e)}")
+            return False
+
+        if not resultado.get('success'):
+            logger.error(
+                f"O convite de '{username}' pedia acesso ao sistema de pedidos e ele não foi "
+                f"concedido: {resultado.get('message')}"
+            )
+            return False
+
+        return True
 
     # =========================================================================
     # NÃO APLICÁVEL A ESTE SERVIDOR

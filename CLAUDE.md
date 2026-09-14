@@ -857,6 +857,47 @@ interface do próprio Jellyfin: `ResetPassword: true` apaga-a, e só então se
 grava a nova. Se o segundo pedido falhar fica um ERROR a dizê-lo em voz alta —
 deixar a pessoa a pensar que está tudo bem, com a conta aberta, seria pior.
 
+### Pedidos de mídia (Overseerr / Jellyseerr)
+
+`app/services/overseerr_manager.py` é a integração com o Seerr, e serve os DOIS
+servidores. O que muda entre eles é pequeno e está todo em dois sítios.
+
+⚠️ **Cada servidor entra no Seerr pela SUA porta.** Não há endpoint genérico:
+`/user/import-from-plex` recebe `plexIds` (inteiros do plex.tv) e
+`/user/import-from-jellyfin` recebe `jellyfinUserIds` (GUIDs). A escolha é uma
+entrada em `IMPORTACAO_POR_SERVIDOR`, e `import_user(user_info, tipo_servidor)`
+é a **única porta** para importar — mandar um GUID do Jellyfin para a rota do
+Plex não importava ninguém, e o Seerr nem sempre dava erro.
+
+⚠️ **O email não é obrigatório em toda a parte.** Nas contas locais do Jellyfin
+o convite pede-o como OPCIONAL, e procurar só por email deixava essas pessoas
+invisíveis: a aba "Meus Pedidos" vazia para sempre (sem erro nenhum, como se
+nunca tivessem pedido nada), o acesso impossível de retirar, e a notificação do
+webhook a não chegar a ninguém. Por isso tudo o que procura alguém no Seerr
+aceita também o NOME — `find_user(email=..., username=...)`, `remove_user`,
+`get_user_requests` — e o webhook cai para `requestedBy_username` quando o
+`requestedBy_email` vem vazio.
+
+⚠️ **A pesquisa do Seerr (`?q=`) é PARCIAL**, e o nome não é único como o email:
+procurar "ana" traz também "joana". Confirma-se o resultado contra `username`,
+`plexUsername`, `jellyfinUsername` e `displayName` — aceitar o primeiro mostrava
+os pedidos de OUTRA pessoa na conta desta.
+
+🐛 **Dar o acesso por garantido era mentira duas vezes.** Ao resgatar um convite
+com "Acesso ao Seerr" marcado, o backend do Plex gravava
+`overseerr_access = True` mesmo quando a importação falhava (Seerr em baixo,
+chave errada): o painel mostrava o acesso ligado, a pessoa não conseguia pedir
+nada, e desligar-e-ligar era a única forma de o repor. E o backend do Jellyfin
+nem sequer importava — `toggle_overseerr_access` era um `False` fixo a dizer
+"ainda não disponível". Hoje os dois têm um `_dar_acesso_aos_pedidos` que
+devolve o que aconteceu de facto, e que **nunca derruba o resgate**: a conta no
+servidor já existe e o acesso à mídia é o que interessa; a falha fica no log e o
+administrador liga o acesso pela página de utilizadores.
+
+O `overseerr_url` vai na resposta do resgate porque é dele que o "Como começar"
+da página de convite monta o passo dos pedidos (`invite.js`) — e 🔒 só vai para
+quem ganhou mesmo o acesso: é infraestrutura, e a página do convite é pública.
+
 ### Pagamentos
 
 Três gateways (`efi_manager`, `mercado_pago_manager`, `gates2b_manager`) com a

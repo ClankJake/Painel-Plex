@@ -778,6 +778,156 @@ class TestCriacaoDeContas:
         assert JellyfinManager(data_manager=None).invites.accept_invite_via_token("x")['success'] is False
 
 
+class TestAcessoAosPedidos:
+    """O sistema de pedidos (Jellyseerr) num painel Jellyfin.
+
+    🐛 REGRESSÃO: `toggle_overseerr_access` era um `False` fixo com a mensagem
+    "ainda não disponível para o Jellyfin", e o `overseerr_access` de um convite
+    era simplesmente ignorado ao resgatá-lo. O painel só conhecia a porta do
+    Plex (`import-from-plex`); o Jellyseerr tem `import-from-jellyfin`, que
+    recebe os GUIDs das contas.
+    """
+
+    class SeerrFalso:
+        def __init__(self, resultado=None):
+            self.importados = []
+            self.removidos = []
+            self.resultado = resultado or {"success": True, "message": "feito"}
+
+        def import_user(self, user_info, tipo_servidor='plex'):
+            self.importados.append((user_info, tipo_servidor))
+            return self.resultado
+
+        def remove_user(self, email, username=None):
+            self.removidos.append((email, username))
+            return self.resultado
+
+    def _backend(self, data_manager, seerr, utilizadores=None):
+        backend = montar({
+            '/Users': utilizadores if utilizadores is not None else [],
+            '/Users/New': {"Id": GUID, "Name": "ana"},
+            '/Library/VirtualFolders': BIBLIOTECAS,
+            f'/Users/{GUID}': {"Id": GUID, "Name": "ana", "Policy": dict(POLITICA_BASE)},
+        }, data_manager=data_manager)
+        backend.users.requests_manager = seerr
+        backend.invites.requests_manager = seerr
+        backend.requests_manager = seerr
+        return backend
+
+    def test_dar_acesso_entra_pela_porta_do_jellyfin(self, cache_limpa, data_manager):
+        seerr = self.SeerrFalso()
+        backend = self._backend(data_manager, seerr, [
+            {"Id": GUID, "Name": "ana", "Policy": dict(POLITICA_BASE)},
+        ])
+        data_manager.set_user_profile(GUID, {"username": "ana", "email": "ana@exemplo.com"})
+
+        resultado = backend.users.toggle_overseerr_access(GUID, True)
+
+        assert resultado['success'] is True
+        user_info, tipo = seerr.importados[0]
+        assert tipo == 'jellyfin'
+        assert user_info['id'] == GUID
+        assert data_manager.get_user_profile(GUID)['overseerr_access'] is True
+
+    def test_tirar_acesso_leva_o_nome_para_quem_nao_tem_email(self, cache_limpa, data_manager):
+        # ⚠️ O email é OPCIONAL nas contas locais. Sem o nome, o Seerr não
+        # encontrava ninguém: o painel dizia que tinha removido e a pessoa
+        # continuava a poder pedir.
+        seerr = self.SeerrFalso()
+        backend = self._backend(data_manager, seerr, [
+            {"Id": GUID, "Name": "ana", "Policy": dict(POLITICA_BASE)},
+        ])
+        data_manager.set_user_profile(GUID, {"username": "ana", "overseerr_access": True})
+
+        resultado = backend.users.toggle_overseerr_access(GUID, False)
+
+        assert resultado['success'] is True
+        assert seerr.removidos == [(None, "ana")]
+        assert data_manager.get_user_profile(GUID)['overseerr_access'] is False
+
+    def test_uma_falha_do_seerr_nao_mente_ao_perfil(self, cache_limpa, data_manager):
+        seerr = self.SeerrFalso({"success": False, "message": "recusado"})
+        backend = self._backend(data_manager, seerr, [
+            {"Id": GUID, "Name": "ana", "Policy": dict(POLITICA_BASE)},
+        ])
+        data_manager.set_user_profile(GUID, {"username": "ana", "email": "ana@exemplo.com"})
+
+        resultado = backend.users.toggle_overseerr_access(GUID, True)
+
+        assert resultado['success'] is False
+        assert not data_manager.get_user_profile(GUID).get('overseerr_access')
+
+    def test_sem_seerr_configurado_diz_o_que_falta(self, cache_limpa, data_manager):
+        backend = self._backend(data_manager, None)
+
+        assert backend.users.toggle_overseerr_access(GUID, True)['success'] is False
+
+    def test_resgatar_um_convite_com_acesso_importa_a_conta(self, cache_limpa, data_manager):
+        seerr = self.SeerrFalso()
+        backend = self._backend(data_manager, seerr)
+        backend.create_invitation(library_titles=["Filmes"], overseerr_access=True)
+        codigo = backend.list_invitations()[0]['code']
+
+        resultado = backend.claim_invitation(codigo, TestCriacaoDeContas.Registo("ana", "segredo", "ana@exemplo.com"))
+
+        assert resultado['success'] is True
+        user_info, tipo = seerr.importados[0]
+        assert tipo == 'jellyfin'
+        assert user_info['id'] == GUID
+        assert data_manager.get_user_profile(GUID)['overseerr_access'] is True
+
+    def test_o_resgate_devolve_o_endereco_dos_pedidos(self, cache_limpa, data_manager, config_file):
+        # ⚠️ O "Como começar" da página de convite só mostra o passo dos pedidos
+        # quando recebe o ENDEREÇO. O backend do Plex mandava-o e este não: a
+        # pessoa ficava com o acesso e sem saber onde o usar.
+        config_file(OVERSEERR_URL='https://seerr.exemplo.com/')
+
+        seerr = self.SeerrFalso()
+        backend = self._backend(data_manager, seerr)
+        backend.create_invitation(library_titles=["Filmes"], overseerr_access=True)
+        codigo = backend.list_invitations()[0]['code']
+
+        dados = backend.claim_invitation(codigo, TestCriacaoDeContas.Registo("ana", "segredo"))['user_data']
+
+        assert dados['overseerr_access'] is True
+        assert dados['overseerr_url'] == 'https://seerr.exemplo.com'
+
+    def test_sem_acesso_o_endereco_nao_vai(self, cache_limpa, data_manager, config_file):
+        # 🔒 O endereço do Seerr é infraestrutura: só vai para quem ganhou acesso.
+        config_file(OVERSEERR_URL='https://seerr.exemplo.com/')
+
+        backend = self._backend(data_manager, self.SeerrFalso())
+        backend.create_invitation(library_titles=["Filmes"])
+        codigo = backend.list_invitations()[0]['code']
+
+        dados = backend.claim_invitation(codigo, TestCriacaoDeContas.Registo("ana", "segredo"))['user_data']
+
+        assert dados['overseerr_url'] is None
+
+    def test_um_convite_sem_acesso_nao_importa_ninguem(self, cache_limpa, data_manager):
+        seerr = self.SeerrFalso()
+        backend = self._backend(data_manager, seerr)
+        backend.create_invitation(library_titles=["Filmes"])
+        codigo = backend.list_invitations()[0]['code']
+
+        backend.claim_invitation(codigo, TestCriacaoDeContas.Registo("ana", "segredo"))
+
+        assert seerr.importados == []
+
+    def test_uma_falha_do_seerr_nao_derruba_o_resgate(self, cache_limpa, data_manager):
+        # A conta no servidor já existe e o acesso à mídia é o que interessa:
+        # recusar o resgate por causa do Seerr seria perder a vaga do convite.
+        seerr = self.SeerrFalso({"success": False, "message": "recusado"})
+        backend = self._backend(data_manager, seerr)
+        backend.create_invitation(library_titles=["Filmes"], overseerr_access=True)
+        codigo = backend.list_invitations()[0]['code']
+
+        resultado = backend.claim_invitation(codigo, TestCriacaoDeContas.Registo("ana", "segredo"))
+
+        assert resultado['success'] is True
+        assert not data_manager.get_user_profile(GUID).get('overseerr_access')
+
+
 class TestImagemDePerfil:
     """
     🐛 REGRESSÃO REPORTADA: pôr uma imagem de perfil no Jellyfin e ela não

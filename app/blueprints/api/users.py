@@ -324,8 +324,13 @@ def get_account_requests():
     # primeiros 20 pedidos.
     limit = min(request.args.get('limit', 20, type=int), 50)
     skip = max(0, request.args.get('skip', 0, type=int))
+    # ⚠️ O nome vai junto porque o EMAIL não é obrigatório em toda a parte: num
+    # painel Jellyfin o convite pede-o como opcional, e quem não o preencheu via
+    # esta aba vazia para sempre — sem erro nenhum, como se nunca tivesse pedido
+    # nada. A pesquisa do Seerr cobre `jellyfinUsername`, por isso o nome chega.
     return jsonify(extensions.overseerr_manager.get_user_requests(
-        current_user.email, limit=limit, filter=filter_status, skip=skip
+        current_user.email, limit=limit, filter=filter_status, skip=skip,
+        username=current_user.username,
     ))
 
 @users_api_bp.route('/account/devices')

@@ -310,8 +310,12 @@ class PlexInviteManager(InvitationLifecycle):
             profile_data.update({"trial_end_date": trial_end_utc.isoformat(), "trial_job_id": job_id})
 
         if invitation.get('overseerr_access'):
-            self.overseerr_manager.import_from_plex({"id": plex_account.id, "email": plex_account.email, "username": plex_account.username})
-            profile_data['overseerr_access'] = True
+            # 🐛 O acesso era dado por garantido: o perfil ficava com
+            # `overseerr_access` a True mesmo quando a importação falhava (Seerr
+            # em baixo, chave errada). O painel mostrava o acesso ligado, a
+            # pessoa não conseguia pedir nada, e desligar-o-e-ligar era a única
+            # forma de o repor. Agora manda o que aconteceu de facto.
+            profile_data['overseerr_access'] = self._dar_acesso_aos_pedidos(plex_account)
 
         self.data_manager.set_user_profile(plex_account.id, profile_data)
         new_profile = self.data_manager.get_user_profile(plex_account.id)
@@ -332,6 +336,35 @@ class PlexInviteManager(InvitationLifecycle):
             "overseerr_access": profile_data.get('overseerr_access', False),
             "overseerr_url": overseerr_url if overseerr_url and profile_data.get('overseerr_access', False) else None
         }
+
+    def _dar_acesso_aos_pedidos(self, plex_account):
+        """Importa a conta no Seerr e diz se ficou mesmo com acesso.
+
+        Uma falha aqui não pode derrubar o resgate: a conta já foi convidada e é
+        o acesso à mídia que interessa. Fica no log, e o administrador liga o
+        acesso pela página de utilizadores.
+        """
+        if not self.overseerr_manager:
+            return False
+
+        try:
+            resultado = self.overseerr_manager.import_user({
+                "id": plex_account.id,
+                "email": plex_account.email,
+                "username": plex_account.username,
+            }, 'plex')
+        except Exception as e:
+            logger.error(f"Falha ao dar acesso aos pedidos a '{plex_account.username}': {e}")
+            return False
+
+        if not resultado.get('success'):
+            logger.error(
+                f"O convite de '{plex_account.username}' pedia acesso ao sistema de pedidos e ele "
+                f"não foi concedido: {resultado.get('message')}"
+            )
+            return False
+
+        return True
 
     def _schedule_trial_end(self, media_user_id, duration_minutes):
         from app.extensions import scheduler
