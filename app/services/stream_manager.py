@@ -4,6 +4,8 @@ import copy
 import logging
 import threading
 import time
+
+import gevent
 from collections import defaultdict
 from datetime import datetime
 from tzlocal import get_localzone
@@ -100,15 +102,27 @@ class StreamManager:
             self.sessions.stop_listener()
 
         # Cancela também qualquer verificação em debounce ainda pendente, para não
-        # ficar uma thread a acordar depois do encerramento.
+        # ficar nada a acordar depois do encerramento.
         with self._sse_debounce_lock:
-            if self._sse_debounce_timer:
-                try:
-                    self._sse_debounce_timer.cancel()
-                except Exception:
-                    pass
-                self._sse_debounce_timer = None
+            self._cancelar_debounce()
             self._sse_debounce_deadline = None
+
+    def _cancelar_debounce(self):
+        """Desmarca a verificação pendente, se houver.
+
+        ⚠️ Quem chama TEM de ter o `_sse_debounce_lock`: são duas linhas que se
+        leem e escrevem juntas, e o listener de eventos chega aqui de vários
+        greenlets.
+        """
+        if not self._sse_debounce_timer:
+            return
+        try:
+            # `block=False`: matar à espera a partir de dentro do próprio hub
+            # trocaria de greenlet no meio do lock.
+            self._sse_debounce_timer.kill(block=False)
+        except Exception:
+            pass
+        self._sse_debounce_timer = None
 
     def _on_server_change(self):
         """O servidor avisou que alguma coisa mudou mesmo (o provider já filtrou
@@ -146,11 +160,23 @@ class StreamManager:
 
             delay = min(self.SSE_DEBOUNCE_SECONDS, max(0.0, self._sse_debounce_deadline - now))
 
-            if self._sse_debounce_timer:
-                self._sse_debounce_timer.cancel()
-            self._sse_debounce_timer = threading.Timer(delay, self._execute_debounced_check)
-            self._sse_debounce_timer.daemon = True
-            self._sse_debounce_timer.start()
+            self._cancelar_debounce()
+            # 🐛 Isto era um `threading.Timer`. O painel corre em gevent com
+            # monkey-patching, por isso cada Timer era um greenlet embrulhado na
+            # contabilidade do `threading` — e ao encerrar (é o próprio
+            # assistente de instalação que se manda reiniciar com SIGTERM) um
+            # timer ainda pendente acordava com o `threading._active` já
+            # desmontado e rebentava com:
+            #
+            #   File "threading.py", line 1111, in _delete
+            #     del _active[get_ident()]
+            #   KeyError: 271255370948160
+            #
+            # O erro não perdia trabalho nenhum — o que faltava fazer era só a
+            # verificação que o encerramento tornou desnecessária — mas enchia o
+            # log com um traceback logo a seguir a uma instalação BEM-SUCEDIDA.
+            # O `spawn_later` do gevent faz o mesmo sem essa contabilidade.
+            self._sse_debounce_timer = gevent.spawn_later(delay, self._execute_debounced_check)
 
     def _execute_debounced_check(self):
         """Executa a verificação após o tempo do debounce expirar."""

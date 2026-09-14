@@ -872,6 +872,34 @@ para texto e `media_server_type = 'plex'` nas linhas que já existiam), e o
 `_set_default`. O manifesto do ZIP diz a versão da base de dados e o servidor,
 para se perceber meses depois o que ali está.
 
+🐛 **O que ficava a acordar depois do fim.** O assistente manda-se reiniciar a
+si próprio (`_agendar_reinicio` → `os.kill(SIGTERM)`, dois segundos depois de
+gravar), e logo a seguir a uma instalação BEM-SUCEDIDA o log recebia isto:
+
+    File "threading.py", line 1111, in _delete
+      del _active[get_ident()]
+    KeyError: 271255370948160
+    <Greenlet ...: <bound method Thread._bootstrap of
+     <Timer(Thread-1, stopped ...)>>> failed with KeyError
+
+O `Thread-1` é a pista — é o PRIMEIRO thread do processo. Vem do armazenamento
+em memória do Flask-Limiter (`limits.storage.MemoryStorage`), que arranca um
+`threading.Timer` no construtor e **volta a marcá-lo a cada pedido** que passe
+pelo limitador. Sob gevent isso é um greenlet embrulhado na contabilidade do
+`threading`: com o processo a terminar, ele acorda com o `threading._active` já
+desmontado.
+
+`_parar_o_limitador()` cancela-o nos dois caminhos de encerramento. ⚠️ **Cancelar
+não o mata; acorda-o** — o `Timer.cancel()` só marca o evento `finished`, e a
+saída acontece quando lhe derem a vez. O `join` a seguir é que torna a correção
+determinística: obriga essa saída a acontecer AGORA, com o `_active` ainda de
+pé. E o `timer` não é API pública do `limits`, por isso vai tudo dentro de um
+`try`: se desaparecer, o pior que acontece é o traceback voltar.
+
+Pela mesma razão, o debounce do `StreamManager` deixou de ser um
+`threading.Timer` e passou a `gevent.spawn_later` — num painel a correr, era o
+outro que ficava em voo em cada encerramento.
+
 ⚠️ **Primeiro calar, depois trocar.** `_restaurar_backup()` chama
 `parar_servicos_de_fundo()` ANTES de substituir os ficheiros. Sem isso, o
 agendador — que continua vivo — relia o jobstore restaurado, encontrava lá as

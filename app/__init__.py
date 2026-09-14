@@ -87,6 +87,49 @@ def _parar_o_agendador():
         logger.debug(f"Aviso ao encerrar o agendador: {e}")
 
 
+def _parar_o_limitador():
+    """Desmarca a limpeza periódica do Flask-Limiter.
+
+    🐛 O armazenamento em MEMÓRIA do limitador (`limits.storage.MemoryStorage`)
+    mantém um `threading.Timer` que varre as contagens expiradas, e **volta a
+    marcá-lo a cada pedido** que passe pelo limitador. Sob gevent isso é um
+    greenlet embrulhado na contabilidade do `threading`: quando o processo é
+    terminado com um timer em voo — que é sempre, porque o assistente de
+    instalação manda-se reiniciar a si próprio com SIGTERM logo a seguir a
+    gravar — o greenlet acorda com o `threading._active` já desmontado e o log
+    fica com isto, logo depois de uma instalação BEM-SUCEDIDA:
+
+        File "threading.py", line 1111, in _delete
+          del _active[get_ident()]
+        KeyError: 271255370948160
+        <Greenlet ...: <bound method Thread._bootstrap of
+         <Timer(Thread-1, stopped ...)>>> failed with KeyError
+
+    Não se perde nada — o processo ia terminar de qualquer forma e a varredura
+    de contagens não tem nada a guardar — mas parece uma falha e não é.
+
+    ⚠️ O `timer` não faz parte da API pública do `limits`, e é por isso que isto
+    vai todo dentro de um `try`: se um dia deixar de existir, o pior que
+    acontece é o traceback voltar.
+    """
+    try:
+        armazenamento = getattr(extensions.limiter, 'storage', None)
+        temporizador = getattr(armazenamento, 'timer', None)
+        if temporizador is None:
+            return
+
+        # ⚠️ **Cancelar não o mata; acorda-o.** O `Timer.cancel()` marca o evento
+        # `finished`, e o que o timer faz a seguir é sair sem chamar a função —
+        # mas só quando lhe derem a vez. É precisamente essa saída que tem de
+        # acontecer AGORA, com o `threading._active` ainda de pé, em vez de
+        # durante o desmonte do interpretador. Por isso o `join` a seguir não é
+        # um extra: é ele que torna a correção determinística.
+        temporizador.cancel()
+        temporizador.join(timeout=2)
+    except Exception as e:
+        logger.debug(f"Aviso ao parar a limpeza do limitador: {e}")
+
+
 def parar_servicos_de_fundo():
     """Cala tudo o que escreve na base de dados, sem terminar o processo.
 
@@ -99,6 +142,7 @@ def parar_servicos_de_fundo():
     um restauro bem-sucedido.
     """
     _parar_o_agendador()
+    _parar_o_limitador()
     try:
         if extensions.stream_manager:
             extensions.stream_manager.stop_listener()
@@ -118,6 +162,11 @@ def shutdown_scheduler(signum=None, frame=None):
             extensions.stream_manager.stop_listener()
     except Exception as e:
         logger.debug(f"Aviso ao encerrar o listener SSE: {e}")
+
+    # E a varredura periódica do limitador, pela mesma razão — ver
+    # `_parar_o_limitador`. É a que sobra depois de o assistente se mandar
+    # reiniciar, e a que aparece no log a seguir a uma instalação bem-sucedida.
+    _parar_o_limitador()
 
     # 🐛 CORREÇÃO: quando esta função é instalada como handler de SIGTERM/SIGINT,
     # ela SUBSTITUI o comportamento por omissão — que é terminar o processo. O

@@ -725,3 +725,82 @@ class TestClienteQueIgnoraAOrdemDeParar:
         manager._terminate_session(recomecada, "limite")
 
         assert manager.sessions.forcadas == {}
+
+
+class TestODebounceDosEventos:
+    """A verificação pesada, adiada enquanto os eventos continuam a chegar.
+
+    🐛 Isto era um `threading.Timer`. O painel corre em gevent com
+    monkey-patching, por isso cada Timer era um greenlet embrulhado na
+    contabilidade do `threading` — e ao encerrar (é o próprio assistente de
+    instalação que se manda reiniciar com SIGTERM) um timer ainda pendente
+    acordava com o `threading._active` já desmontado:
+
+        File "threading.py", line 1111, in _delete
+          del _active[get_ident()]
+        KeyError: 271255370948160
+
+    Não se perdia trabalho — o que faltava fazer era a verificação que o
+    encerramento tornou desnecessária — mas o log ficava com um traceback logo
+    a seguir a uma instalação BEM-SUCEDIDA.
+
+    ⚠️ O mecanismo não tinha teste nenhum, e é o que segura o servidor numa
+    rajada de eventos: sem ele, cada mudança de estado dava uma verificação.
+    """
+
+    @pytest.fixture()
+    def rapido(self, manager, monkeypatch):
+        """Os mesmos tempos, em milissegundos, para o teste não esperar 6 s."""
+        monkeypatch.setattr(type(manager), 'SSE_DEBOUNCE_SECONDS', 0.05)
+        monkeypatch.setattr(type(manager), 'SSE_MAX_DEBOUNCE_SECONDS', 0.20)
+
+        corridas = []
+        monkeypatch.setattr(manager, '_execute_debounced_check', lambda: corridas.append(1))
+        return manager, corridas
+
+    def test_a_verificacao_corre_depois_do_atraso(self, rapido):
+        import gevent
+
+        gestor, corridas = rapido
+        gestor._schedule_sse_check()
+
+        assert corridas == [], "não pode correr de imediato — é isso que o debounce evita"
+        gevent.sleep(0.12)
+        assert corridas == [1]
+
+    def test_uma_rajada_da_UMA_verificacao(self, rapido):
+        import gevent
+
+        gestor, corridas = rapido
+        for _ in range(10):
+            gestor._schedule_sse_check()
+            gevent.sleep(0.01)
+
+        gevent.sleep(0.25)
+        # O teto (SSE_MAX) garante que ela corre; o debounce garante que não
+        # corre dez vezes.
+        assert corridas == [1]
+
+    def test_encerrar_cancela_o_que_estava_marcado(self, rapido):
+        import gevent
+
+        gestor, corridas = rapido
+        gestor._schedule_sse_check()
+        gestor.stop_listener()
+
+        gevent.sleep(0.15)
+        assert corridas == []
+        assert gestor._sse_debounce_timer is None
+
+    def test_nao_deixa_nada_da_contabilidade_do_threading(self, rapido):
+        # A raiz do bug: era um `threading.Timer`, e o que rebentava era o
+        # `threading._active`. Um greenlet do gevent não entra lá.
+        import threading
+
+        gestor, _corridas = rapido
+        antes = set(threading._active)
+        gestor._schedule_sse_check()
+
+        assert set(threading._active) == antes
+        assert not isinstance(gestor._sse_debounce_timer, threading.Thread)
+        gestor.stop_listener()
