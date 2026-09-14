@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from flask_babel import gettext as _, ngettext
 from collections import defaultdict
 from tzlocal import get_localzone_name
+from ..utils.identity import normalize_user_id
 from ..utils.log_sanitizer import mask_code
 
 logger = logging.getLogger(__name__)
@@ -807,6 +808,96 @@ class DataManager:
         db.session.add(profile)
         return self._row_to_dict(profile)
     
+    # As tabelas que guardam a identidade de um utilizador, e a coluna onde a
+    # guardam. Uma coluna nova que cite `user_profiles.media_user_id` tem de
+    # entrar aqui, ou uma migração de identidade deixa-a a apontar para um
+    # perfil que já não existe.
+    _TABELAS_COM_IDENTIDADE = (
+        ('coupon_usages', 'media_user_id'),
+        ('blocked_users', 'media_user_id'),
+        ('pix_payments', 'media_user_id'),
+        ('notifications', 'media_user_id'),
+        ('unlocked_achievements', 'media_user_id'),
+        ('stream_termination_logs', 'media_user_id'),
+        # Quem indicou quem: aponta para um perfil sem ser chave estrangeira.
+        ('user_profiles', 'referred_by'),
+    )
+
+    @db_transaction
+    def migrar_identidade(self, antigo, novo):
+        """Muda o `media_user_id` de um perfil e de tudo o que lhe aponta.
+
+        ⚠️ **Isto existe por uma razão só**: num servidor de contas locais, uma
+        conta apagada e recriada volta com um identificador NOVO — o Jellyfin
+        atribui um GUID ao criar e não aceita que se lhe imponha um. Sem migrar,
+        a pessoa reaparecia como um estranho: sem pagamentos, sem XP, sem
+        conquistas e sem a data de vencimento que acabou de pagar.
+
+        Não é uma fusão de perfis: se já existir um perfil com o identificador
+        novo, recusa-se. Juntar dois históricos é uma decisão de quem administra,
+        não de uma rotina automática.
+
+        🛡️ As chaves estrangeiras do SQLite não estão a ser impostas (o
+        `PRAGMA foreign_keys` fica no valor por omissão, que é OFF), por isso a
+        ordem das atualizações não tranca nada — mas todas correm na MESMA
+        transação: ou muda tudo, ou não muda nada. Metade migrada seria pior do
+        que não migrar.
+        """
+        from sqlalchemy import text
+
+        antigo = normalize_user_id(antigo)
+        novo = normalize_user_id(novo)
+
+        if not antigo or not novo:
+            raise ValueError("Migrar identidade exige os dois identificadores.")
+        if antigo == novo:
+            return False
+
+        if not UserProfile.query.get(antigo):
+            raise ValueError(f"Não há perfil com o identificador '{antigo}'.")
+        if UserProfile.query.get(novo):
+            raise ValueError(
+                f"Já existe um perfil com o identificador '{novo}': migrar juntaria "
+                "dois históricos numa só pessoa."
+            )
+
+        # O perfil primeiro: as outras tabelas citam-no.
+        db.session.execute(
+            text('UPDATE user_profiles SET media_user_id = :novo WHERE media_user_id = :antigo'),
+            {'novo': novo, 'antigo': antigo},
+        )
+
+        for tabela, coluna in self._TABELAS_COM_IDENTIDADE:
+            db.session.execute(
+                text(f'UPDATE "{tabela}" SET "{coluna}" = :novo WHERE "{coluna}" = :antigo'),
+                {'novo': novo, 'antigo': antigo},
+            )
+
+        self._migrar_identidade_nos_convites(antigo, novo)
+
+        logger.info(f"Identidade migrada: '{antigo}' passa a ser '{novo}'.")
+        return True
+
+    def _migrar_identidade_nos_convites(self, antigo, novo):
+        """`invitations.claimed_by_ids` é uma lista JSON, não uma coluna de ID.
+
+        É por ela que se sabe quem já resgatou um convite — deixá-la para trás
+        deixava a porta aberta a resgatar de novo um convite já usado.
+        """
+        for convite in Invitation.query.all():
+            try:
+                ids = json.loads(convite.claimed_by_ids or '[]')
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            if not isinstance(ids, list) or not any(normalize_user_id(i) == antigo for i in ids):
+                continue
+
+            convite.claimed_by_ids = json.dumps(
+                [novo if normalize_user_id(i) == antigo else i for i in ids]
+            )
+            db.session.add(convite)
+
     @db_transaction
     def delete_user_profile(self, media_user_id):
         profile = UserProfile.query.get(media_user_id)

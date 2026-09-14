@@ -470,6 +470,11 @@ def reactivate_user_route():
             logger.error(f"Falha ao repor o acesso de '{username}': {restauro.get('message')}")
             return jsonify({"success": False, "message": restauro.get('message') or _("Erro ao repor o acesso.")})
 
+        # ⚠️ A identidade pode ter MUDADO: num servidor de contas locais, uma
+        # conta apagada e recriada volta com um identificador novo, e o perfil
+        # foi migrado para ele. Gravar no antigo criaria um perfil fantasma.
+        media_user_id = restauro.get('media_user_id') or media_user_id
+
         extensions.data_manager.set_user_profile(media_user_id, {
             'status': 'active',
             'libraries': json.dumps(libraries),
@@ -477,10 +482,23 @@ def reactivate_user_route():
         })
         extensions.data_manager.remove_blocked_user(media_user_id)
 
+        mensagem = _("Usuário reativado com sucesso.")
+
+        # 🛡️ A conta teve de ser criada de novo: a palavra-passe é outra e só o
+        # painel a conhece. Sai por notificação e não fica no log nem na
+        # resposta desta rota.
+        if credenciais := restauro.get('credenciais'):
+            perfil_atual = extensions.data_manager.get_user_profile(media_user_id) or {}
+            extensions.media_server.notifier_manager.send_credentials_notification(
+                {'id': media_user_id, 'username': username}, perfil_atual,
+                credenciais, link=restauro.get('link'),
+            )
+            mensagem = _("Conta criada de novo no servidor. As credenciais foram enviadas ao usuário.")
+
         if extensions.socketio:
             extensions.socketio.emit('user_list_updated', {'message': _("O usuário %(username)s foi reativado.", username=username)}, namespace='/dashboard')
 
-        return jsonify({"success": True, "message": _("Usuário reativado com sucesso.")})
+        return jsonify({"success": True, "message": mensagem})
 
     except Exception as e:
         logger.error(f"Erro interno ao reativar {media_user_id}: {e}", exc_info=True)

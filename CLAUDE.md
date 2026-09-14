@@ -130,10 +130,36 @@ email por nome e uma palavra-passe que ninguém veria — e a notificação leva
 Repor o acesso é agora do contrato (`restaurar_acesso`): no Plex convida-se
 outra vez e fica um `link_pendente` (é ele que faz aparecer o botão de
 confirmação manual na página de pagamento); onde as contas são locais tira-se o
-`IsDisabled`, repõem-se as bibliotecas do perfil, e não há nada para aceitar. Se
-a conta já tiver sido apagada pelo `removal_job`, o Jellyfin devolve
-`success: False` em vez de dar por reposto um acesso que não existe — recriá-la
-seria inventar uma palavra-passe que o painel teria de entregar.
+`IsDisabled`, repõem-se as bibliotecas do perfil, e não há nada para aceitar.
+
+⚠️ **E se a conta já tiver sido apagada, é RECRIADA** — o `removal_job` apaga-a
+mesmo ao fim de `DAYS_TO_REMOVE_BLOCKED_USER` dias, e quem paga tem de voltar a
+entrar. Isso obriga a três coisas que andam sempre juntas (`_recriar_conta`):
+
+- ⚠️ **a identidade MUDA.** O Jellyfin atribui o GUID ao criar a conta e não
+  aceita que se lhe imponha um: para o servidor, é outra pessoa. O perfil é
+  migrado com `data_manager.migrar_identidade()`, que arrasta tudo o que aponta
+  para ele — pagamentos, conquistas, cortes, `referred_by` e a lista JSON
+  `invitations.claimed_by_ids`. Uma coluna nova que cite
+  `user_profiles.media_user_id` tem de entrar em `_TABELAS_COM_IDENTIDADE`, ou
+  fica a apontar para um perfil que já não existe. Sem isto, quem pagou
+  reaparecia como um estranho: sem histórico e sem o vencimento que acabou de
+  pagar;
+- ⚠️ **quem chama tem de SEGUIR o identificador novo.** `restaurar_acesso`
+  devolve `media_user_id`, e é por isso que ele é reposto ANTES do resto da
+  renovação: feito depois, a data de vencimento, a tarefa de expiração e o
+  limite de telas ficavam gravados num identificador que já não existe. O
+  `_process_successful_payment` relê a linha do pagamento (que a migração já
+  moveu) pela mesma razão. E nunca se grava o perfil antigo sob a chave nova
+  sem confirmar que ela existe: `username` é único, e o INSERT rebentava depois
+  de o pagamento já ter sido aceite;
+- 🛡️ **a palavra-passe é nova e o painel tem de a entregar.** Vai numa
+  notificação própria (`send_credentials_notification`, evento `credentials`,
+  com template por canal), que é o ÚNICO sítio do painel por onde uma
+  palavra-passe viaja — e não vai para o log em lado nenhum. Por isso só se
+  recria a conta quando há por onde a entregar (Telegram, Discord ou WhatsApp
+  no perfil): uma conta com uma palavra-passe que ninguém vai receber é pior do
+  que conta nenhuma, e o administrador tem de saber que ficou por fazer.
 
 ⚠️ E os Protocols do contrato verificam os NOMES dos métodos, não as
 assinaturas: `send_invite` tinha `media_user_id` no Plex e `plex_user_id` no

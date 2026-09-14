@@ -190,12 +190,23 @@ def _run_payment_processing_in_thread(app, txid):
                         expiration_time_str=expiration_time, is_reactivation=is_reactivation
                     )
                     
+                    # ⚠️ A IDENTIDADE PODE TER MUDADO durante a renovação: num
+                    # servidor de contas locais, uma conta que já tinha sido
+                    # apagada é criada de novo, e o servidor dá-lhe um
+                    # identificador novo. A linha do pagamento foi migrada com o
+                    # resto do histórico — é ela que diz quem é a pessoa agora.
+                    # Sem isto, o que vinha a seguir procurava um perfil que já
+                    # não existe: `AttributeError` sobre None, e o pagamento
+                    # acabava marcado como 'FALHOU' depois de ter corrido bem.
+                    media_user_id = (extensions.data_manager.get_pix_payment(txid) or {}).get(
+                        'media_user_id') or media_user_id
+
                     # Trata o Status Inativo caso o utilizador ainda não tenha aceite o convite no e-mail/notificação
                     if is_reactivation:
                         user_found_in_plex = extensions.media_server.get_user_by_id(media_user_id) is not None
                         if not user_found_in_plex:
                             post_renewal_profile = extensions.data_manager.get_user_profile(media_user_id)
-                            if post_renewal_profile.get('status') == 'active':
+                            if (post_renewal_profile or {}).get('status') == 'active':
                                 post_renewal_profile['status'] = 'inactive'
                                 extensions.data_manager.set_user_profile(media_user_id, post_renewal_profile)
                                 logger.info(f"Utilizador '{profile.get('username')}' ainda não está na lista de amigos (convite pendente). Status local mantido como 'inactive'.")

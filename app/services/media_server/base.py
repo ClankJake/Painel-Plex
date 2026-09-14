@@ -431,12 +431,23 @@ class MediaServerBackend(Protocol):
         - onde as contas são locais, a conta foi SUSPENSA e basta reativá-la —
           não há nada para aceitar, e o link é o do próprio servidor.
 
-        Devolve `{"success", "message", "link", "link_pendente"}`:
-        `link` é o que vai na notificação; `link_pendente` só existe quando
-        sobra mesmo alguma coisa por aceitar — é o que faz aparecer o botão de
-        confirmação manual na página de pagamento.
+        Devolve `{"success", "message", "media_user_id", "link",
+        "link_pendente"}` e, quando a conta teve de ser criada de novo,
+        `credenciais`:
+
+        - `link` é o que vai na notificação; `link_pendente` só existe quando
+          sobra mesmo alguma coisa por aceitar — é o que faz aparecer o botão de
+          confirmação manual na página de pagamento;
+        - ⚠️ `media_user_id` pode NÃO ser o que entrou. Onde as contas são
+          locais, uma conta apagada e recriada volta com um identificador novo
+          (o servidor atribui-o e não aceita que se lhe imponha um): o perfil é
+          migrado para ele, e quem chamou tem de passar a usá-lo;
+        - 🛡️ `credenciais` (`username`, `password`) é a palavra-passe NOVA de
+          uma conta recriada. Vem daqui para ser entregue pelas notificações e
+          para mais lado nenhum — nunca para um log.
         """
-        return {"success": True, "message": "", "link": None, "link_pendente": None}
+        return {"success": True, "message": "", "media_user_id": media_user_id,
+                "link": None, "link_pendente": None}
 
     # ⚠️ A ÚNICA porta para mudar o limite de telas de alguém. Grava o perfil e,
     # onde houver quem o imponha (no Jellyfin, o plugin StreamLimiter), leva-o

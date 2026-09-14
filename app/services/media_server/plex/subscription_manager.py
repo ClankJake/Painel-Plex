@@ -97,6 +97,18 @@ class PlexSubscriptionManager:
         if profile.get('status') == 'inactive' or not is_still_plex_friend:
             is_reactivation = True
 
+        # 0.5 Repor o acesso ao SERVIDOR, antes de mexer na assinatura.
+        #
+        # ⚠️ A ordem importa por um motivo que não é óbvio: num servidor de
+        # contas locais, uma conta apagada e recriada volta com um
+        # IDENTIFICADOR NOVO, e o perfil é migrado para ele. Se isso acontecesse
+        # depois do resto, a data de vencimento, a tarefa de expiração e o
+        # limite de telas ficavam gravados no identificador antigo — que a essa
+        # altura já não existe. Feito aqui, o resto da função corre todo sobre
+        # a identidade certa.
+        restauro = self._repor_acesso_ao_servidor(media_user_id, profile, is_reactivation)
+        media_user_id, profile = self._seguir_a_identidade(media_user_id, profile, restauro)
+
         # 1. Atualizar o estado básico do perfil (Status e Limite de Telas)
         self._update_basic_profile_state(profile, media_user_id, screens, is_reactivation)
 
@@ -136,41 +148,94 @@ class PlexSubscriptionManager:
         if screens is not None and screens >= 0 and self.plex_manager:
             self.plex_manager.update_screen_limit(media_user_id, screens)
 
-        # 6. Restauro de Acesso e Notificação de Reativação
-        #
-        # ⚠️ **Este ficheiro é dos DOIS backends** (o do Jellyfin também o usa:
-        # o que aqui vive é a política de vencimentos, que não muda por
-        # servidor). Aqui estava, escrito à mão, o convite do Plex e o endereço
-        # `clients.plex.tv/.../accept` — mandados também a quem tem um painel
-        # Jellyfin, onde a conta é local, já existe, e "enviar convite" quer
-        # dizer CRIAR uma conta. Repor o acesso é do backend: `restaurar_acesso`.
-        if is_reactivation and self.plex_manager and self.plex_manager.notifier_manager:
-            try:
-                user_info = self.plex_manager.get_user_by_id(media_user_id) or {'id': media_user_id, 'username': profile.get('username')}
-
-                restauro = self.plex_manager.restaurar_acesso(media_user_id, profile)
-                if not restauro.get('success'):
-                    logger.warning(
-                        f"Reativação de '{profile.get('username')}': o acesso ao servidor não foi "
-                        f"reposto ({restauro.get('message')}). A assinatura FICA renovada."
-                    )
-
-                invite_link = restauro.get('link')
-
-                # 🔗 O link pendente é o que faz aparecer o botão de confirmação
-                # manual na página de pagamento. Só existe onde sobra mesmo
-                # alguma coisa por aceitar (o convite do Plex); onde a conta é
-                # local não há nada a confirmar, e mostrar o botão à toa seria
-                # pedir à pessoa que fizesse um passo que não existe.
-                latest_profile = self.data_manager.get_user_profile(media_user_id) or profile
-                latest_profile['pending_invite_link'] = restauro.get('link_pendente')
-                self.data_manager.set_user_profile(media_user_id, latest_profile)
-
-                self.plex_manager.notifier_manager.send_reactivation_notification(user_info, new_expiration_date, profile, invite_link)
-            except Exception as e:
-                logger.error(f"Falha ao restaurar acesso ou enviar notificação de reativação para o usuário {media_user_id}: {e}")
+        # 6. Avisar quem foi reativado
+        if restauro and self.plex_manager and self.plex_manager.notifier_manager:
+            self._avisar_da_reativacao(media_user_id, profile, new_expiration_date, restauro)
 
         return new_expiration_date
+
+    def _seguir_a_identidade(self, media_user_id, profile, restauro):
+        """Passa a usar o identificador novo, mas só depois de o confirmar.
+
+        ⚠️ O perfil NUNCA pode ser gravado sob uma chave que ainda não é dele:
+        `set_user_profile` criaria uma linha nova com o mesmo nome de
+        utilizador (que é único) e a renovação rebentava com um erro de
+        integridade — depois de o pagamento já ter sido aceite. Por isso não
+        basta o backend dizer que a identidade mudou: tem de haver mesmo um
+        perfil do outro lado.
+        """
+        novo = (restauro or {}).get('media_user_id')
+        if not novo or novo == media_user_id:
+            return media_user_id, profile
+
+        migrado = self.data_manager.get_user_profile(novo)
+        if not migrado:
+            logger.error(
+                f"O servidor diz que '{media_user_id}' passou a ser '{novo}', mas não há perfil "
+                "com o identificador novo. A continuar com o antigo, para não duplicar o perfil."
+            )
+            return media_user_id, profile
+
+        return novo, migrado
+
+    def _repor_acesso_ao_servidor(self, media_user_id, profile, is_reactivation):
+        """Devolve o acesso ao servidor, do jeito que ESTE servidor pede.
+
+        ⚠️ **Este ficheiro é dos DOIS backends** (o do Jellyfin também o usa: o
+        que aqui vive é a política de vencimentos, que não muda por servidor).
+        Aqui estava, escrito à mão, o convite do Plex e o endereço
+        `clients.plex.tv/.../accept` — mandados também a quem tem um painel
+        Jellyfin, onde a conta é local e "enviar convite" quer dizer CRIAR uma
+        conta. Repor o acesso é do backend: `restaurar_acesso`.
+
+        Uma falha aqui não desfaz a renovação: quem pagou fica com a assinatura
+        em dia, e o que falta é o acesso — que o administrador consegue repor.
+        """
+        if not (is_reactivation and self.plex_manager):
+            return None
+
+        try:
+            restauro = self.plex_manager.restaurar_acesso(media_user_id, profile) or {}
+        except Exception as e:
+            logger.error(f"Falha ao repor o acesso do utilizador {media_user_id}: {e}", exc_info=True)
+            return {}
+
+        if not restauro.get('success'):
+            logger.warning(
+                f"Reativação de '{profile.get('username')}': o acesso ao servidor não foi "
+                f"reposto ({restauro.get('message')}). A assinatura FICA renovada."
+            )
+        return restauro
+
+    def _avisar_da_reativacao(self, media_user_id, profile, new_expiration_date, restauro):
+        """A notificação da reativação e, quando há, as credenciais novas."""
+        try:
+            user_info = (self.plex_manager.get_user_by_id(media_user_id)
+                         or {'id': media_user_id, 'username': profile.get('username')})
+
+            # 🔗 O link pendente é o que faz aparecer o botão de confirmação
+            # manual na página de pagamento. Só existe onde sobra mesmo alguma
+            # coisa por aceitar (o convite do Plex); onde a conta é local não há
+            # nada a confirmar, e mostrar o botão à toa seria pedir à pessoa que
+            # fizesse um passo que não existe.
+            latest_profile = self.data_manager.get_user_profile(media_user_id) or profile
+            latest_profile['pending_invite_link'] = restauro.get('link_pendente')
+            self.data_manager.set_user_profile(media_user_id, latest_profile)
+
+            notificador = self.plex_manager.notifier_manager
+            notificador.send_reactivation_notification(
+                user_info, new_expiration_date, latest_profile, restauro.get('link')
+            )
+
+            # 🛡️ A conta teve de ser criada de novo e a palavra-passe é outra.
+            # Vai numa mensagem à parte, com o seu próprio template, e nunca
+            # para o log — ver `send_credentials_notification`.
+            if credenciais := restauro.get('credenciais'):
+                notificador.send_credentials_notification(
+                    user_info, latest_profile, credenciais, link=restauro.get('link')
+                )
+        except Exception as e:
+            logger.error(f"Falha ao avisar da reativação do utilizador {media_user_id}: {e}")
 
     # ====================================================================
     # --- MÉTODOS AUXILIARES (SRP) ---

@@ -392,6 +392,7 @@ class PlexManager:
             return {
                 "success": False,
                 "message": _("Sem email, não é possível enviar o convite do Plex."),
+                "media_user_id": media_user_id,
                 "link": "https://app.plex.tv/desktop",
                 "link_pendente": None,
             }
@@ -412,6 +413,7 @@ class PlexManager:
             return {
                 "success": resultado.get('success', True),
                 "message": resultado.get('message', ''),
+                "media_user_id": media_user_id,
                 "link": "https://app.plex.tv/desktop",
                 "link_pendente": None,
             }
@@ -432,6 +434,7 @@ class PlexManager:
         return {
             "success": resultado.get('success', True),
             "message": resultado.get('message', ''),
+            "media_user_id": media_user_id,
             "link": link,
             "link_pendente": link,
         }

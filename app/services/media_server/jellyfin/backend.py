@@ -3,6 +3,7 @@
 """Fachada do backend Jellyfin: cumpre o contrato `MediaServerBackend`."""
 
 import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from flask_babel import gettext as _
@@ -355,40 +356,21 @@ class JellyfinManager:
         `link_pendente` — o link é o do próprio servidor, onde a pessoa entra
         com as credenciais que já tem.
 
-        ⚠️ **Se a conta já não existir, isto NÃO a recria.** Depois de
-        `DAYS_TO_REMOVE_BLOCKED_USER` dias, o `removal_job` apaga-a mesmo
-        (`DELETE /Users`), e recriá-la seria inventar uma palavra-passe nova
-        que o painel teria de entregar. Dizer que não se conseguiu é melhor do
-        que dar por reativado um acesso que não existe.
+        ⚠️ **Se a conta já não existir, é RECRIADA** — depois de
+        `DAYS_TO_REMOVE_BLOCKED_USER` dias o `removal_job` apaga-a mesmo
+        (`DELETE /Users`), e quem paga a reativação tem de voltar a ter acesso.
+        Ver `_recriar_conta`, que é onde estão as consequências disso.
         """
-        import json
-
         media_user_id = normalize_user_id(media_user_id)
 
         if not self.get_user_by_id(media_user_id):
-            logger.error(
-                f"Reativação de '{(profile or {}).get('username')}': a conta já não existe no "
-                "Jellyfin (foi removida). É preciso criá-la de novo e entregar as credenciais."
-            )
-            return {
-                "success": False,
-                "message": _("A conta já não existe no servidor e tem de ser criada de novo."),
-                "link": self.get_base_url(),
-                "link_pendente": None,
-            }
+            return self._recriar_conta(media_user_id, profile or {}, libraries)
 
         resultado = self.users.unblock_user(media_user_id)
         if not resultado.get('success'):
             return {**resultado, "link": self.get_base_url(), "link_pendente": None}
 
-        if libraries is None:
-            libraries = (profile or {}).get('libraries', '[]')
-        if isinstance(libraries, str):
-            try:
-                libraries = json.loads(libraries)
-            except (ValueError, TypeError):
-                libraries = []
-
+        libraries = self._bibliotecas_do_perfil(profile, libraries)
         if libraries:
             self.users.update_user_libraries(
                 media_user_id, libraries, allow_sync=(profile or {}).get('allow_downloads')
@@ -397,9 +379,129 @@ class JellyfinManager:
         return {
             "success": True,
             "message": _("Acesso reposto no servidor."),
+            "media_user_id": media_user_id,
             "link": self.get_base_url(),
             "link_pendente": None,
         }
+
+    @staticmethod
+    def _bibliotecas_do_perfil(profile, libraries=None):
+        """As bibliotecas escolhidas, venham do pedido ou do perfil (JSON)."""
+        import json
+
+        if libraries is None:
+            libraries = (profile or {}).get('libraries', '[]')
+        if isinstance(libraries, str):
+            try:
+                libraries = json.loads(libraries)
+            except (ValueError, TypeError):
+                libraries = []
+        return libraries or []
+
+    def _recriar_conta(self, media_user_id, profile, libraries=None):
+        """A conta foi apagada do servidor: cria-se outra, com credenciais novas.
+
+        Três coisas que isto obriga, e que são a razão de estar tudo num sítio só:
+
+        ⚠️ **A identidade MUDA.** O Jellyfin atribui um GUID ao criar a conta e
+        não aceita que se lhe imponha um: a conta recriada é, para o servidor,
+        outra pessoa. Sem migrar o perfil, quem pagou reaparecia como um
+        estranho — sem pagamentos, sem XP, sem conquistas e sem o vencimento que
+        acabou de pagar. É o `migrar_identidade` que trata disso, e quem chama
+        tem de passar a usar o `media_user_id` que volta daqui.
+
+        ⚠️ **A palavra-passe é NOVA e o painel tem de a entregar.** Não há como
+        recuperar a antiga (o Jellyfin guarda-a cifrada) nem como pedir à pessoa
+        que escolha uma: ela não está aqui, está a pagar. Por isso só se recria
+        quando há por onde a entregar — sem contacto nenhum, uma conta com uma
+        palavra-passe que ninguém vai receber é pior do que conta nenhuma, e o
+        administrador tem de saber disso.
+
+        🛡️ **A palavra-passe nunca vai para o log.** Volta na resposta, é
+        entregue pelos canais de notificação, e mais nada.
+        """
+        username = (profile or {}).get('username')
+        if not username:
+            logger.error(
+                f"Reativação de '{media_user_id}': a conta já não existe no servidor e o perfil "
+                "não tem nome de utilizador para a recriar."
+            )
+            return {
+                "success": False,
+                "message": _("A conta já não existe no servidor e não há nome para a criar de novo."),
+                "media_user_id": media_user_id,
+                "link": self.get_base_url(), "link_pendente": None,
+            }
+
+        if not self._tem_como_entregar_credenciais(profile):
+            logger.error(
+                f"Reativação de '{username}': a conta foi recriada? NÃO — não há contacto "
+                "(Telegram, Discord, WhatsApp) por onde entregar a palavra-passe nova. "
+                "O acesso tem de ser reposto à mão."
+            )
+            return {
+                "success": False,
+                "message": _("A conta já não existe no servidor e não há por onde enviar as credenciais novas."),
+                "media_user_id": media_user_id,
+                "link": self.get_base_url(), "link_pendente": None,
+            }
+
+        palavra_passe = secrets.token_urlsafe(12)
+        criado = self.invites.create_account(username, palavra_passe)
+        if not criado.get('success'):
+            logger.error(f"Reativação de '{username}': o Jellyfin recusou criar a conta de novo.")
+            return {**criado, "media_user_id": media_user_id,
+                    "link": self.get_base_url(), "link_pendente": None}
+
+        novo_id = normalize_user_id(criado.get('user_id'))
+
+        try:
+            self.data_manager.migrar_identidade(media_user_id, novo_id)
+        except Exception as e:
+            # A conta existe no servidor mas o painel continua a conhecer a
+            # pessoa pelo identificador antigo: as duas metades ficariam a falar
+            # de gente diferente. Desfaz-se o que se fez.
+            logger.error(f"Reativação de '{username}': falhou migrar a identidade ({e}). A desfazer.")
+            self.users.remove_user(novo_id)
+            return {
+                "success": False,
+                "message": _("Não foi possível transferir o histórico para a conta nova."),
+                "media_user_id": media_user_id,
+                "link": self.get_base_url(), "link_pendente": None,
+            }
+
+        bibliotecas = self._bibliotecas_do_perfil(profile, libraries)
+        if bibliotecas:
+            self.users.update_user_libraries(
+                novo_id, bibliotecas, allow_sync=(profile or {}).get('allow_downloads')
+            )
+
+        # O limite de telas vive no perfil e, havendo plugin, também no servidor
+        # — que não conhece a conta nova. Pela fachada, que é a única porta.
+        if (limite := (profile or {}).get('screen_limit')) is not None:
+            self.update_screen_limit(novo_id, int(limite))
+
+        logger.info(f"Conta de '{username}' recriada no Jellyfin com um identificador novo.")
+        return {
+            "success": True,
+            "message": _("A conta foi criada de novo no servidor."),
+            "media_user_id": novo_id,
+            "link": self.get_base_url(),
+            "link_pendente": None,
+            # 🛡️ Daqui saem para as notificações e para mais lado nenhum.
+            "credenciais": {"username": username, "password": palavra_passe},
+        }
+
+    @staticmethod
+    def _tem_como_entregar_credenciais(profile):
+        """Há algum canal por onde a palavra-passe nova chegue a esta pessoa?
+
+        O email não conta: o painel não envia emails — as notificações saem por
+        Telegram, Discord, WhatsApp ou webhook.
+        """
+        perfil = profile or {}
+        return any(perfil.get(campo) for campo in
+                   ('telegram_id', 'telegram_user', 'discord_user_id', 'phone_number'))
 
     def update_screen_limit(self, user_id, screens):
         """Grava o limite no perfil e, se houver quem o imponha, no servidor.
