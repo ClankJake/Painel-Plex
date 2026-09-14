@@ -364,12 +364,15 @@ class TestALigacaoNoArranque:
 
         assert isinstance(_fonte_de_estatisticas('jellyfin'), JellyfinStatsApi)
 
-    def test_um_painel_plex_continua_no_tautulli(self):
+    def test_um_painel_plex_usa_o_despachante(self):
         from app import _fonte_de_estatisticas
+        from app.services.media_server.plex.stats_api import FonteDeEstatisticasDoPlex
 
-        # None deixa o StatsManager construir o cliente do Tautulli.
-        assert _fonte_de_estatisticas('plex') is None
-        assert _fonte_de_estatisticas(None) is None
+        # ⚠️ Já não é o Tautulli sozinho: é ele quando está configurado e o
+        # próprio Plex quando não está. Antes devolvia None, e quem não tinha
+        # Tautulli ficava sem pódio, sem XP, sem conquistas e sem Wrapped.
+        for tipo in ('plex', None):
+            assert isinstance(_fonte_de_estatisticas(tipo), FonteDeEstatisticasDoPlex)
 
     def test_o_estado_da_ligacao_nao_rebenta_sem_credenciais(self):
         # A fonte do Jellyfin não tem URL nem chave próprios: quem os lê (o

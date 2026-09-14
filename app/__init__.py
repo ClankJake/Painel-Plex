@@ -213,16 +213,24 @@ def start_background_services(app) -> bool:
 def _fonte_de_estatisticas(tipo_de_servidor):
     """De onde vêm as reproduções que alimentam as estatísticas.
 
-    None deixa o `StatsManager` usar o Tautulli, que é o caso do Plex.
+    ⚠️ Num painel Plex a fonte já NÃO é só o Tautulli: é ele quando está
+    configurado e o próprio servidor quando não está
+    (`plex/stats_api.py`). Esconder o pódio, o XP, as conquistas, as
+    recomendações e o Wrapped a quem não tem Tautulli era a resposta errada —
+    o Plex sabe o que cada pessoa viu, e o histórico já vinha de lá pela mesma
+    razão. A escolha entre as duas é feita a cada pergunta, para configurar o
+    Tautulli não obrigar a reiniciar o painel.
     """
     from .services.media_server import resolve_media_server_type
 
-    if resolve_media_server_type(tipo_de_servidor) != 'jellyfin':
-        return None
+    if resolve_media_server_type(tipo_de_servidor) == 'jellyfin':
+        from .services.media_server.jellyfin.stats_api import JellyfinStatsApi
 
-    from .services.media_server.jellyfin.stats_api import JellyfinStatsApi
+        return JellyfinStatsApi(lambda: extensions.media_server)
 
-    return JellyfinStatsApi(lambda: extensions.media_server)
+    from .services.media_server.plex.stats_api import FonteDeEstatisticasDoPlex
+
+    return FonteDeEstatisticasDoPlex(lambda: extensions.media_server)
 
 
 def create_app() -> Flask:

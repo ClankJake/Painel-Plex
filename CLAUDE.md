@@ -432,7 +432,9 @@ de uma coisa só: **uma lista de reproduções**. A agregação vive em
 `services/tautulli/stats_handler.py` e é a MESMA para todos os servidores; o
 que muda é a FONTE que a alimenta, injetada no `StatsManager`:
 
-- num painel Plex, o Tautulli (`services/tautulli/api_client.py`);
+- num painel Plex, o Tautulli quando está configurado e o **próprio servidor**
+  quando não (`media_server/plex/stats_api.py` despacha entre os dois, a cada
+  pergunta — configurar o Tautulli não obriga a reiniciar o painel);
 - num painel Jellyfin, o próprio servidor
   (`media_server/jellyfin/stats_api.py`).
 
@@ -463,9 +465,20 @@ repetições) todas as madrugadas.
   serviço que não vai ser usado é pior do que não as pedir.
 - `estatisticas_disponiveis()` (`app/utils/estatisticas.py`, exposto aos
   templates como `media_server.estatisticas`) — EXISTEM AGORA: o servidor
-  suporta-as **e** a fonte está ligada. É por esta que se escondem o menu, as
-  páginas e as sub-abas; um painel Plex sem Tautulli tem a capacidade e não tem
-  os dados.
+  suporta-as **e** há uma fonte ligada. É por esta que se escondem o menu, as
+  páginas e as sub-abas. 🐛 Num painel Plex ela exigia o Tautulli, e sem ele
+  escondia tudo — o mesmo engano que o histórico já tinha corrigido, e sem a
+  mesma desculpa: o Plex SABE o que cada pessoa viu. Hoje basta o servidor
+  estar ligado; esconde-se só quando não há NENHUMA das duas fontes, que é o
+  caso do servidor em baixo.
+
+⚠️ **`api_client` e `fonte_externa` não são a mesma coisa, e trocá-las tem
+sintomas opostos.** A fonte do Plex é um despachante: o `is_configured` dela
+responde "há estatísticas", que passou a ser verdade sem Tautulli.
+`stats_manager.fonte_externa` é o cliente do Tautulli, e é a ele que se pergunta
+pelo ESTADO, pelo endereço e pelo teste de ligação — senão o estado do sistema
+mostrava o Tautulli OFFLINE num painel a funcionar perfeitamente sem ele, e
+`_tautulli_ativo()` mandava o histórico bater a um Tautulli que não existe.
 
 ⚠️ **O nome da marca aparece no meio das frases** ("Ver no Plex", "O Seu Plex
 Wrapped"). Estava escrito à mão nas páginas de estatísticas, que eram só do
@@ -619,7 +632,32 @@ resultado de uma falha de rede (a mesma regra dos plugins do Jellyfin).
 conta **1**; só as contas partilhadas lá aparecem com o id de plex.tv que o
 painel guarda. Filtrar o histórico do administrador pelo id dele devolvia
 sempre uma lista vazia — sem erro nenhum, que é o pior dos casos. A tradução
-faz-se pelo nome da conta do dono (`conn.account`).
+faz-se pelo nome da conta do dono (`conn.account`), nos dois sentidos:
+`_id_de_conta()` para perguntar ao servidor e `ids_do_painel()` para dizer de
+quem é cada reprodução que veio de lá. Sem o segundo, as do administrador
+ficavam agrupadas sob o id "1" e ele aparecia no pódio como um estranho — sem
+nível, sem cara e sem se ligar ao perfil dele.
+
+**E as ESTATÍSTICAS também saem daqui** (`plex/stats_api.py`), pela mesma razão
+e com as mesmas perdas. `/status/sessions/history/all` traz o título e pouco
+mais: a duração, o ano, os géneros e o realizador vêm de uma segunda chamada a
+`/library/metadata/<k1>,<k2>,...`, em blocos e uma vez por página — nunca uma
+por linha. Três coisas a ter presentes:
+
+- ⚠️ **o Plex conta em MILISSEGUNDOS** e a agregação em segundos, como o
+  Tautulli devolve. Sem dividir, uma hora de filme valia mil vezes o XP;
+- **uma reprodução é um item DADO POR VISTO**, e conta inteiro: o tempo é a
+  duração do item, não o tempo que a pessoa lá esteve. É a mesma aproximação
+  que o Jellyfin sem o plugin faz. A percentagem é 100 pela mesma razão da
+  barra do histórico — e um 0 aqui fazia o mínimo de percentagem das
+  recomendações deitar fora todas as linhas;
+- **é uma janela** (`LIMITE_DE_LINHAS`), das reproduções mais recentes para
+  trás: num servidor com anos de uso, o Wrapped de há três anos não está lá.
+
+⚠️ **Omitir o `accountID` não é o mesmo que mandá-lo vazio.** O pódio e as
+recomendações pedem o histórico de toda a gente, e com a chave presente e sem
+valor o servidor não devolve nada — por isso `entradas()` recebe `None` e a
+chave nem chega a ser montada.
 
 🔇 E não configurar o Tautulli deixou de ser um WARNING em cada arranque: em
 branco é uma escolha legítima (num painel Jellyfin nem se aplica). O aviso fica

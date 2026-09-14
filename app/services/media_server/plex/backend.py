@@ -298,20 +298,38 @@ class PlexManager:
 
         Não basta o objeto existir: ele é sempre construído, e fica inerte
         enquanto não tiver URL e chave. É esta pergunta que decide de onde vêm
-        o histórico e os aparelhos — e se há estatísticas de todo.
+        o histórico e os aparelhos.
+
+        ⚠️ Pergunta-se à fonte EXTERNA e não ao `api_client`: a fonte deste
+        painel é um despachante (`plex/stats_api.py`) e o `is_configured` dela
+        responde "há estatísticas", que passou a ser verdade sem Tautulli. Com
+        a pergunta antiga, o histórico ia bater ao Tautulli que não existe e
+        voltava vazio.
         """
-        cliente = getattr(self.stats_manager, 'api_client', None)
+        cliente = getattr(self.stats_manager, 'fonte_externa', None)
         return bool(cliente is not None and getattr(cliente, 'is_configured', False))
 
     def estatisticas_disponiveis(self):
         """O pódio, o XP, as conquistas, as recomendações e o Wrapped.
 
-        Saem todos do registo por reprodução que só o Tautulli guarda: sem ele,
-        o painel não tem de onde os tirar. A CAPACIDADE diz que este servidor
-        as suporta (e é o que mantém o cartão do Tautulli nas Conexões, sem o
-        qual não haveria onde o configurar); isto diz se elas existem AGORA.
+        🐛 **Isto exigia o Tautulli, e escondia tudo a quem não o tinha.** Era o
+        mesmo engano que o histórico já tinha corrigido: o Plex SABE o que cada
+        pessoa viu, e uma estatística com menos detalhe é muito melhor do que um
+        menu sem a entrada e uma página que redireciona. Hoje basta o servidor
+        estar ligado — sem Tautulli as reproduções vêm dele (`stats_api.py`),
+        com menos precisão e dentro de uma janela, o que está dito no cartão
+        das Conexões.
+
+        A CAPACIDADE diz que este servidor as suporta (e é o que mantém o
+        cartão do Tautulli nas Conexões, sem o qual não haveria onde o
+        configurar); isto diz se elas existem AGORA.
         """
-        return bool(self.CAPABILITIES.estatisticas and self._tautulli_ativo())
+        if not self.CAPABILITIES.estatisticas:
+            return False
+        if self._tautulli_ativo():
+            return True
+        return bool(getattr(self.stats_manager, 'api_client', None)
+                    and self.stats_manager.api_client.is_configured)
 
     def get_user_devices(self, user_id):
         """Os aparelhos de alguém, deduzidos do histórico.

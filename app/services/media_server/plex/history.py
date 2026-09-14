@@ -85,16 +85,16 @@ class PlexHistoryManager:
         pagina = max(1, int(page or 1))
         tamanho = max(1, int(length or 15))
 
-        conta = self._id_de_conta(user_id)
+        conta = self.id_de_conta(user_id)
         if conta is None:
             return {"success": True, "history": [], "pagination": self._paginacao(pagina, 0, tamanho)}
 
         try:
-            aparelhos = self._aparelhos_por_id()
+            aparelhos = self.aparelhos_por_id()
             if search:
                 return self._pesquisar(conta, aparelhos, search, pagina, tamanho)
 
-            entradas, total = self._entradas(conta, (pagina - 1) * tamanho, tamanho)
+            entradas, total = self.entradas(conta, (pagina - 1) * tamanho, tamanho)
             return {
                 "success": True,
                 "history": [self._traduzir(entrada, aparelhos) for entrada in entradas],
@@ -111,7 +111,7 @@ class PlexHistoryManager:
         O servidor não sabe filtrar o histórico por título (ver o cabeçalho do
         módulo), por isso a alternativa a isto era não ter caixa de pesquisa.
         """
-        entradas, _total = self._entradas(conta, 0, JANELA)
+        entradas, _total = self.entradas(conta, 0, JANELA)
         linhas = [self._traduzir(entrada, aparelhos) for entrada in entradas]
 
         termo = search.strip().casefold()
@@ -128,17 +128,23 @@ class PlexHistoryManager:
             "pagination": self._paginacao(pagina, len(encontradas), tamanho),
         }
 
-    def _entradas(self, conta: str, inicio: int, quantos: int) -> Tuple[List[Any], int]:
+    def entradas(self, conta: Optional[str], inicio: int, quantos: int) -> Tuple[List[Any], int]:
         """Uma página do histórico do servidor, e o total que ele diz existir.
 
         A paginação vai nos cabeçalhos, que é como o Plex a recebe — é também o
         que a `plexapi` faz por dentro, e o que evita trazer o histórico
         inteiro para mostrar quinze linhas.
+
+        `conta` a None traz o histórico de TODA a gente, que é o que o pódio e
+        as recomendações precisam (ver `stats_api.py`). Omitir o `accountID` é
+        diferente de mandá-lo vazio: com a chave presente e sem valor, o
+        servidor não devolve nada.
         """
-        chave = '/status/sessions/history/all' + plexapi_utils.joinArgs({
-            'accountID': conta,
-            'sort': 'viewedAt:desc',
-        })
+        filtros = {'sort': 'viewedAt:desc'}
+        if conta is not None:
+            filtros['accountID'] = conta
+
+        chave = '/status/sessions/history/all' + plexapi_utils.joinArgs(filtros)
         dados = self.conn.plex.query(chave, headers={
             'X-Plex-Container-Start': str(inicio),
             'X-Plex-Container-Size': str(quantos),
@@ -213,13 +219,13 @@ class PlexHistoryManager:
         plex.tv só lista os aparelhos do DONO do servidor, por isso os de um
         amigo não estão lá. Quem os sabe ligar a uma pessoa é o histórico.
         """
-        conta = self._id_de_conta(user_id)
+        conta = self.id_de_conta(user_id)
         if conta is None:
             return {"success": True, "devices": []}
 
         try:
-            entradas, _total = self._entradas(conta, 0, JANELA)
-            aparelhos = self._aparelhos_por_id()
+            entradas, _total = self.entradas(conta, 0, JANELA)
+            aparelhos = self.aparelhos_por_id()
         except Exception as e:
             logger.warning(f"O Plex não devolveu os aparelhos de {user_id}: {describe(e)}")
             return {"success": False, "message": _("Não foi possível obter os dispositivos.")}
@@ -246,7 +252,7 @@ class PlexHistoryManager:
             "devices": sorted(vistos.values(), key=lambda a: a['last_seen'], reverse=True),
         }
 
-    def _aparelhos_por_id(self) -> Dict[str, Dict[str, str]]:
+    def aparelhos_por_id(self) -> Dict[str, Dict[str, str]]:
         """O nome e a plataforma de cada aparelho que já tocou no servidor.
 
         O histórico traz só o `deviceID`; é esta lista que lhe dá um nome.
@@ -265,7 +271,7 @@ class PlexHistoryManager:
     # CONTAS
     # =========================================================================
 
-    def _id_de_conta(self, user_id: Any) -> Optional[str]:
+    def id_de_conta(self, user_id: Any) -> Optional[str]:
         """O id com que o SERVIDOR marca as reproduções desta pessoa.
 
         ⚠️ Para as contas partilhadas é o mesmo id de plex.tv que o painel
@@ -294,6 +300,38 @@ class PlexHistoryManager:
 
         logger.debug(f"O Plex não conhece nenhuma conta com o id {alvo}: histórico vazio.")
         return None
+
+    def ids_do_painel(self) -> Dict[str, str]:
+        """`accountID` do servidor → o id que o PAINEL guarda.
+
+        É a tradução de `id_de_conta` ao contrário, e existe pela mesma razão:
+        ⚠️ nas contas partilhadas os dois ids coincidem, mas o DONO é a conta
+        número 1 no servidor e tem outro id no plex.tv. Sem isto, as
+        reproduções do administrador ficavam agrupadas sob o id "1" — e o pódio
+        mostrava-o como um estranho, sem nível, sem cara e sem se ligar ao
+        perfil dele.
+        """
+        contas = self._contas()
+        if not contas:
+            return {}
+
+        tabela = {identificador: identificador for identificador in contas}
+
+        dono = getattr(self.conn, 'account', None)
+        id_do_dono = getattr(dono, 'id', None)
+        if id_do_dono is None:
+            return tabela
+
+        nome_do_dono = (getattr(dono, 'username', '') or getattr(dono, 'title', '') or '').strip().casefold()
+        for identificador, nome in contas.items():
+            if nome and nome.strip().casefold() == nome_do_dono:
+                tabela[identificador] = str(id_do_dono)
+                break
+        return tabela
+
+    def nomes_das_contas(self) -> Dict[str, str]:
+        """`accountID` → nome, para as linhas do histórico terem quem as viu."""
+        return self._contas() or {}
 
     def _contas(self) -> Optional[Dict[str, str]]:
         """As contas do servidor, `id` → nome. None quando não se conseguiu ler."""

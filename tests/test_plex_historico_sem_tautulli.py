@@ -393,8 +393,19 @@ class _Duplo:
 
 
 class TautulliFalso:
-    def __init__(self, configurado):
-        self.api_client = type('Cliente', (), {'is_configured': configurado})()
+    """O `StatsManager` visto pela fachada.
+
+    ⚠️ São DOIS estados diferentes, e confundi-los foi o bug: `fonte_externa`
+    é o cliente do Tautulli (existe sempre, inerte enquanto não tiver URL e
+    chave) e `api_client` é o despachante, cujo `is_configured` quer dizer
+    "há estatísticas" — verdade também quando elas vêm do próprio Plex.
+    """
+
+    def __init__(self, configurado, servidor_ligado=True):
+        self.fonte_externa = type('Externa', (), {'is_configured': configurado})()
+        self.api_client = type('Fonte', (), {
+            'is_configured': configurado or servidor_ligado,
+        })()
 
     def get_user_watch_history(self, user_id, page=1, length=15, search=""):
         return {"success": True, "history": ["do tautulli"], "pagination": {}}
@@ -411,12 +422,12 @@ class HistoricoFalso:
         return {"success": True, "devices": ["do plex"]}
 
 
-def _fachada(tautulli_configurado):
+def _fachada(tautulli_configurado, servidor_ligado=True):
     from app.services.media_server.plex.backend import PlexManager
 
     gestor = PlexManager(
         data_manager=_Duplo(),
-        stats_manager=TautulliFalso(tautulli_configurado),
+        stats_manager=TautulliFalso(tautulli_configurado, servidor_ligado),
         notifier_manager=_Duplo(),
         overseerr_manager=_Duplo(),
     )
@@ -439,15 +450,25 @@ class TestFachada:
         assert gestor.get_watch_history('77')['history'] == ["do plex"]
         assert gestor.get_user_devices('77')['devices'] == ["do plex"]
 
-    def test_as_estatisticas_dependem_do_tautulli_estar_configurado(self):
-        # A CAPACIDADE continua verdadeira — é ela que mantém o cartão do
-        # Tautulli nas Conexões, sem o qual não haveria onde o configurar.
+    def test_as_estatisticas_existem_sem_tautulli(self):
+        # 🐛 REGRESSÃO: isto devolvia False e escondia o pódio, o XP, as
+        # conquistas, as recomendações e o Wrapped a quem não tem Tautulli —
+        # o mesmo engano que o histórico já tinha corrigido, e sem a mesma
+        # desculpa: o Plex sabe o que cada pessoa viu.
         gestor = _fachada(False)
 
         assert gestor.capabilities.estatisticas is True
-        assert gestor.estatisticas_disponiveis() is False
-
+        # As duas metades do que isto afirma: HÁ estatísticas, e NÃO há
+        # Tautulli. Sem a segunda, o teste passava também com a pergunta
+        # antiga (que lia o campo errado e dizia que o Tautulli estava ativo).
+        assert gestor._tautulli_ativo() is False
+        assert gestor.estatisticas_disponiveis() is True
         assert _fachada(True).estatisticas_disponiveis() is True
+
+    def test_sem_tautulli_e_com_o_servidor_em_baixo_nao_ha_estatisticas(self):
+        # Sem nenhuma das duas fontes não há de onde as tirar, e aí escondê-las
+        # é a resposta certa: a alternativa era um menu cheio de páginas vazias.
+        assert _fachada(False, servidor_ligado=False).estatisticas_disponiveis() is False
 
     def test_um_tautulli_em_falta_nao_rebenta(self):
         from app.services.media_server.plex.backend import PlexManager

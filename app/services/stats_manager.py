@@ -97,6 +97,20 @@ class StatsManager:
         # mostrar "Offline" até 30s depois de o administrador corrigir o URL/chave.
         cache.delete_memoized(self._check_status_cached)
 
+    @property
+    def fonte_externa(self):
+        """O cliente do serviço À PARTE (o Tautulli), quando a fonte tem um.
+
+        ⚠️ **Não é o mesmo que `api_client`.** Num painel Plex a fonte é um
+        despachante: usa o Tautulli quando ele existe e o próprio servidor
+        quando não. Quem pergunta pelo ESTADO, pelo endereço ou pelo teste de
+        ligação quer o Tautulli — e `api_client.is_configured` passou a
+        responder "há estatísticas", que é outra pergunta. Sem esta distinção,
+        o estado do sistema mostrava o Tautulli OFFLINE num painel a funcionar
+        perfeitamente sem ele.
+        """
+        return getattr(self.api_client, 'externa', self.api_client)
+
     def check_status(self) -> Dict[str, str]:
         """
         Verifica o estado da conexão com o Tautulli de forma segura.
@@ -106,7 +120,7 @@ class StatsManager:
         Dashboard. 30 segundos é curto o suficiente para o estado continuar útil
         em diagnóstico.
         """
-        if not self.api_client.is_configured:
+        if not getattr(self.fonte_externa, 'is_configured', False):
             return {"status": "DISABLED", "message": _("Não configurado ou desativado.")}
 
         return self._check_status_cached()
@@ -114,7 +128,8 @@ class StatsManager:
     @cache.memoize(timeout=30)
     def _check_status_cached(self) -> Dict[str, str]:
         try:
-            test_result = self.api_client.test_connection(self.api_client.base_url, self.api_client.api_key)
+            externa = self.fonte_externa
+            test_result = externa.test_connection(externa.base_url, externa.api_key)
             if test_result.get('success'):
                 return {"status": "ONLINE", "message": _("Conectado com sucesso.")}
             else:
