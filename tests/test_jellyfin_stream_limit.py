@@ -10,6 +10,8 @@ e isso nenhum cliente pode ignorar.
 O painel continua a decidir o limite; o plugin passa a fazê-lo cumprir.
 """
 
+import logging
+
 import pytest
 
 from tests.test_jellyfin_backend import GUID, OUTRO, montar
@@ -26,10 +28,17 @@ ID_DO_PLUGIN = 'd98fbe02-daf3-4c09-a832-4b4e1d07326c'
 def cache_limpa(app_context):
     """A disponibilidade do plugin fica em cache (partilhada, em disco)."""
     from app.extensions import cache
+    from app.services.media_server.jellyfin.plugins import esquecer_o_que_ja_foi_anunciado
 
+    # ⚠️ O log do plugin só sai quando o estado MUDA, e essa memória é do
+    # processo — partilhado por toda a suíte. Sem a limpar, o primeiro teste a
+    # correr ficava com o anúncio e os seguintes não o veriam: uma falha que
+    # depende da ORDEM dos testes.
     cache.clear()
+    esquecer_o_que_ja_foi_anunciado()
     yield cache
     cache.clear()
+    esquecer_o_que_ja_foi_anunciado()
 
 
 def _backend(instalado=True, limites=None, padrao=0, data_manager=None, **extra):
@@ -40,6 +49,95 @@ def _backend(instalado=True, limites=None, padrao=0, data_manager=None, **extra)
     }
     respostas.update(extra)
     return montar(respostas, data_manager=data_manager)
+
+
+LOGGER_DOS_PLUGINS = 'app.services.media_server.jellyfin.plugins'
+
+
+class TestOAnuncioNoLog:
+    """🔇 REGRESSÃO REPORTADA: a mesma linha de dez em dez minutos, para sempre.
+
+        17:43:54 INFO ...plugins Plugin StreamLimiter encontrado: o limite de
+                                 telas passa a ser imposto pelo servidor.
+        17:53:54 INFO ...plugins Plugin StreamLimiter encontrado: ...
+        18:03:54 INFO ...plugins Plugin StreamLimiter encontrado: ...
+
+    A mensagem descreve um ESTADO, e era escrita a cada vez que a cache de dez
+    minutos expirava e a deteção voltava a correr. Num log que se lê para
+    perceber o que correu mal, uma linha que se repete sem nada ter mudado
+    empurra para fora do ecrã aquilo que interessa.
+    """
+
+    def _resolver(self, backend, cache):
+        """Força a deteção a correr outra vez, como se a cache tivesse expirado."""
+        cache.clear()
+        return backend.stream_limit.esta_disponivel()
+
+    def _linhas(self, caplog):
+        return [r.message for r in caplog.records
+                if r.name == LOGGER_DOS_PLUGINS and r.levelno >= logging.INFO]
+
+    def test_anuncia_uma_vez_e_nao_repete(self, cache_limpa, caplog):
+        backend = _backend(instalado=True)
+
+        with caplog.at_level(logging.INFO, logger=LOGGER_DOS_PLUGINS):
+            assert self._resolver(backend, cache_limpa) is True
+            assert self._resolver(backend, cache_limpa) is True
+            assert self._resolver(backend, cache_limpa) is True
+
+        linhas = self._linhas(caplog)
+        assert len(linhas) == 1, f"Devia anunciar uma só vez; escreveu {linhas}"
+        assert 'StreamLimiter encontrado' in linhas[0]
+
+    def test_quem_nunca_teve_o_plugin_nao_ouve_nada(self, cache_limpa, caplog):
+        # ⚠️ A ausência de um plugin OPCIONAL não é um acontecimento: trocar o
+        # ruído de "encontrado" pelo de "não está instalado" não era correção
+        # nenhuma.
+        backend = _backend(instalado=False)
+
+        with caplog.at_level(logging.INFO, logger=LOGGER_DOS_PLUGINS):
+            assert self._resolver(backend, cache_limpa) is False
+            assert self._resolver(backend, cache_limpa) is False
+
+        assert self._linhas(caplog) == []
+
+    def test_perder_o_plugin_avisa_uma_vez(self, cache_limpa, caplog):
+        # Desinstalar o StreamLimiter muda o que o painel consegue garantir, e
+        # isso não pode acontecer em silêncio.
+        with caplog.at_level(logging.INFO, logger=LOGGER_DOS_PLUGINS):
+            assert self._resolver(_backend(instalado=True), cache_limpa) is True
+
+            sem_plugin = _backend(instalado=False)
+            assert self._resolver(sem_plugin, cache_limpa) is False
+            assert self._resolver(sem_plugin, cache_limpa) is False
+
+        linhas = self._linhas(caplog)
+        assert len(linhas) == 2, f"Esperava um anúncio e um aviso; veio {linhas}"
+        assert 'já não está instalado' in linhas[1]
+
+    def test_uma_falha_de_rede_nao_passa_por_desaparecimento(self, cache_limpa, caplog):
+        # ⚠️ Não saber não é o mesmo que não existir. Com o servidor calado, a
+        # funcionalidade desliga-se até à próxima tentativa — mas dizer que o
+        # plugin foi desinstalado seria mentira, e mandaria o administrador
+        # procurar um problema que não existe.
+        with caplog.at_level(logging.INFO, logger=LOGGER_DOS_PLUGINS):
+            assert self._resolver(_backend(instalado=True), cache_limpa) is True
+
+            mudo = montar({}, erros={'/Plugins': JellyfinApiError('sem rede')})
+            assert self._resolver(mudo, cache_limpa) is False
+
+        linhas = self._linhas(caplog)
+        assert len(linhas) == 1, f"Só o anúncio inicial devia estar lá; veio {linhas}"
+
+    def test_o_plugin_voltar_volta_a_anunciar(self, cache_limpa, caplog):
+        with caplog.at_level(logging.INFO, logger=LOGGER_DOS_PLUGINS):
+            assert self._resolver(_backend(instalado=True), cache_limpa) is True
+            assert self._resolver(_backend(instalado=False), cache_limpa) is False
+            assert self._resolver(_backend(instalado=True), cache_limpa) is True
+
+        linhas = self._linhas(caplog)
+        assert len(linhas) == 3
+        assert 'encontrado' in linhas[2]
 
 
 class TestDeteccao:

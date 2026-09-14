@@ -367,6 +367,20 @@ e o Playback Reporting precisam do mesmo), com cache de 10 minutos — instalar
 um plugin obriga a reiniciar o Jellyfin, por isso não muda sozinho. Procura-se
 pelo GUID **e** pelo nome: o GUID é estável, o nome é o que se lê no log.
 
+🔇 **E o log dela só fala quando o estado MUDA.** "Plugin StreamLimiter
+encontrado: o limite de telas passa a ser imposto pelo servidor" descreve um
+ESTADO, mas era escrito a cada vez que a cache expirava — a mesma linha de dez
+em dez minutos, para sempre, a empurrar para fora do ecrã o que interessa. Hoje
+`_ja_anunciado` (memória do PROCESSO, não a cache: um painel que arranca deve
+dizer uma vez com que plugins conta, e guardá-lo em disco calava esse arranque)
+faz com que se anuncie uma vez ter passado a contar com o plugin, e uma vez ter
+deixado de poder contar — esta última em falta até agora, o que fazia de
+desinstalar o StreamLimiter uma mudança silenciosa no que o painel consegue
+garantir. ⚠️ Duas coisas que NÃO são mudanças de estado: uma falha de rede
+(`_procurar` devolve `None` e não se toca no que foi anunciado — não saber não é
+o mesmo que não existir) e um painel que nunca teve o plugin (a ausência de algo
+opcional não é um acontecimento, e anunciá-la seria trocar um ruído por outro).
+
 ⚠️ **Não tente trazer o bloqueio do StreamLimiter para dentro do painel.** É a
 pergunta óbvia e a resposta é não, por uma razão de arquitetura e não de
 esforço: o que faz o plugin funcionar é ele correr DENTRO do processo do

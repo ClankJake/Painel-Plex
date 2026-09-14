@@ -51,6 +51,9 @@ class JellyfinStreamLimit:
         return plugin_instalado(
             self.conn, ID_DO_PLUGIN, NOME_DO_PLUGIN, 'jellyfin_stream_limiter',
             "Plugin StreamLimiter encontrado: o limite de telas passa a ser imposto pelo servidor.",
+            "O plugin StreamLimiter já não está instalado: o limite de telas volta a ser "
+            "imposto apenas pelo painel, e os clientes que ignoram a ordem de parar "
+            "deixam de ser travados.",
         )
 
     # =========================================================================

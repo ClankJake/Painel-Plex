@@ -111,6 +111,8 @@ class JellyfinPlaybackReporting:
         return plugin_instalado(
             self.conn, ID_DO_PLUGIN, NOME_DO_PLUGIN, 'jellyfin_playback_reporting',
             "Plugin Playback Reporting encontrado: o histórico passa a ser por reprodução.",
+            "O plugin Playback Reporting já não está instalado: o histórico volta a ser "
+            "por item, e as estatísticas passam a ser aproximadas.",
         )
 
     # =========================================================================

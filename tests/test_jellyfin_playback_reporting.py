@@ -26,10 +26,17 @@ CONSULTA = '/user_usage_stats/submit_custom_query'
 def cache_limpa(app_context):
     """A disponibilidade do plugin fica em cache (partilhada, em disco)."""
     from app.extensions import cache
+    from app.services.media_server.jellyfin.plugins import esquecer_o_que_ja_foi_anunciado
 
+    # ⚠️ O log do plugin só sai quando o estado MUDA, e essa memória é do
+    # processo — partilhado por toda a suíte. Sem a limpar, o primeiro teste a
+    # correr ficava com o anúncio e os seguintes não o veriam: uma falha que
+    # depende da ORDEM dos testes.
     cache.clear()
+    esquecer_o_que_ja_foi_anunciado()
     yield cache
     cache.clear()
+    esquecer_o_que_ja_foi_anunciado()
 
 
 def _linha(data="2026-09-12 08:42:29", item_id="item-1", tipo="Movie",
