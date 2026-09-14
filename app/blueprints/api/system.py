@@ -137,7 +137,10 @@ def get_active_streams():
 @limiter.exempt 
 def get_system_health():
     """Verifica e retorna o estado de todos os serviços integrados."""
-    health_status = {"plex": media_server.check_status()}
+    # ⚠️ A chave chamava-se 'plex' e o painel mostrava "Servidor Plex" por cima do
+    # estado de um Jellyfin. O rótulo vem agora do próprio servidor
+    # (`media_server.short_name`, no template) e a chave deixou de o presumir.
+    health_status = {"media_server": media_server.check_status()}
 
     # O Tautulli só fala com o Plex: num painel cujas estatísticas saem do
     # próprio servidor de média não é um serviço "desativado", é um serviço que
