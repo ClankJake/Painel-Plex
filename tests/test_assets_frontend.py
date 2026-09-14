@@ -96,3 +96,38 @@ def test_o_dockerfile_nao_repete_os_caminhos_das_bibliotecas():
         f"O Dockerfile voltou a copiar bibliotecas por caminho: {repetidos}. "
         "Isso duplica a lista do 'copy:vendor' e as duas vão divergir."
     )
+
+
+# ============================================================================
+# A conversão de `data-*` para a chave do `dataset`
+# ============================================================================
+
+# Um `data-*` cujo traço final é seguido de um NÚMERO.
+DATA_TERMINADO_EM_NUMERO = re.compile(r'\bdata-[a-z0-9-]*-\d+\s*=')
+
+
+def test_nenhum_data_attribute_termina_em_traco_e_numero():
+    """🐛 A página de convite escrevia "undefined" no "Como começar".
+
+    O browser só come o '-' de um `data-*` quando o que vem a seguir é uma
+    LETRA MINÚSCULA. `data-i18n-step-local-1` chega ao `dataset` como
+    `i18nStepLocal-1`, com o traço intacto — e o JavaScript, que corta o
+    prefixo e pede `stepLocal1`, recebia `undefined`. Era isso que a pessoa
+    lia, escrito por extenso, nas instruções de um servidor de contas locais.
+
+    ⚠️ Os leitores não são todos iguais: alguns ficheiros já convertem os
+    traços que sobram (`chaveEmCamelCase`) e outros ainda cortam só o prefixo.
+    Enquanto isso for verdade, a regra segura é uma só: **nunca termine um
+    `data-*` com traço e número**. Escreva o número por extenso
+    (`-one`, `-two`) ou junte-o à palavra (`step1-text`).
+    """
+    infratores = []
+    for template in sorted(TEMPLATES.rglob('*.html')):
+        for linha_num, linha in enumerate(template.read_text(encoding='utf-8').splitlines(), 1):
+            for achado in DATA_TERMINADO_EM_NUMERO.findall(linha):
+                infratores.append(f"{template.relative_to(RAIZ).as_posix()}:{linha_num} {achado}")
+
+    assert infratores == [], (
+        "Estes atributos chegam ao dataset com o traço intacto e o JavaScript "
+        "não os encontra:\n  " + "\n  ".join(infratores)
+    )

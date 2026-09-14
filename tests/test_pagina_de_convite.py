@@ -90,6 +90,77 @@ class TestOsTextosSeguemOServidor:
         assert 'Instale a aplicação do Jellyfin' in pagina
 
 
+class TestOComoComecar:
+    """🐛 A secção mostrava "undefined", duas vezes, em vez das instruções.
+
+    `data-i18n-step-local-1` chega ao `dataset` como `i18nStepLocal-1` — o
+    browser só come o traço quando o que vem a seguir é uma letra minúscula — e
+    o JavaScript pedia `stepLocal1`. A regra vive agora num teste que percorre
+    todos os templates (`tests/test_assets_frontend.py`); aqui guarda-se o que a
+    pessoa lê.
+    """
+
+    def test_os_tres_passos_estao_la(self, client, db_session, servidor):
+        servidor(cria_contas=True)
+
+        pagina = client.get('/invite/ABC').get_data(as_text=True)
+
+        for chave in ('data-i18n-step-local-one', 'data-i18n-step-local-two',
+                      'data-i18n-step-local-three'):
+            assert chave in pagina
+
+    def test_dizem_o_que_e_preciso_fazer(self, client, db_session, servidor):
+        servidor(cria_contas=True)
+
+        pagina = client.get('/invite/ABC').get_data(as_text=True)
+
+        # Escolher as credenciais, guardá-las (não se recuperam) e onde entrar.
+        assert 'Escolha abaixo o utilizador e a palavra-passe' in pagina
+        assert 'não as pode recuperar' in pagina
+        assert 'Instale a aplicação do Jellyfin' in pagina
+
+    def test_explicam_primeiro_o_que_e_o_servidor(self, client, db_session, servidor):
+        # A versão do Plex tinha um "O que é o Plex?"; a de contas locais não
+        # tinha nada — quem chega por um link de um amigo não sabe o que é isto.
+        servidor(cria_contas=True)
+
+        pagina = client.get('/invite/ABC').get_data(as_text=True)
+
+        assert 'data-i18n-what-is-local' in pagina
+        assert 'A sua conta é criada aqui mesmo' in pagina
+
+    def test_o_javascript_nao_pede_nada_que_o_template_nao_envie(self, client, db_session, servidor):
+        """A cadeia inteira: atributo → `dataset` do browser → chave do `invite.js`.
+
+        ⚠️ A conversão é feita aqui como o BROWSER a faz — o traço só desaparece
+        quando o que vem a seguir é uma letra minúscula. Derivar a chave "como
+        seria de esperar" faria este teste passar sobre o bug que ele devia
+        apanhar.
+        """
+        import re
+        from pathlib import Path
+
+        servidor(cria_contas=True)
+        pagina = client.get('/invite/ABC').get_data(as_text=True)
+
+        def do_dataset(atributo):
+            """`data-i18n-step-local-one` -> `i18nStepLocalOne`."""
+            return re.sub(r'-([a-z])', lambda m: m.group(1).upper(), atributo[len('data-'):])
+
+        def do_invite_js(chave):
+            """O que o `chaveEmCamelCase(chave, 4)` produz."""
+            return chave[4].lower() + re.sub(r'-(\w)', lambda m: m.group(1).upper(), chave[5:])
+
+        enviadas = {do_invite_js(do_dataset(a))
+                    for a in re.findall(r'(data-i18n-[a-z0-9-]+)=', pagina)}
+
+        js = (Path(__file__).resolve().parent.parent / 'app' / 'static' / 'js' / 'invite.js').read_text(encoding='utf-8')
+        pedidas = (set(re.findall(r"texto\('([a-zA-Z0-9]+)'", js))
+                   | set(re.findall(r"i18n\.([a-zA-Z0-9]+)", js)))
+
+        assert pedidas - enviadas == set()
+
+
 class TestOFormularioDeRegisto:
     def test_avisa_que_a_palavra_passe_nao_se_recupera(self, client, db_session, servidor):
         # O painel não a guarda nem tem como a repor: dizê-lo antes vale mais do

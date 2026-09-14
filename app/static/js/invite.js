@@ -3,7 +3,7 @@
  * Lógica para a página de resgate de convites.
  */
 
-import { setButtonLoading, restoreButton, escapeHTML, buildPinCheckUrl } from './utils.js';
+import { setButtonLoading, restoreButton, escapeHTML, buildPinCheckUrl, chaveEmCamelCase } from './utils.js';
 
 // --- INICIALIZAÇÃO ---
 const scriptTag = document.getElementById('invite-script');
@@ -44,17 +44,29 @@ function formatTime(date) {
 const urls = {};
 const i18n = {};
 const config = {};
+// 🐛 A conversão TEM de comer os traços que o browser deixou: ele só os
+// remove quando vêm seguidos de uma letra minúscula, e `data-i18n-step-local-1`
+// chega ao dataset como `i18nStepLocal-1`. Sem isto, a chave ficava
+// `stepLocal-1`, o consumidor pedia `stepLocal1` e a página escrevia
+// "undefined" no "Como começar". Ver `chaveEmCamelCase`.
 for (const key in scriptTag.dataset) {
     if (key.startsWith('config')) {
-        const configKey = key.charAt(6).toLowerCase() + key.slice(7);
-        config[configKey] = scriptTag.dataset[key];
+        config[chaveEmCamelCase(key, 6)] = scriptTag.dataset[key];
     } else if (key.startsWith('url')) {
-        const urlKey = key.charAt(3).toLowerCase() + key.slice(4);
-        urls[urlKey] = scriptTag.dataset[key];
+        urls[chaveEmCamelCase(key, 3)] = scriptTag.dataset[key];
     } else if (key.startsWith('i18n')) {
-        const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
-        i18n[i18nKey] = scriptTag.dataset[key];
+        i18n[chaveEmCamelCase(key, 4)] = scriptTag.dataset[key];
     }
+}
+
+/**
+ * Um texto do dicionário, nunca `undefined`.
+ *
+ * Uma chave em falta é um erro de programação — mas escrevê-lo na cara de quem
+ * está a resgatar um convite é pior do que mostrar a frase incompleta.
+ */
+function texto(chave, alternativa = '') {
+    return i18n[chave] || alternativa;
 }
 
 let pinCheckInterval = null;
@@ -352,13 +364,20 @@ function comoComecarPlex() {
 
 function comoComecarLocal() {
     // Num servidor de contas locais não há conta externa para criar primeiro: a
-    // conta nasce aqui, e os passos são outros.
+    // conta nasce aqui, e os passos são outros — incluindo o que não existe no
+    // Plex: a palavra-passe é escolhida agora e não se recupera depois.
+    const passos = [
+        texto('stepLocalOne'),
+        texto('stepLocalTwo'),
+        texto('stepLocalThree'),
+    ].filter(Boolean);
+
     return `
         <div class="text-left mt-6 border-t border-gray-200 dark:border-gray-700/50 pt-6">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">${i18n.howToStartLocal}</h3>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">${texto('howToStartLocal')}</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">${texto('whatIsLocal')}</p>
             <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-400 step-list">
-                <li>${i18n.stepLocal1}</li>
-                <li>${i18n.stepLocal2}</li>
+                ${passos.map((passo) => `<li>${passo}</li>`).join('')}
             </ol>
         </div>`;
 }

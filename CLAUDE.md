@@ -836,6 +836,17 @@ grandes quebram em `*_modules/` com a mesma divisão (`api`, `config`, `dom`,
 `sanitizeHTML` escapam também aspas, porque o resultado é interpolado dentro de
 atributos.
 
+⚠️ **NUNCA termine um atributo `data-*` com traço e número.** O browser só come
+o '-' quando o que vem a seguir é uma LETRA MINÚSCULA: `data-i18n-step-local-1`
+chega ao `dataset` como `i18nStepLocal-1`, com o traço intacto, e o JavaScript
+que pede `stepLocal1` recebe `undefined` — era isso que a página de convite
+escrevia, por extenso, no "Como começar". Escreva o número por extenso
+(`-one`, `-two`) ou junte-o à palavra (`step1-text`, que funciona porque o
+traço vem ANTES do número). `chaveEmCamelCase()` (`utils.js`) faz a conversão
+que come os traços que sobram, mas nem todos os ficheiros a usam ainda — há um
+teste que percorre os templates e impede a armadilha
+(`tests/test_assets_frontend.py`).
+
 ⚠️ **Um macro importado com `{% import %}` NÃO vê o contexto do template** — só
 os argumentos que recebe. O símbolo do painel (`partials/logo.html`) é um macro
 por isso mesmo: não lê nada do contexto, recebe as classes de quem o chama.

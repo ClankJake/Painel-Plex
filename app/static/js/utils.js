@@ -314,3 +314,22 @@ export function buildPinCheckUrl(urlTemplate, clientId, pinId) {
         .replace('999999', encodeURIComponent(String(pinId)))
         .replace('__CLIENT_ID__', encodeURIComponent(String(clientId)));
 }
+
+
+/**
+ * A chave com que um `data-*` chega ao `dataset`, convertida para camelCase.
+ *
+ * 🐛 O browser só come o '-' quando ele é seguido de uma LETRA minúscula:
+ * `data-i18n-step-local-1` chega ao dataset como `i18nStepLocal-1`, com o
+ * traço intacto. Quem depois cortava o prefixo e mais nada ficava com a chave
+ * `stepLocal-1` — e o consumidor, que pede `stepLocal1`, recebia `undefined`.
+ * Era isso que a página de convite mostrava, escrito por extenso, no "Como
+ * começar" de um servidor de contas locais.
+ *
+ * @param {string} chaveDoDataset a propriedade tal como o browser a criou
+ * @param {number} prefixo quantas letras do prefixo saltar ('i18n' = 4)
+ */
+export function chaveEmCamelCase(chaveDoDataset, prefixo) {
+    return chaveDoDataset.charAt(prefixo).toLowerCase()
+        + chaveDoDataset.slice(prefixo + 1).replace(/-(\w)/g, (_, letra) => letra.toUpperCase());
+}
