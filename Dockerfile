@@ -7,11 +7,19 @@ FROM node:20-bookworm-slim AS frontend-builder
 WORKDIR /build
 
 # Copia os ficheiros de definição de dependências e configuração do frontend
-COPY package.json ./
+#
+# ⚠️ O `package-lock.json` vem JUNTO de propósito. Sem ele, o `npm install`
+# resolvia de fresco a cada build: a imagem podia sair com versões diferentes
+# das de ontem sem que nada mudasse no repositório — e foi por isso que ninguém
+# reparou que o lockfile versionado estava inutilizável (os hashes eram de
+# tarballs re-empacotados por um espelho, e o registo público recusava-os).
+COPY package.json package-lock.json ./
 COPY tailwind.config.js .
 
-# Instala as dependências de frontend
-RUN npm install
+# `npm ci` e não `npm install`: instala EXATAMENTE o que o lockfile fixa e
+# recusa-se a continuar se ele estiver dessincronizado do package.json. Um build
+# que falha alto é melhor do que uma imagem que ninguém sabe do que é feita.
+RUN npm ci
 
 # Copia o código-fonte da aplicação que contém as classes do Tailwind
 COPY app ./app

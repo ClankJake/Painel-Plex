@@ -15,6 +15,7 @@ falhe aqui, e não no navegador de quem instalou.
 """
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -22,6 +23,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 TEMPLATES = RAIZ / 'app' / 'templates'
+DIST = RAIZ / 'app' / 'static' / 'dist'
 
 # O `build:css` do Tailwind gera este, e não passa pelo `copy:vendor`.
 GERADOS_PELO_CSS = {'output.css'}
@@ -52,6 +54,37 @@ def test_todo_o_asset_pedido_e_gerado():
         "Estes ficheiros são pedidos pelos templates mas nada os põe em "
         f"app/static/dist/: {em_falta}. Acrescente-os ao 'copy:vendor' do "
         "package.json — senão o navegador vai acusar que a biblioteca não existe."
+    )
+
+
+def test_os_assets_pedidos_estao_mesmo_no_disco():
+    """Depois de `npm run build`, o que os templates pedem tem de estar lá.
+
+    ⚠️ Os outros testes deste ficheiro verificam as DECLARAÇÕES — que o
+    `copy:vendor` cobre o que o HTML pede, que o `build` corre as duas metades.
+    Nenhum deles chega a correr o build, por isso nenhum apanha um `npm install`
+    que morre nem um Tailwind que não gera nada. Este verifica o RESULTADO.
+
+    `app/static/dist/` não está versionado, por isso em desenvolvimento este
+    teste SALTA — quem ainda não correu o build não é quem está errado. No CI a
+    variável `PAINEL_EXIGE_DIST` transforma o salto numa falha: um passo que
+    existe para apanhar um build partido não pode passar sem correr.
+    """
+    if not DIST.is_dir():
+        if os.environ.get('PAINEL_EXIGE_DIST') == '1':
+            pytest.fail(
+                f"{DIST} não existe depois do build. O `npm run build` correu mesmo? "
+                "É o passo que põe o CSS e as bibliotecas onde os templates as procuram."
+            )
+        pytest.skip("app/static/dist/ ainda não foi gerado (corra `npm run build`).")
+
+    em_falta = sorted(
+        nome for nome in _pedidos_pelos_templates() if not (DIST / nome).is_file()
+    )
+
+    assert em_falta == [], (
+        f"O build correu mas estes ficheiros não ficaram em {DIST}: {em_falta}. "
+        "É o que o navegador vai pedir e não encontrar."
     )
 
 

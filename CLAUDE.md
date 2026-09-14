@@ -51,18 +51,26 @@ flask db migrate -m "descrição"
 flask db upgrade
 ```
 
-Não há linter nem formatador configurados. O CI (`.github/workflows/tests.yml`)
-corre apenas o pytest, em Python 3.11 e 3.12 — **não toca no frontend**, por isso
-um `npm install` partido não aparece ali.
+Não há linter nem formatador configurados. O CI
+(`.github/workflows/tests.yml`) tem dois jobs: o **pytest**, em Python 3.11 e
+3.12, e o **build do frontend** (`npm ci` + `npm run build`).
 
 ⚠️ **O `package-lock.json` tem de vir do registo PÚBLICO.** O que estava
 versionado registava os hashes de tarballs RE-EMPACOTADOS por um espelho: 68 dos
 70 pacotes tinham um `integrity` que o `registry.npmjs.org` não serve, e o
-`npm install` morria com `EINTEGRITY` para quem clonasse o repositório. Ninguém
-deu por isso porque o Dockerfile copia só o `package.json` e resolve de fresco —
-a imagem construía na mesma, com versões que o lockfile nunca chegou a fixar.
-Se o `npm install` voltar a acusar "tarball seems to be corrupted", é isto, e a
-correção é regenerar o lockfile fora desse espelho.
+`npm install` morria com `EINTEGRITY` para quem clonasse o repositório. Se ele
+voltar a acusar "tarball seems to be corrupted", é isto — e a correção é
+regenerar o lockfile fora desse espelho.
+
+**Três coisas o deixaram passar despercebido, e as três estão fechadas**: o CI
+não corria npm (agora corre), o Dockerfile copiava só o `package.json` e
+resolvia de fresco (agora leva o lockfile e usa `npm ci`), e nenhum teste
+chegava a correr o build — os de `test_assets_frontend.py` verificavam as
+DECLARAÇÕES, não o resultado. O que fecha esse último é
+`test_os_assets_pedidos_estao_mesmo_no_disco`, que salta em desenvolvimento (o
+`dist/` não é versionado) e, com `PAINEL_EXIGE_DIST=1`, exige que o build tenha
+mesmo corrido — um passo que existe para apanhar um build partido não pode
+passar sem correr.
 
 ## Arquitetura
 
