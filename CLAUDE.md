@@ -900,6 +900,50 @@ Pela mesma razão, o debounce do `StreamManager` deixou de ser um
 `threading.Timer` e passou a `gevent.spawn_later` — num painel a correr, era o
 outro que ficava em voo em cada encerramento.
 
+⚠️ **E ainda assim não chegou, porque faltavam duas coisas ao diagnóstico.** Em
+Docker o erro voltou, e com ele um pior: escolher o Jellyfin no assistente
+gravava tudo certo — a ligação validada, o aviso de que o tipo de servidor
+mudou — e o painel voltava com a página de login do **Plex**, e ficava assim.
+
+As duas eram a mesma coisa: o **`--preload` do gunicorn**, que estava no `CMD` do
+Dockerfile. Com ele, o `create_app()` corre no processo MESTRE e cada worker é um
+`fork` dessa memória — a aplicação é lida UMA vez, no arranque do contentor, e
+nunca mais. Mas o reinício do painel é o processo a pedir a própria morte
+(`os.kill(os.getpid(), SIGTERM)`), e quem morre é o WORKER: o mestre levanta
+outro a partir da memória pré-carregada, **com o config antigo lá dentro**. E o
+`Thread-1` do traceback era o timer do limitador criado no MESTRE, antes do
+`fork`: o worker herda-o já marcado como "stopped" pelo `threading._after_fork`
+(que também o tira do `_active`), por isso o `_parar_o_limitador()` — que cancela
+o timer ATUAL — nunca lhe tocava.
+
+Sem `--preload`, os dois desaparecem: cada worker lê a aplicação de fresco (a
+troca de servidor passa a valer) e não há nada em voo para herdar. Não se perde
+nada — ele serve para poupar memória entre VÁRIOS workers, e aqui há **um** de
+propósito. Em troca, o agendador passa a correr no worker em vez de ficar no
+mestre, que é onde o `fork` o deixava (as threads não sobrevivem a um, por isso
+o worker ficava com um `scheduler.running` a dizer que sim sobre uma thread que
+já não existia).
+
+⚠️ **E o SIGTERM do painel nunca chega ao `shutdown_scheduler`.** Sob gunicorn o
+worker instala os handlers dele por cima dos nossos a seguir ao `fork`, e o que
+corre é o encerramento gracioso do gunicorn. Por isso a limpeza não pode
+depender do sinal: é o próprio `_agendar_reinicio` que chama
+`parar_servicos_de_fundo()` antes de mandar terminar, com o processo ainda de
+pé. (O `shutdown_scheduler` continua a fazer falta — é o caminho de quem corre
+`python run.py` ou usa systemd.)
+
+⚠️ **Quem responde enquanto o processo antigo não sai é o processo ANTIGO.** O
+worker só termina quando não houver ligações a ser servidas, e uma ligação
+keep-alive do navegador nunca fecha sozinha: são os 30 segundos do
+`--graceful-timeout` por inteiro, sempre que há um separador aberto. O JavaScript
+esperava oito segundos fixos e recarregava — a tempo de apanhar o painel a
+morrer, que é como quem escolheu o Jellyfin via a página do Plex. Hoje cada
+arranque tem uma marca (`BOOT_ID`, em `create_app`), quem pede o reinício
+recebe-a na resposta, e `aguardarReinicio()` (`static/js/reinicio.js`) pergunta a
+`/api/system/status` até ela MUDAR. A rota está fora do limitador e isenta do
+assistente — é pedida de segundo a segundo e, num restauro, ainda não há
+configuração —, e não diz nada que a página de login já não mostre.
+
 ⚠️ **Primeiro calar, depois trocar.** `_restaurar_backup()` chama
 `parar_servicos_de_fundo()` ANTES de substituir os ficheiros. Sem isso, o
 agendador — que continua vivo — relia o jobstore restaurado, encontrava lá as

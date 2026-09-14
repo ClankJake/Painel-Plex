@@ -1,4 +1,5 @@
 import { showToast, buildPinCheckUrl, escapeHTML } from './utils.js';
+import { aguardarReinicio } from './reinicio.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- ESTADO E DADOS GLOBAIS ---
@@ -481,8 +482,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok || !data.success) throw new Error(data.message || `HTTP ${response.status}`);
 
             showToast(data.message || (i18n.restoreSuccess || 'Backup restaurado!'), 'success');
-            // O servidor reinicia sozinho; damos tempo e recarregamos.
-            setTimeout(() => window.location.reload(), 8000);
+            // O servidor reinicia sozinho. Esperamos que ele volte — a marca do
+            // arranque muda — em vez de contar oito segundos e torcer.
+            aguardarReinicio({
+                url: urls.status,
+                bootId: data.boot_id,
+                aoVoltar: () => window.location.reload(),
+            });
         } catch (error) {
             showToast(`${i18n.restoreFailed || 'Falha ao restaurar'}: ${error.message}`, 'error');
             restoreSubmit.disabled = false;
@@ -535,7 +541,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (result.restarting) {
                     showToast(result.message || i18n.restarting, 'success');
                     finishButton.textContent = i18n.restarting || '';
-                    setTimeout(() => { window.location.href = result.redirect_url || '/'; }, 8000);
+                    // ⚠️ Não basta esperar: o processo antigo continua a
+                    // responder enquanto não sai, e ele ainda fala com o
+                    // servidor ANTIGO. Recarregar cedo demais devolvia a página
+                    // de login do Plex a quem acabou de escolher o Jellyfin.
+                    aguardarReinicio({
+                        url: urls.status,
+                        bootId: result.boot_id,
+                        aoVoltar: () => { window.location.href = result.redirect_url || '/'; },
+                    });
                     return;
                 }
                 window.location.href = result.redirect_url;

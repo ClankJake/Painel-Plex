@@ -2,6 +2,7 @@ import os
 import logging
 import atexit
 import signal
+import uuid
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 from tzlocal import get_localzone_name
@@ -288,6 +289,17 @@ def create_app() -> Flask:
     """
     app = Flask(__name__)
 
+    # 🔁 A marca deste ARRANQUE. Serve para o navegador saber que o painel que
+    # lhe responde já é o processo NOVO, e não o antigo a acabar de morrer.
+    #
+    # 🐛 Sem ela, quem acabava o assistente (ou restaurava um backup) só tinha
+    # uma contagem de oito segundos e uma esperança. O worker demora a sair — só
+    # o faz quando não há ligações a ser servidas, e um separador aberto conta —
+    # por isso o navegador voltava a tempo de apanhar o processo ANTIGO, o que
+    # depois de escolher o Jellyfin queria dizer a página de login do Plex.
+    # Agora pergunta-se, e só se recarrega quando a marca muda.
+    app.config['BOOT_ID'] = uuid.uuid4().hex
+
     # ==========================================
     # CARREGAMENTO DE CONFIGURAÇÕES
     # ==========================================
@@ -504,7 +516,10 @@ def create_app() -> Flask:
             # o sistema fica configurado.
             'system_api.test_jellyfin_connection', 'system_api.get_jellyfin_users_for_setup',
             'auth.get_plex_auth_context', 'auth.check_plex_pin', 
-            'auth.check_plex_pin_for_token', 'auth.auth_status'
+            'auth.check_plex_pin_for_token', 'auth.auth_status',
+            # Quem está à espera do reinício tem de poder perguntar se o painel
+            # já voltou — e nessa altura pode ainda não haver configuração.
+            'system_api.estado_do_processo'
         }
 
         # Força o ecrã de setup inicial se o config.json for virgem

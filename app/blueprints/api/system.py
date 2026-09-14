@@ -534,6 +534,30 @@ def api_settings():
 # SETUP E DIAGNÓSTICO (TESTES)
 # ==========================================
 
+@system_api_bp.route('/status')
+@limiter.exempt
+def estado_do_processo():
+    """Diz quem está a responder: que arranque, e que servidor de média.
+
+    É a rota que o navegador consulta enquanto espera por um reinício — o do
+    assistente ao trocar de servidor, e o de um restauro de backup. Ela é
+    pedida de segundo a segundo durante esse tempo, e por isso está fora do
+    limitador: o que a protege é não haver aqui nada a proteger.
+
+    🔒 Não devolve nada que não esteja já à vista de quem abre o painel: a marca
+    do arranque é um número aleatório sem significado fora desta espera, e a
+    marca do servidor de média é o que a própria página de login mostra a quem
+    chega ("Entrar com o Plex", o formulário do Jellyfin). Não pode exigir
+    sessão: quem faz a pergunta está precisamente no momento em que o painel
+    não responde.
+    """
+    return jsonify({
+        "success": True,
+        "boot_id": _marca_de_arranque(),
+        "media_server_type": getattr(_ext.media_server, 'SERVER_TYPE', None),
+    })
+
+
 @system_api_bp.route('/setup/servers')
 def get_plex_servers():
     token = session.get('plex_token')
@@ -618,6 +642,8 @@ def setup_restore_backup():
 
     return jsonify({
         "success": True,
+        "restarting": True,
+        "boot_id": _marca_de_arranque(),
         "message": _("Backup restaurado com sucesso! A aplicação será reiniciada — aguarde e recarregue a página.")
     })
 
@@ -657,15 +683,44 @@ def _agendar_reinicio(motivo: str):
     HTTP de chegar ao navegador antes de o processo morrer. Estava copiado em
     três sítios — o restauro de backup no assistente, o restauro nas
     definições e a troca de servidor de média.
+
+    ⚠️ **Calar os serviços de fundo faz parte de mandar terminar.** Sob gunicorn,
+    o SIGTERM que enviamos a nós próprios NÃO chega ao `shutdown_scheduler` do
+    painel: o worker instala os handlers dele por cima dos nossos depois do
+    `fork`, e o que corre é o encerramento gracioso do gunicorn. Tudo o que
+    ficasse em voo — o agendador, o listener de eventos, a varredura periódica
+    do Flask-Limiter — só era desmontado no desmonte do interpretador, que é
+    precisamente onde um `threading.Timer` sob gevent acorda com o
+    `threading._active` já desfeito e deixa um `KeyError` no log logo a seguir a
+    uma instalação BEM-SUCEDIDA. Fazê-lo aqui, com o processo ainda de pé, é
+    determinístico.
+
+    O restauro de backup já chamava o mesmo (por outra razão: não deixar
+    ninguém a escrever na base de dados que está a ser substituída) — e é
+    idempotente, por isso continuar a chamá-lo lá não custa nada.
     """
     logger.warning(f"⚠️ {motivo} A aplicação vai reiniciar...")
 
     def _reinicio_adiado():
         import time as _time
         _time.sleep(2)
+
+        from ... import parar_servicos_de_fundo
+        parar_servicos_de_fundo()
+
         os.kill(os.getpid(), signal.SIGTERM)
 
     threading.Thread(target=_reinicio_adiado, daemon=True).start()
+
+
+def _marca_de_arranque() -> str:
+    """A marca deste processo, para quem está à espera do reinício.
+
+    Quem pede o reinício leva-a na resposta e fica a perguntar por ela até
+    mudar: enquanto for a mesma, quem responde é o processo ANTIGO, que ainda
+    não morreu — e recarregar aí é voltar ao painel que se acabou de trocar.
+    """
+    return str(current_app.config.get('BOOT_ID', ''))
 
 
 def _concluir_com_reinicio(config, backend):
@@ -691,11 +746,13 @@ def _concluir_com_reinicio(config, backend):
         resposta = _login_user_session(conta, 'admin', 'main.index')
         corpo = resposta.get_json()
         corpo['restarting'] = True
+        corpo['boot_id'] = _marca_de_arranque()
         corpo['message'] = _("Configuração salva. A aplicação vai reiniciar — aguarde alguns segundos e recarregue a página.")
         return jsonify(corpo)
 
     return jsonify({
         "success": True, "restarting": True,
+        "boot_id": _marca_de_arranque(),
         "redirect_url": url_for('main.index', _external=False),
         "message": _("Configuração salva. A aplicação vai reiniciar — aguarde alguns segundos e recarregue a página."),
     })
@@ -1417,5 +1474,7 @@ def backup_restore():
 
     return jsonify({
         "success": True,
+        "restarting": True,
+        "boot_id": _marca_de_arranque(),
         "message": _("Backup restaurado com sucesso! A aplicação será reiniciada automaticamente em alguns segundos — aguarde e recarregue a página.")
     })

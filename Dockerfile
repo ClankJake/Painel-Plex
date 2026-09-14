@@ -112,7 +112,46 @@ COPY --from=frontend-builder /build/app/static/dist ./app/static/dist
 # Expor a Porta: Informa ao Docker que a aplicação irá escutar na porta definida pela variável de ambiente.
 EXPOSE ${APP_PORT}
 
-# Comando de Execução: Executa a migração da base de dados e depois inicia o Gunicorn.
-# O Gunicorn agora usa a variável de ambiente $APP_PORT para definir a porta de escuta.
-# ADICIONADO: --preload flag para inicializar a app antes de fazer fork dos workers.
-CMD ["sh", "-c", "flask db upgrade && gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --worker-connections 1000 --timeout 120 --preload --bind 0.0.0.0:${APP_PORT} run:app"]
+# Comando de Execução: aplica as migrações e sobe o Gunicorn na porta $APP_PORT.
+#
+# 🐛 **O `--preload` estava aqui e era a causa de dois erros de uma vez.** Com ele,
+# o `create_app()` corre no processo MESTRE e os workers são um `fork` dessa
+# memória — o que quer dizer que a aplicação é lida UMA vez, no arranque do
+# contentor, e nunca mais.
+#
+# O painel conta com o contrário. Trocar de servidor de média obriga a reiniciar
+# (os blueprints guardam a referência ao backend POR VALOR), e a forma de o
+# fazer é o processo pedir a própria morte: `_agendar_reinicio()` manda um
+# SIGTERM a si mesmo e conta com o supervisor para o levantar de novo. Só que
+# quem morre é o WORKER, e o mestre volta a fazer `fork` da memória PRÉ-CARREGADA
+# — com o config antigo lá dentro. Depois de escolher o Jellyfin no assistente, a
+# página de login continuava a ser a do Plex, e continuaria a sê-lo até alguém
+# reiniciar o contentor à mão.
+#
+# O segundo erro vinha do mesmo `fork`: o Flask-Limiter arranca um
+# `threading.Timer` no construtor do armazenamento em memória, e sob gevent isso
+# é um greenlet. Pré-carregar cria-o no MESTRE; o worker herda-o já marcado como
+# "stopped" pelo `threading._after_fork` (que o tira do `_active`) e, quando ele
+# acorda, o `Thread._bootstrap` faz `del _active[get_ident()]` sobre uma chave
+# que já não existe:
+#
+#     KeyError: 271255370948160
+#     <Greenlet ...: <bound method Thread._bootstrap of
+#      <Timer(Thread-1, stopped ...)>>> failed with KeyError
+#
+# O `Thread-1` é a assinatura: é o PRIMEIRO thread do processo, criado antes do
+# `fork`. Sem `--preload` não há nada em voo para herdar.
+#
+# E não se perde nada: o `--preload` serve para poupar memória entre VÁRIOS
+# workers, e aqui há **um** de propósito (gevent + SocketIO sem `message_queue`).
+# Em troca, o agendador passa a correr no worker — que é onde o resto do painel
+# vive — em vez de correr no mestre, onde ficava por causa do `fork` (as threads
+# não sobrevivem a um, por isso o worker ficava com um `scheduler.running` a
+# dizer que sim sobre uma thread que já não existia).
+#
+# O `--graceful-timeout` é a outra metade do reinício. Por omissão são 30
+# segundos, e o worker gasta-os todos SEMPRE que há um separador aberto: ele só
+# sai quando não houver ligações a ser servidas, e uma ligação keep-alive (ou um
+# websocket do dashboard) nunca fecha sozinha. O assistente dizia "aguarde" e o
+# painel demorava meio minuto a voltar.
+CMD ["sh", "-c", "flask db upgrade && gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --worker-connections 1000 --timeout 120 --graceful-timeout 10 --bind 0.0.0.0:${APP_PORT} run:app"]
