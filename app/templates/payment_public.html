@@ -173,6 +173,12 @@
                         <p id="success-message" class="text-base text-gray-600 dark:text-gray-400 font-medium"></p>
                         
                         <!-- Botão de Reativação Automática -->
+                        {# ⚠️ Este bloco é do fluxo de CONVITE: só existe onde o servidor
+                           convida contas que já existem noutro sítio (o Plex). Num
+                           servidor de contas locais não há convite para aceitar nem PIN
+                           para pedir — e o que aparecia era o símbolo do Plex e um
+                           "Entrar no Plex" a abrir um fluxo que não leva a lado nenhum. #}
+                        {% if media_server.capabilities.convites_nativos %}
                         <div id="reactivation-action-area" class="hidden pt-6 mt-6 border-t border-gray-100 dark:border-gray-700/50">
                             <div class="bg-blue-50 dark:bg-blue-900/10 p-5 rounded-2xl border border-blue-100 dark:border-blue-800/30">
                                 <p class="text-sm text-blue-800 dark:text-blue-300 mb-4 font-semibold">{{ _('Último passo! Clique abaixo para aceitar o convite e voltar a assistir:') }}</p>
@@ -191,6 +197,19 @@
                                 </div>
                             </div>
                         </div>
+                        {% else %}
+                        {# A conta é local: o painel não a pode repor sozinho quando ela
+                           já foi apagada do servidor, porque teria de inventar uma
+                           palavra-passe nova e entregá-la. Dizer a verdade é melhor do
+                           que oferecer um botão que não faz nada. #}
+                        <div id="reactivation-action-area" class="hidden pt-6 mt-6 border-t border-gray-100 dark:border-gray-700/50">
+                            <div class="bg-amber-50 dark:bg-amber-900/10 p-5 rounded-2xl border border-amber-100 dark:border-amber-800/30">
+                                <p class="text-sm text-amber-800 dark:text-amber-300 font-semibold">
+                                    {{ _('O seu pagamento foi confirmado. Fale com o administrador para lhe devolver o acesso ao servidor.') }}
+                                </p>
+                            </div>
+                        </div>
+                        {% endif %}
 
                         <!-- Botão de Voltar padrão -->
                         <div class="pt-4" id="default-login-btn-container">

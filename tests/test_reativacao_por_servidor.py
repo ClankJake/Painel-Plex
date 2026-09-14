@@ -241,3 +241,62 @@ class TestARenovacaoNaoSabeDeMarcas:
         gestor.renew_subscription(GUID, 1, is_reactivation=True)
 
         assert data_manager.get_user_profile(GUID)['pending_invite_link'] is None
+
+
+class TestAPaginaDePagamento:
+    """O último passo da reativação, para quem paga.
+
+    ⚠️ O bloco "Entrar no Plex" é do fluxo de CONVITE: pede um PIN ao plex.tv e
+    aceita a partilha. Num servidor de contas locais não há convite nenhum para
+    aceitar — e o que aparecia era o símbolo do Plex e um botão que abria um
+    fluxo que não leva a lado nenhum.
+    """
+
+    def _pagina(self, client, monkeypatch, convites_nativos):
+        from app import extensions
+        from app.blueprints import main as main_module
+        from app.services.media_server.base import MediaServerCapabilities
+
+        class BackendFalso:
+            SERVER_TYPE = 'plex' if convites_nativos else 'jellyfin'
+            DISPLAY_NAME = SHORT_NAME = 'Plex' if convites_nativos else 'Jellyfin'
+            CAPABILITIES = MediaServerCapabilities(
+                convites_nativos=convites_nativos, cria_contas=not convites_nativos,
+                fontes_media_online=convites_nativos, login_delegado=convites_nativos,
+                desativa_conta=not convites_nativos, links_profundos=True,
+                estatisticas=True, estatisticas_externas=convites_nativos,
+            )
+
+            @property
+            def capabilities(self):
+                return self.CAPABILITIES
+
+            def estatisticas_disponiveis(self):
+                return False
+
+        backend = BackendFalso()
+        monkeypatch.setattr(extensions, 'media_server', backend)
+        monkeypatch.setattr(main_module, 'media_server', backend, raising=False)
+        return client.get('/pay/um-token-qualquer').get_data(as_text=True)
+
+    def test_num_painel_plex_o_botao_do_convite_existe(self, client, config_file,
+                                                       db_session, data_manager, monkeypatch):
+        config_file(IS_CONFIGURED=True)
+        data_manager.set_user_profile(GUID, {'username': 'ana', 'payment_token': 'um-token-qualquer'})
+
+        pagina = self._pagina(client, monkeypatch, convites_nativos=True)
+
+        assert 'reactivate-plex-login-btn' in pagina
+
+    def test_num_servidor_de_contas_locais_nao(self, client, config_file,
+                                               db_session, data_manager, monkeypatch):
+        config_file(IS_CONFIGURED=True)
+        data_manager.set_user_profile(GUID, {'username': 'ana', 'payment_token': 'um-token-qualquer'})
+
+        pagina = self._pagina(client, monkeypatch, convites_nativos=False)
+
+        assert 'reactivate-plex-login-btn' not in pagina
+        assert 'Entrar no Plex' not in pagina
+        # No lugar dele, o que é verdade: o pagamento entrou, o acesso é com o
+        # administrador.
+        assert 'administrador' in pagina
