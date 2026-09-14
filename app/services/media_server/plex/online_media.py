@@ -76,7 +76,7 @@ def source_label(key):
         "includeDiscoverSource": _("Resultados do Plex Discover"),
         "includeAvailabilities": _("Mostrar onde assistir noutros serviços"),
         "includeSocialProof": _("Sugestões sociais (o que os amigos veem)"),
-        "scrobbling": _("Partilhar o que assiste com a Plex (scrobbling)"),
+        "scrobbling": _("Compartilhar o que você assiste com a Plex (scrobbling)"),
     }
     return labels.get(key, key)
 

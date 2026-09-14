@@ -293,7 +293,7 @@ function loginWithPlexToClaim() {
     if (!authWindow || authWindow.closed || typeof authWindow.closed === 'undefined') {
         window.removeEventListener('message', handleAuthMessage);
         restoreButton(loginButton);
-        showMessage(i18n.error, i18n.popupBlocked || 'Não foi possível abrir a janela de login. Verifique se o seu navegador está a bloquear pop-ups.', true);
+        showMessage(i18n.error, i18n.popupBlocked || 'Não foi possível abrir a janela de login. Verifique se o seu navegador está bloqueando pop-ups.', true);
     }
 }
 

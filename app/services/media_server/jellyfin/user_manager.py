@@ -126,7 +126,7 @@ class JellyfinUserManager:
 
         policy = self._get_policy(user_id)
         if policy is None:
-            return {"success": False, "message": _("Utilizador não encontrado no Jellyfin.")}
+            return {"success": False, "message": _("Usuário não encontrado no Jellyfin.")}
 
         catalogo = self.conn.get_libraries()
 
@@ -148,7 +148,7 @@ class JellyfinUserManager:
 
         policy = self._get_policy(user_id)
         if policy is None:
-            return {"success": False, "message": _("Utilizador não encontrado no Jellyfin.")}
+            return {"success": False, "message": _("Usuário não encontrado no Jellyfin.")}
 
         catalogo = self.conn.get_libraries()
         ids = self._titulos_para_ids(library_titles)
@@ -181,7 +181,7 @@ class JellyfinUserManager:
         for utilizador in utilizadores:
             if self.update_user_libraries(utilizador['id'], library_titles).get('success'):
                 atualizados += 1
-        return {"success": True, "message": _("Bibliotecas atualizadas para %(n)s utilizador(es).", n=atualizados)}
+        return {"success": True, "message": _("Bibliotecas atualizadas para %(n)s usuário(es).", n=atualizados)}
 
     def clear_session_limits(self) -> Dict[str, Any]:
         """Tira do servidor o limite de SESSÕES que o painel lá pôs.
@@ -201,13 +201,13 @@ class JellyfinUserManager:
         neste campo: quem o quiser usar, usa-o na interface do Jellyfin.
         """
         if not self.conn.connected:
-            return {"success": False, "message": _("Sem ligação ao servidor."), "limpos": 0}
+            return {"success": False, "message": _("Sem conexão com o servidor."), "limpos": 0}
 
         try:
             utilizadores = self.conn.api.get('/Users') or []
         except Exception as e:
             logger.warning(f"Não foi possível limpar os limites de sessões: {describe(e)}")
-            return {"success": False, "message": _("O servidor não devolveu os utilizadores."), "limpos": 0}
+            return {"success": False, "message": _("O servidor não retornou os usuários."), "limpos": 0}
 
         limpos = 0
         for bruto in utilizadores:
@@ -244,7 +244,7 @@ class JellyfinUserManager:
     def block_user(self, user_id, reason='manual') -> Dict[str, Any]:
         utilizador = self.get_user_by_id(user_id)
         if not utilizador:
-            return {"success": False, "message": _("Utilizador não encontrado.")}
+            return {"success": False, "message": _("Usuário não encontrado.")}
 
         if not self._definir_suspensao(user_id, True):
             return {"success": False, "message": _("O Jellyfin recusou suspender a conta.")}
@@ -259,14 +259,14 @@ class JellyfinUserManager:
             )
 
         logger.info(f"Conta '{utilizador['username']}' suspensa no Jellyfin (motivo: {reason}).")
-        return {"success": True, "message": _("Utilizador bloqueado com sucesso.")}
+        return {"success": True, "message": _("Usuário bloqueado com sucesso.")}
 
     def unblock_user(self, user_id) -> Dict[str, Any]:
         if not self._definir_suspensao(user_id, False):
             return {"success": False, "message": _("O Jellyfin recusou reativar a conta.")}
 
         self.data_manager.remove_blocked_user(user_id)
-        return {"success": True, "message": _("Utilizador desbloqueado com sucesso.")}
+        return {"success": True, "message": _("Usuário desbloqueado com sucesso.")}
 
     # =========================================================================
     # REMOÇÃO
@@ -292,7 +292,7 @@ class JellyfinUserManager:
         self.invalidate_user_cache()
         self._desativar_perfil_local(user_id)
         logger.info(f"Conta '{username}' removida do Jellyfin.")
-        return {"success": True, "message": _("Utilizador removido com sucesso.")}
+        return {"success": True, "message": _("Usuário removido com sucesso.")}
 
     def _desativar_perfil_local(self, user_id):
         perfil = self.data_manager.get_user_profile(user_id)

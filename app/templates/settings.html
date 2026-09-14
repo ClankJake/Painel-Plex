@@ -168,7 +168,7 @@
                 
                 <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800/50 flex flex-col lg:col-span-1">
                     <code class="text-blue-600 dark:text-blue-400 font-bold mb-1 font-mono text-sm">{invite_link}</code>
-                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Endereço para voltar a aceder ao servidor. (Disponível apenas em templates de Reativação).') }}</span>
+                    <span class="text-xs text-gray-600 dark:text-gray-300 leading-snug">{{ _('Endereço para voltar a acessar o servidor. (Disponível apenas em templates de Reativação).') }}</span>
                 </div>
 
                 {# ⚠️ Os templates padrão diziam "Plex" no meio da frase entregue ao
@@ -212,7 +212,7 @@
     data-urls-online-media-sources="{{ url_for('system_api.get_online_media_sources') }}"
     data-i18n-online-media-empty="{{ _('Nenhuma fonte de mídia online disponível.') }}"
     data-i18n-online-media-unavailable="{{ _('não existe nesta conta Plex') }}"
-    data-i18n-online-media-load-failed="{{ _('Não foi possível carregar as fontes de mídia online do Plex. Verifique a ligação ao servidor.') }}"
+    data-i18n-online-media-load-failed="{{ _('Não foi possível carregar as fontes de mídia online do Plex. Verifique a conexão com o servidor.') }}"
     data-urls-api-settings="{{ url_for('system_api.api_settings') }}"
     data-urls-clear-logs="{{ url_for('system_api.clear_logs') }}"
     data-urls-get-logs="{{ url_for('system_api.get_logs') }}"

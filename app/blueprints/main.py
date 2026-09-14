@@ -255,7 +255,7 @@ def payment_page(token):
         logger.warning(f"Tentativa de acesso com token de pagamento inválido ou expirado: {mask_token(token)}")
         return render_template('payment_unavailable.html', 
                                reason_title=_("Link de Pagamento Inválido"),
-                               reason_message=_("O link que tentou aceder não é válido ou já expirou. Por favor, solicite um novo link ao administrador.")), 404
+                               reason_message=_("O link que você tentou acessar não é válido ou já expirou. Por favor, solicite um novo link ao administrador.")), 404
 
     username = profile.username
     is_reactivation = (profile.status == 'inactive')
@@ -278,7 +278,7 @@ def payment_page(token):
 
             # 1. Proteção: Bloqueia a renovação se ainda faltar muito tempo para expirar
             if days_left > renewal_window:
-                message = _("A sua assinatura vence em %(days)d dias. A renovação só estará disponível quando faltarem %(window)d dias (ou menos) para o vencimento.", days=days_left, window=renewal_window)
+                message = _("Sua assinatura vence em %(days)d dias. A renovação só estará disponível quando faltarem %(window)d dias (ou menos) para o vencimento.", days=days_left, window=renewal_window)
 
                 # 🔁 Em vez de deixar o utilizador num beco sem saída, oferecemos um
                 # caminho: na área de conta ele pode antecipar o pagamento, mudar de
@@ -293,7 +293,7 @@ def payment_page(token):
                     action_hint = None
                 else:
                     action_url = url_for('auth.login', next=url_for('main.account_page'))
-                    action_hint = _("Vai ser-lhe pedido para entrar com a sua conta Plex.")
+                    action_hint = _("Vai ser-lhe pedido para entrar com sua conta Plex.")
 
                 return render_template('payment_unavailable.html',
                                        reason_title=_("Renovação Indisponível no Momento"),
@@ -305,7 +305,7 @@ def payment_page(token):
             # 2. Proteção: Bloqueia o link se já passou demasiado tempo desde a expiração (Período de Carência)
             days_expired = -days_left
             if days_expired > grace_period:
-                flash(_("A sua assinatura expirou há muito tempo e este link foi desativado. Por favor, faça login para ver as opções atuais na sua conta."), "warning")
+                flash(_("Sua assinatura expirou há muito tempo e este link foi desativado. Por favor, faça login para ver as opções atuais na sua conta."), "warning")
                 
                 # Se for o próprio utilizador logado a aceder, encaminha para a conta dele
                 if current_user.is_authenticated and current_user.username == username:

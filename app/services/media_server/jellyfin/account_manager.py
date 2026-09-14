@@ -60,16 +60,16 @@ class JellyfinAccountManager(InvitationLifecycle):
 
         nome = (username or '').strip()
         if not nome:
-            return {"success": False, "message": _("O nome de utilizador é obrigatório.")}
+            return {"success": False, "message": _("O nome de usuário é obrigatório.")}
 
         if not password:
-            return {"success": False, "message": _("A palavra-passe é obrigatória.")}
+            return {"success": False, "message": _("A senha é obrigatória.")}
 
         # O Jellyfin recusa nomes repetidos com um 400 pouco explícito; verificar
         # antes dá uma mensagem que o utilizador percebe.
         existentes = self.user_manager.list_users() or []
         if any((u.get('username') or '').lower() == nome.lower() for u in existentes):
-            return {"success": False, "message": _("Já existe um utilizador com esse nome neste servidor.")}
+            return {"success": False, "message": _("Já existe um usuário com esse nome neste servidor.")}
 
         try:
             criado = self.conn.api.post('/Users/New', json={'Name': nome, 'Password': password})
@@ -130,7 +130,7 @@ class JellyfinAccountManager(InvitationLifecycle):
         email = (getattr(account, 'email', '') or '').strip()
 
         if not username or not password:
-            return {"success": False, "message": _("Indique um nome de utilizador e uma palavra-passe.")}
+            return {"success": False, "message": _("Informe um nome de usuário e uma senha.")}
 
         if invitation.get("trial_duration_minutes", 0) > 0:
             recusa = self._verificar_abuso_de_teste(email)

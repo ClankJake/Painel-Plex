@@ -265,7 +265,7 @@ def alterar_palavra_passe():
     if not servidor_repoe_palavras_passe(extensions.media_server):
         return jsonify({
             "success": False,
-            "message": _("Este servidor usa autenticação externa: a palavra-passe é gerida lá."),
+            "message": _("Este servidor usa autenticação externa: a senha é gerenciada lá."),
         }), 400
 
     dados = request.get_json(silent=True) or {}
@@ -278,30 +278,30 @@ def alterar_palavra_passe():
     if len(nova) < MIN_PALAVRA_PASSE:
         return jsonify({
             "success": False,
-            "message": _("A nova palavra-passe tem de ter pelo menos %(minimo)d caracteres.",
+            "message": _("A nova senha precisa ter pelo menos %(minimo)d caracteres.",
                          minimo=MIN_PALAVRA_PASSE),
         }), 400
 
     # O mesmo limite do login: o pedido para aqui, antes de ir à rede.
     if len(atual) > MAX_PALAVRA_PASSE or len(nova) > MAX_PALAVRA_PASSE:
-        return jsonify({"success": False, "message": _("A palavra-passe é demasiado longa.")}), 400
+        return jsonify({"success": False, "message": _("A senha é longa demais.")}), 400
 
     if extensions.media_server.authenticate(current_user.username, atual) is None:
         logger.warning(f"'{current_user.username}' falhou a confirmação da palavra-passe atual.")
-        return jsonify({"success": False, "message": _("A palavra-passe atual não está correta.")}), 403
+        return jsonify({"success": False, "message": _("A senha atual não está correta.")}), 403
 
     resultado = extensions.media_server.definir_palavra_passe(normalize_user_id(current_user.id), nova)
     if not resultado.get('success'):
         return jsonify({
             "success": False,
-            "message": resultado.get('message') or _("Não foi possível alterar a palavra-passe."),
+            "message": resultado.get('message') or _("Não foi possível alterar a senha."),
         }), 400
 
     # ⚠️ A sessão do painel NÃO cai com isto: ela é um cookie assinado pelo
     # painel e não guarda a palavra-passe. Quem está a ler esta resposta
     # continua a entrar — é na aplicação do servidor que terá de usar a nova.
     logger.info(f"'{current_user.username}' alterou a sua palavra-passe.")
-    return jsonify({"success": True, "message": _("Palavra-passe alterada. Use a nova da próxima vez que entrar.")})
+    return jsonify({"success": True, "message": _("Senha alterada. Use a nova da próxima vez que entrar.")})
 
 
 @users_api_bp.route('/account/requests')
@@ -529,7 +529,7 @@ def reactivate_user_route():
 
         if not restauro.get('success'):
             logger.error(f"Falha ao repor o acesso de '{username}': {restauro.get('message')}")
-            return jsonify({"success": False, "message": restauro.get('message') or _("Erro ao repor o acesso.")})
+            return jsonify({"success": False, "message": restauro.get('message') or _("Erro ao restaurar o acesso.")})
 
         # ⚠️ A identidade pode ter MUDADO: num servidor de contas locais, uma
         # conta apagada e recriada volta com um identificador novo, e o perfil
@@ -642,7 +642,7 @@ def renew_user_subscription_route(user, validated_data):
         except Exception as notify_error:
             logger.error(f"Falha ao enviar notificação de renovação para '{user['username']}': {notify_error}")
 
-        return jsonify({"success": True, "message": _("Subscrição renovada. Novo vencimento em %(date)s.", date=new_expiration_date.strftime('%d/%m/%Y'))})
+        return jsonify({"success": True, "message": _("Assinatura renovada. Novo vencimento em %(date)s.", date=new_expiration_date.strftime('%d/%m/%Y'))})
     except Exception as e:
         extensions.db.session.rollback()
         logger.error(f"Erro crítico durante a renovação manual de '{user['username']}': {e}", exc_info=True)

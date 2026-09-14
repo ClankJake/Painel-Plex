@@ -240,7 +240,7 @@ class PricingManager:
         if days_remaining <= 0:
             # Já venceu: não há nada a "aproveitar", o utilizador deve renovar
             # normalmente escolhendo o plano novo.
-            result["reason"] = _("A subscrição já expirou. Faça uma renovação normal com o novo plano.")
+            result["reason"] = _("A assinatura já expirou. Faça uma renovação normal com o novo plano.")
             return result
 
         # Se falta pouco tempo, não vale a pena cobrar uma fração: o utilizador

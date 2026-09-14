@@ -381,7 +381,7 @@ class JellyfinManager:
 
         return {
             "success": True,
-            "message": _("Acesso reposto no servidor."),
+            "message": _("Acesso restaurado no servidor."),
             "media_user_id": media_user_id,
             "link": self.get_base_url(),
             "link_pendente": None,
@@ -431,7 +431,7 @@ class JellyfinManager:
             )
             return {
                 "success": False,
-                "message": _("A conta já não existe no servidor e não há nome para a criar de novo."),
+                "message": _("A conta já não existe no servidor e não há nome para criá-la novamente."),
                 "media_user_id": media_user_id,
                 "link": self.get_base_url(), "link_pendente": None,
             }
@@ -487,7 +487,7 @@ class JellyfinManager:
         logger.info(f"Conta de '{username}' recriada no Jellyfin com um identificador novo.")
         return {
             "success": True,
-            "message": _("A conta foi criada de novo no servidor."),
+            "message": _("A conta foi criada novamente no servidor."),
             "media_user_id": novo_id,
             "link": self.get_base_url(),
             "link_pendente": None,
@@ -527,16 +527,16 @@ class JellyfinManager:
         if not self.conn.connected:
             return {"success": False, "message": _("Jellyfin não configurado.")}
         if not nova:
-            return {"success": False, "message": _("A palavra-passe é obrigatória.")}
+            return {"success": False, "message": _("A senha é obrigatória.")}
         if not self.get_user_by_id(media_user_id):
-            return {"success": False, "message": _("Utilizador não encontrado no servidor.")}
+            return {"success": False, "message": _("Usuário não encontrado no servidor.")}
 
         try:
             self.conn.api.post(f'/Users/{media_user_id}/Password',
                                json={'ResetPassword': True})
         except JellyfinApiError as e:
             logger.error(f"O Jellyfin recusou apagar a palavra-passe de '{media_user_id}': {describe(e)}")
-            return {"success": False, "message": _("O servidor recusou repor a palavra-passe.")}
+            return {"success": False, "message": _("O servidor recusou redefinir a senha.")}
 
         try:
             self.conn.api.post(f'/Users/{media_user_id}/Password',
@@ -548,10 +548,10 @@ class JellyfinManager:
                 f"O Jellyfin apagou a palavra-passe de '{media_user_id}' mas recusou a nova "
                 f"({describe(e)}). A CONTA ESTÁ SEM PALAVRA-PASSE."
             )
-            return {"success": False, "message": _("O servidor recusou a palavra-passe nova.")}
+            return {"success": False, "message": _("O servidor recusou a senha nova.")}
 
         logger.info(f"Palavra-passe do utilizador '{media_user_id}' reposta pelo painel.")
-        return {"success": True, "message": _("Palavra-passe alterada.")}
+        return {"success": True, "message": _("Senha alterada.")}
 
     def update_screen_limit(self, user_id, screens):
         """Grava o limite no perfil e, se houver quem o imponha, no servidor.

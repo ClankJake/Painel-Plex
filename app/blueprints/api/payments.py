@@ -134,7 +134,7 @@ def _run_payment_processing_in_thread(app, txid):
                         category='success', link=url_for('main.users_page')
                     )
                     extensions.data_manager.create_notification(
-                        message=_("A sua conta foi reativada com sucesso! Pagamento de %(value)s confirmado.", value=f"R$ {payment['value']:.2f}"),
+                        message=_("Sua conta foi reativada com sucesso! Pagamento de %(value)s confirmado.", value=f"R$ {payment['value']:.2f}"),
                         category='success', link=url_for('main.account_page'), media_user_id=media_user_id
                     )
                     if extensions.socketio:
@@ -499,7 +499,7 @@ def create_charge_route():
                 return jsonify({
                     "success": False,
                     "requires_proration": True,
-                    "message": _("Para aumentar o número de telas agora, use a opção de pagar apenas a diferença. A troca de plano numa renovação completa fica disponível perto do vencimento.")
+                    "message": _("Para aumentar o número de telas agora, use a opção de pagar apenas a diferença. A troca de plano em uma renovação completa fica disponível perto do vencimento.")
                 }), 400
             logger.info(
                 f"Upgrade a preço cheio permitido para '{username}': o pro-rata não está "
@@ -595,7 +595,7 @@ def create_charge_route():
                     category='success', link=url_for('main.users_page')
                 )
                 extensions.data_manager.create_notification(
-                    message=_("A sua conta foi reativada gratuitamente com sucesso!"),
+                    message=_("Sua conta foi reativada gratuitamente com sucesso!"),
                     category='success', link=url_for('main.account_page'), media_user_id=media_user_id
                 )
             else:

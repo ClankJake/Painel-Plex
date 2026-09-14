@@ -144,7 +144,7 @@ def _item_identity(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _percent_complete(item: Dict[str, Any]) -> float:
-    """Percentagem vista de uma sessão, tolerante a campos ausentes ou inválidos."""
+    """Porcentagem vista de uma sessão, tolerante a campos ausentes ou inválidos."""
     raw = item.get("percent_complete")
     if raw in (None, ""):
         # Versões antigas do Tautulli podem não expor a percentagem; nesse caso

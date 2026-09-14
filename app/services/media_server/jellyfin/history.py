@@ -116,10 +116,10 @@ class JellyfinHistoryManager:
             resposta = self.conn.api.get('/Devices')
         except JellyfinApiError as e:
             logger.warning(f"O Jellyfin não devolveu os aparelhos de {user_id}: {describe(e)}")
-            return {"success": False, "message": _("Não foi possível obter os aparelhos.")}
+            return {"success": False, "message": _("Não foi possível obter os dispositivos.")}
         except Exception as e:
             logger.error(f"Erro ao obter os aparelhos de {user_id}: {describe(e)}", exc_info=True)
-            return {"success": False, "message": _("Não foi possível obter os aparelhos.")}
+            return {"success": False, "message": _("Não foi possível obter os dispositivos.")}
 
         itens = resposta.get('Items') if isinstance(resposta, dict) else resposta
         aparelhos = []

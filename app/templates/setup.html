@@ -82,7 +82,7 @@
 
                 <!-- Plex: autenticação delegada ao plex.tv -->
                 <div id="server-setup-plex" class="server-setup-pane">
-                    <p class="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto text-sm">{{ _('Faça login com a sua conta principal do Plex. Esta conta será usada para administrar a aplicação.') }}</p>
+                    <p class="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto text-sm">{{ _('Faça login com sua conta principal do Plex. Esta conta será usada para administrar a aplicação.') }}</p>
                 <button type="button" id="login-with-plex" class="btn bg-[#e5a00d] hover:bg-[#c98c0b] text-white px-6 py-3 font-bold shadow-lg shadow-[#e5a00d]/30 inline-flex items-center gap-3">
                     <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M11.64,12.02L9.36,7.66L9.35,7.63L11.64,12L9.35,16.38L9.36,16.35L11.64,12.02M12,2C6.48,2,2,6.48,2,12C2,17.52,6.48,22,12,22C17.52,22,22,17.52,22,12C22,6.48,17.52,2,12,2M14.65,16.37H12.44L12.44,12.03L14.65,7.64H17L13.8,12.01L17,16.37H14.65Z" /></svg>
                     {{ _('Login com Plex') }}
@@ -155,7 +155,7 @@
                             <div>
                                 <label for="tautulli_api_key" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Chave da API') }}</label>
                                 <input type="password" id="tautulli_api_key" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" autocomplete="off">
-                                {% if config.TAUTULLI_API_KEY %}<p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{{ _('Já existe uma chave guardada. Deixe em branco para a manter.') }}</p>{% endif %}
+                                {% if config.TAUTULLI_API_KEY %}<p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{{ _('Já existe uma chave salva. Deixe em branco para mantê-la.') }}</p>{% endif %}
                             </div>
                         </div>
                         <div class="flex items-center gap-3 mt-3">
@@ -187,7 +187,7 @@
                             <div>
                                 <label for="overseerr_api_key" class="block mb-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400">{{ _('Chave da API') }}</label>
                                 <input type="password" id="overseerr_api_key" class="block w-full p-2.5 text-sm rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 dark:bg-gray-900/50 dark:border-gray-600 dark:text-white" autocomplete="off">
-                                {% if config.OVERSEERR_API_KEY %}<p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{{ _('Já existe uma chave guardada. Deixe em branco para a manter.') }}</p>{% endif %}
+                                {% if config.OVERSEERR_API_KEY %}<p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{{ _('Já existe uma chave salva. Deixe em branco para mantê-la.') }}</p>{% endif %}
                             </div>
                         </div>
                         <div class="flex items-center gap-3 mt-3">
@@ -245,7 +245,7 @@
     data-i18n-select-admin="{{ _('Escolha a conta que vai administrar o painel.') }}"
     data-i18n-select-admin-title="{{ _('Conta de Administrador') }}"
     data-i18n-no-admin-found="{{ _('O Jellyfin não devolveu nenhuma conta.') }}"
-    data-i18n-restarting="{{ _('Configuração guardada. A aplicação está a reiniciar — aguarde e recarregue a página.') }}"
+    data-i18n-restarting="{{ _('Configuração salva. A aplicação está reiniciando — aguarde e recarregue a página.') }}"
     data-urls-test-tautulli="{{ url_for('system_api.test_tautulli_connection') }}"
     data-urls-test-overseerr="{{ url_for('system_api.test_overseerr_connection') }}"
     data-urls-restore-backup="{{ url_for('system_api.setup_restore_backup') }}"
@@ -277,7 +277,7 @@
     data-i18n-invalid-file-type="{{ _('Selecione um arquivo .zip válido.') }}"
     data-i18n-unknown-error="{{ _('Erro desconhecido.') }}"
     data-i18n-popup-blocked="{{ _('Não foi possível abrir a janela do Plex. Autorize os pop-ups deste site e tente novamente.') }}"
-    data-i18n-missing-setup-data="{{ _('Conclua a ligação ao servidor e escolha a conta de administrador antes de finalizar.') }}"
+    data-i18n-missing-setup-data="{{ _('Conclua a conexão com o servidor e escolha a conta de administrador antes de finalizar.') }}"
 ></script>
 
 </body>

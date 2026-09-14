@@ -262,7 +262,7 @@ class PlexManager:
         """
         return {
             "success": False,
-            "message": _("A palavra-passe da conta Plex é gerida em plex.tv."),
+            "message": _("A senha da conta Plex é gerenciada no plex.tv."),
         }
 
     def update_screen_limit(self, media_user_id, screens):

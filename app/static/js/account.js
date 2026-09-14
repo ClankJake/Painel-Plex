@@ -166,7 +166,7 @@ async function loadReferralCard() {
             const reservadoEl = document.getElementById('referral-credit-reserved');
             if (reservadoEl) {
                 if (reservado > 0) {
-                    reservadoEl.textContent = (state.i18n.referralCreditReserved || 'R$ {value} reservado numa cobrança em aberto')
+                    reservadoEl.textContent = (state.i18n.referralCreditReserved || 'R$ {value} reservado em uma cobrança em aberto')
                         .replace('{value}', reservado.toFixed(2));
                     reservadoEl.classList.remove('hidden');
                 } else {
@@ -404,7 +404,7 @@ function renderProrationBox(quote) {
                              cheio com mais telas só é permitida perto do vencimento). -->
                         <input type="checkbox" id="proration-toggle" checked class="hidden">
                         <p class="text-xs text-emerald-700/70 dark:text-emerald-400/70 mt-3 italic">
-                            ${escapeHTML(state.i18n.upgradeOnlyProration || 'A troca de plano numa renovação completa fica disponível perto do vencimento.')}
+                            ${escapeHTML(state.i18n.upgradeOnlyProration || 'A troca de plano em uma renovação completa fica disponível perto do vencimento.')}
                         </p>
                     ` : `
                         <label class="flex items-center gap-2 mt-3 cursor-pointer">
@@ -605,7 +605,7 @@ async function fetchRequests(append = false) {
             `);
             document.getElementById('requests-load-more')?.addEventListener('click', (e) => {
                 e.target.disabled = true;
-                e.target.textContent = state.i18n.loadingRequests || 'A carregar...';
+                e.target.textContent = state.i18n.loadingRequests || 'Carregando...';
                 fetchRequests(true);
             });
         }

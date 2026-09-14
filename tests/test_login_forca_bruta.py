@@ -176,7 +176,7 @@ class TestAPaginaDeLogin:
     def test_num_painel_jellyfin_nao_diz_plex(self, client, jellyfin, db_session):
         pagina = client.get('/auth/login').get_data(as_text=True)
 
-        assert 'Entre com a sua conta do Jellyfin' in pagina
+        assert 'Entre com sua conta do Jellyfin' in pagina
         assert 'conta Plex' not in pagina
 
     def test_o_formulario_limita_o_que_aceita(self, client, jellyfin, db_session):

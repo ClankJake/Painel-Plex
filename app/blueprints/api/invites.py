@@ -90,7 +90,7 @@ def create_invite_for_bot(validated_data):
         if not libraries:
             return jsonify({
                 "success": False,
-                "message": _("Não foi possível determinar as bibliotecas automaticamente. Indique 'libraries' no pedido.")
+                "message": _("Não foi possível determinar as bibliotecas automaticamente. Informe 'libraries' na requisição.")
             }), 400
 
     result = media_server.create_invitation(
@@ -183,10 +183,10 @@ def claim_invite_route():
         email = (data.get('email') or '').strip()
 
         if not username or not password:
-            return jsonify({"success": False, "message": _("Indique um nome de utilizador e uma palavra-passe.")}), 400
+            return jsonify({"success": False, "message": _("Informe um nome de usuário e uma senha.")}), 400
 
         if len(password) < 6:
-            return jsonify({"success": False, "message": _("A palavra-passe tem de ter pelo menos 6 caracteres.")}), 400
+            return jsonify({"success": False, "message": _("A senha precisa ter pelo menos 6 caracteres.")}), 400
 
         # 🛡️ Esta rota é PÚBLICA e o que aqui chega vai direto para o servidor de
         # média (criar a conta) e para a base de dados (o perfil). Sem um limite
@@ -195,7 +195,7 @@ def claim_invite_route():
         # sessão. Os limites acompanham os do login (`auth.py`).
         if len(username) > MAX_UTILIZADOR or len(password) > MAX_PALAVRA_PASSE or len(email) > MAX_EMAIL:
             logger.warning("Resgate de convite recusado: campos acima do tamanho aceite.")
-            return jsonify({"success": False, "message": _("Os dados indicados são demasiado longos.")}), 400
+            return jsonify({"success": False, "message": _("Os dados indicados são longos demais.")}), 400
 
         registo = SimpleNamespace(username=username, password=password, email=email)
         return jsonify(media_server.claim_invitation(data.get('code'), registo))

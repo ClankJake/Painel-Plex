@@ -77,7 +77,7 @@ class TestOsTextosSeguemOServidor:
         pagina = client.get('/invite/ABC').get_data(as_text=True)
 
         assert 'conta no Jellyfin' in pagina
-        assert 'aplicação do Jellyfin' in pagina
+        assert 'aplicativo do Jellyfin' in pagina
 
     def test_o_passo_do_ecra_de_sucesso_tem_uma_versao_local(self, client, db_session, servidor):
         # 🐛 "Baixe o aplicativo Plex..." era mostrado nos DOIS servidores: quem
@@ -87,7 +87,7 @@ class TestOsTextosSeguemOServidor:
         pagina = client.get('/invite/ABC').get_data(as_text=True)
 
         assert 'data-i18n-step1-onboarding-local' in pagina
-        assert 'Instale a aplicação do Jellyfin' in pagina
+        assert 'Instale o aplicativo do Jellyfin' in pagina
 
 
 class TestOComoComecar:
@@ -115,9 +115,9 @@ class TestOComoComecar:
         pagina = client.get('/invite/ABC').get_data(as_text=True)
 
         # Escolher as credenciais, guardá-las (não se recuperam) e onde entrar.
-        assert 'Escolha abaixo o utilizador e a palavra-passe' in pagina
-        assert 'não as pode recuperar' in pagina
-        assert 'Instale a aplicação do Jellyfin' in pagina
+        assert 'Escolha abaixo o usuário e a senha' in pagina
+        assert 'não consegue recuperá-las' in pagina
+        assert 'Instale o aplicativo do Jellyfin' in pagina
 
     def test_explicam_primeiro_o_que_e_o_servidor(self, client, db_session, servidor):
         # A versão do Plex tinha um "O que é o Plex?"; a de contas locais não
@@ -127,7 +127,7 @@ class TestOComoComecar:
         pagina = client.get('/invite/ABC').get_data(as_text=True)
 
         assert 'data-i18n-what-is-local' in pagina
-        assert 'A sua conta é criada aqui mesmo' in pagina
+        assert 'Sua conta é criada aqui mesmo' in pagina
 
     def test_o_javascript_nao_pede_nada_que_o_template_nao_envie(self, client, db_session, servidor):
         """A cadeia inteira: atributo → `dataset` do browser → chave do `invite.js`.

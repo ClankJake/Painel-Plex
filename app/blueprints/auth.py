@@ -299,7 +299,7 @@ def check_user_active_status():
             if is_ajax:
                 return jsonify({"success": False, "message": "unauthorized", "redirect_url": url_for('auth.login')}), 401
                 
-            flash(_("A sua conta não foi encontrada ou foi removida."), "error")
+            flash(_("Sua conta não foi encontrada ou foi removida."), "error")
             return redirect(url_for('auth.login'))
 
         # CASO 2: Utilizador ficou inativo (expirou enquanto navegava)
@@ -311,7 +311,7 @@ def check_user_active_status():
             if is_ajax:
                 return jsonify({"success": False, "message": "unauthorized", "redirect_url": url_for('auth.login')}), 401
                 
-            flash(_("A sua subscrição expirou. Por favor, faça login novamente para regularizar o acesso."), "warning")
+            flash(_("Sua assinatura expirou. Por favor, faça login novamente para regularizar o acesso."), "warning")
             return redirect(url_for('auth.login'))
 
     except ValueError:
@@ -439,13 +439,13 @@ def login_with_credentials():
     password = dados.get('password') or ''
 
     if not username or not password:
-        return jsonify({"success": False, "message": _("Indique o utilizador e a palavra-passe.")}), 400
+        return jsonify({"success": False, "message": _("Informe o usuário e a senha.")}), 400
 
     # ⚠️ Antes de qualquer outra coisa: recusar o que é grande de mais em vez de
     # o mandar para o servidor de média.
     if len(username) > MAX_UTILIZADOR or len(password) > MAX_PALAVRA_PASSE:
         logger.warning("Tentativa de login recusada: credenciais acima do tamanho aceite.")
-        return jsonify({"success": False, "message": _("Utilizador ou palavra-passe incorretos.")}), 401
+        return jsonify({"success": False, "message": _("Usuário ou senha incorretos.")}), 401
 
     endereco = get_remote_address()
 
@@ -469,7 +469,7 @@ def login_with_credentials():
         # mesmo quando o nome não existe.
         tentativas_de_login.registar_falha(username, endereco)
         logger.warning(f"Tentativa de login falhada para '{_texto_para_log(username)}'.")
-        return jsonify({"success": False, "message": _("Utilizador ou palavra-passe incorretos.")}), 401
+        return jsonify({"success": False, "message": _("Usuário ou senha incorretos.")}), 401
 
     tentativas_de_login.registar_sucesso(username, endereco)
     logger.info(f"Login bem-sucedido de '{_texto_para_log(conta.username)}'.")
@@ -632,7 +632,7 @@ def _autorizar_e_iniciar_sessao(account, config, plex_token=None):
                 user_profile['payment_token'] = secrets.token_urlsafe(16)
                 data_manager.set_user_profile(user_profile['media_user_id'], user_profile)
             
-            flash(_("A sua conta está inativa. Por favor, efetue o pagamento para reativar o seu acesso."), "info")
+            flash(_("Sua conta está inativa. Por favor, efetue o pagamento para reativar seu acesso."), "info")
             reactivation_url = url_for('main.payment_page', token=user_profile.get('payment_token'), _external=False)
             return jsonify({"success": True, "action": "reactivate", "redirect_url": reactivation_url})
         
@@ -660,7 +660,7 @@ def _autorizar_e_iniciar_sessao(account, config, plex_token=None):
                     user_profile['payment_token'] = secrets.token_urlsafe(16)
                     data_manager.set_user_profile(user_profile['media_user_id'], user_profile)
                     
-                flash(_("A sua conta está num estado inconsistente. Por favor, efetue o pagamento para garantir o seu acesso."), "warning")
+                flash(_("Sua conta está num estado inconsistente. Por favor, efetue o pagamento para garantir seu acesso."), "warning")
                 reactivation_url = url_for('main.payment_page', token=user_profile.get('payment_token'), _external=False)
                 return jsonify({"success": True, "action": "reactivate", "redirect_url": reactivation_url})
 
@@ -758,7 +758,7 @@ def pedir_reposicao_de_palavra_passe():
     if not servidor_repoe_palavras_passe(media_server):
         return jsonify({
             "success": False,
-            "message": _("Este servidor usa autenticação externa: a palavra-passe é gerida lá."),
+            "message": _("Este servidor usa autenticação externa: a senha é gerenciada lá."),
         }), 400
 
     safe_log_request_info()
@@ -774,7 +774,7 @@ def pedir_reposicao_de_palavra_passe():
 
     return jsonify({
         "success": True,
-        "message": _("Se existir uma conta com esses dados, enviámos o link para os contactos registados."),
+        "message": _("Se existir uma conta com esses dados, enviamos o link para os contatos cadastrados."),
     })
 
 
@@ -785,7 +785,7 @@ def repor_palavra_passe():
     if not servidor_repoe_palavras_passe(media_server):
         return jsonify({
             "success": False,
-            "message": _("Este servidor usa autenticação externa: a palavra-passe é gerida lá."),
+            "message": _("Este servidor usa autenticação externa: a senha é gerenciada lá."),
         }), 400
 
     dados = request.get_json(silent=True) or {}
@@ -798,12 +798,12 @@ def repor_palavra_passe():
     if len(nova) < MIN_PALAVRA_PASSE:
         return jsonify({
             "success": False,
-            "message": _("A palavra-passe tem de ter pelo menos %(minimo)d caracteres.", minimo=MIN_PALAVRA_PASSE),
+            "message": _("A senha precisa ter pelo menos %(minimo)d caracteres.", minimo=MIN_PALAVRA_PASSE),
         }), 400
 
     # O mesmo limite do login: é o ponto onde o pedido para, antes da rede.
     if len(nova) > MAX_PALAVRA_PASSE:
-        return jsonify({"success": False, "message": _("A palavra-passe é demasiado longa.")}), 400
+        return jsonify({"success": False, "message": _("A senha é longa demais.")}), 400
 
     sucesso, mensagem = aplicar_reposicao(token, nova, data_manager, media_server)
     return jsonify({"success": sucesso, "message": mensagem}), (200 if sucesso else 400)

@@ -99,7 +99,7 @@ class PlexInviteManager(InvitationLifecycle):
                 logger.warning(f"O utilizador inativo '{username}' tentou usar o convite '{mask_code(code)}' para contornar o pagamento.")
                 return {
                     "success": False,
-                    "message": _("A sua conta encontra-se inativa ou expirada. Por favor, acesse à página minha conta para renovar a assinatura em vez de utilizar um novo convite.")
+                    "message": _("Sua conta encontra-se inativa ou expirada. Por favor, acesse à página minha conta para renovar a assinatura em vez de utilizar um novo convite.")
                 }
             
             # Se o utilizador já está ativo, não precisa de gastar um convite
@@ -416,7 +416,7 @@ class PlexInviteManager(InvitationLifecycle):
         try:
             libraries_to_share = [s for s in self.conn.plex.library.sections() if s.title in library_titles]
             if not libraries_to_share:
-                return {"success": False, "message": _("Nenhuma biblioteca válida foi encontrada para partilhar.")}
+                return {"success": False, "message": _("Nenhuma biblioteca válida foi encontrada para compartilhar.")}
 
             if not user_to_invite:
                 try:

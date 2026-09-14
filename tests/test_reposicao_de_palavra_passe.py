@@ -306,7 +306,7 @@ class TestAsPaginas:
         resposta = client.get('/password/forgot')
 
         assert resposta.status_code == 200
-        assert 'Utilizador ou e-mail' in resposta.get_data(as_text=True)
+        assert 'Usuário ou e-mail' in resposta.get_data(as_text=True)
 
     def test_num_painel_plex_redireciona_para_o_login(self, client, db_session, servidor):
         # Esconder a ligação não chega: um marcador nos favoritos dava uma
@@ -324,8 +324,8 @@ class TestAsPaginas:
         servidor(cria_contas=False)
         sem = client.get('/auth/login').get_data(as_text=True)
 
-        assert 'Esqueci-me da palavra-passe' in com
-        assert 'Esqueci-me da palavra-passe' not in sem
+        assert 'Esqueci minha senha' in com
+        assert 'Esqueci minha senha' not in sem
 
     def test_o_formulario_so_aparece_com_um_link_valido(self, client, db_session, servidor,
                                                         pessoa, data_manager):
@@ -630,7 +630,7 @@ class TestOCartaoNaPagina:
 
         assert 'change-password-form' in pagina
         # Não há duas palavras-passe, e a página tem de o dizer.
-        assert 'muda-a nos dois' in pagina
+        assert 'altera nos dois' in pagina
 
     def test_nao_aparece_num_painel_plex(self, client, db_session, servidor, pessoa):
         servidor(cria_contas=False)

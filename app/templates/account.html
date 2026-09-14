@@ -408,29 +408,29 @@
                 <div class="bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
                     <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
                         <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
-                        {{ _('Palavra-passe') }}
+                        {{ _('Senha') }}
                     </h3>
                     {#  Não há duas palavras-passe: é a MESMA que abre o painel e o
                         servidor. Dizê-lo evita a pergunta seguinte. #}
                     <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                        {{ _('É a mesma palavra-passe que usa para entrar no %(servidor)s e neste painel — mudá-la aqui muda-a nos dois.', servidor=media_server.name) }}
+                        {{ _('É a mesma senha que você usa para entrar no %(servidor)s e neste painel — alterar aqui altera nos dois.', servidor=media_server.name) }}
                     </p>
 
                     <form id="change-password-form" class="space-y-4 max-w-md" novalidate>
                         <div>
-                            <label for="current-password" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Palavra-passe atual') }}</label>
+                            <label for="current-password" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Senha atual') }}</label>
                             <input type="password" id="current-password" required autocomplete="current-password"
                                    maxlength="256" spellcheck="false"
                                    class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-900 dark:border-gray-600 dark:text-white shadow-sm">
                         </div>
                         <div>
-                            <label for="new-password" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Nova palavra-passe') }}</label>
+                            <label for="new-password" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Nova senha') }}</label>
                             <div class="relative">
                                 <input type="password" id="new-password" required autocomplete="new-password"
                                        minlength="6" maxlength="256" spellcheck="false"
                                        class="block w-full px-3 py-2.5 pr-11 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-900 dark:border-gray-600 dark:text-white shadow-sm">
                                 <button type="button" id="toggle-new-password" tabindex="-1"
-                                        aria-label="{{ _('Mostrar a palavra-passe') }}" aria-pressed="false"
+                                        aria-label="{{ _('Mostrar a senha') }}" aria-pressed="false"
                                         class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                                     <svg id="new-icon-eye" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
                                     <svg id="new-icon-eye-off" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.477 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.477 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
@@ -438,7 +438,7 @@
                             </div>
                         </div>
                         <div>
-                            <label for="confirm-password" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Repita a nova palavra-passe') }}</label>
+                            <label for="confirm-password" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{{ _('Confirme a nova senha') }}</label>
                             <input type="password" id="confirm-password" required autocomplete="new-password"
                                    minlength="6" maxlength="256" spellcheck="false"
                                    class="block w-full px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-900 dark:bg-gray-900 dark:border-gray-600 dark:text-white shadow-sm">
@@ -447,7 +447,7 @@
                         <button type="submit" id="change-password-submit"
                                 class="w-full sm:w-auto inline-flex justify-center items-center py-2.5 px-5 text-sm font-semibold rounded-xl text-white bg-purple-600 hover:bg-purple-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
                             <svg id="change-password-spinner" class="w-4 h-4 mr-2 animate-spin hidden" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                            <span id="change-password-text">{{ _('Alterar a palavra-passe') }}</span>
+                            <span id="change-password-text">{{ _('Alterar a senha') }}</span>
                         </button>
 
                         <p id="change-password-result" class="text-sm min-h-[1.25rem]" role="alert" aria-live="polite"></p>
@@ -503,13 +503,13 @@
         data-get-account-devices-url="{{ url_for('users_api.get_account_devices') }}"
         data-update-privacy-url="{{ url_for('users_api.update_privacy_settings') }}"
         data-change-password-url="{{ url_for('users_api.alterar_palavra_passe') }}"
-        data-i18n-password-saving="{{ _('A alterar...') }}"
-        data-i18n-password-save="{{ _('Alterar a palavra-passe') }}"
-        data-i18n-password-too-short="{{ _('A nova palavra-passe tem de ter pelo menos 6 caracteres.') }}"
-        data-i18n-password-mismatch="{{ _('As duas palavras-passe novas não são iguais.') }}"
+        data-i18n-password-saving="{{ _('Alterando...') }}"
+        data-i18n-password-save="{{ _('Alterar a senha') }}"
+        data-i18n-password-too-short="{{ _('A nova senha precisa ter pelo menos 6 caracteres.') }}"
+        data-i18n-password-mismatch="{{ _('As duas senhas novas não são iguais.') }}"
         data-i18n-password-required="{{ _('Preencha todos os campos.') }}"
-        data-i18n-show-password="{{ _('Mostrar a palavra-passe') }}"
-        data-i18n-hide-password="{{ _('Esconder a palavra-passe') }}"
+        data-i18n-show-password="{{ _('Mostrar a senha') }}"
+        data-i18n-hide-password="{{ _('Esconder a senha') }}"
         data-get-payment-options-url="{{ url_for('payments_api.get_payment_options') }}"
         data-create-charge-url="{{ url_for('payments_api.create_charge_route') }}"
         data-get-payment-history-url="{{ url_for('users_api.get_user_payments_history', media_user_id=current_user.id) }}"
@@ -532,15 +532,15 @@
         data-i18n-polling-error="{{ _('A tentar conexão ao banco:') }}"
         data-i18n-code-copied="{{ _('Chave PIX Copiada!') }}"
         data-i18n-test-ended="{{ _('O Seu Período de Teste Terminou') }}"
-        data-i18n-test-ended-message="{{ _('Esperamos que tenha gostado! Para continuar a aceder ao servidor, por favor ative uma assinatura abaixo.') }}"
+        data-i18n-test-ended-message="{{ _('Esperamos que tenha gostado! Para continuar acessando o servidor, por favor ative uma assinatura abaixo.') }}"
         data-i18n-access-blocked="{{ _('Acesso Interrompido') }}"
-        data-i18n-access-blocked-message="{{ _('A sua conta encontra-se desativada por decisão administrativa.') }}"
+        data-i18n-access-blocked-message="{{ _('Sua conta encontra-se desativada por decisão administrativa.') }}"
         data-i18n-access-blocked-contact="{{ _('Por favor, contacte o administrador para mais informações.') }}"
         data-i18n-expired-signature="{{ _('Assinatura Inativa') }}"
         data-i18n-expired-signature-message="{{ _('O seu tempo de acesso terminou. Renove abaixo para voltar a assistir instantaneamente.') }}"
         data-i18n-expiring-access="{{ _('Atenção ao Vencimento') }}"
-        data-i18n-expiring-access-message="{{ _('O seu acesso expira em {days} dias ({date}).') }}"
-        data-i18n-expires-today-message="{{ _('A sua assinatura expira HOJE ({date}). Renove já para evitar interrupções.') }}"
+        data-i18n-expiring-access-message="{{ _('Seu acesso expira em {days} dias ({date}).') }}"
+        data-i18n-expires-today-message="{{ _('Sua assinatura expira HOJE ({date}). Renove já para evitar interrupções.') }}"
         data-i18n-no-shared-library="{{ _('Ainda não tem acesso a nenhuma biblioteca.') }}"
         data-i18n-expires-on="{{ _('Expira a:') }}"
         data-i18n-screen-singular="{{ _('Tela') }}"
@@ -557,7 +557,7 @@
         data-i18n-hours-ago="{{ _('{count} horas') }}"
         data-i18n-minutes-ago="{{ _('{count} min') }}"
         data-i18n-just-now="{{ _('Agora') }}"
-        data-i18n-no-devices-found="{{ _('Não existem aparelhos no seu histórico recente.') }}"
+        data-i18n-no-devices-found="{{ _('Não há dispositivos no seu histórico recente.') }}"
         data-i18n-saving="{{ _('Salvando...') }}"
         data-i18n-save-details="{{ _('Salvar Alterações') }}"
         data-i18n-coupon-applied-success="{{ _('Desconto Aplicado!') }}"
@@ -567,7 +567,7 @@
         data-i18n-next="{{ _('Próxima') }}"
         data-i18n-page-of="{{ _('Página {currentPage} / {totalPages}') }}"
         data-i18n-progress="{{ _('Progresso') }}"
-        data-i18n-player="{{ _('Aparelho') }}"
+        data-i18n-player="{{ _('Dispositivo') }}"
         data-i18n-title="{{ _('Filme / Série') }}"
         data-i18n-loading-requests="{{ _('Verificando a base de dados central...') }}"
         data-i18n-no-requests-found="{{ _('Nenhum pedido condiz com este filtro.') }}"
@@ -584,7 +584,7 @@
         data-i18n-upgrade-now-title="{{ _('Faça upgrade agora, pagando só a diferença') }}"
         data-i18n-upgrade-now-desc="{{ _('Como faltam {days} dia(s) no seu plano atual, você paga apenas {price} e as telas ficam disponíveis imediatamente. O seu vencimento não muda.') }}"
         data-i18n-upgrade-use-proration="{{ _('Pagar apenas a diferença') }}"
-        data-i18n-upgrade-only-proration="{{ _('A troca de plano numa renovação completa fica disponível perto do vencimento.') }}"
+        data-i18n-upgrade-only-proration="{{ _('A troca de plano em uma renovação completa fica disponível perto do vencimento.') }}"
         data-i18n-upgrade-button="{{ _('Pagar diferença de R$ {price}') }}"
         data-i18n-upgrade-free-title="{{ _('Upgrade sem custo!') }}"
         data-i18n-upgrade-free-desc="{{ _('Faltam {days} dia(s) para o vencimento — o valor proporcional é tão baixo que o upgrade é gratuito.') }}"

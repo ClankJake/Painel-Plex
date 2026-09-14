@@ -222,7 +222,7 @@ class PlexHistoryManager:
             aparelhos = self._aparelhos_por_id()
         except Exception as e:
             logger.warning(f"O Plex não devolveu os aparelhos de {user_id}: {describe(e)}")
-            return {"success": False, "message": _("Não foi possível obter os aparelhos.")}
+            return {"success": False, "message": _("Não foi possível obter os dispositivos.")}
 
         vistos: Dict[str, Dict[str, Any]] = {}
         for entrada in entradas:

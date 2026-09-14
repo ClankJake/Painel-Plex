@@ -681,13 +681,13 @@ def _concluir_com_reinicio(config, backend):
         resposta = _login_user_session(conta, 'admin', 'main.index')
         corpo = resposta.get_json()
         corpo['restarting'] = True
-        corpo['message'] = _("Configuração guardada. A aplicação vai reiniciar — aguarde alguns segundos e recarregue a página.")
+        corpo['message'] = _("Configuração salva. A aplicação vai reiniciar — aguarde alguns segundos e recarregue a página.")
         return jsonify(corpo)
 
     return jsonify({
         "success": True, "restarting": True,
         "redirect_url": url_for('main.index', _external=False),
-        "message": _("Configuração guardada. A aplicação vai reiniciar — aguarde alguns segundos e recarregue a página."),
+        "message": _("Configuração salva. A aplicação vai reiniciar — aguarde alguns segundos e recarregue a página."),
     })
 
 
@@ -757,7 +757,7 @@ def save_setup():
         return jsonify({
             "success": False,
             "message": _(
-                "Faltam dados obrigatórios: %(campos)s. Volte atrás e conclua a ligação "
+                "Faltam dados obrigatórios: %(campos)s. Volte atrás e conclua a conexão "
                 "ao servidor e a escolha da conta de administrador.",
                 campos=", ".join(em_falta)
             )
@@ -1065,7 +1065,7 @@ def bulk_notify():
         # 3. Disparamos o envio em massa IMEDIATAMENTE e no ambiente correto
         notifier_manager.process_bulk_notification_task(task)
 
-        return jsonify({"success": True, "message": _("A tarefa de envio de notificações em massa foi iniciada e está a correr em tempo real!"), "task_id": task_id})
+        return jsonify({"success": True, "message": _("A tarefa de envio de notificações em massa foi iniciada e está rodando em tempo real!"), "task_id": task_id})
     except Exception as e:
         logger.error(f"Erro na rota bulk-notify: {e}", exc_info=True)
         return jsonify({"success": False, "message": str(e)}), 500

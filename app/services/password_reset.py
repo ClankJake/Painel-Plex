@@ -170,8 +170,8 @@ def aplicar_reposicao(token, nova_palavra_passe, data_manager, media_server):
     if not resultado.get('success'):
         # O pedido já foi consumido: é o lado seguro do erro (um token que
         # sobrevivesse a uma falha ficava a valer mais tempo do que devia).
-        return False, resultado.get('message') or _("Não foi possível alterar a palavra-passe.")
+        return False, resultado.get('message') or _("Não foi possível alterar a senha.")
 
     perfil = data_manager.get_user_profile(media_user_id) or {}
     logger.info(f"'{perfil.get('username')}' repôs a palavra-passe através de um link.")
-    return True, _("Palavra-passe alterada. Já pode entrar com a nova.")
+    return True, _("Senha alterada. Você já pode entrar com a nova.")

@@ -5,6 +5,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 O código, os comentários, as mensagens de commit e a documentação deste projeto
 estão em português. Mantenha esse idioma no que escrever.
 
+⚠️ **O que a PESSOA lê é português do BRASIL.** O painel sempre falou brasileiro
+("Usuário", "Senha", "telas", "Você"), mas funcionalidades novas foram entrando
+com vocabulário europeu — "palavra-passe", "utilizador", "aceder", "A
+guardar..." — e o resultado eram duas variantes na mesma página. Isto vale para
+os literais dentro de `_()` e para os modelos de notificação, que chegam ao
+telefone de quem paga; os comentários e as docstrings ficam de fora, são
+internos. Há um teste que percorre tudo o que é visível e recusa o vocabulário
+europeu, dizendo logo qual a forma a usar
+(`tests/test_textos_em_portugues_do_brasil.py`).
+
 ## Comandos
 
 ```bash
