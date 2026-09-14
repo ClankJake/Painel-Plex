@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const botao = document.getElementById('credentials-submit');
         const textoBotao = document.getElementById('credentials-submit-text');
+        const spinner = document.getElementById('credentials-spinner');
         const erro = document.getElementById('credentials-error');
         const username = document.getElementById('login-username').value.trim();
         const password = document.getElementById('login-password').value;
@@ -49,6 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         botao.disabled = true;
+        spinner?.classList.remove('hidden');
         if (textoBotao) textoBotao.textContent = i18n.signingIn || '';
 
         try {
@@ -63,15 +65,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.location.href = dados.redirect_url;
                 return;
             }
-            erro.textContent = dados.message || dados.error || '';
+            // Uma resposta sem corpo útil (429 do limitador, 500) deixava o
+            // campo em branco e a pessoa sem saber o que tinha acontecido.
+            erro.textContent = dados.message || dados.error || i18n.authCheckError || '';
         } catch (e) {
             erro.textContent = i18n.authCheckError || '';
         } finally {
             // A palavra-passe não fica no campo depois de uma tentativa falhada.
-            document.getElementById('login-password').value = '';
+            const campoPalavraPasse = document.getElementById('login-password');
+            campoPalavraPasse.value = '';
+            campoPalavraPasse.focus();
+            spinner?.classList.add('hidden');
             botao.disabled = false;
             if (textoBotao) textoBotao.textContent = i18n.signIn || '';
         }
+    });
+
+    // Ver o que se escreveu: numa palavra-passe de servidor local, escrita à mão
+    // num telemóvel, é a diferença entre entrar e ficar a tentar.
+    const alternarPalavraPasse = document.getElementById('toggle-password');
+    alternarPalavraPasse?.addEventListener('click', () => {
+        const campo = document.getElementById('login-password');
+        const visivel = campo.type === 'text';
+
+        campo.type = visivel ? 'password' : 'text';
+        document.getElementById('icon-eye')?.classList.toggle('hidden', !visivel);
+        document.getElementById('icon-eye-off')?.classList.toggle('hidden', visivel);
+        alternarPalavraPasse.setAttribute('aria-pressed', String(!visivel));
+        alternarPalavraPasse.setAttribute(
+            'aria-label',
+            (visivel ? i18n.showPassword : i18n.hidePassword) || ''
+        );
+        campo.focus();
     });
 
     // --- FUNÇÕES AUXILIARES ---

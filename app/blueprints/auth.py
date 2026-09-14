@@ -17,6 +17,9 @@ from flask_babel import gettext as _
 from ..models import User
 from ..config import is_configured, load_or_create_config, save_app_config
 from ..extensions import media_server, data_manager, limiter
+from flask_limiter.util import get_remote_address
+
+from ..utils import tentativas_de_login
 from ..utils.identity import normalize_user_id
 from ..utils.navigation import endpoint_inicial_do_utilizador
 
@@ -381,13 +384,37 @@ def get_plex_auth_context():
         return jsonify({"success": False, "message": "Erro interno ao obter contexto de autenticação."}), 500
 
 
+# Limites do que se aceita escrever nos campos. Não são regras do servidor de
+# média — são o ponto onde o pedido para: sem eles, uma palavra-passe de dez
+# megabytes era lida para memória e reenviada ao Jellyfin a cada tentativa.
+MAX_UTILIZADOR = 128
+MAX_PALAVRA_PASSE = 256
+
+
+def _texto_para_log(valor, limite=64):
+    """Um nome escrito por quem tenta entrar, seguro para ir para o log.
+
+    🛡️ O que vem do formulário chega inteiro ao ficheiro de log: com uma quebra
+    de linha lá dentro, quem tenta entrar escreve as linhas que quiser no log
+    do painel — inventando entradas que parecem do próprio sistema.
+    """
+    limpo = ''.join(c for c in str(valor or '') if c.isprintable())
+    return limpo[:limite]
+
+
 @auth_bp.route('/login/credentials', methods=['POST'])
 @limiter.limit("10 per minute")
 def login_with_credentials():
     """Login com utilizador e palavra-passe, para servidores de contas locais.
 
-    🔒 Limitado a 10 por minuto: é a única rota do painel onde se podem testar
-    palavras-passe, e sem limite servia para as adivinhar à força.
+    🔒 É a única rota do painel onde se podem testar palavras-passe, e tem por
+    isso três travões independentes:
+
+    1. 10 por minuto por ENDEREÇO (o Flask-Limiter, acima);
+    2. um travão por CONTA e outro, mais largo, por endereço
+       (`utils/tentativas_de_login.py`) — porque o primeiro conta por IP e
+       quem ataca uma conta concreta tinha as dez por minuto todas para ela;
+    3. um limite ao TAMANHO do que se aceita, antes de tocar na rede.
 
     As credenciais NÃO passam por aqui para lado nenhum além do servidor de
     média: o painel não as guarda, nem guarda o token de sessão que o servidor
@@ -402,6 +429,8 @@ def login_with_credentials():
             "message": _("Este servidor usa autenticação externa. Entre pelo botão do servidor."),
         }), 400
 
+    safe_log_request_info()
+
     dados = request.get_json(silent=True) or {}
     username = (dados.get('username') or '').strip()
     password = dados.get('password') or ''
@@ -409,15 +438,38 @@ def login_with_credentials():
     if not username or not password:
         return jsonify({"success": False, "message": _("Indique o utilizador e a palavra-passe.")}), 400
 
+    # ⚠️ Antes de qualquer outra coisa: recusar o que é grande de mais em vez de
+    # o mandar para o servidor de média.
+    if len(username) > MAX_UTILIZADOR or len(password) > MAX_PALAVRA_PASSE:
+        logger.warning("Tentativa de login recusada: credenciais acima do tamanho aceite.")
+        return jsonify({"success": False, "message": _("Utilizador ou palavra-passe incorretos.")}), 401
+
+    endereco = get_remote_address()
+
+    if espera := tentativas_de_login.segundos_de_espera(username, endereco):
+        minutos = max(1, round(espera / 60))
+        logger.warning(
+            f"Tentativas de login bloqueadas para '{_texto_para_log(username)}' "
+            f"(faltam {espera}s)."
+        )
+        return jsonify({
+            "success": False,
+            "message": _("Demasiadas tentativas falhadas. Tente de novo daqui a %(minutos)d minuto(s).",
+                         minutos=minutos),
+        }), 429
+
     conta = media_server.authenticate(username, password)
     if conta is None:
         # A mesma mensagem para utilizador inexistente e palavra-passe errada:
         # distinguir os dois casos diz a quem tenta adivinhar quais as contas
-        # que existem neste servidor.
-        logger.warning(f"Tentativa de login falhada para '{username}'.")
+        # que existem neste servidor. Pela mesma razão, a falha é CONTADA
+        # mesmo quando o nome não existe.
+        tentativas_de_login.registar_falha(username, endereco)
+        logger.warning(f"Tentativa de login falhada para '{_texto_para_log(username)}'.")
         return jsonify({"success": False, "message": _("Utilizador ou palavra-passe incorretos.")}), 401
 
-    logger.info(f"Login bem-sucedido de '{conta.username}'.")
+    tentativas_de_login.registar_sucesso(username, endereco)
+    logger.info(f"Login bem-sucedido de '{_texto_para_log(conta.username)}'.")
     return _autorizar_e_iniciar_sessao(conta, load_or_create_config())
 
 
