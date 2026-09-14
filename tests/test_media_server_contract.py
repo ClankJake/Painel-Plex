@@ -203,6 +203,38 @@ class TestAsAssinaturasNaoDivergem:
                 assert com_marca == [], f"{classe.__name__}.{nome}{com_marca}"
 
 
+class TestOUltimoRecursoDosCortes:
+    """⚠️ Nem todos os servidores têm alguma coisa mais forte do que pedir.
+
+    🐛 A definição "Forçar o encerramento em aparelhos que ignoram o comando"
+    aparecia num painel PLEX, onde `force_terminate()` devolve sempre False:
+    prometia um comportamento que nunca acontecia, e o log ainda aconselhava a
+    ligá-la. Quem decide é a capacidade — uma capacidade em falta esconde a
+    funcionalidade.
+    """
+
+    def test_o_plex_nao_tem_nada_mais_forte(self):
+        assert PlexManager.CAPABILITIES.corte_forcado is False
+
+    def test_o_jellyfin_tem(self):
+        from app.services.media_server.jellyfin.backend import JellyfinManager
+
+        assert JellyfinManager.CAPABILITIES.corte_forcado is True
+
+    @pytest.mark.parametrize('tipo', ['plex', 'jellyfin'])
+    def test_a_capacidade_e_o_provider_dizem_o_mesmo(self, tipo):
+        # São duas declarações do mesmo facto: uma para a interface (o cartão
+        # nas Configurações) e outra para o motor de streams, que fala com o
+        # provider e não com o backend. Divergirem seria a definição a aparecer
+        # sem fazer nada, ou a desaparecer onde faz.
+        backend = create_media_server(
+            tipo, data_manager=_Duplo(), stats_manager=_Duplo(),
+            notifier_manager=_Duplo(), requests_manager=_Duplo(),
+        )
+
+        assert backend.sessions.suporta_corte_forcado() is backend.CAPABILITIES.corte_forcado
+
+
 class TestReporOAcesso:
     """Repor o acesso é do BACKEND, porque é diferente em cada servidor."""
 

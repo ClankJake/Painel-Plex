@@ -350,6 +350,21 @@ pedidos à mesma `playback_key`, e só com `FORCE_STREAM_TERMINATION` ligado
 aparelho e não se desfaz a partir do painel). O Plex devolve `False` — sem nada
 mais forte a oferecer, o motor volta a pedir.
 
+⚠️ **Nem todos os servidores TÊM um último recurso, e a interface tem de o
+dizer.** A definição "Forçar o encerramento em aparelhos que ignoram o comando"
+aparecia num painel Plex, onde não faz nada — e, desligada, o log ainda
+aconselhava a ligá-la. Quem decide é `capabilities.corte_forcado`: a definição
+esconde-se onde não há o que ligar, e o aviso passa a dizer a verdade ("este
+servidor não tem nada mais forte a oferecer").
+
+O mesmo facto é declarado em DOIS sítios, porque são dois consumidores
+diferentes: a capacidade do backend serve os templates, e
+`sessions.suporta_corte_forcado()` serve o `StreamManager`, que fala com o
+provider e não com o backend. Um teste de contrato compara os dois — divergirem
+seria a definição a aparecer sem fazer nada, ou a desaparecer onde faz. E
+escondê-la não a apaga: `save_settings` só escreve os campos que vêm no pedido,
+por isso gravar noutro separador não desliga em silêncio uma defesa já pedida.
+
 ⚠️ **O `DeviceId` da sessão é o que o CLIENTE diz ser**, e nem sempre há um
 aparelho registado com esse id — o `DELETE /Devices` responde então 400 com um
 corpo vazio, que não diz nada a quem lê o log. Por isso confirma-se primeiro na

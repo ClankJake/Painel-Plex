@@ -56,6 +56,9 @@ class JellyfinManager:
         # (`stats_api.py`). O Tautulli não entra aqui — nem há o que configurar.
         estatisticas=True,
         estatisticas_externas=False,
+        # Revogar o acesso do APARELHO (`DELETE /Devices`) mata a reprodução
+        # obedeça o cliente ou não — ver `force_terminate`.
+        corte_forcado=True,
     )
 
     IMAGE_SOURCES = ('jellyfin',)

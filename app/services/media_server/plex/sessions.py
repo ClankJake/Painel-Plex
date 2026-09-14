@@ -459,6 +459,10 @@ class PlexSessionsProvider:
             logger.debug(f"Não foi possível encerrar a sessão {session.session_key}: {describe(e)}")
             return True
 
+    def suporta_corte_forcado(self) -> bool:
+        """Não há. É por isto que a definição de forçar o corte se esconde aqui."""
+        return False
+
     def force_terminate(self, session: MediaSession, reason: str) -> bool:
         """O Plex obedece ao `stop()`: não há nada mais forte a acrescentar."""
         return False

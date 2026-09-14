@@ -56,6 +56,11 @@ class ProviderFalso:
         # distingue uma tentativa de dez).
         self.forcas_pedidas = []
         self.forca_funciona = True
+        # ⚠️ Nem todos os servidores TÊM um último recurso: no Plex,
+        # `force_terminate()` devolve sempre False. Um duplo que não modele
+        # isto testa metade dos servidores — foi por isso que a definição
+        # "forçar o encerramento" apareceu num painel Plex, onde não faz nada.
+        self.ha_ultimo_recurso = True
         self.ligado = True
         self.owner_id = owner_id
         self.avatares_pedidos = []
@@ -82,6 +87,9 @@ class ProviderFalso:
             return False
         self.terminadas[session.session_key] = reason
         return True
+
+    def suporta_corte_forcado(self):
+        return self.ha_ultimo_recurso
 
     def force_terminate(self, session, reason):
         self.forcadas[session.session_key] = reason
@@ -624,6 +632,47 @@ class TestClienteQueIgnoraAOrdemDeParar:
         assert manager.sessions.forcadas == {}
         # E continua a pedir — desistir em silêncio seria pior.
         assert manager.sessions.terminadas == {"exoplayer": "limite"}
+
+    def test_num_servidor_sem_ultimo_recurso_nao_se_tenta_nada(self, manager, cache_limpa, forcar):
+        # 🐛 No Plex, `force_terminate()` devolve sempre False: não há nada mais
+        # forte do que pedir para parar. Ligar a definição não muda isso — e o
+        # painel mostrava-a na mesma, a prometer um comportamento que nunca
+        # acontecia.
+        forcar(True)
+        manager.sessions.ha_ultimo_recurso = False
+        alvo = sessao(session_key="plex-web", playback_key="plex-web:repro-A")
+
+        self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 3)
+
+        assert manager.sessions.forcas_pedidas == []
+        # Continua a pedir educadamente: desistir em silêncio seria pior.
+        assert manager.sessions.terminadas == {"plex-web": "limite"}
+
+    def test_o_aviso_nao_manda_ligar_o_que_nao_existe(self, manager, cache_limpa, forcar, caplog):
+        # Mandar o administrador ligar uma definição que a página de
+        # Configurações nem lhe mostra é pior do que não dizer nada.
+        import logging
+
+        forcar(False)
+        manager.sessions.ha_ultimo_recurso = False
+        alvo = sessao(session_key="plex-web", playback_key="plex-web:repro-A")
+
+        with caplog.at_level(logging.WARNING):
+            self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 1)
+
+        assert "FORCE_STREAM_TERMINATION" not in caplog.text
+        assert "nada mais forte" in caplog.text
+
+    def test_onde_existe_o_aviso_continua_a_dizer_como_o_ligar(self, manager, cache_limpa, forcar, caplog):
+        import logging
+
+        forcar(False)
+        alvo = sessao(session_key="exoplayer", playback_key="exoplayer:repro-A")
+
+        with caplog.at_level(logging.WARNING):
+            self._insistir(manager, alvo, manager.TENTATIVAS_ANTES_DE_FORCAR + 1)
+
+        assert "FORCE_STREAM_TERMINATION" in caplog.text
 
     def test_um_ultimo_recurso_recusado_nao_e_repetido_a_cada_volta(self, manager, cache_limpa, forcar):
         """

@@ -356,6 +356,10 @@ class JellyfinSessionsProvider:
                 return identificador
         return None
 
+    def suporta_corte_forcado(self) -> bool:
+        """Há: revogar o acesso do aparelho (ver `force_terminate`)."""
+        return True
+
     def force_terminate(self, session: MediaSession, reason: str) -> bool:
         """Revoga o acesso do APARELHO, para clientes que ignoram a ordem de parar.
 

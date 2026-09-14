@@ -78,6 +78,15 @@ class MediaServerCapabilities:
     # cartão do Tautulli aparece nas Conexões e no estado do sistema.
     estatisticas_externas: bool
 
+    # Há alguma coisa MAIS FORTE do que pedir para parar. `terminate()` pede
+    # educadamente e há clientes que não obedecem; `force_terminate()` usa o que
+    # o servidor tiver de mais contundente (no Jellyfin, revogar o acesso do
+    # aparelho). O Plex não tem nada: a definição "Forçar o encerramento em
+    # aparelhos que ignoram o comando" aparecia lá na mesma e não fazia nada —
+    # é por esta bandeira que ela se esconde. Tem valor por omissão porque um
+    # backend que não a declare é um backend sem último recurso.
+    corte_forcado: bool = False
+
 
 @runtime_checkable
 class ConnectionBackend(Protocol):
@@ -288,6 +297,19 @@ class SessionsProvider(Protocol):
         várias vezes, e só se o administrador o tiver autorizado.
 
         Devolve False quando o servidor não tem nada mais forte a oferecer.
+        """
+        return False
+
+    def suporta_corte_forcado(self) -> bool:
+        """Há mesmo alguma coisa mais forte, ou `force_terminate` é só um `False`?
+
+        O motor de streams precisa de saber isto ANTES de tentar: com o último
+        recurso desligado, era ele que aconselhava o administrador a ligar a
+        definição `FORCE_STREAM_TERMINATION` — conselho inútil num servidor que
+        não tem nada mais forte a oferecer.
+
+        ⚠️ Tem de dizer o mesmo que `capabilities.corte_forcado` do backend, e
+        há um teste de contrato que compara os dois.
         """
         return False
 

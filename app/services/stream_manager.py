@@ -513,17 +513,28 @@ class StreamManager:
 
         config = load_or_create_config()
 
-        if not config.get('FORCE_STREAM_TERMINATION'):
+        # ⚠️ Nem todos os servidores TÊM um último recurso. No Plex,
+        # `force_terminate()` devolve sempre False — não há nada mais forte do
+        # que pedir para parar. Aconselhar o administrador a ligar uma definição
+        # que ali não faz nada é pior do que não dizer nada: manda-o procurar um
+        # interruptor que a página de Configurações nem lhe mostra.
+        ha_ultimo_recurso = self.sessions.suporta_corte_forcado()
+
+        if not (ha_ultimo_recurso and config.get('FORCE_STREAM_TERMINATION')):
             # Um aviso por reprodução, para não encher o log de repetições.
             chave_aviso = f"aviso_ignorou_{session.playback_key}"
             if not cache.get(chave_aviso):
                 cache.set(chave_aviso, True, timeout=600)
+                conselho = (
+                    "Para o painel poder forçar o fim (revogando o acesso do aparelho, o que "
+                    "obriga a nova autenticação), ative FORCE_STREAM_TERMINATION."
+                    if ha_ultimo_recurso else
+                    "Este servidor não tem nada mais forte a oferecer do que a ordem de parar."
+                )
                 logger.warning(
                     "⚠️ O cliente '%s' ignorou %s ordens para parar '%s' e continua a "
-                    "reproduzir. O limite de telas não está a ser cumprido neste aparelho. "
-                    "Para o painel poder forçar o fim (revogando o acesso do aparelho, o que "
-                    "obriga a nova autenticação), ative FORCE_STREAM_TERMINATION.",
-                    session.player, tentativas, session.media_title,
+                    "reproduzir. O limite de telas não está a ser cumprido neste aparelho. %s",
+                    session.player, tentativas, session.media_title, conselho,
                 )
             return False
 
