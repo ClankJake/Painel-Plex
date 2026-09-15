@@ -972,6 +972,37 @@ conta tem de continuar a responder depois de a conta deixar de existir, que é
 precisamente quando alguém vai perguntar. Lê-se em `GET /api/system/audit-logs`
 (só administradores) e **não há rota para a apagar**, ao contrário do `app.log`.
 
+A interface é a aba **Auditoria** das Configurações (`settings/tabs/audit.html`
++ `settings_modules/audit.js`), ao lado da de Logs e de propósito: são as duas
+listas de "o que aconteceu", e a diferença entre elas é que esta não tem botão
+de limpar. Há um teste que a prende (`tests/test_aba_de_auditoria.py`) — se
+alguém lhe acrescentar um, ele falha.
+
+Quatro coisas que essa aba tem de respeitar, todas com teste:
+
+- ⚠️ **os rótulos das ações vivem no template, a chave no código.** A chave
+  (`utilizador.bloquear`) é o identificador estável por onde se filtra; o
+  rótulo ("Usuário bloqueado") é o que a pessoa lê. Uma ação nova sem rótulo
+  aparece com a chave crua — que é vocabulário interno e nem sequer é
+  brasileiro. O teste compara os `audit.registar(...)` do código com a tabela
+  `ROTULOS` e com os `data-i18n-*` do `settings.html`;
+- ⚠️ **a data é UTC "nua" e leva um 'Z' antes do `new Date`.** Sem ele o
+  JavaScript lê-a como hora LOCAL e cada registo aparece três horas adiantado
+  no Brasil. É a mesma convenção da Auditoria de Cortes no painel principal;
+- ⚠️ **as classes do Tailwind são escritas por extenso** (o mapa `CORES`), e
+  não montadas com `bg-${cor}-100`: o compilador procura nomes de classes
+  LITERAIS nos ficheiros, e uma classe montada em tempo de execução nunca
+  chega ao CSS — o ícone ficava sem cor, sem erro nenhum;
+- 🛡️ **tudo o que vem da resposta é escapado.** O `username` que aparece nos
+  detalhes é escolhido por quem cria a conta no servidor de mídia, e a lista é
+  montada com `innerHTML`: alguém chamado `<img src=x onerror=…>` executava
+  código na sessão de um administrador.
+
+A lista é buscada ao ABRIR a aba (como o polling dos logs), e não no arranque
+da página: é uma aba que quase ninguém abre, e um pedido a cada visita às
+Configurações seria trabalho para nada. Não faz polling — ao contrário dos
+logs, o que aqui entra não muda enquanto se está a olhar.
+
 #### O `payment_token` é uma credencial portadora, e agora expira
 
 🛡️ Quem tiver o link `/pay/<token>` vê o nome e o vencimento de quem lá está e

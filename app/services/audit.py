@@ -174,27 +174,73 @@ def registar(acao, alvo_tipo=None, alvo_id=None, detalhes=None):
         logger.warning(f"Não foi possível registar '{acao}' na auditoria: {e}")
 
 
+def _como_dicionario(linha):
+    return {
+        'id': linha.id,
+        # ⚠️ Sem sufixo de fuso, porque a coluna é UTC "nua" — como todas as
+        # `DateTime` desta base de dados. Quem a lê no navegador acrescenta o
+        # 'Z' antes de a dar ao `new Date`, que é a convenção que a Auditoria
+        # de Cortes já usava: sem isso, o JavaScript lê-a como hora LOCAL e o
+        # registo aparece com três horas de diferença no Brasil.
+        'timestamp': linha.timestamp.isoformat() if linha.timestamp else None,
+        'ator': linha.ator,
+        'ator_id': linha.ator_id,
+        'acao': linha.acao,
+        'alvo_tipo': linha.alvo_tipo,
+        'alvo_id': linha.alvo_id,
+        'detalhes': _detalhes_legiveis(linha.detalhes),
+        'endereco_ip': linha.endereco_ip,
+    }
+
+
+def _detalhes_legiveis(bruto):
+    """O JSON gravado, ou `None` se ele não voltar a ler.
+
+    ⚠️ Uma linha que não desserialize não pode derrubar a página inteira: o que
+    está guardado é texto livre de há meses, e a auditoria serve precisamente
+    para ser lida quando alguma coisa correu mal.
+    """
+    if not bruto:
+        return None
+    try:
+        return json.loads(bruto)
+    except (ValueError, TypeError):
+        logger.warning("Uma entrada da auditoria tem detalhes que não são JSON válido.")
+        return None
+
+
 def listar(limite=100, acao=None, desvio=0):
-    """As entradas mais recentes, da mais nova para a mais antiga."""
+    """As entradas mais recentes, da mais nova para a mais antiga.
+
+    Devolve `(entradas, total)`: o total é o que permite à interface saber se
+    ainda há mais para trás sem ter de adivinhar pelo tamanho da página.
+    """
     from ..models import AuditLog
 
     consulta = AuditLog.query
     if acao:
         consulta = consulta.filter(AuditLog.acao == acao)
 
+    total = consulta.count()
     linhas = (consulta.order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
               .offset(max(0, int(desvio)))
               .limit(max(1, min(int(limite), 500)))
               .all())
 
-    return [{
-        'id': l.id,
-        'timestamp': l.timestamp.isoformat() if l.timestamp else None,
-        'ator': l.ator,
-        'ator_id': l.ator_id,
-        'acao': l.acao,
-        'alvo_tipo': l.alvo_tipo,
-        'alvo_id': l.alvo_id,
-        'detalhes': json.loads(l.detalhes) if l.detalhes else None,
-        'endereco_ip': l.endereco_ip,
-    } for l in linhas]
+    return [_como_dicionario(l) for l in linhas], total
+
+
+def acoes_registadas():
+    """As ações que EXISTEM mesmo na tabela, para o filtro da interface.
+
+    ⚠️ Lê-se da tabela em vez de uma lista fixa no código de propósito: um
+    filtro com opções que nunca devolvem nada é pior do que um filtro curto, e
+    uma auditoria de meses atrás pode ter ações de uma versão que já não
+    existe — essas também têm de poder ser filtradas.
+    """
+    from ..models import AuditLog
+
+    return sorted(
+        linha[0] for linha in db.session.query(AuditLog.acao).distinct().all()
+        if linha[0]
+    )

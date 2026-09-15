@@ -11,6 +11,7 @@ import { settingsData } from './handlers.js';
 import { showToast } from '../utils.js';
 import { renderLevelEditor, renderResetMonthsGrid } from './gamification.js';
 import { loadOnlineMediaSources } from './online_media.js';
+import { carregar as carregarAuditoria } from './audit.js';
 
 let logIntervalId = null;
 let lastLogContent = ""; // Evita re-renderizações desnecessárias e pulos no scroll
@@ -321,6 +322,14 @@ function handleTabChange(clickedButton, navElement, contentContainer, contentSel
         if (!logIntervalId) toggleLogUpdates(); 
     } else if (!isSubtab) {
         if (logIntervalId) toggleLogUpdates(); 
+    }
+
+    // A auditoria é buscada ao ABRIR a aba, e não no arranque da página: é uma
+    // lista que quase ninguém abre, e um pedido por cada visita às
+    // Configurações seria trabalho para nada. Não faz polling — ao contrário
+    // dos logs, o que aqui entra não muda enquanto se está a olhar.
+    if (tabId === 'auditoria' && !isSubtab) {
+        carregarAuditoria(true);
     }
 
     if (!isSubtab) syncTabsSelect();

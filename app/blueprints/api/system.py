@@ -176,13 +176,22 @@ def get_audit_logs():
     existe. Quem precisar de a truncar tem a base de dados.
     """
     try:
+        desvio = max(0, request.args.get('offset', 0, type=int) or 0)
+        limite = request.args.get('limit', 50, type=int) or 50
+        entradas, total = audit.listar(
+            limite=limite,
+            desvio=desvio,
+            acao=request.args.get('action', type=str),
+        )
         return jsonify({
             "success": True,
-            "logs": audit.listar(
-                limite=request.args.get('limit', 100, type=int),
-                desvio=request.args.get('offset', 0, type=int),
-                acao=request.args.get('action', type=str),
-            ),
+            "logs": entradas,
+            "total": total,
+            # `ha_mais` vai calculado do servidor: a interface não tem como
+            # saber se a página veio curta por ser a última ou por o limite
+            # ter sido aparado.
+            "ha_mais": (desvio + len(entradas)) < total,
+            "acoes": audit.acoes_registadas(),
         })
     except Exception as e:
         logger.error(f"Erro ao obter a trilha de auditoria: {e}", exc_info=True)

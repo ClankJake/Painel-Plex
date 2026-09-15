@@ -276,6 +276,29 @@ export function restoreButton(button) {
  * É uma declaração de função (e não uma const) de propósito: o hoisting permite
  * que `sanitizeHTML`, definida no topo deste ficheiro, a utilize.
  */
+/**
+ * Uma data como "dd/mm/aaaa hh:mm", no idioma da interface.
+ *
+ * ⚠️ **O idioma vem do `<html lang>` e não do navegador.** Quem usa o painel em
+ * português com um navegador em inglês via `09/15/2026, 08:48 PM` — o mês antes
+ * do dia, que num painel brasileiro se lê ao contrário do que diz. O
+ * `navigator.language` fica como segunda escolha e o 'pt-BR' como terceira,
+ * porque a página pode não declarar língua nenhuma.
+ *
+ * 📌 Já existem três cópias disto espalhadas por `dashboard_modules` e
+ * `users_modules`, cada uma com a sua ideia de fallback. Esta é a que fica em
+ * `utils.js`, que é onde os helpers partilhados vivem; quem mexer nas outras
+ * páginas tem aqui para onde as trazer.
+ */
+export function formatarDataHora(data) {
+    if (!(data instanceof Date) || Number.isNaN(data.getTime())) return '';
+    const idioma = document.documentElement.lang || navigator.language || 'pt-BR';
+    const dia = data.toLocaleDateString(idioma, { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const hora = data.toLocaleTimeString(idioma, { hour: '2-digit', minute: '2-digit' });
+    return `${dia} ${hora}`;
+}
+
+
 export function escapeHTML(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'

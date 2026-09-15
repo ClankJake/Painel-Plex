@@ -10,6 +10,17 @@ export const getSettings = () => fetchAPI(urls.apiSettings);
 export const saveSettings = (config) => fetchAPI(urls.apiSettings, 'POST', config);
 export const clearLogs = () => fetchAPI(urls.clearLogs, 'POST');
 export const getLogs = () => fetchAPI(urls.getLogs);
+
+// A auditoria só se lê: não há rota para a apagar, e é essa a diferença que a
+// faz existir ao lado dos Logs do Sistema.
+export const getAuditLogs = ({ limit, offset, action } = {}) => {
+    const parametros = new URLSearchParams();
+    if (limit) parametros.set('limit', limit);
+    if (offset) parametros.set('offset', offset);
+    if (action) parametros.set('action', action);
+    const consulta = parametros.toString();
+    return fetchAPI(consulta ? `${urls.auditLogs}?${consulta}` : urls.auditLogs);
+};
 export const testTautulli = (payload) => fetchAPI(urls.testTautulli, 'POST', payload);
 export const testJellyfin = (payload) => fetchAPI(urls.testJellyfin, 'POST', payload);
 export const testOverseerr = (payload) => fetchAPI(urls.testOverseerr, 'POST', payload);

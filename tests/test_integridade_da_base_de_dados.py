@@ -159,7 +159,8 @@ class TestAuditoria:
         audit.registar('teste.acao', alvo_tipo='utilizador', alvo_id='5',
                        detalhes={'antes': 1, 'depois': 2})
 
-        entradas = audit.listar(limite=10)
+        entradas, total = audit.listar(limite=10)
+        assert total == 1
         assert entradas[0]['acao'] == 'teste.acao'
         assert entradas[0]['alvo_id'] == '5'
         assert entradas[0]['detalhes'] == {'antes': 1, 'depois': 2}
@@ -204,7 +205,7 @@ class TestAuditoria:
 
         audit.registar('teste.objeto', detalhes={'quando': datetime.now(timezone.utc)})
 
-        assert audit.listar(limite=1)[0]['acao'] == 'teste.objeto'
+        assert audit.listar(limite=1)[0][0]['acao'] == 'teste.objeto'
 
 
 # ==========================================
