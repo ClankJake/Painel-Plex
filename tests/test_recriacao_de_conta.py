@@ -165,11 +165,19 @@ class TestAPalavraPasse:
         assert registo['criadas'] == []
         assert data_manager.get_user_profile(ANTIGO) is not None
 
-    @pytest.mark.parametrize('contacto', ['telegram_user', 'discord_user_id', 'phone_number'])
+    # ⚠️ O valor de cada contacto tem de ser plausível: `phone_number` é
+    # normalizado para só dígitos ao ser gravado (ver `UserProfile`), por isso
+    # um 'x' de faz-de-conta chegava ao perfil como NULL e o teste passava a
+    # medir o caso oposto ao que diz medir — "sem contacto nenhum".
+    @pytest.mark.parametrize('contacto, valor', [
+        ('telegram_user', 'ana'),
+        ('discord_user_id', '123456789012345678'),
+        ('phone_number', '5511999999999'),
+    ])
     def test_qualquer_canal_serve(self, app_context, db_session, data_manager, perfil,
-                                  monkeypatch, contacto):
+                                  monkeypatch, contacto, valor):
         contactos = {'telegram_user': None, 'discord_user_id': None, 'phone_number': None}
-        contactos[contacto] = 'x'
+        contactos[contacto] = valor
         perfil(**contactos)
         backend, _ = _backend(monkeypatch, data_manager)
 

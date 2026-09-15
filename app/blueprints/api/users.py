@@ -21,6 +21,7 @@ from .schemas import RenewSubscriptionSchema, UpdateProfileSchema, UpdateAccount
 from ...models import UserProfile
 from ...extensions import limiter
 from ...services.password_reset import servidor_repoe_palavras_passe
+from ...services import audit
 from ...utils.identity import normalize_user_id, same_user
 from ..auth import MAX_PALAVRA_PASSE, MIN_PALAVRA_PASSE
 
@@ -35,8 +36,18 @@ class ExtendTrialSchema(BaseModel):
 # ==========================================
 
 @users_api_bp.route('/public-profile-by-token/<string:token>')
+@limiter.limit("30 per minute")
 def get_public_user_profile_by_token(token):
-    profile = UserProfile.query.filter_by(payment_token=token).first()
+    """O nome, o avatar e o vencimento de quem é dono deste link de pagamento.
+
+    🔒 Rota PÚBLICA, e era a única do fluxo de pagamento sem limite nenhum —
+    as irmãs `/api/payments/options` e `/api/invites/details` já o tinham. Ela
+    responde 200 para um token válido e 404 para um inválido, ou seja, é um
+    oráculo que diz se um token existe, e devolve dados pessoais quando
+    acerta. 30/min chega para qualquer utilização legítima: a página de
+    pagamento chama-a uma vez ao abrir.
+    """
+    profile = extensions.data_manager.perfil_por_payment_token(token)
     if not profile:
         return jsonify({"success": False, "message": _("Link de pagamento inválido ou usuário não encontrado.")}), 404
 
@@ -84,7 +95,7 @@ def finalize_reactivation_route():
     plex_user_obj = result.get('user')
     
     try:
-        profile = UserProfile.query.filter_by(payment_token=payment_token).first()
+        profile = extensions.data_manager.perfil_por_payment_token(payment_token)
         if not profile:
              return jsonify({"success": False, "message": _("Perfil local não encontrado.")}), 404
 
@@ -440,6 +451,10 @@ def user_profile_route(media_user_id):
     local_datetime_str = data.pop('expiration_datetime_local', None)
     
     profile_to_update = extensions.data_manager.get_user_profile(media_user_id)
+    # Uma CÓPIA, porque `profile_to_update` é mutado logo a seguir: sem ela, a
+    # auditoria comparava o dicionário com ele próprio e nunca via mudança
+    # nenhuma — uma trilha que diz sempre "nada mudou" é pior do que não haver.
+    perfil_antes = dict(profile_to_update or {})
     profile_to_update.update(data)
 
     _update_manual_expiration_job(media_user_id, username, profile_to_update, local_datetime_str)
@@ -447,6 +462,9 @@ def user_profile_route(media_user_id):
     _enforce_user_status_by_date(media_user_id, username, profile_to_update)
 
     logger.info(f"Admin '{current_user.username}' atualizou o perfil de '{username}'.")
+    audit.registar('utilizador.editar_perfil', alvo_tipo='utilizador', alvo_id=media_user_id,
+                   detalhes={'username': username,
+                             'campos': audit.diferenca(perfil_antes, profile_to_update)})
     return jsonify({"success": True, "message": _("Perfil do usuário atualizado com sucesso.")})
 
 @users_api_bp.route('/extend-trial/<media_user_id>', methods=['POST'])
@@ -664,6 +682,10 @@ def delete_permanently_route():
 
     try:
         username = profile.get('username', 'Desconhecido')
+        # Registado ANTES de apagar: depois já não há perfil de onde tirar o
+        # nome, e a auditoria sem nome não serve a quem a for ler.
+        audit.registar('utilizador.apagar_permanentemente', alvo_tipo='utilizador',
+                       alvo_id=media_user_id, detalhes={'perfil': profile})
         extensions.data_manager.delete_user_profile(media_user_id)
         logger.info(f"Admin '{current_user.username}' apagou permanentemente o utilizador '{username}' (ID: {media_user_id}).")
         return jsonify({"success": True, "message": _("Usuário apagado permanentemente.")})
@@ -718,8 +740,11 @@ def update_all_libraries_route():
 @login_required
 @admin_required
 def remove_user_route(): 
-    res = extensions.media_server.remove_user(request.json.get('media_user_id'))
-    if res.get('success'): logger.info(f"Admin '{current_user.username}' removeu/inativou um utilizador com sucesso.")
+    media_user_id = request.json.get('media_user_id')
+    res = extensions.media_server.remove_user(media_user_id)
+    if res.get('success'):
+        logger.info(f"Admin '{current_user.username}' removeu/inativou um utilizador com sucesso.")
+        audit.registar('utilizador.remover', alvo_tipo='utilizador', alvo_id=media_user_id)
     return jsonify(res)
 
 @users_api_bp.route('/block', methods=['POST'])
@@ -728,7 +753,10 @@ def remove_user_route():
 @user_lookup_by_id
 def block_user_route(user): 
     res = extensions.media_server.block_user(user['id'], reason='manual')
-    if res.get('success'): logger.info(f"Admin '{current_user.username}' bloqueou manualmente '{user['username']}'.")
+    if res.get('success'):
+        logger.info(f"Admin '{current_user.username}' bloqueou manualmente '{user['username']}'.")
+        audit.registar('utilizador.bloquear', alvo_tipo='utilizador', alvo_id=user['id'],
+                       detalhes={'username': user['username'], 'motivo': 'manual'})
     return jsonify(res)
 
 @users_api_bp.route('/unblock', methods=['POST'])
@@ -737,7 +765,10 @@ def block_user_route(user):
 @user_lookup_by_id
 def unblock_user_route(user): 
     res = extensions.media_server.unblock_user(user['id'])
-    if res.get('success'): logger.info(f"Admin '{current_user.username}' desbloqueou manualmente '{user['username']}'.")
+    if res.get('success'):
+        logger.info(f"Admin '{current_user.username}' desbloqueou manualmente '{user['username']}'.")
+        audit.registar('utilizador.desbloquear', alvo_tipo='utilizador', alvo_id=user['id'],
+                       detalhes={'username': user['username']})
     return jsonify(res)
 
 @users_api_bp.route('/update-limit', methods=['POST'])
@@ -750,8 +781,11 @@ def update_limit_route(user):
     # (o `MaxActiveSessions` do Jellyfin), o servidor ficava com o valor da data
     # do convite para sempre — e a única defesa que um leitor não pode ignorar
     # continuava a apontar para o plano antigo.
+    anterior = (extensions.data_manager.get_user_profile(user['id']) or {}).get('screen_limit')
     extensions.media_server.update_screen_limit(user['id'], screens)
     logger.info(f"Admin '{current_user.username}' alterou limite de telas de '{user['username']}' para {screens}.")
+    audit.registar('utilizador.limite_de_telas', alvo_tipo='utilizador', alvo_id=user['id'],
+                   detalhes={'username': user['username'], 'antes': anterior, 'depois': screens})
     return jsonify({"success": True, "message": _("Limite aplicado.")})
 
 @users_api_bp.route('/update-all-limits', methods=['POST'])
@@ -765,6 +799,8 @@ def update_all_limits_route():
             if extensions.data_manager.get_user_profile(user['id']):
                 extensions.media_server.update_screen_limit(user['id'], screens)
     logger.info(f"Admin '{current_user.username}' aplicou limite global de {screens} telas para todos.")
+    audit.registar('utilizador.limite_de_telas_global', alvo_tipo='utilizador',
+                   detalhes={'depois': screens, 'abrangidos': len(all_users)})
     return jsonify({"success": True, "message": _("Limites atualizados para todos.")})
 
 @users_api_bp.route('/toggle-overseerr', methods=['POST'])
@@ -774,7 +810,10 @@ def update_all_limits_route():
 def toggle_overseerr_access_route(user): 
     access = request.json.get('access', False)
     res = extensions.media_server.toggle_overseerr_access(user['id'], access)
-    if res.get('success'): logger.info(f"Admin '{current_user.username}' alterou acesso Overseerr de '{user['username']}' para {access}.")
+    if res.get('success'):
+        logger.info(f"Admin '{current_user.username}' alterou acesso Overseerr de '{user['username']}' para {access}.")
+        audit.registar('utilizador.acesso_pedidos', alvo_tipo='utilizador', alvo_id=user['id'],
+                       detalhes={'username': user['username'], 'depois': access})
     return jsonify(res)
 
 @users_api_bp.route('/payments/<media_user_id>')

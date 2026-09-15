@@ -770,9 +770,18 @@ class NotifierManager:
     def _get_payment_link(self, config, event_type, user_profile):
         if event_type in ['renewal', 'reactivation'] or not user_profile.get('payment_token'):
             return None
-            
+
         try:
-            token = user_profile['payment_token']
+            # 🛡️ Renovar a validade AQUI, no momento do envio, é o que torna a
+            # expiração do token utilizável: o link que a pessoa acaba de
+            # receber está sempre bom, e o que ela recebeu há três meses — e
+            # que continua no histórico do Telegram para sempre — já não abre.
+            # Se o perfil tiver desaparecido entretanto, fica-se pelo token que
+            # já lá estava: um link sem validade é melhor do que uma
+            # notificação de vencimento sem link nenhum.
+            from ..extensions import data_manager as _dm
+            token = (_dm.garantir_payment_token(user_profile.get('media_user_id'))
+                     or user_profile['payment_token'])
             app_base_url = config.get("APP_BASE_URL", "").strip().rstrip('/')
             
             # 🚀 OTIMIZAÇÃO: Prioriza sempre a APP_BASE_URL.

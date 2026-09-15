@@ -1,10 +1,20 @@
 # app/models.py
 from sqlalchemy import text as sa_text
 
+from .dominios import (
+    CATEGORIAS_DE_NOTIFICACAO,
+    ESTADOS_DE_PAGAMENTO,
+    ESTADOS_DE_TAREFA,
+    ESTADOS_DO_PERFIL,
+    TIPOS_DE_DESCONTO,
+    clausula_in,
+)
 from .extensions import db
 from .utils.identity import normalize_user_id
 from flask_login import UserMixin
+from sqlalchemy.orm import validates
 import json
+import re
 import uuid
 from datetime import datetime
 
@@ -78,6 +88,12 @@ class Task(db.Model):
     started_at = db.Column(db.DateTime, nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
 
+    __table_args__ = (
+        db.CheckConstraint(clausula_in('status', ESTADOS_DE_TAREFA), name='ck_tasks_status'),
+        db.CheckConstraint('progress_current >= 0', name='ck_tasks_progress_current'),
+        db.CheckConstraint('progress_total >= 0', name='ck_tasks_progress_total'),
+    )
+
 class Coupon(db.Model):
     __tablename__ = 'coupons'
     id = db.Column(db.Integer, primary_key=True)
@@ -89,12 +105,41 @@ class Coupon(db.Model):
     expires_at = db.Column(db.DateTime, nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # 🛡️ Quando esta linha foi tirada da vista, se foi. NULL quer dizer que
+    # está viva, que é o caso de quase todas — daí o índice ser PARCIAL.
+    # A remoção suave está nestas três tabelas e não em todas de propósito:
+    # são as que guardam o que mais custa perder (o histórico financeiro, o
+    # registo de quem usou cada cupão, a auditoria de cortes) e as que tinham
+    # um botão a apagá-las para sempre, sem confirmação e sem volta.
+    deleted_at = db.Column(db.DateTime, nullable=True)
     usages = db.relationship('CouponUsage', backref='coupon', lazy=True, cascade="all, delete-orphan")
+
+    __table_args__ = (
+        db.CheckConstraint(clausula_in('discount_type', TIPOS_DE_DESCONTO),
+                           name='ck_coupons_discount_type'),
+        # Um cupão de -50% multiplicava o preço por 1,5. O schema Pydantic da
+        # rota de criação já o recusava; a coluna não, e a rota não é o único
+        # caminho até aqui (restauros, migrações, código futuro).
+        db.CheckConstraint('value >= 0', name='ck_coupons_value'),
+        db.CheckConstraint('max_uses >= 0', name='ck_coupons_max_uses'),
+        db.CheckConstraint('use_count >= 0', name='ck_coupons_use_count'),
+        # ⚠️ O índice de `code` não servia para nada nas consultas que existem:
+        # elas comparam `func.upper(Coupon.code)` com o código escrito, e o
+        # SQLite não usa o índice de uma coluna quando a comparação é sobre uma
+        # EXPRESSÃO dessa coluna. Validar um cupão era uma varredura da tabela.
+        db.Index('ix_coupons_code_upper', db.func.upper(code)),
+        db.Index('ix_coupons_deleted_at', deleted_at,
+                 sqlite_where=db.text('deleted_at IS NOT NULL')),
+    )
 
 class CouponUsage(db.Model):
     __tablename__ = 'coupon_usages'
     id = db.Column(db.Integer, primary_key=True)
-    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), nullable=False, index=True)
+    media_user_id = db.Column(
+        UserId(),
+        db.ForeignKey('user_profiles.media_user_id', ondelete='CASCADE', onupdate='CASCADE'),
+        nullable=False, index=True,
+    )
     coupon_id = db.Column(db.Integer, db.ForeignKey('coupons.id'), nullable=False)
     used_at = db.Column(db.DateTime, default=datetime.utcnow)
     __table_args__ = (db.UniqueConstraint('media_user_id', 'coupon_id', name='_user_coupon_uc'),)
@@ -122,7 +167,11 @@ class Invitation(db.Model):
 
 class BlockedUser(db.Model):
     __tablename__ = 'blocked_users'
-    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), primary_key=True)
+    media_user_id = db.Column(
+        UserId(),
+        db.ForeignKey('user_profiles.media_user_id', ondelete='CASCADE', onupdate='CASCADE'),
+        primary_key=True,
+    )
     username = db.Column(db.String, nullable=False)
     blocked_at = db.Column(db.String)
     block_reason = db.Column(db.String(50), nullable=True)
@@ -167,6 +216,13 @@ class UserProfile(db.Model):
     allow_downloads = db.Column(db.Boolean, default=False, nullable=False,
                                 server_default=sa_text('0'))
     payment_token = db.Column(db.String, unique=True, nullable=True)
+    # 🛡️ Quando é que este link de pagamento deixa de servir. Até aqui o
+    # `payment_token` era uma credencial portadora ETERNA: o primeiro link
+    # enviado a alguém continuava a abrir a página anos depois, e um dump da
+    # base de dados entregava o de toda a gente pronto a usar. NULL continua a
+    # querer dizer "sem validade" — é o que os perfis anteriores a esta coluna
+    # têm, para não se cortar de repente o acesso a quem quer pagar.
+    payment_token_expires_at = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(20), default='active', nullable=False, index=True)
     pending_invite_link = db.Column(db.String, nullable=True)
     last_reactivation_time = db.Column(db.Float, nullable=True)
@@ -188,10 +244,90 @@ class UserProfile(db.Model):
     notifications = db.relationship('Notification', backref='user', lazy=True, cascade="all, delete-orphan")
     unlocked_achievements = db.relationship('UnlockedAchievement', backref='user', lazy=True, cascade="all, delete-orphan")
 
+    @validates('phone_number')
+    def _normalizar_telefone(self, _chave, valor):
+        """Guarda o telefone só com dígitos.
+
+        🐛 **Não é arrumação: é um bug.** O destinatário do WhatsApp é montado
+        como `{phone_number}@s.whatsapp.net`, por isso um número escrito da
+        forma natural — `(11) 99999-9999` — produzia um identificador inválido
+        e a mensagem não chegava a ninguém. Não havia erro: o painel dizia que
+        tinha enviado.
+
+        A normalização vive aqui, e não na rota, para valer em todos os
+        caminhos: a edição do administrador, o resgate do convite, a "Minha
+        Conta" e o que vier a seguir.
+        """
+        if valor is None:
+            return None
+        so_digitos = re.sub(r'\D', '', str(valor))
+        return so_digitos or None
+
+    @validates('email')
+    def _normalizar_email(self, _chave, valor):
+        """Espaços fora, minúsculas dentro.
+
+        ⚠️ **Normaliza, não recusa** — e a diferença é deliberada. Grande parte
+        dos emails que aqui entram vêm do SERVIDOR de média (o Plex e o
+        Jellyfin são a fonte da verdade do que a conta tem), e recusar um que
+        não nos pareça bem partia a sincronização de perfis por causa de um
+        campo que o painel nem usa para autenticar. Quem ESCREVE um email à
+        mão passa pelos schemas Pydantic das rotas, e esses recusam.
+
+        A normalização importa na mesma: sem ela, 'Ana@X.com' e 'ana@x.com'
+        eram duas pessoas diferentes para quem procura no Seerr.
+        """
+        if valor is None:
+            return None
+        limpo = str(valor).strip().lower()
+        return limpo or None
+
+    __table_args__ = (
+        db.CheckConstraint(clausula_in('status', ESTADOS_DO_PERFIL),
+                           name='ck_user_profiles_status'),
+        # O dia do mês da renovação. Um 0 ou um 32 não davam erro nenhum: o
+        # vencimento é depois calculado a partir daqui.
+        db.CheckConstraint('billing_day IS NULL OR (billing_day >= 1 AND billing_day <= 31)',
+                           name='ck_user_profiles_billing_day'),
+        # 0 quer dizer ILIMITADO; negativo não quer dizer nada.
+        db.CheckConstraint('screen_limit >= 0', name='ck_user_profiles_screen_limit'),
+        db.CheckConstraint('xp >= 0', name='ck_user_profiles_xp'),
+        db.CheckConstraint('lifetime_xp >= 0', name='ck_user_profiles_lifetime_xp'),
+        # Um crédito de indicações negativo era uma dívida que o painel não sabe
+        # cobrar — e descontava-se sozinho do preço seguinte ao contrário.
+        db.CheckConstraint('referral_credit >= 0', name='ck_user_profiles_referral_credit'),
+        # ⚠️ Mesmo problema do `coupons.code`: o índice de `username` existe,
+        # mas as procuras por nome são todas `func.lower(username) == ...`
+        # (o nome do servidor de média não distingue maiúsculas) e uma
+        # expressão não usa o índice da coluna. Entrar no painel e sincronizar
+        # perfis varriam a tabela inteira, uma vez por utilizador.
+        db.Index('ix_user_profiles_username_lower', db.func.lower(username)),
+        # As varreduras diárias: `get_all_user_expirations` e
+        # `get_all_trial_users` percorriam todos os perfis para encontrar os
+        # poucos que têm data. Crescem com o número de utilizadores, e correm
+        # todas as madrugadas.
+        #
+        # ⚠️ São índices PARCIAIS, com a mesma condição das consultas. Não é
+        # otimização prematura: um índice completo sobre uma coluna em que a
+        # maioria das linhas é NULL indexa sobretudo nada, e o SQLite,
+        # estimando que teria de ler quase a tabela toda, preferia varrê-la —
+        # ficava um índice a ocupar espaço, a ser mantido a cada escrita, e a
+        # nunca ser usado. Com a condição igual à da consulta, ele entra.
+        db.Index('ix_user_profiles_expiration_date', expiration_date,
+                 sqlite_where=db.text("expiration_date IS NOT NULL AND expiration_date != ''")),
+        db.Index('ix_user_profiles_trial_end_date', trial_end_date,
+                 sqlite_where=db.text("trial_end_date IS NOT NULL AND trial_end_date != ''")),
+    )
+
 class PixPayment(db.Model):
     __tablename__ = 'pix_payments'
     txid = db.Column(db.String, primary_key=True)
-    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), nullable=False, index=True)
+    # 📌 HISTÓRICO, não uma referência viva — a mesma decisão que `coupon_code`
+    # mais abaixo. Um pagamento recebido ACONTECEU: apagá-lo porque a conta foi
+    # removida do painel falsifica o relatório financeiro do mês em que entrou.
+    # Por isso não há aqui chave estrangeira, e é por isso que `username` fica
+    # gravado nesta linha em vez de se ir buscar ao perfil.
+    media_user_id = db.Column(UserId(), nullable=False, index=True)
     username = db.Column(db.String, nullable=False)
     value = db.Column(db.Float, nullable=False)
     status = db.Column(db.String, nullable=False, default='ATIVA')
@@ -214,16 +350,53 @@ class PixPayment(db.Model):
     # num upgrade pro-rata o utilizador paga só a diferença e o vencimento fica
     # EXATAMENTE onde estava — sem esta marca, o webhook daria um mês grátis.
     is_proration = db.Column(db.Boolean, default=False, nullable=False)
+    # 🛡️ Quando esta linha foi tirada da vista, se foi. NULL quer dizer que
+    # está viva, que é o caso de quase todas — daí o índice ser PARCIAL.
+    # A remoção suave está nestas três tabelas e não em todas de propósito:
+    # são as que guardam o que mais custa perder (o histórico financeiro, o
+    # registo de quem usou cada cupão, a auditoria de cortes) e as que tinham
+    # um botão a apagá-las para sempre, sem confirmação e sem volta.
+    deleted_at = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        db.CheckConstraint(clausula_in('status', ESTADOS_DE_PAGAMENTO),
+                           name='ck_pix_payments_status'),
+        # Um pagamento de valor negativo entrava no somatório do relatório
+        # financeiro e SUBTRAÍA da receita do mês.
+        db.CheckConstraint('value >= 0', name='ck_pix_payments_value'),
+        db.CheckConstraint('referral_credit_used >= 0',
+                           name='ck_pix_payments_referral_credit_used'),
+        db.CheckConstraint('screens IS NULL OR screens >= 0', name='ck_pix_payments_screens'),
+        # O resumo financeiro do mês e a limpeza de cobranças abandonadas
+        # filtram sempre pelos dois ao mesmo tempo ('as CONCLUIDAS deste
+        # intervalo', 'as não-concluídas mais velhas do que N dias'). Sem
+        # índice, as duas varriam a tabela de pagamentos inteira — que é a
+        # única que só cresce.
+        db.Index('ix_pix_payments_status_created_at', status, created_at),
+        db.Index('ix_pix_payments_deleted_at', deleted_at,
+                 sqlite_where=db.text('deleted_at IS NOT NULL')),
+    )
 
 class Notification(db.Model):
     __tablename__ = 'notifications'
     id = db.Column(db.Integer, primary_key=True)
-    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), nullable=True, index=True)
+    media_user_id = db.Column(
+        UserId(),
+        db.ForeignKey('user_profiles.media_user_id', ondelete='CASCADE', onupdate='CASCADE'),
+        nullable=True, index=True,
+    )
     message = db.Column(db.String, nullable=False)
     category = db.Column(db.String(20), nullable=False, default='info')
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     is_read = db.Column(db.Boolean, default=False, nullable=False)
     link = db.Column(db.String, nullable=True)
+
+    __table_args__ = (
+        # A categoria escolhe a cor e o ícone na interface. Uma categoria
+        # desconhecida não dava erro: dava uma notificação sem estilo nenhum.
+        db.CheckConstraint(clausula_in('category', CATEGORIAS_DE_NOTIFICACAO),
+                           name='ck_notifications_category'),
+    )
 
 class ShortLink(db.Model):
     __tablename__ = 'short_links'
@@ -252,7 +425,11 @@ class PasswordReset(db.Model):
     __tablename__ = 'password_resets'
 
     token_hash = db.Column(db.String(64), primary_key=True)
-    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), nullable=False, index=True)
+    media_user_id = db.Column(
+        UserId(),
+        db.ForeignKey('user_profiles.media_user_id', ondelete='CASCADE', onupdate='CASCADE'),
+        nullable=False, index=True,
+    )
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     expires_at = db.Column(db.DateTime, nullable=False)
     used_at = db.Column(db.DateTime, nullable=True)
@@ -261,18 +438,98 @@ class PasswordReset(db.Model):
 class UnlockedAchievement(db.Model):
     __tablename__ = 'unlocked_achievements'
     id = db.Column(db.Integer, primary_key=True)
-    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), nullable=False, index=True)
+    media_user_id = db.Column(
+        UserId(),
+        db.ForeignKey('user_profiles.media_user_id', ondelete='CASCADE', onupdate='CASCADE'),
+        nullable=False, index=True,
+    )
     username = db.Column(db.String, nullable=False)
     achievement_id = db.Column(db.String, nullable=False)
     unlocked_at = db.Column(db.DateTime, default=datetime.utcnow)
     __table_args__ = (db.UniqueConstraint('media_user_id', 'achievement_id', name='_user_achievement_uc'),)
 
+class AuditLog(db.Model):
+    """Quem mudou o quê, quando, e a partir de onde.
+
+    🛡️ **Não havia nada disto.** O único rasto de uma ação administrativa era
+    uma linha de texto no `app.log` — e esse ficheiro roda (perde-se sozinho ao
+    fim de alguns megabytes) e tem um botão nas Configurações que o trunca. Uma
+    trilha de auditoria que a própria pessoa auditada pode apagar com um clique
+    não é uma trilha de auditoria.
+
+    Pior: as mudanças que mais interessam nem lá chegavam. Gravar as
+    Configurações reescreve preços, URLs e credenciais dos gateways e não
+    escrevia UMA linha sobre o que tinha mudado; os pagamentos manuais ficavam
+    registados como "pelo Admin", sem dizer qual nem a partir de onde.
+
+    O que fica guardado, e porquê:
+
+    - `acao` é um verbo curto e estável (`definicoes.gravar`,
+      `pagamento.apagar`), pensado para se poder filtrar meses depois;
+    - `alvo_tipo`/`alvo_id` dizem SOBRE QUEM ou sobre o quê foi;
+    - `detalhes` é JSON com o antes e o depois — é o que transforma "alguém
+      mexeu nos preços" em "o plano de 2 telas passou de 25 para 35";
+    - `endereco_ip` responde à pergunta que o nome de utilizador não responde
+      num painel de administrador único: foi de onde?
+
+    🛡️ **Nenhum valor sensível entra aqui.** O que passa por
+    `app/services/audit.py` é filtrado: de uma credencial regista-se que MUDOU,
+    nunca o antes nem o depois. Uma auditoria que guarda segredos é mais uma
+    cópia dos segredos.
+    """
+
+    __tablename__ = 'audit_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    # Quem. Fica o nome E o identificador: o nome é o que se lê, o
+    # identificador é o que continua a servir se a pessoa mudar de nome no
+    # servidor de média. Ambos anuláveis — há ações que nascem de um webhook ou
+    # de uma tarefa de fundo, e inventar um autor seria pior do que não ter.
+    ator = db.Column(db.String(255), nullable=True)
+    ator_id = db.Column(UserId(), nullable=True, index=True)
+    acao = db.Column(db.String(64), nullable=False, index=True)
+    alvo_tipo = db.Column(db.String(32), nullable=True)
+    alvo_id = db.Column(db.String(255), nullable=True)
+    detalhes = db.Column(db.Text, nullable=True)
+    endereco_ip = db.Column(db.String(45), nullable=True)
+
+    __table_args__ = (
+        # A leitura normal é "as últimas N", e a filtrada é "as últimas N desta
+        # ação". As duas ordenam por data decrescente.
+        db.Index('ix_audit_logs_timestamp', timestamp.desc()),
+        db.Index('ix_audit_logs_acao_timestamp', acao, timestamp.desc()),
+    )
+
+
 class StreamTerminationLog(db.Model):
     __tablename__ = 'stream_termination_logs'
     id = db.Column(db.Integer, primary_key=True)
-    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id'), nullable=False, index=True)
+    # 📌 HISTÓRICO, como `pix_payments`: a auditoria de cortes tem de continuar
+    # a responder "quem foi cortado, quando e porquê" mesmo depois de o perfil
+    # deixar de existir. Uma auditoria que se apaga sozinha não é uma auditoria.
+    media_user_id = db.Column(UserId(), nullable=False, index=True)
     username = db.Column(db.String, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     media_title = db.Column(db.String, nullable=False)
     platform = db.Column(db.String, nullable=True)
     reason = db.Column(db.String, nullable=False)
+    # 🛡️ Quando esta linha foi tirada da vista, se foi. NULL quer dizer que
+    # está viva, que é o caso de quase todas — daí o índice ser PARCIAL.
+    # A remoção suave está nestas três tabelas e não em todas de propósito:
+    # são as que guardam o que mais custa perder (o histórico financeiro, o
+    # registo de quem usou cada cupão, a auditoria de cortes) e as que tinham
+    # um botão a apagá-las para sempre, sem confirmação e sem volta.
+    deleted_at = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        # ⚠️ O mais caro dos que faltavam. `get_last_termination_timestamp` é a
+        # marca de água da importação de cortes do servidor: filtra por `reason`
+        # e ordena por `timestamp` decrescente para ler UMA linha — e corre de
+        # cinco em cinco minutos, para sempre, sobre uma tabela que nunca
+        # encolhe. Sem índice era uma varredura mais uma ordenação, 288 vezes
+        # por dia.
+        db.Index('ix_stream_termination_logs_reason_timestamp', reason, timestamp.desc()),
+        db.Index('ix_stream_termination_logs_deleted_at', deleted_at,
+                 sqlite_where=db.text('deleted_at IS NOT NULL')),
+    )

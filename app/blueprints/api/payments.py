@@ -20,6 +20,7 @@ from ...extensions import limiter
 from ...services.data_manager import get_app_timezone, normalize_coupon_code
 from ...utils.log_sanitizer import mask_token
 from ...utils.identity import normalize_user_id
+from ...services import audit
 
 logger = logging.getLogger(__name__)
 payments_api_bp = Blueprint('payments_api', __name__)
@@ -266,6 +267,21 @@ def _run_payment_processing_in_thread(app, txid):
 
                 extensions.data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
                 extensions.db.session.commit()
+
+                # 🛡️ O link de pagamento já cumpriu o que tinha a fazer: troca-se
+                # por um novo. Deixá-lo vivo era manter indefinidamente uma
+                # credencial portadora que passou por Telegram, Discord ou
+                # WhatsApp e ficou no histórico dessas conversas para sempre.
+                #
+                # ⚠️ Lê-se `media_user_id` OUTRA VEZ do pagamento: numa
+                # reativação com conta recriada, `restaurar_acesso` migrou a
+                # identidade a meio deste bloco e o identificador de cima já não
+                # existe. É a mesma razão pela qual a linha do pagamento é
+                # relida acima.
+                pagamento_final = extensions.data_manager.get_pix_payment(txid) or {}
+                extensions.data_manager.rodar_payment_token(
+                    pagamento_final.get('media_user_id') or media_user_id)
+
                 logger.info(f"Processamento do pagamento para TXID {mask_token(txid)} concluído com sucesso.")
 
                 if extensions.socketio:
@@ -298,13 +314,24 @@ def _process_successful_payment(txid):
     app = current_app._get_current_object()
     try:
         affected_rows = extensions.db.session.query(PixPayment).filter(
-            PixPayment.txid == txid, PixPayment.status == 'ATIVA'
+            PixPayment.txid == txid, PixPayment.status == 'ATIVA',
+            # Uma cobrança que o administrador tirou das contas não pode ser
+            # processada por um webhook que chegue depois — renovaria a
+            # assinatura a partir de uma linha que já não conta para nada.
+            PixPayment.deleted_at.is_(None),
         ).update({"status": "PROCESSANDO"}, synchronize_session=False)
         extensions.db.session.commit()
         
         if affected_rows == 0:
-            return 
-            
+            return
+
+        # 🛡️ Um pagamento confirmado renova assinaturas, consome cupões e credita
+        # indicações — e o único rasto era o log. Fica aqui, onde já se sabe que
+        # esta confirmação é a PRIMEIRA (o UPDATE atómico acima garante que não
+        # há uma segunda a processar o mesmo txid). Sem ator: quem confirma é o
+        # webhook do gateway, não uma pessoa.
+        audit.registar('pagamento.confirmar', alvo_tipo='pagamento', alvo_id=txid)
+
     except Exception as e:
         logger.error(f"Erro ao atualizar estado na base de dados para {mask_token(txid)}: {e}")
         extensions.db.session.rollback()
@@ -326,7 +353,7 @@ def get_payment_options():
     user_profile = None
 
     if token:
-        profile_from_token = UserProfile.query.filter_by(payment_token=token).first()
+        profile_from_token = extensions.data_manager.perfil_por_payment_token(token)
         if profile_from_token:
             user_profile = extensions.data_manager._row_to_dict(profile_from_token)
     elif current_user.is_authenticated:
@@ -377,7 +404,7 @@ def validate_coupon_route():
     media_user_id = None
     
     if token:
-        profile = UserProfile.query.filter_by(payment_token=token).first()
+        profile = extensions.data_manager.perfil_por_payment_token(token)
         if profile:
             media_user_id = profile.media_user_id
             
@@ -434,7 +461,7 @@ def create_charge_route():
     media_user_id, username = None, None
 
     if token:
-        profile_model = UserProfile.query.filter_by(payment_token=token).first()
+        profile_model = extensions.data_manager.perfil_por_payment_token(token)
         if profile_model:
             media_user_id, username = profile_model.media_user_id, profile_model.username
             
@@ -984,6 +1011,10 @@ def add_manual_payment_route():
         payment = extensions.data_manager.add_manual_payment(media_user_id, user['username'], value, desc, payment_datetime_str)
         extensions.db.session.commit()
         logger.info(f"Pagamento manual de R$ {value} adicionado com sucesso para '{user['username']}' pelo Admin.")
+        audit.registar('pagamento.adicionar_manual', alvo_tipo='pagamento',
+                       alvo_id=payment.get('txid') if isinstance(payment, dict) else None,
+                       detalhes={'media_user_id': media_user_id, 'username': user['username'],
+                                 'valor': value, 'descricao': desc, 'data': payment_date})
         return jsonify({"success": True, "message": _("Pagamento registado."), "payment": payment})
     except Exception as e:
         extensions.db.session.rollback()
@@ -995,13 +1026,46 @@ def add_manual_payment_route():
 @admin_required
 def delete_payment_route(txid):
     try:
+        # Registado ANTES: é a última oportunidade de guardar o que a linha
+        # dizia. Apagar um pagamento é a ação com mais impacto no relatório
+        # financeiro, e era a que menos rasto deixava.
+        anterior = extensions.data_manager.get_pix_payment(txid)
         if extensions.data_manager.delete_pix_payment(txid):
             logger.info(f"Transação {mask_token(txid)} apagada manualmente pelo Admin.")
-            return jsonify({"success": True, "message": _("Transação apagada.")})
+            audit.registar('pagamento.apagar', alvo_tipo='pagamento', alvo_id=txid,
+                           detalhes={'pagamento': anterior})
+            return jsonify({"success": True, "message": _(
+                "Transação removida do relatório. Ela continua guardada e pode "
+                "ser restaurada.")})
         return jsonify({"success": False, "message": _("Transação não encontrada.")}), 404
     except Exception as e:
         logger.error(f"Erro ao apagar a transação {mask_token(txid)}: {e}")
         return jsonify({"success": False, "message": _("Falha ao excluir.")}), 500
+
+@payments_api_bp.route('/financial/restore/<string:txid>', methods=['POST'])
+@login_required
+@admin_required
+def restore_payment_route(txid):
+    """Devolve às contas uma transação apagada por engano.
+
+    🛡️ É a outra metade da remoção suave. Sem uma forma de voltar atrás, a
+    coluna `deleted_at` era só um DELETE mais lento — e o clique enganado na
+    página financeira continuava a não ter solução tirando restaurar o backup
+    da noite anterior, que traz tudo o resto junto.
+    """
+    try:
+        if extensions.data_manager.restaurar_pix_payment(txid):
+            logger.info(f"Transação {mask_token(txid)} restaurada pelo Admin.")
+            audit.registar('pagamento.restaurar', alvo_tipo='pagamento', alvo_id=txid)
+            return jsonify({"success": True, "message": _("Transação restaurada.")})
+        return jsonify({
+            "success": False,
+            "message": _("Transação não encontrada ou já estava ativa."),
+        }), 404
+    except Exception as e:
+        logger.error(f"Erro ao restaurar a transação {mask_token(txid)}: {e}")
+        return jsonify({"success": False, "message": _("Falha ao restaurar.")}), 500
+
 
 @payments_api_bp.route('/financial/export-csv')
 @login_required

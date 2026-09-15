@@ -22,6 +22,7 @@ from . import sockets
 from .logging_config import setup_logging
 from .utils.navigation import endpoint_inicial_do_utilizador
 from .utils.estatisticas import estatisticas_disponiveis
+from .utils.ficheiros import proteger_base_de_dados
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,18 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     """
     Configurações avançadas do SQLite para alta concorrência.
     Ativa WAL, ajusta sincronização e timeouts para evitar bloqueios de DB.
+
+    ⚠️ **`foreign_keys` é POR LIGAÇÃO e vem DESLIGADO por omissão no SQLite.**
+    Durante muito tempo as chaves estrangeiras existiam no esquema e não eram
+    impostas: apagar um perfil deixava para trás os pagamentos, os bloqueios,
+    os pedidos de reposição de palavra-passe e os registos de corte que lhe
+    apontavam — órfãos silenciosos, sem erro nenhum, que faziam os relatórios
+    financeiros contar linhas de gente que já não existe. Pior ainda, era
+    possível gravar um pagamento com um `media_user_id` que nunca existiu.
+
+    Ligar isto obriga a que a base de dados já esteja limpa: a migração
+    `e1c7a4f92db6` apaga os órfãos que houvesse ANTES de este PRAGMA passar a
+    valer. Ligar sem limpar seria trocar dados órfãos por erros em produção.
     """
     cursor = dbapi_connection.cursor()
     try:
@@ -37,6 +50,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA busy_timeout=30000;")
         cursor.execute("PRAGMA cache_size=-64000;")
         cursor.execute("PRAGMA temp_store=MEMORY;")
+        cursor.execute("PRAGMA foreign_keys=ON;")
     except Exception as e:
         logger.warning(f"Erro ao definir PRAGMAS do SQLite: {e}")
     finally:
@@ -375,6 +389,11 @@ def create_app() -> Flask:
     # Injeta a otimização de concorrência do SQLite na criação da base de dados
     with app.app_context():
         event.listen(extensions.db.engine, 'connect', set_sqlite_pragma)
+
+    # 🛡️ As bases de dados guardam pagamentos, contactos e os resumos dos tokens
+    # de reposição de palavra-passe. Nasciam com o que o umask ditasse.
+    proteger_base_de_dados(db_path)
+    proteger_base_de_dados(os.path.join(config_dir_path, 'scheduler_jobs.db'))
 
     extensions.migrate.init_app(app, extensions.db)
     extensions.login_manager.init_app(app)

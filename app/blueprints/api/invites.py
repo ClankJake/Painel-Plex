@@ -12,7 +12,7 @@ from flask_login import login_required
 from ...extensions import media_server, limiter
 from ..auth import admin_required
 from .decorators import validate_json
-from .schemas import CreateInviteSchema, CreateInviteBotSchema
+from .schemas import CreateInviteSchema, CreateInviteBotSchema, validar_email
 from ...config import load_or_create_config
 from ...utils.log_sanitizer import mask_code
 
@@ -196,6 +196,15 @@ def claim_invite_route():
         if len(username) > MAX_UTILIZADOR or len(password) > MAX_PALAVRA_PASSE or len(email) > MAX_EMAIL:
             logger.warning("Resgate de convite recusado: campos acima do tamanho aceite.")
             return jsonify({"success": False, "message": _("Os dados indicados são longos demais.")}), 400
+
+        # ⚠️ O email é OPCIONAL aqui (nas contas locais ninguém é obrigado a
+        # dar um), mas quando vem tem de ter forma: é por ele que o Seerr
+        # encontra a pessoa e que os avisos chegam. Um erro de escrita não dava
+        # erro nenhum — dava uma aba "Meus Pedidos" vazia para sempre.
+        try:
+            email = validar_email(email) or ''
+        except ValueError as e:
+            return jsonify({"success": False, "message": str(e)}), 400
 
         registo = SimpleNamespace(username=username, password=password, email=email)
         return jsonify(media_server.claim_invitation(data.get('code'), registo))

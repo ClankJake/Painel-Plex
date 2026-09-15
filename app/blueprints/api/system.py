@@ -27,6 +27,7 @@ from ... import extensions as _ext
 from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
 from ..auth import admin_required, login_required
+from ...services import audit
 
 logger = logging.getLogger(__name__)
 system_api_bp = Blueprint('system_api', __name__)
@@ -77,6 +78,9 @@ def clear_logs():
         with open(log_file, 'w') as f:
             pass # Trunca o ficheiro para 0 bytes
         logger.info(f"O ficheiro de log '{log_file}' foi limpo pelo utilizador '{current_user.username}'.")
+        # 🛡️ Limpar o log é a ação que apagava o rasto de todas as outras. Fica
+        # registado na auditoria, que é uma tabela e não este ficheiro.
+        audit.registar('log.limpar', alvo_tipo='ficheiro', alvo_id=log_file)
         return jsonify({"success": True, "message": _("Arquivo de log limpo com sucesso.")})
     except Exception as e:
         logger.error(f"Erro ao limpar o ficheiro de log: {e}")
@@ -160,6 +164,31 @@ def get_system_health():
     })
     return jsonify({"success": True, "health": health_status})
 
+@system_api_bp.route('/audit-logs')
+@login_required
+@admin_required
+def get_audit_logs():
+    """A trilha de auditoria: quem mudou o quê, quando e de onde.
+
+    🛡️ **Só leitura, e de propósito.** Não há rota para apagar nem para limpar
+    — ao contrário do `app.log`, que tem um botão nas Configurações. Uma trilha
+    que a pessoa auditada pode apagar não responde à única pergunta para que
+    existe. Quem precisar de a truncar tem a base de dados.
+    """
+    try:
+        return jsonify({
+            "success": True,
+            "logs": audit.listar(
+                limite=request.args.get('limit', 100, type=int),
+                desvio=request.args.get('offset', 0, type=int),
+                acao=request.args.get('action', type=str),
+            ),
+        })
+    except Exception as e:
+        logger.error(f"Erro ao obter a trilha de auditoria: {e}", exc_info=True)
+        return jsonify({"success": False, "message": _("Falha ao obter a auditoria.")}), 500
+
+
 @system_api_bp.route('/termination-logs')
 @login_required
 @admin_required
@@ -183,7 +212,8 @@ def delete_termination_log(log_id):
     """Endpoint para apagar um log de término específico."""
     try:
         if data_manager.delete_stream_termination_log(log_id):
-            return jsonify({"success": True, "message": _("Log apagado com sucesso.")})
+            return jsonify({"success": True, "message": _(
+                "Registro removido da auditoria.")})
         else:
             return jsonify({"success": False, "message": _("Log não encontrado.")}), 404
     except Exception as e:
@@ -247,6 +277,7 @@ def api_settings():
             'CLEANUP_PENDING_PAYMENTS_ENABLED', 'CLEANUP_PENDING_PAYMENTS_DAYS', 'CLEANUP_TIME',
             'IMAGE_CACHE_CLEANUP_ENABLED', 'IMAGE_CACHE_MAX_AGE_DAYS', 'IMAGE_CACHE_CLEANUP_TIME',
             'ENABLE_LINK_SHORTENER', 'PAYMENT_LINK_GRACE_PERIOD_DAYS',
+            'PAYMENT_TOKEN_VALIDITY_DAYS',
             'SHORT_LINK_CLEANUP_ENABLED', 'SHORT_LINK_MAX_AGE_DAYS',
             'ACHIEVEMENT_MOVIE_MARATHON_BRONZE', 'ACHIEVEMENT_MOVIE_MARATHON_SILVER', 'ACHIEVEMENT_MOVIE_MARATHON_GOLD',
             'ACHIEVEMENT_SERIES_BINGER_BRONZE', 'ACHIEVEMENT_SERIES_BINGER_SILVER', 'ACHIEVEMENT_SERIES_BINGER_GOLD',
@@ -293,7 +324,7 @@ def api_settings():
         numeric_fields = [
             'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION',
             'CLEANUP_PENDING_PAYMENTS_DAYS', 'IMAGE_CACHE_MAX_AGE_DAYS',
-            'PAYMENT_LINK_GRACE_PERIOD_DAYS',
+            'PAYMENT_LINK_GRACE_PERIOD_DAYS', 'PAYMENT_TOKEN_VALIDITY_DAYS',
             'ACHIEVEMENT_MOVIE_MARATHON_BRONZE', 'ACHIEVEMENT_MOVIE_MARATHON_SILVER', 'ACHIEVEMENT_MOVIE_MARATHON_GOLD',
             'ACHIEVEMENT_SERIES_BINGER_BRONZE', 'ACHIEVEMENT_SERIES_BINGER_SILVER', 'ACHIEVEMENT_SERIES_BINGER_GOLD',
             'ACHIEVEMENT_TIME_TRAVELER_BRONZE', 'ACHIEVEMENT_TIME_TRAVELER_SILVER', 'ACHIEVEMENT_TIME_TRAVELER_GOLD',
@@ -483,6 +514,22 @@ def api_settings():
             except Exception:
                 pass
 
+        # 🛡️ A gravação das Configurações reescreve preços, URLs e credenciais
+        # dos gateways, e até aqui não deixava rasto nenhum: nem no log, nem em
+        # lado nenhum. Quem perguntasse, meses depois, "desde quando é que o
+        # plano de 2 telas custa 35?" não tinha onde ir ver.
+        #
+        # Só o que MUDOU é registado — repetir o config inteiro a cada gravação
+        # tornava a auditoria ilegível — e o valor de uma credencial nunca entra,
+        # fica só a marca de que mudou (ver `audit.diferenca`).
+        mudancas = audit.diferenca(old_config, config_to_update)
+        if mudancas:
+            audit.registar(
+                'definicoes.gravar',
+                alvo_tipo='config',
+                detalhes={'campos': mudancas},
+            )
+
         # Só reconecta ao Plex (2 chamadas de rede + perda das caches de utilizadores
         # e bibliotecas) quando o URL ou o Token mudaram de facto.
         if plex_changed:
@@ -630,6 +677,16 @@ def setup_restore_backup():
         return jsonify({"success": False, "message": _("Nenhum arquivo selecionado.")}), 400
 
     try:
+        # Registado ANTES: um restauro substitui a base de dados por baixo da
+        # aplicação, e a linha escrita depois iria parar à base de dados NOVA —
+        # que é a do backup, e não sabe nada disto. Assim fica registado na que
+        # está a ser substituída, que é onde a pergunta "quem trocou isto?" se
+        # faz. (A do backup guarda o restauro ANTERIOR, pela mesma razão.)
+        audit.registar(
+            'backup.restaurar',
+            alvo_tipo='backup',
+            alvo_id=getattr(uploaded_file, 'filename', None),
+        )
         _restaurar_backup(uploaded_file.stream)
     except ValueError as e:
         # Validação falhou (ZIP inválido / config.json corrompido) — nada foi alterado.
@@ -1328,6 +1385,10 @@ def regenerate_api_key():
         config = load_or_create_config()
         new_key = secrets.token_hex(32)
         config['INTERNAL_TRIGGER_KEY'] = new_key
+        # A chave nova NÃO entra na auditoria: fica só o facto de ter sido
+        # trocada, que é o que interessa saber depois.
+        audit.registar('chave_api.regenerar', alvo_tipo='config',
+                       alvo_id='INTERNAL_TRIGGER_KEY')
         save_app_config(config)
 
         logger.warning(f"⚠️ Chave de API regenerada por '{current_user.username}'. As integrações que usavam a chave anterior deixaram de funcionar.")
