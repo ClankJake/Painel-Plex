@@ -269,14 +269,6 @@ export function restoreButton(button) {
 }
 
 /**
- * Escapa texto para inclusão segura dentro de uma string de HTML.
- * Usar sempre que um valor de origem externa (API, utilizador, nome de ficheiro,
- * mensagem de erro) tiver de ser interpolado num template literal com HTML.
- *
- * É uma declaração de função (e não uma const) de propósito: o hoisting permite
- * que `sanitizeHTML`, definida no topo deste ficheiro, a utilize.
- */
-/**
  * O idioma em que a interface mostra datas e números.
  *
  * ⚠️ **Vem do `<html lang>` e não do navegador.** Quem usa o painel em
@@ -336,7 +328,14 @@ export function formatarData(valor, { ausente = '' } = {}) {
         { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-
+/**
+ * Escapa texto para inclusão segura dentro de uma string de HTML.
+ * Usar sempre que um valor de origem externa (API, utilizador, nome de ficheiro,
+ * mensagem de erro) tiver de ser interpolado num template literal com HTML.
+ *
+ * É uma declaração de função (e não uma const) de propósito: o hoisting permite
+ * que `sanitizeHTML`, definida no topo deste ficheiro, a utilize.
+ */
 export function escapeHTML(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
