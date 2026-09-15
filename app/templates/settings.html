@@ -92,7 +92,10 @@
     </div>
 
     <!-- Botão de Guardar Flutuante (Sticky Footer) -->
-    <div class="sticky bottom-6 z-40 mt-6 flex justify-end sticky-btn-wrapper px-2">
+    <!-- O id serve para o esconder nas abas que se declaram `data-somente-leitura`:
+         um botão de salvar por cima de uma lista que não se edita só levanta a
+         pergunta do que é que ele faria. -->
+    <div id="save-bar" class="sticky bottom-6 z-40 mt-6 flex justify-end sticky-btn-wrapper px-2">
         <button type="submit" id="saveButton" class="btn bg-green-600 hover:bg-green-500 text-white shadow-xl shadow-green-500/30 px-8 py-3.5 text-lg font-bold w-full sm:w-auto rounded-xl transition-all transform hover:-translate-y-1 border border-green-400 dark:border-green-700 flex items-center justify-center gap-2 group">
             <svg class="w-6 h-6 transition-transform group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
             <span>{{ _('Salvar Alterações') }}</span>

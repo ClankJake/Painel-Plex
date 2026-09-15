@@ -1003,6 +1003,15 @@ da página: é uma aba que quase ninguém abre, e um pedido a cada visita às
 Configurações seria trabalho para nada. Não faz polling — ao contrário dos
 logs, o que aqui entra não muda enquanto se está a olhar.
 
+⚠️ **O botão "Salvar Alterações" esconde-se aqui**, porque não há nada para
+salvar. Quem o decide é a ABA, com `data-somente-leitura="true"` no seu
+`tab-content`, e não uma dedução do JavaScript — deduzir pela presença de
+campos de formulário dá a resposta errada nas DUAS pontas: a Auditoria TEM um
+`<select>` (o filtro por ação) e não grava nada, e a de Logs PARECE só leitura
+mas guarda o nível de log no `LOG_LEVEL`, por isso escondê-lo lá tirava a única
+forma de o mudar. Um teste confirma que nenhuma aba marcada assim contém um id
+que esteja no `fieldMap`.
+
 #### O `payment_token` é uma credencial portadora, e agora expira
 
 🛡️ Quem tiver o link `/pay/<token>` vê o nome e o vencimento de quem lá está e
@@ -1378,6 +1387,23 @@ grandes quebram em `*_modules/` com a mesma divisão (`api`, `config`, `dom`,
 `handlers`, `ui`, `state`). Helpers partilhados em `utils.js` — `escapeHTML` /
 `sanitizeHTML` escapam também aspas, porque o resultado é interpolado dentro de
 atributos.
+
+📌 **As datas formatam-se num sítio só**: `formatarDataHora()` e
+`formatarData()`, em `utils.js`. Havia TRÊS cópias de `formatDateTime` — uma em
+`dashboard_modules`, duas em `users_modules` — e elas não concordavam: a do
+painel principal pedia dia/mês/ano e hora:minuto explícitos, as da página de
+usuários faziam `toLocaleString()`, que em pt-BR sai com vírgula e SEGUNDOS
+(`15/09/2026, 20:48:33`). A mesma data de vencimento aparecia de duas maneiras
+conforme a página. Os nomes antigos ficaram, a delegar, para os chamadores não
+mudarem.
+
+⚠️ **O idioma vem do `<html lang>`, não do navegador**: quem usa o painel em
+português com o navegador em inglês via `09/15/2026, 08:48 PM` — o mês antes do
+dia, que se lê ao contrário do que diz. E quem tem um valor que pode não
+existir (a data de fim de teste, o "membro desde") passa `{ ausente: '...' }`
+em vez de deixar um espaço em branco. Há um teste que falha se algum módulo
+voltar a chamar `toLocale*String` sozinho para uma data
+(`tests/test_aba_de_auditoria.py`).
 
 ⚠️ **NUNCA termine um atributo `data-*` com traço e número.** O browser só come
 o '-' quando o que vem a seguir é uma LETRA MINÚSCULA: `data-i18n-step-local-1`

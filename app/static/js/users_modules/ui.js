@@ -4,7 +4,7 @@ import * as dom from './dom.js';
 import * as state from './state.js';
 import * as api from './api.js';
 import { i18n, urls } from './config.js';
-import { showToast, escapeHTML } from '../utils.js';
+import { showToast, escapeHTML, formatarData, formatarDataHora } from '../utils.js';
 import { handleInviteAction, handleUserAction } from './handlers.js';
 import * as modals from './modals.js';
 
@@ -51,8 +51,12 @@ const sanitizeHTML = (str) => escapeHTML(str);
  */
 const pageLocale = document.documentElement.lang || undefined;
 
-const formatDate = (date) => date.toLocaleDateString(pageLocale);
-const formatDateTime = (date) => date.toLocaleString(pageLocale);
+// 📌 As duas delegam em `utils.js`. A versão local fazia `toLocaleString()`,
+// que em pt-BR sai com vírgula e SEGUNDOS (`15/09/2026, 20:48:33`) — a mesma
+// data de vencimento aparecia aqui de uma maneira e no painel principal de
+// outra. O `pageLocale` fica: ainda ordena nomes com `localeCompare`.
+const formatDate = (date) => formatarData(date);
+const formatDateTime = (date) => formatarDataHora(date);
 
 /**
  * Normaliza texto para pesquisa: minúsculas e sem acentos, para que "jose"

@@ -332,7 +332,27 @@ function handleTabChange(clickedButton, navElement, contentContainer, contentSel
         carregarAuditoria(true);
     }
 
+    if (!isSubtab) sincronizarBarraDeGravacao(contentElement);
+
     if (!isSubtab) syncTabsSelect();
+}
+
+/**
+ * Esconde o botão "Salvar Alterações" nas abas que nada têm para salvar.
+ *
+ * ⚠️ **Quem decide é a ABA, com `data-somente-leitura`, e não uma dedução
+ * daqui.** Deduzir pela presença de campos de formulário dá a resposta errada
+ * nas duas pontas: a Auditoria TEM um `<select>` (o filtro por ação) e não
+ * grava nada, e a de Logs PARECE só leitura mas guarda o nível de log no
+ * `LOG_LEVEL` — esconder o botão lá tirava a única forma de o mudar.
+ *
+ * Sem isto, ficava um botão verde a pairar por cima de uma lista que não se
+ * edita, a levantar a pergunta do que é que ele faria.
+ */
+function sincronizarBarraDeGravacao(contentElement) {
+    if (!dom.saveBar) return;
+    const somenteLeitura = contentElement?.dataset?.somenteLeitura === 'true';
+    dom.saveBar.classList.toggle('hidden', somenteLeitura);
 }
 
 /**

@@ -229,3 +229,98 @@ class TestNadaEntraNoHTMLSemEscapar:
         # Um `escapeHTML` local que esquecesse as aspas voltava a abrir o
         # buraco dentro de um atributo. Tem de vir do utils.js.
         assert re.search(r"import \{[^}]*\bescapeHTML\b[^}]*\} from '\.\./utils\.js'", CODIGO)
+
+
+class TestABarraDeGravacao:
+    """O botão "Salvar Alterações" some nas abas que nada têm para salvar.
+
+    ⚠️ **Quem decide é a ABA, com `data-somente-leitura`.** Deduzi-lo pela
+    presença de campos de formulário dá a resposta errada nas DUAS pontas: a
+    Auditoria tem um `<select>` (o filtro por ação) e não grava nada, e a de
+    Logs parece só leitura mas guarda o nível de log no `LOG_LEVEL` — esconder
+    o botão lá tirava a única forma de o mudar.
+    """
+
+    def _campos_que_o_formulario_grava(self):
+        """Os ids que o `saveSettings` recolhe: o `fieldMap` mais o nível de log."""
+        config_js = (RAIZ / 'app/static/js/settings_modules/config.js').read_text(encoding='utf-8')
+        bloco = re.search(r'export const fieldMap = \{(.*?)\n\};', config_js, re.S)
+        assert bloco, "o fieldMap mudou de forma"
+        return set(re.findall(r"^\s*'([A-Za-z0-9_]+)':", bloco.group(1), re.M)) | {'log_level_selector'}
+
+    def _abas_somente_leitura(self):
+        for caminho in sorted((RAIZ / 'app/templates/settings/tabs').glob('*.html')):
+            texto = _sem_comentarios_jinja(caminho.read_text(encoding='utf-8'))
+            if 'data-somente-leitura="true"' in texto:
+                yield caminho.name, texto
+
+    def test_a_auditoria_esta_marcada(self):
+        marcadas = {nome for nome, _ in self._abas_somente_leitura()}
+        assert 'audit.html' in marcadas
+
+    def test_a_aba_de_LOGS_nao_esta_marcada(self):
+        # 🐛 Ela guarda o LOG_LEVEL. Escondê-la era tirar a única forma de o mudar.
+        marcadas = {nome for nome, _ in self._abas_somente_leitura()}
+        assert 'logs.html' not in marcadas
+
+    def test_nenhuma_aba_marcada_contem_um_campo_que_se_grava(self):
+        campos = self._campos_que_o_formulario_grava()
+        for nome, texto in self._abas_somente_leitura():
+            ids = set(re.findall(r'\bid="([A-Za-z0-9_-]+)"', texto))
+            colisao = sorted(ids & campos)
+            assert colisao == [], (
+                f"{nome} declara-se só leitura mas tem campos que o formulário "
+                f"grava: {colisao}"
+            )
+
+    def test_a_barra_tem_o_gancho_e_o_script_usa_o(self):
+        pagina = _sem_comentarios_jinja(TEMPLATE_PAGINA)
+        assert 'id="save-bar"' in pagina
+        assert "getElementById('save-bar')" in (
+            RAIZ / 'app/static/js/settings_modules/dom.js').read_text(encoding='utf-8')
+        ui = _sem_comentarios_js(UI)
+        assert 'somenteLeitura' in ui
+        assert 'dom.saveBar' in ui
+
+
+class TestAFormatacaoDeDataEUmaSo:
+    """📌 Havia TRÊS cópias de `formatDateTime`, e elas não concordavam.
+
+    A do painel principal pedia dia/mês/ano e hora:minuto explícitos; as da
+    página de usuários faziam `toLocaleString()`, que em pt-BR sai com vírgula
+    e SEGUNDOS. A mesma data de vencimento aparecia de duas maneiras conforme a
+    página em que se estava a olhar para ela.
+    """
+
+    MODULOS = [
+        'app/static/js/dashboard_modules/formatters.js',
+        'app/static/js/users_modules/modals.js',
+        'app/static/js/users_modules/ui.js',
+        'app/static/js/settings_modules/audit.js',
+    ]
+
+    def test_so_o_utils_formata_datas(self):
+        # ⚠️ Formatar NÚMEROS (`{style: 'currency'}`) é outra conversa e pode
+        # continuar onde está: o que não pode voltar a haver são duas ideias
+        # diferentes de como se escreve uma DATA.
+        for caminho in self.MODULOS:
+            codigo = _sem_comentarios_js((RAIZ / caminho).read_text(encoding='utf-8'))
+            chamadas = re.findall(r'\.toLocale(?:Date|Time)?String\s*\(([^)]*)\)', codigo)
+            sobras = [c for c in chamadas if 'currency' not in c and 'style:' not in c]
+            assert sobras == [], (
+                f"{caminho} volta a formatar datas por sua conta: {sobras}. "
+                "A porta única é `formatarDataHora`/`formatarData` em utils.js."
+            )
+
+    def test_cada_modulo_importa_o_helper_partilhado(self):
+        for caminho in self.MODULOS:
+            codigo = (RAIZ / caminho).read_text(encoding='utf-8')
+            assert re.search(r"import \{[^}]*\bformatarData(Hora)?\b[^}]*\} from '\.\./utils\.js'", codigo), caminho
+
+    def test_o_helper_trata_o_valor_em_falta(self):
+        # É a diferença que a página de usuários tinha e não podia perder: a
+        # data de fim de teste pode mesmo não existir, e um espaço em branco no
+        # lugar dela não diz nada a ninguém.
+        utils = (RAIZ / 'app/static/js/utils.js').read_text(encoding='utf-8')
+        assert 'ausente' in utils
+        assert re.search(r'export function formatarDataHora\(valor, \{ ausente', utils)
