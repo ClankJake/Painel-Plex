@@ -457,9 +457,6 @@ class PricingManager:
         # Por isso, com o pro-rata ativo, o upgrade por renovação normal só fica
         # disponível perto do vencimento — o mesmo tratamento que já se dá ao
         # downgrade. Quem quiser subir de plano antes disso usa o pro-rata.
-        proration_on = bool(config.get("PRORATION_ENABLED", False))
-        block_full_price_upgrade = proration_on and not can_downgrade
-
         available_prices = {}
         for screens, price in valid_screen_prices.items():
             n = int(screens)
@@ -468,8 +465,12 @@ class PricingManager:
                 continue
             # NOTA: os planos superiores CONTINUAM na lista mesmo quando o upgrade a
             # preço cheio está bloqueado — senão o utilizador não teria como sequer
-            # chegar ao pro-rata. O bloqueio efetivo é feito no momento de gerar a
-            # cobrança (ver 'proration_required' abaixo e a validação em payments.py).
+            # chegar ao pro-rata. ⚠️ O bloqueio efetivo NÃO acontece aqui: é feito ao
+            # gerar a cobrança, por `requires_proration_for_upgrade()` (chamada em
+            # `payments.py`, na criação da cobrança). Esta função calculava aqui um
+            # `block_full_price_upgrade` que nunca era usado, e o comentário mandava
+            # ver um `proration_required` que não existe em lado nenhum — dois
+            # ponteiros para um sítio errado à frente de uma decisão sobre dinheiro.
             available_prices[screens] = price
         
         # Fallback: Adiciona o preço padrão se não houver opções multipantalla ativadas
