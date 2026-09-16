@@ -11,6 +11,7 @@
 import * as dom from './users_modules/dom.js';
 import * as state from './users_modules/state.js';
 import * as ui from './users_modules/ui.js';
+import { showToast } from './utils.js';
 
 // Intervalo entre verificações automáticas de convites (ms).
 const INVITE_POLL_INTERVAL_MS = 10000;
@@ -159,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Exibe uma notificação para o administrador com a mensagem do servidor
             const toastMessage = data.message || 'A lista de usuários foi atualizada automaticamente.';
-            ui.showToast(toastMessage, 'info');
+            showToast(toastMessage, 'info');
 
             // Força a atualização da lista de usuários na UI
             ui.loadStatus(true);
