@@ -201,10 +201,21 @@ def claim_invite_route():
         # dar um), mas quando vem tem de ter forma: é por ele que o Seerr
         # encontra a pessoa e que os avisos chegam. Um erro de escrita não dava
         # erro nenhum — dava uma aba "Meus Pedidos" vazia para sempre.
+        #
+        # 🛡️ A mensagem é FIXA e não o texto da exceção. Esta rota é PÚBLICA, e
+        # devolver `str(e)` num caminho público é entregar a quem pede aquilo
+        # que o servidor sabe sobre a falha — aqui seria inofensivo (a mensagem
+        # é escrita por nós, logo ali em `validar_email`), mas o padrão não é:
+        # basta alguém pôr outra coisa a levantar dentro deste `try` para
+        # passar a sair daqui o que essa outra coisa quiser dizer. Foi o que o
+        # CodeQL marcou, e tem razão sobre a forma.
         try:
             email = validar_email(email) or ''
-        except ValueError as e:
-            return jsonify({"success": False, "message": str(e)}), 400
+        except ValueError:
+            return jsonify({
+                "success": False,
+                "message": _("Informe um e-mail válido, como nome@exemplo.com."),
+            }), 400
 
         registo = SimpleNamespace(username=username, password=password, email=email)
         return jsonify(media_server.claim_invitation(data.get('code'), registo))

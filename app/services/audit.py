@@ -28,6 +28,7 @@ Três regras que este módulo existe para guardar:
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 
 from flask import has_request_context, request
@@ -42,7 +43,34 @@ logger = logging.getLogger(__name__)
 # É uma regra sobre o nome, e não uma lista de chaves conhecidas, de propósito:
 # a credencial que um gateway novo traga amanhã fica coberta sem ninguém se
 # lembrar de a acrescentar a lado nenhum.
-PEDACOS_SENSIVEIS = ('TOKEN', 'KEY', 'SECRET', 'PASSWORD', 'SENHA', 'PASS')
+#
+# 🐛 **E só isto não chegou.** A primeira versão tinha apenas os cinco óbvios, e
+# deixava passar em claro três credenciais que não têm nenhum deles no nome:
+#
+#   • `DISCORD_WEBHOOK_URL` — o token que autoriza a publicar no canal está
+#     DENTRO do caminho do URL. Quem tiver o URL publica lá;
+#   • `WEBHOOK_URL` — pode trazer `utilizador:senha@` embutidos;
+#   • `WEBHOOK_AUTHORIZATION_HEADER` — é, literalmente, um cabeçalho de
+#     autorização.
+#
+# Bastava o administrador editar um deles para o valor ANTIGO e o NOVO ficarem
+# gravados em texto puro em `audit_logs.detalhes` — numa tabela que existe
+# precisamente para poder ser lida mais tarde, e que vai dentro do ZIP de
+# backup. Uma auditoria que guarda segredos é mais uma cópia dos segredos.
+PEDACOS_SENSIVEIS = (
+    'TOKEN', 'KEY', 'SECRET', 'PASSWORD', 'SENHA', 'PASS',
+    'AUTHORIZATION',
+    # Apanha o `WEBHOOK_URL` e o `DISCORD_WEBHOOK_URL` sem apanhar os
+    # `WEBHOOK_*_MESSAGE_TEMPLATE`, que são formatos e não segredos — e que
+    # interessa mesmo poder auditar.
+    'WEBHOOK_URL',
+)
+
+# ⚠️ E um segundo travão, sobre o VALOR e não sobre o nome: um URL com
+# credenciais embutidas (`https://utilizador:senha@host/…`) é um segredo
+# chame-se a chave como se chamar. É esta camada que cobre a definição que
+# alguém acrescentar amanhã sem se lembrar de nada disto.
+_URL_COM_CREDENCIAIS = re.compile(r'^[a-z][a-z0-9+.-]*://[^/@\s]+:[^/@\s]+@', re.I)
 
 OCULTADO = '(oculto)'
 MUDOU = '(alterado)'
@@ -50,6 +78,16 @@ MUDOU = '(alterado)'
 
 def _e_sensivel(chave):
     return any(pedaco in str(chave).upper() for pedaco in PEDACOS_SENSIVEIS)
+
+
+def _valor_e_sensivel(valor):
+    """Um valor que é um segredo por si só, independentemente do nome da chave."""
+    return isinstance(valor, str) and bool(_URL_COM_CREDENCIAIS.match(valor.strip()))
+
+
+def _esconder(chave, *valores):
+    """Este campo pode ser registado com o valor à vista?"""
+    return _e_sensivel(chave) or any(_valor_e_sensivel(v) for v in valores)
 
 
 def _quem():
@@ -110,7 +148,7 @@ def diferenca(antes, depois, apenas=None):
         novo = depois.get(chave)
         if anterior == novo:
             continue
-        if _e_sensivel(chave):
+        if _esconder(chave, anterior, novo):
             mudancas[chave] = {'antes': MUDOU, 'depois': MUDOU}
         else:
             mudancas[chave] = {'antes': anterior, 'depois': novo}
@@ -129,7 +167,7 @@ def _serializavel(valor, _profundidade=0):
         return valor
     if isinstance(valor, dict):
         return {
-            str(k): (OCULTADO if _e_sensivel(k) else _serializavel(v, _profundidade + 1))
+            str(k): (OCULTADO if _esconder(k, v) else _serializavel(v, _profundidade + 1))
             for k, v in valor.items()
         }
     if isinstance(valor, (list, tuple, set)):

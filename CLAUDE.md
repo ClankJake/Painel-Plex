@@ -956,10 +956,23 @@ preços e credenciais e não escrevia nada sobre o que tinha mudado.
 `audit.diferenca(antes, depois)` reduz dois dicionários ao que MUDOU. Três
 regras que o módulo existe para guardar:
 
-- 🛡️ **nenhum segredo entra**: uma chave cujo nome contenha `TOKEN`, `KEY`,
-  `SECRET`, `PASSWORD` ou `SENHA` regista que mudou, nunca o valor. É uma regra
-  sobre o NOME e não uma lista, para a credencial do gateway seguinte ficar
-  coberta sem ninguém se lembrar dela;
+- 🛡️ **nenhum segredo entra**, em três camadas. Uma regra sobre o NOME da
+  chave (`TOKEN`, `KEY`, `SECRET`, `PASSWORD`, `SENHA`, `AUTHORIZATION`,
+  `WEBHOOK_URL`) regista que mudou, nunca o valor; uma regra sobre o VALOR
+  esconde um URL com credenciais embutidas (`https://user:senha@…`) chame-se a
+  chave como se chamar; e o `_serializavel` repete a verificação, mais
+  grosseira, para o caso de alguém chamar `registar` com um dicionário que não
+  passou pela `diferenca`.
+  🐛 **A regra do nome sozinha já falhou uma vez**: os cinco pedaços iniciais
+  deixavam passar em claro o `DISCORD_WEBHOOK_URL` (o token do canal está
+  DENTRO do caminho), o `WEBHOOK_URL` (pode trazer `user:senha@`) e o
+  `WEBHOOK_AUTHORIZATION_HEADER`. Bastava editá-los para o valor antigo E o
+  novo ficarem em texto puro numa tabela que vai dentro do ZIP de backup. ⚠️ O
+  `WEBHOOK_URL` como pedaço é escolhido para NÃO apanhar os
+  `WEBHOOK_*_MESSAGE_TEMPLATE`, que são formatos e não segredos — e que
+  interessa muito poder auditar, porque são o que chega ao telefone de quem
+  paga. Há um teste que percorre o esquema real do config e exige que toda a
+  chave com credencial esteja coberta;
 - ⚠️ **falhar a registar nunca derruba a ação**: um erro vira um aviso no log.
   Perder a linha de auditoria é mau; perder o pagamento que ela descreve é pior;
 - ⚠️ **a escrita vai por uma ligação PRÓPRIA**, não pela `db.session`. Pela

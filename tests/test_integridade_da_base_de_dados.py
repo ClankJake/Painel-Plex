@@ -11,6 +11,7 @@ coluna diz `ForeignKey` mas o SQLite não a impõe, o esquema está certo e a
 garantia não existe.
 """
 
+import json
 import os
 import stat
 from datetime import datetime, timedelta, timezone
@@ -179,6 +180,101 @@ class TestAuditoria:
         assert mudancas['RENEWAL_PRICE'] == {'antes': '25', 'depois': '35'}
         for chave in ('EFI_CLIENT_SECRET', 'PLEX_TOKEN'):
             assert mudancas[chave] == {'antes': '(alterado)', 'depois': '(alterado)'}, chave
+
+    @pytest.mark.parametrize('chave', [
+        'DISCORD_WEBHOOK_URL',
+        'WEBHOOK_URL',
+        'WEBHOOK_AUTHORIZATION_HEADER',
+    ])
+    def test_as_credenciais_SEM_token_no_nome_tambem_sao_escondidas(self, chave):
+        """🐛 A primeira versão da regra deixava estas três passar em claro.
+
+        Nenhuma tem `TOKEN`, `KEY` ou `SECRET` no nome, e as três são
+        credenciais: no `DISCORD_WEBHOOK_URL` o token que autoriza a publicar
+        no canal está DENTRO do caminho, o `WEBHOOK_URL` pode trazer
+        `utilizador:senha@` embutidos, e o `WEBHOOK_AUTHORIZATION_HEADER` é
+        literalmente um cabeçalho de autorização. Bastava editá-las para o
+        valor antigo E o novo ficarem em texto puro na tabela.
+        """
+        from app.services import audit
+
+        segredo_antigo = 'https://discord.com/api/webhooks/123/SEGREDO-ANTIGO'
+        segredo_novo = 'https://discord.com/api/webhooks/123/SEGREDO-NOVO'
+
+        mudancas = audit.diferenca({chave: segredo_antigo}, {chave: segredo_novo})
+
+        assert mudancas[chave] == {'antes': '(alterado)', 'depois': '(alterado)'}
+        registado = json.dumps(mudancas)
+        assert 'SEGREDO-ANTIGO' not in registado
+        assert 'SEGREDO-NOVO' not in registado
+
+    def test_um_URL_com_credenciais_e_escondido_seja_qual_for_o_nome(self):
+        """⚠️ O segundo travão, sobre o VALOR e não sobre o nome.
+
+        É esta camada que cobre a definição que alguém acrescente amanhã sem se
+        lembrar de nada disto: um `https://utilizador:senha@host/` é um segredo
+        chame-se a chave como se chamar.
+        """
+        from app.services import audit
+
+        mudancas = audit.diferenca(
+            {'ALGO_NOVO_QUALQUER': 'https://ana:senha-secreta@servidor.test/webhook'},
+            {'ALGO_NOVO_QUALQUER': 'https://ana:outra-senha@servidor.test/webhook'},
+        )
+
+        assert mudancas['ALGO_NOVO_QUALQUER'] == {'antes': '(alterado)', 'depois': '(alterado)'}
+        assert 'senha-secreta' not in json.dumps(mudancas)
+
+    def test_um_URL_SEM_credenciais_continua_a_ser_auditavel(self):
+        """⚠️ Esconder de mais também é um defeito: o endereço do painel ou do
+        servidor de mídia é exatamente o tipo de mudança que se quer poder ver
+        meses depois."""
+        from app.services import audit
+
+        mudancas = audit.diferenca(
+            {'APP_BASE_URL': 'https://painel.antigo.test'},
+            {'APP_BASE_URL': 'https://painel.novo.test'},
+        )
+
+        assert mudancas['APP_BASE_URL'] == {
+            'antes': 'https://painel.antigo.test',
+            'depois': 'https://painel.novo.test',
+        }
+
+    def test_os_modelos_de_mensagem_continuam_a_ser_auditaveis(self):
+        """Um `WEBHOOK_*_MESSAGE_TEMPLATE` é um FORMATO, não um segredo — e é
+        das coisas que mais interessa poder auditar, porque é o que chega ao
+        telefone de quem paga."""
+        from app.services import audit
+
+        mudancas = audit.diferenca(
+            {'WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE': '{"content": "antes"}'},
+            {'WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE': '{"content": "depois"}'},
+        )
+
+        assert mudancas['WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE']['depois'] == '{"content": "depois"}'
+
+    def test_nenhuma_chave_do_config_com_credencial_fica_a_descoberto(self):
+        """A varredura que teria apanhado isto à primeira.
+
+        Percorre o esquema REAL do config e exige que toda a chave que carrega
+        uma credencial esteja coberta — em vez de confiar em que alguém se
+        lembre de a acrescentar.
+        """
+        from app.config import load_or_create_config
+        from app.services.audit import _e_sensivel
+
+        # As que carregam segredo e não o dizem no nome de forma óbvia.
+        devem_ser_escondidas = {
+            'WEBHOOK_URL', 'DISCORD_WEBHOOK_URL', 'WEBHOOK_AUTHORIZATION_HEADER',
+        }
+        chaves = set(load_or_create_config())
+
+        # O teste não vale nada se as chaves tiverem sido renomeadas.
+        assert devem_ser_escondidas <= chaves, devem_ser_escondidas - chaves
+
+        a_descoberto = sorted(k for k in devem_ser_escondidas if not _e_sensivel(k))
+        assert a_descoberto == [], f"credenciais sem redação na auditoria: {a_descoberto}"
 
     def test_so_regista_o_que_MUDOU(self):
         from app.services import audit
