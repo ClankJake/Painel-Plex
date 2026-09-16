@@ -1699,6 +1699,25 @@ pagamento pertencem aí, não no gateway.
 Os webhooks só funcionam com `APP_BASE_URL` preenchido: é a partir dele que as
 URLs de retorno são construídas.
 
+🐛 **Uma falha do gateway não pode parecer "ainda não pagou".** A rota que a
+página de pagamento faz polling (`GET /api/payments/status/<txid>`) consulta o
+gateway e, se isso levantar, responde o estado GUARDADO — que é "aguardando
+pagamento". O `except` ali era um `pass` mudo: quem está parado no QR code via
+exatamente o mesmo que veria se não tivesse pago, e o log não tinha uma linha a
+dizer porquê. Uma credencial expirada ou uma mudança de API do gateway era
+indistinguível, do lado de cá, de um cliente que ainda não pagou. Continua a
+NÃO derrubar o pedido (o webhook é o caminho principal de confirmação); o que
+mudou é ficar rasto, com o txid mascarado por `mask_token` como no resto do
+módulo.
+
+⚠️ **E nunca um `except:` NU.** Sob gevent ele apanha o `GreenletExit`, que é
+como um greenlet é morto — engoli-lo faz o worker deixar de conseguir encerrar
+aquele pedido —, além do `KeyboardInterrupt` e do `SystemExit`, num painel que
+se reinicia a si próprio por sinal. Havia quatro, todos à volta de um `int()`
+ou de um `fromisoformat()`, onde o que se queria apanhar cabia em
+`(ValueError, TypeError)`. `tests/test_erros_engolidos.py` percorre o `app/` e
+recusa que volte a haver um.
+
 ### Tarefas de fundo
 
 `app/scheduler.py` com APScheduler (`BackgroundScheduler`, jobstore SQLAlchemy
