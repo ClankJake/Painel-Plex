@@ -20,14 +20,76 @@ from ...utils.enderecos import endereco_publico
 logger = logging.getLogger(__name__)
 invites_api_bp = Blueprint('invites_api', __name__)
 
+def _titulos_do_servidor():
+    """Os nomes das bibliotecas, ou None quando não foi possível perguntar.
+
+    ⚠️ A diferença entre `[]` e `None` é a que interessa: as duas conexões
+    devolvem uma lista vazia tanto quando o servidor está em baixo como quando
+    ele não tem bibliotecas nenhumas, e não há como as distinguir daqui. Tratar
+    o vazio como "não sei" é o lado seguro — não saber que bibliotecas existem
+    nunca pode ser motivo para impedir o administrador de criar um convite.
+    """
+    try:
+        bibliotecas = media_server.get_libraries() or []
+    except Exception as e:
+        logger.warning(f"Não foi possível obter as bibliotecas do servidor: {e}")
+        return None
+
+    titulos = [b.get('title') for b in bibliotecas if isinstance(b, dict) and b.get('title')]
+    return titulos or None
+
+
+def _resolver_bibliotecas(pedidas):
+    """Traduz o que foi pedido para a grafia do SERVIDOR.
+
+    🐛 Um convite era aceite com QUALQUER nome de biblioteca. A falha só
+    aparecia no resgate, lá dentro do `send_invite` — "Nenhuma biblioteca
+    válida foi encontrada para compartilhar" — ou seja, quem pagava o engano do
+    administrador era quem tinha acabado de clicar no link. Um bot, que manda
+    os nomes escritos à mão, acertava ainda menos.
+
+    E a grafia importa: o backend do Plex compara `s.title in library_titles`
+    exatamente, por isso um convite criado com "filmes" num servidor que tem
+    "Filmes" nascia com uma biblioteca que nunca ia ser encontrada. Devolvemos
+    sempre o nome como o servidor o escreve.
+
+    Devolve `(titulos, mensagem_de_erro)`.
+    """
+    do_servidor = _titulos_do_servidor()
+    if do_servidor is None:
+        return list(pedidas), None
+
+    por_minusculas = {titulo.casefold(): titulo for titulo in do_servidor}
+
+    canonicos, desconhecidas = [], []
+    for pedida in pedidas:
+        encontrada = por_minusculas.get(str(pedida).strip().casefold())
+        if encontrada is None:
+            desconhecidas.append(str(pedida))
+        else:
+            canonicos.append(encontrada)
+
+    if desconhecidas:
+        return None, _(
+            "Estas bibliotecas não existem no servidor: %(nomes)s.",
+            nomes=', '.join(desconhecidas),
+        )
+    return canonicos, None
+
+
 @invites_api_bp.route('/create', methods=['POST'])
 @login_required
 @admin_required
 @validate_json(CreateInviteSchema)
 def create_invite_route(validated_data):
     data = validated_data.dict()
+
+    libraries, erro = _resolver_bibliotecas(data.get('libraries', []))
+    if erro:
+        return jsonify({"success": False, "message": erro}), 400
+
     result = media_server.create_invitation(
-        library_titles=data.get('libraries', []), 
+        library_titles=libraries, 
         screens=data.get('screens', 0), 
         allow_downloads=data.get('allow_downloads', False), 
         expires_in_minutes=data.get('expires_in_minutes'),
@@ -81,18 +143,22 @@ def create_invite_for_bot(validated_data):
     # comportamento esperado numa automação, que normalmente não as conhece.
     libraries = data.get('libraries')
     if not libraries:
-        try:
-            libraries_result = media_server.get_libraries()
-            libraries = [lib['title'] for lib in libraries_result.get('libraries', [])] if libraries_result.get('success') else []
-        except Exception as e:
-            logger.error(f"Não foi possível obter a lista de bibliotecas para o convite via bot: {e}")
-            libraries = []
+        # 🐛 Isto nunca funcionou. `get_libraries()` devolve uma LISTA e o
+        # código pedia-lhe `.get('success')` — um `AttributeError` que caía no
+        # `except` mesmo com o servidor a responder perfeitamente. Resultado: o
+        # campo que a documentação anuncia como opcional dava sempre 400, e
+        # nenhum bot podia deixar de conhecer os nomes das bibliotecas.
+        libraries = _titulos_do_servidor()
 
         if not libraries:
             return jsonify({
                 "success": False,
                 "message": _("Não foi possível determinar as bibliotecas automaticamente. Informe 'libraries' na requisição.")
             }), 400
+    else:
+        libraries, erro = _resolver_bibliotecas(libraries)
+        if erro:
+            return jsonify({"success": False, "message": erro}), 400
 
     result = media_server.create_invitation(
         library_titles=libraries,

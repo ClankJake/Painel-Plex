@@ -543,3 +543,93 @@ class TestEnderecoDoConvite:
         config_file(IS_CONFIGURED=True, APP_BASE_URL="")
         resposta = admin.post("/api/invites/create", json={"libraries": ["Filmes"]})
         assert resposta.get_json()["invite_url"].startswith("http://localhost/invite/")
+
+
+class _ServidorFalso:
+    """O mínimo da fachada que as rotas de criação tocam."""
+
+    def __init__(self, bibliotecas=('Filmes', 'Séries'), rebenta=False):
+        self.bibliotecas = list(bibliotecas)
+        self.rebenta = rebenta
+        self.criados = []
+
+    def get_libraries(self):
+        if self.rebenta:
+            raise RuntimeError("servidor em baixo")
+        # A forma REAL do contrato: uma lista, não um dicionário com 'success'.
+        return [{'title': t, 'key': str(i)} for i, t in enumerate(self.bibliotecas)]
+
+    def create_invitation(self, **kwargs):
+        self.criados.append(kwargs)
+        return {"success": True, "code": "CODIGO", "message": "ok"}
+
+
+@pytest.fixture()
+def servidor_falso(monkeypatch):
+    duplo = _ServidorFalso()
+    monkeypatch.setattr('app.blueprints.api.invites.media_server', duplo)
+    return duplo
+
+
+class TestBibliotecasDoConvite:
+    """
+    🐛 Um convite era aceite com QUALQUER nome de biblioteca. A falha só
+    aparecia no RESGATE, dentro do `send_invite` — quem pagava o engano do
+    administrador era quem tinha acabado de clicar no link.
+    """
+
+    def test_uma_biblioteca_que_nao_existe_e_recusada_logo(self, admin, db_session, servidor_falso):
+        resposta = admin.post("/api/invites/create", json={"libraries": ["Documentários"]})
+        assert resposta.status_code == 400
+        assert "Documentários" in resposta.get_json()["message"]
+        assert servidor_falso.criados == []
+
+    def test_a_grafia_do_servidor_e_a_que_fica_gravada(self, admin, db_session, servidor_falso):
+        """
+        O backend do Plex compara `s.title in library_titles` exatamente: um
+        convite criado com "filmes" num servidor que tem "Filmes" nascia com
+        uma biblioteca que nunca ia ser encontrada.
+        """
+        resposta = admin.post("/api/invites/create", json={"libraries": ["filmes", "SÉRIES"]})
+        assert resposta.status_code == 200
+        assert servidor_falso.criados[0]["library_titles"] == ["Filmes", "Séries"]
+
+    def test_o_servidor_em_baixo_nao_impede_criar_um_convite(self, admin, db_session, monkeypatch):
+        """Não saber que bibliotecas existem não é o mesmo que saber que não existem."""
+        duplo = _ServidorFalso(rebenta=True)
+        monkeypatch.setattr('app.blueprints.api.invites.media_server', duplo)
+
+        resposta = admin.post("/api/invites/create", json={"libraries": ["Filmes"]})
+        assert resposta.status_code == 200
+        assert duplo.criados[0]["library_titles"] == ["Filmes"]
+
+
+class TestBibliotecasNoEndpointDosBots:
+    """
+    🐛 `get_libraries()` devolve uma LISTA e o código pedia-lhe
+    `.get('success')`. O `AttributeError` caía no `except` mesmo com o servidor
+    a responder: o campo que a documentação anuncia como opcional dava sempre
+    400, e nenhum bot podia deixar de conhecer os nomes das bibliotecas.
+    """
+
+    def _chave(self):
+        from app.config import load_or_create_config
+        return str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')
+
+    def test_sem_bibliotecas_usa_todas_as_do_servidor(self, client, configurada, db_session, servidor_falso):
+        resposta = client.post(
+            "/api/invites/bot/create",
+            json={"telegram_id": 123456789},
+            headers={"X-API-Key": self._chave()},
+        )
+        assert resposta.status_code == 201
+        assert servidor_falso.criados[0]["library_titles"] == ["Filmes", "Séries"]
+
+    def test_uma_biblioteca_inventada_pelo_bot_e_recusada(self, client, configurada, db_session, servidor_falso):
+        resposta = client.post(
+            "/api/invites/bot/create",
+            json={"telegram_id": 123456789, "libraries": ["Anime"]},
+            headers={"X-API-Key": self._chave()},
+        )
+        assert resposta.status_code == 400
+        assert servidor_falso.criados == []

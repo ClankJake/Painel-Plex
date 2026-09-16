@@ -62,7 +62,7 @@ Content-Type: application/json
 | Campo | Tipo | Obrigatório | Padrão | Descrição |
 |---|---|:---:|---|---|
 | `telegram_id` | string \| int | **sim** | — | ID do chat/usuário no Telegram. Aceita número ou texto. |
-| `libraries` | lista de strings | não | *todas* | Bibliotecas a partilhar. Se omitido, usa **todas** as do servidor. |
+| `libraries` | lista de strings | não | *todas* | Bibliotecas a compartilhar, pelo NOME. Se omitido, usa **todas** as do servidor. Um nome que não exista no servidor é recusado com `400`; a diferença entre maiúsculas e minúsculas não importa (`"filmes"` encontra `"Filmes"`). |
 | `screens` | int (0–6) | não | `0` | Limite de telas simultâneos. |
 | `allow_downloads` | bool | não | `false` | Permitir downloads/sync. |
 | `expires_in_minutes` | int | não | `null` | Validade do convite. `null` = não expira. |
@@ -70,6 +70,15 @@ Content-Type: application/json
 | `overseerr_access` | bool | não | `false` | Criar também acesso no Seerr (Overseerr / Jellyseerr). Ver [integracao-seerr.md](integracao-seerr.md). |
 | `custom_code` | string | não | *aleatório* | Código personalizado para o convite. |
 | `max_uses` | int | não | `1` | Número de utilizações permitidas. |
+
+### Limites dos valores
+
+`expires_in_minutes` e `trial_duration_minutes` vão até **cinco anos** em
+minutos (`2 628 000`) e `max_uses` até **1000**. Não é uma regra de negócio: é
+o que uma data consegue representar. Antes destes limites, um número grande o
+suficiente somado a "agora" levantava `OverflowError` e a rota respondia `500`
+— e, no caso do período de teste, só no momento em que alguém tentava resgatar
+o convite.
 
 ### Exemplo
 
@@ -103,7 +112,7 @@ Basta enviar `invite_url` ao usuário no Telegram.
 
 | Código | Situação |
 |---|---|
-| `400` | Corpo inválido (ex.: `telegram_id` em falta ou vazio), ou não foi possível determinar as bibliotecas automaticamente. |
+| `400` | Corpo inválido (ex.: `telegram_id` em falta ou vazio), uma biblioteca que não existe no servidor, ou não foi possível determinar as bibliotecas automaticamente. |
 | `401` | Chave de API em falta ou incorreta. |
 | `409` | **Conflito de unicidade** — ver abaixo. |
 | `429` | Limite de pedidos excedido (30 por minuto). |
