@@ -1470,11 +1470,25 @@ def criar_chave_de_api():
     """
     from ...services import api_keys
 
+    # 🛡️ O texto que a pessoa lê é escolhido AQUI, a partir de um motivo
+    # estável. Devolver `str(e)` faz sair na resposta o que quer que tenha sido
+    # levantado dentro do `try` — hoje são mensagens escritas por nós, amanhã é
+    # o texto de um erro do SQLAlchemy com o caminho da base de dados lá
+    # dentro. É a mesma decisão do resgate de convites, e o CodeQL já marcou
+    # este padrão neste repositório.
+    MOTIVOS = {
+        api_keys.DadosInvalidos.SEM_NOME: _("A chave precisa de um nome."),
+        api_keys.DadosInvalidos.SEM_ESCOPO: _("Escolha pelo menos uma permissão para a chave."),
+    }
+
     dados = request.get_json(silent=True) or {}
     try:
         linha, chave = api_keys.criar(dados.get('nome'), dados.get('escopos'))
-    except ValueError as e:
-        return jsonify({"success": False, "message": str(e)}), 400
+    except api_keys.DadosInvalidos as e:
+        return jsonify({
+            "success": False,
+            "message": MOTIVOS.get(e.motivo, _("Não foi possível criar a chave.")),
+        }), 400
     except Exception as e:
         logger.error(f"Erro ao criar a chave de API: {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Não foi possível criar a chave.")}), 500

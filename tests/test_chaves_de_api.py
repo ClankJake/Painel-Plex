@@ -96,14 +96,31 @@ class TestOEscopo:
     def test_uma_chave_sem_escopo_nenhum_nao_e_criada(self, app_context, db_session):
         from app.services import api_keys
 
-        with pytest.raises(ValueError):
+        with pytest.raises(api_keys.DadosInvalidos) as erro:
             api_keys.criar("Sem permissões", [])
+        assert erro.value.motivo == api_keys.DadosInvalidos.SEM_ESCOPO
 
     def test_uma_chave_sem_nome_nao_e_criada(self, app_context, db_session):
         from app.services import api_keys
 
-        with pytest.raises(ValueError):
+        with pytest.raises(api_keys.DadosInvalidos) as erro:
             api_keys.criar("   ", ["convites"])
+        assert erro.value.motivo == api_keys.DadosInvalidos.SEM_NOME
+
+    def test_a_recusa_nao_leva_o_texto_da_excecao(self, app_context, db_session):
+        """
+        🛡️ O motivo é uma CHAVE; o texto que a pessoa lê é escolhido pela rota.
+        Devolver `str(e)` faz sair na resposta o que quer que tenha sido
+        levantado dentro do `try` — e o CodeQL já marcou este padrão neste
+        repositório.
+        """
+        from app.services import api_keys
+
+        with pytest.raises(api_keys.DadosInvalidos) as erro:
+            api_keys.criar("", ["convites"])
+
+        # O que a exceção carrega é a chave, e mais nada.
+        assert str(erro.value) == api_keys.DadosInvalidos.SEM_NOME
 
 
 class TestARevogacao:
@@ -259,7 +276,16 @@ class TestAsRotasDeAdministracao:
 
     def test_criar_sem_nome_e_um_erro_do_pedido(self, admin, db_session):
         resposta = admin.post("/api/system/api-keys", json={"escopos": ["convites"]})
+
         assert resposta.status_code == 400
+        # A mensagem é a da ROTA, escolhida a partir do motivo.
+        assert "nome" in resposta.get_json()["message"].lower()
+
+    def test_criar_sem_permissao_nenhuma_diz_o_que_falta(self, admin, db_session):
+        resposta = admin.post("/api/system/api-keys", json={"nome": "Bot", "escopos": []})
+
+        assert resposta.status_code == 400
+        assert "permiss" in resposta.get_json()["message"].lower()
 
     def test_revogar_pela_rota(self, admin, db_session):
         id_da_chave = admin.post("/api/system/api-keys",

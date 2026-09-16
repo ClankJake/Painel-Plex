@@ -51,6 +51,27 @@ ALFABETO_DO_PREFIXO = string.ascii_letters + string.digits
 INTERVALO_DE_USO = timedelta(minutes=5)
 
 
+class DadosInvalidos(Exception):
+    """O pedido de criação está incompleto.
+
+    🛡️ Carrega um MOTIVO estável, não uma mensagem. Quem escreve o texto que a
+    pessoa lê é a rota, e é essa a diferença que importa: devolver `str(e)` numa
+    resposta faz sair dali o que quer que tenha sido levantado dentro do `try`
+    — hoje são duas mensagens escritas por nós, amanhã é o texto de um erro do
+    SQLAlchemy com o caminho da base de dados lá dentro.
+
+    É a mesma decisão já tomada no resgate de convites, depois de o CodeQL
+    marcar o padrão: a mensagem é FIXA e escolhida por quem responde.
+    """
+
+    SEM_NOME = 'sem_nome'
+    SEM_ESCOPO = 'sem_escopo'
+
+    def __init__(self, motivo):
+        super().__init__(motivo)
+        self.motivo = motivo
+
+
 def _resumo(chave):
     return hashlib.sha256(chave.encode('utf-8')).hexdigest()
 
@@ -74,11 +95,11 @@ def criar(nome, escopos):
     """
     nome = (nome or '').strip()
     if not nome:
-        raise ValueError("A chave precisa de um nome.")
+        raise DadosInvalidos(DadosInvalidos.SEM_NOME)
 
     escolhidos = escopos_validos(escopos)
     if not escolhidos:
-        raise ValueError("Escolha pelo menos uma permissão para a chave.")
+        raise DadosInvalidos(DadosInvalidos.SEM_ESCOPO)
 
     # Um prefixo repetido é improvável (64 bits) mas não impossível, e a coluna
     # é única: falhar aqui seria um 500 numa ação que o administrador pediu.
