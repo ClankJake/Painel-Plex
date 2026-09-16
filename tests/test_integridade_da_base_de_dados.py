@@ -225,6 +225,39 @@ class TestAuditoria:
         assert mudancas['ALGO_NOVO_QUALQUER'] == {'antes': '(alterado)', 'depois': '(alterado)'}
         assert 'senha-secreta' not in json.dumps(mudancas)
 
+    def test_um_token_no_lugar_do_utilizador_tambem_conta(self):
+        """Há serviços cujo token vai no lugar do utilizador, sem senha a
+        seguir (`https://TOKEN@host/`)."""
+        from app.services import audit
+
+        mudancas = audit.diferenca(
+            {'ALGO': 'https://token-antigo@servidor.test/x'},
+            {'ALGO': 'https://token-novo@servidor.test/x'},
+        )
+
+        assert mudancas['ALGO'] == {'antes': '(alterado)', 'depois': '(alterado)'}
+
+    def test_a_deteccao_nao_trava_com_uma_string_longa(self):
+        """🐛 Isto já foi uma expressão regular, e era uma negação de serviço.
+
+        Os dois quantificadores do `[^/@\\s]+:[^/@\\s]+@` sobrepunham-se (o `:`
+        pertence à própria classe), por isso uma string LONGA sem `@` nenhum
+        fazia o motor experimentar todas as divisões: **4,65 segundos** com
+        40 KB. E o que passa por aqui inclui nomes de utilizador escolhidos por
+        quem cria a conta no servidor de mídia — bastava chamar-se assim para
+        segurar o worker, e o painel corre com UM de propósito.
+        """
+        import time
+        from app.services import audit
+
+        patologica = 'https://' + 'a:' * 20000
+
+        inicio = time.perf_counter()
+        audit.diferenca({'ALGO': patologica}, {'ALGO': patologica + 'b'})
+        decorrido = time.perf_counter() - inicio
+
+        assert decorrido < 0.5, f"a deteção demorou {decorrido:.2f}s — voltou o retrocesso"
+
     def test_um_URL_SEM_credenciais_continua_a_ser_auditavel(self):
         """⚠️ Esconder de mais também é um defeito: o endereço do painel ou do
         servidor de mídia é exatamente o tipo de mudança que se quer poder ver

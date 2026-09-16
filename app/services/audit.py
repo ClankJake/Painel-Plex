@@ -28,8 +28,9 @@ Três regras que este módulo existe para guardar:
 
 import json
 import logging
-import re
 from datetime import datetime, timezone
+
+from urllib.parse import urlsplit
 
 from flask import has_request_context, request
 from flask_login import current_user
@@ -66,12 +67,6 @@ PEDACOS_SENSIVEIS = (
     'WEBHOOK_URL',
 )
 
-# ⚠️ E um segundo travão, sobre o VALOR e não sobre o nome: um URL com
-# credenciais embutidas (`https://utilizador:senha@host/…`) é um segredo
-# chame-se a chave como se chamar. É esta camada que cobre a definição que
-# alguém acrescentar amanhã sem se lembrar de nada disto.
-_URL_COM_CREDENCIAIS = re.compile(r'^[a-z][a-z0-9+.-]*://[^/@\s]+:[^/@\s]+@', re.I)
-
 OCULTADO = '(oculto)'
 MUDOU = '(alterado)'
 
@@ -81,8 +76,41 @@ def _e_sensivel(chave):
 
 
 def _valor_e_sensivel(valor):
-    """Um valor que é um segredo por si só, independentemente do nome da chave."""
-    return isinstance(valor, str) and bool(_URL_COM_CREDENCIAIS.match(valor.strip()))
+    """Um valor que é um segredo por si só, independentemente do nome da chave.
+
+    ⚠️ É o segundo travão, sobre o VALOR: um URL com credenciais embutidas
+    (`https://utilizador:senha@host/…`) é um segredo chame-se a chave como se
+    chamar. É esta camada que cobre a definição que alguém acrescente amanhã
+    sem se lembrar de nada disto.
+
+    🐛 **Isto já foi uma expressão regular, e era uma negação de serviço.** O
+    `^[a-z][a-z0-9+.-]*://[^/@\s]+:[^/@\s]+@` parece inofensivo, mas os dois
+    quantificadores sobrepõem-se — o `:` pertence à classe `[^/@\s]` — por
+    isso, numa string LONGA que não tenha `@` nenhum, o motor experimenta todas
+    as divisões possíveis: retrocesso quadrático. Medido: **4,65 segundos** com
+    40 KB de entrada, contra 0,0002 do que está aqui agora.
+
+    E o que passa por aqui não é só o config: o `_serializavel` percorre os
+    `detalhes` de qualquer ação, onde entram nomes de utilizador escolhidos por
+    quem cria a conta no servidor de mídia. Bastava chamar-se
+    `https://` + `'a:' * 20000` para segurar o worker — e o painel corre com
+    **um** de propósito.
+
+    Quem sabe partir um URL é o `urlsplit`, e ele fá-lo em tempo linear. As
+    duas verificações baratas à frente evitam-lhe o trabalho no caso comum, que
+    é não haver `@` nenhum.
+    """
+    if not isinstance(valor, str) or '@' not in valor or '://' not in valor:
+        return False
+    try:
+        partes = urlsplit(valor.strip())
+    except ValueError:
+        # Um URL que nem se consegue partir não é um segredo reconhecível, e
+        # uma verificação de segurança não pode derrubar quem grava a auditoria.
+        return False
+    # `username` sozinho também conta: há serviços cujo token vai ali, sem
+    # palavra-passe nenhuma a seguir.
+    return bool(partes.password or partes.username)
 
 
 def _esconder(chave, *valores):
