@@ -152,7 +152,7 @@ export async function verificarConvites() {
 export function renderInvites() {
     const currentTab = state.activeInviteTab; // 'active' ou 'history'
     // A filtragem é do SERVIDOR: o que chega já é só desta aba e desta página.
-    const filteredInvites = state.allInvitesCache;
+    const convitesDaPagina = state.allInvitesCache;
 
     // Atualiza visualmente os botões das abas
     toggleTabStyles(dom.inviteTabActive, currentTab === 'active');
@@ -162,8 +162,8 @@ export function renderInvites() {
 
     if (!dom.inviteListDiv) return;
 
-    dom.inviteListDiv.innerHTML = filteredInvites.length > 0
-        ? filteredInvites.map(renderInviteCard).join('')
+    dom.inviteListDiv.innerHTML = convitesDaPagina.length > 0
+        ? convitesDaPagina.map(renderInviteCard).join('')
         : `<p class="text-gray-500 dark:text-gray-400 text-sm text-center py-4">${i18n.noPendingInvites || 'Sem convites para mostrar.'}</p>`;
 
     renderInvitePagination();
@@ -173,7 +173,7 @@ export function renderInvites() {
         button.onclick = () => {
             const code = button.dataset.code;
             if (button.dataset.action === 'details') {
-                const inviteDetails = allInvites.find(inv => inv.code === code);
+                const inviteDetails = convitesDaPagina.find(inv => inv.code === code);
                 handleInviteAction('details', code, inviteDetails);
             } else {
                 handleInviteAction(button.dataset.action, code);

@@ -50,6 +50,7 @@ npm run build          # CSS + bibliotecas (socket.io, chart.js) — é o que fa
                        # a quem vê 'io is not defined' no navegador
 npm run build:css      # só o CSS
 npm run watch:css      # em desenvolvimento, num terminal à parte
+npm run lint           # referências do JS (uma regra: `no-undef`)
 
 # Executar a aplicação (aplica `flask db upgrade` antes de subir)
 python run.py
@@ -59,9 +60,43 @@ flask db migrate -m "descrição"
 flask db upgrade
 ```
 
-Não há linter nem formatador configurados. O CI
-(`.github/workflows/tests.yml`) tem dois jobs: o **pytest**, em Python 3.11 e
-3.12, e o **build do frontend** (`npm ci` + `npm run build`).
+Não há formatador configurado, e o ESLint que existe **não é um linter de
+estilo**: tem DUAS regras, `no-undef` e `import-x/namespace`. O CI (`.github/workflows/tests.yml`) tem
+dois jobs: o **pytest**, em Python 3.11 e 3.12, e o **build do frontend**
+(`npm ci` + `npm run lint` + `npm run build`).
+
+🐛 **Uma referência pendurada num módulo ES só levanta quando a LINHA CORRE.**
+O `renderInvites()` tinha duas listas — tudo o que estava em cache e o que a
+aba mostra — e elas colapsaram numa só quando a filtragem passou para o
+servidor; o nome antigo (`allInvites`) ficou para trás dentro do `onclick` do
+botão "Detalhes". A página carregava sem uma queixa e o servidor não registava
+nada: o modal simplesmente não abria, e o erro ficava na consola do navegador
+de quem usa o painel. Nem o pytest (não executa JavaScript) nem o build do
+Tailwind (lê os templates à procura de NOMES DE CLASSES, não analisa os
+módulos) conseguem ver isto. ⚠️ Os globais do `eslint.config.mjs` são
+declarados à mão de propósito: o que não estiver na lista é um erro, por isso
+uma biblioteca nova carregada por `<script>` no template tem de ser
+acrescentada ali — que é exatamente o momento em que alguém deve reparar que
+ela passou a existir.
+
+🐛 **E a segunda regra existe porque a primeira não via o irmão desse erro.**
+`import * as ui` traz só o que o módulo EXPORTA, e `ui.showToast` era uma
+função que o `ui.js` apenas IMPORTAVA do `utils.js`: para o `no-undef` o `ui`
+existe e está tudo certo. O `TypeError: ui.showToast is not a function` só
+aparecia quando um pagamento entrava e o socket disparava o `user_list_updated`
+— e o aviso perdido era o menor dos estragos, porque a exceção matava a linha
+SEGUINTE, o `ui.loadStatus(true)` que recarrega a lista: o painel aberto não
+atualizava quando o pagamento chegava. `import-x/namespace` compara cada
+`NS.membro` com os exports reais. ⚠️ `allowComputed` fica LIGADO: o
+`api[endpoint]` do `handleTestConnection` é despachagem dinâmica de propósito e
+já trata o nome desconhecido, e um guarda com exceções espalhadas pelo código
+deixa de ser lido. ⚠️ E a saída não é reexportar o que falta — `showToast` é do
+`utils.js`, e pô-lo a sair também pelo `ui.js` faria deste um passa-culpas de
+uma função que não é dele; quem precisa dele importa-o de onde ele vive.
+
+O contrato (o script, as duas regras, o plugin, o alcance, o passo do CI) está
+preso por `tests/test_referencias_do_javascript.py`, porque um guarda desligado
+em silêncio deixa de ser um guarda.
 
 ⚠️ **O `package-lock.json` tem de vir do registo PÚBLICO.** O que estava
 versionado registava os hashes de tarballs RE-EMPACOTADOS por um espelho: 68 dos
