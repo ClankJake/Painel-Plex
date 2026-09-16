@@ -183,9 +183,26 @@ class InvitationLifecycle:
             telegram_id = str(telegram_id).strip() or None
 
         if custom_code:
-            if self.data_manager.get_invitation(custom_code):
-                return {"success": False, "erro": CONFLITO,
-                        "message": _("Este código personalizado já está em uso.")}
+            # ⚠️ Olha também para os REMOVIDOS. Um convite removido continua na
+            # tabela — é ele que guarda o "membro desde" de quem entrou por ele
+            # — e o código é a chave primária: sem esta leitura, criar outro com
+            # o mesmo código passava na validação e rebentava com um
+            # IntegrityError depois de a resposta já parecer estar a caminho.
+            existente = self.data_manager.get_invitation(custom_code, incluir_apagados=True)
+            if existente:
+                if not existente.get('deleted_at'):
+                    return {"success": False, "erro": CONFLITO,
+                            "message": _("Este código personalizado já está em uso.")}
+
+                # Um convite removido que NINGUÉM resgatou não guarda histórico
+                # nenhum, e a única razão para a linha ficar era essa: o código
+                # volta a estar livre.
+                if existente.get('claimed_by_users'):
+                    return {"success": False, "erro": CONFLITO, "message": _(
+                        "Este código já foi usado num convite anterior, que foi resgatado. "
+                        "O registro de quem entrou por ele é mantido, por isso escolha outro código."
+                    )}
+                self.data_manager.libertar_codigo_apagado(custom_code)
             code = custom_code
         else:
             code = secrets.token_urlsafe(16)

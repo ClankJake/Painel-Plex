@@ -164,6 +164,19 @@ class Invitation(db.Model):
     max_uses = db.Column(db.Integer, nullable=False, default=1)
     use_count = db.Column(db.Integer, nullable=False, default=0)
     telegram_id = db.Column(db.String, nullable=True)  # Novo campo
+    # 🛡️ Apagar um convite apagava o "membro desde" de quem entrou por ele:
+    # `get_user_claim_date` procura o username dentro de `claimed_by_users` e
+    # não há outra fonte para essa data. A mesma decisão de `pix_payments`,
+    # `coupons` e `stream_termination_logs` — o que custa perder sai das
+    # leituras e fica na tabela.
+    deleted_at = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        # PARCIAL: a esmagadora maioria das linhas tem isto a NULL, e um índice
+        # completo sobre uma coluna assim indexa sobretudo nada.
+        db.Index('ix_invitations_deleted_at', deleted_at,
+                 sqlite_where=db.text('deleted_at IS NOT NULL')),
+    )
 
 class BlockedUser(db.Model):
     __tablename__ = 'blocked_users'

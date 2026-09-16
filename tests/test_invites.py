@@ -1069,3 +1069,119 @@ class TestOsCodigosHttpDaCriacao:
                                json={"telegram_id": 1, "libraries": ["Nao-Existe"]},
                                headers=self._chave())
         assert resposta.status_code == 400
+
+
+class TestApagarUmConviteNaoApagaOMembroDesde:
+    """
+    🛡️ `get_user_claim_date` — a única resposta do painel ao "desde quando é
+    que esta pessoa está aqui" — procura o username dentro de
+    `claimed_by_users`. Não há outra fonte: a data não está no perfil. O botão
+    que existe para arrumar a lista de convites gastos destruía em silêncio o
+    histórico de entrada de cada pessoa que os tinha resgatado.
+    """
+
+    def _perfil(self, data_manager, nome="ana", id_="10"):
+        data_manager.set_user_profile(id_, {"username": nome})
+        return id_
+
+    def test_a_data_de_entrada_sobrevive_ao_convite(self, admin, data_manager):
+        media_user_id = self._perfil(data_manager)
+        data_manager.add_invitation("PROMO", detalhes(max_uses=1))
+        data_manager.increment_invitation_use("PROMO", "ana", media_user_id)
+        antes = data_manager.get_user_claim_date(media_user_id)
+        assert antes is not None
+
+        admin.post("/api/invites/delete", json={"code": "PROMO"})
+
+        assert data_manager.get_user_claim_date(media_user_id) == antes
+
+    def test_o_link_deixa_de_funcionar_mesmo_assim(self, admin, client, configurada, data_manager):
+        data_manager.add_invitation("PROMO", detalhes(max_uses=3))
+        admin.post("/api/invites/delete", json={"code": "PROMO"})
+
+        assert data_manager.get_invitation("PROMO") is None
+        assert client.get("/api/invites/details/PROMO").status_code == 404
+
+    def test_sai_da_lista_do_painel(self, admin, data_manager):
+        data_manager.add_invitation("PROMO", detalhes())
+        admin.post("/api/invites/delete", json={"code": "PROMO"})
+
+        assert [c["code"] for c in data_manager.get_all_invitations()] == []
+
+    def test_apagar_duas_vezes_diz_que_nao_ha_nada(self, admin, data_manager):
+        data_manager.add_invitation("PROMO", detalhes())
+        admin.post("/api/invites/delete", json={"code": "PROMO"})
+
+        segunda = admin.post("/api/invites/delete", json={"code": "PROMO"})
+        assert segunda.get_json()["success"] is False
+
+
+class TestReutilizarUmCodigoPersonalizado:
+    def test_um_codigo_removido_e_nunca_usado_volta_a_estar_livre(self, admin, data_manager, servidor_que_cria_a_serio):
+        data_manager.add_invitation("VERAO", detalhes())
+        admin.post("/api/invites/delete", json={"code": "VERAO"})
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "VERAO",
+        })
+
+        assert resposta.get_json()["success"] is True
+        assert data_manager.get_invitation("VERAO") is not None
+
+    def test_um_codigo_que_alguem_resgatou_nao_volta(self, admin, data_manager, servidor_que_cria_a_serio):
+        """O registro de quem entrou por ele é o que se está a proteger."""
+        data_manager.add_invitation("VERAO", detalhes(max_uses=1))
+        data_manager.increment_invitation_use("VERAO", "ana")
+        admin.post("/api/invites/delete", json={"code": "VERAO"})
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "VERAO",
+        })
+        dados = resposta.get_json()
+
+        assert dados["success"] is False
+        assert "escolha outro código" in dados["message"]
+
+    def test_um_codigo_vivo_continua_a_ser_recusado(self, admin, data_manager, servidor_que_cria_a_serio):
+        data_manager.add_invitation("VERAO", detalhes())
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "VERAO",
+        })
+        assert resposta.get_json()["success"] is False
+
+
+class TestLimpezaDeConvitesAntigos:
+    def test_um_convite_expirado_e_nunca_usado_sai(self, app_context, data_manager):
+        data_manager.add_invitation("LIXO", detalhes(created_at=iso(-200), expires_at=iso(-190)))
+
+        assert data_manager.limpar_convites_antigos(90) == 1
+        assert data_manager.get_invitation("LIXO", incluir_apagados=True) is None
+
+    def test_um_convite_resgatado_fica_para_sempre(self, app_context, data_manager):
+        """É ele que responde ao "membro desde" de quem entrou por ele."""
+        data_manager.add_invitation("HISTORIA", detalhes(created_at=iso(-500), expires_at=iso(-490)))
+        data_manager.increment_invitation_use("HISTORIA", "ana")
+
+        assert data_manager.limpar_convites_antigos(90) == 0
+        assert data_manager.get_invitation("HISTORIA") is not None
+
+    def test_um_convite_removido_e_nunca_usado_sai(self, app_context, data_manager):
+        data_manager.add_invitation("REMOVIDO", detalhes(created_at=iso(-200)))
+        data_manager.delete_invitation("REMOVIDO")
+
+        assert data_manager.limpar_convites_antigos(90) == 1
+
+    def test_um_convite_recente_fica(self, app_context, data_manager):
+        data_manager.add_invitation("NOVO", detalhes(created_at=iso(-2), expires_at=iso(-1)))
+        assert data_manager.limpar_convites_antigos(90) == 0
+
+    def test_um_convite_sem_prazo_e_por_usar_fica(self, app_context, data_manager):
+        """Antigo mas ainda válido: não é lixo, é um convite aberto."""
+        data_manager.add_invitation("ABERTO", detalhes(created_at=iso(-500), expires_at=None))
+        assert data_manager.limpar_convites_antigos(90) == 0
+
+    def test_zero_dias_desliga_a_limpeza(self, app_context, data_manager):
+        data_manager.add_invitation("LIXO", detalhes(created_at=iso(-900), expires_at=iso(-890)))
+        assert data_manager.limpar_convites_antigos(0) == 0
+        assert data_manager.get_invitation("LIXO") is not None

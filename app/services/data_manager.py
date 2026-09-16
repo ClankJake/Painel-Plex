@@ -1401,16 +1401,34 @@ class DataManager:
         db.session.add(invitation)
         return self._row_to_dict(invitation)
 
-    def get_invitation(self, code):
+    def get_invitation(self, code, incluir_apagados=False):
+        """O convite, ou None.
+
+        `incluir_apagados` existe para UM caso: decidir se um código
+        personalizado pode voltar a ser usado. Um convite removido continua na
+        tabela (é ele que guarda o "membro desde" de quem entrou por ele) e o
+        `code` é a chave primária — sem olhar para as linhas apagadas, criar
+        outro convite com o mesmo código passava na validação e rebentava com
+        um IntegrityError.
+        """
         invitation = Invitation.query.get(code)
-        return self._row_to_dict(invitation, process_json=True) if invitation else None
+        if not invitation:
+            return None
+        if invitation.deleted_at is not None and not incluir_apagados:
+            return None
+        return self._row_to_dict(invitation, process_json=True)
 
     def get_all_pending_invitations(self):
-        invitations = Invitation.query.filter(Invitation.use_count < Invitation.max_uses).all()
+        invitations = Invitation.query.filter(
+            Invitation.use_count < Invitation.max_uses,
+            Invitation.deleted_at.is_(None),
+        ).all()
         return [self._row_to_dict(invite, process_json=True) for invite in invitations]
 
     def get_all_invitations(self):
-        invitations = Invitation.query.order_by(Invitation.created_at.desc()).all()
+        invitations = (Invitation.query
+                       .filter(Invitation.deleted_at.is_(None))
+                       .order_by(Invitation.created_at.desc()).all())
         return [self._row_to_dict(invite, process_json=True) for invite in invitations]
 
     def check_telegram_id_exists_in_invites(self, telegram_id):
@@ -1418,7 +1436,8 @@ class DataManager:
         now_str = datetime.now(timezone.utc).isoformat()
         invitation = Invitation.query.filter(
             Invitation.telegram_id == telegram_id,
-            Invitation.use_count < Invitation.max_uses
+            Invitation.use_count < Invitation.max_uses,
+            Invitation.deleted_at.is_(None),
         ).filter(
             (Invitation.expires_at == None) | (Invitation.expires_at > now_str)
         ).first()
@@ -1616,13 +1635,74 @@ class DataManager:
     
     @db_transaction
     def delete_invitation(self, code):
+        """Tira o convite da vista. A linha FICA.
+
+        🛡️ Apagá-la de verdade apagava o "membro desde" de toda a gente que
+        entrou por este código: `get_user_claim_date` procura o username dentro
+        de `claimed_by_users` e não há outra fonte para essa data. O botão que
+        existe para arrumar a lista de convites gastos destruía em silêncio o
+        histórico de entrada de cada pessoa que os tinha resgatado.
+
+        O link deixa de funcionar na mesma: todas as leituras filtram
+        `deleted_at IS NULL`.
+        """
         invitation = Invitation.query.get(code)
-        if invitation:
-            db.session.delete(invitation)
-            return True
-        return False
+        if not invitation or invitation.deleted_at is not None:
+            return False
+        invitation.deleted_at = datetime.now(timezone.utc)
+        return True
+
+    @db_transaction
+    def libertar_codigo_apagado(self, code):
+        """Apaga DE VERDADE um convite removido, para o código poder ser reusado.
+
+        Só se chama quando não há nada a perder — um convite que ninguém chegou
+        a resgatar não guarda o "membro desde" de pessoa nenhuma, e a única
+        razão para a linha ficar era essa. Quem decide é `create_invitation`.
+        """
+        invitation = Invitation.query.get(code)
+        if not invitation or invitation.deleted_at is None:
+            return False
+        db.session.delete(invitation)
+        return True
+
+    @db_transaction
+    def limpar_convites_antigos(self, dias):
+        """Apaga os convites gastos ou expirados há mais de `dias` que NINGUÉM resgatou.
+
+        ⚠️ Um convite que foi resgatado nunca é apagado aqui, tenha a idade que
+        tiver: é ele que responde ao "membro desde" de quem entrou por ele. O
+        que sai são os outros — um código que expirou sem ninguém lhe tocar é
+        lixo, como uma cobrança PIX que ninguém pagou, e guardá-lo para sempre
+        só fazia a tabela crescer sem que nada a fosse ler.
+        """
+        if not isinstance(dias, int) or dias <= 0:
+            return 0
+
+        limite = (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
+        agora = datetime.now(timezone.utc).isoformat()
+
+        apagados = Invitation.query.filter(
+            Invitation.created_at < limite,
+            # Ninguém entrou por ele. As duas colunas porque os convites
+            # anteriores ao `claimed_by_ids` só têm a primeira preenchida.
+            Invitation.use_count == 0,
+            (Invitation.claimed_by_users.is_(None)) | (Invitation.claimed_by_users.in_(('', '[]'))),
+            # E já não serve para nada: foi removido, ou a validade passou.
+            (Invitation.deleted_at.isnot(None)) | (Invitation.expires_at < agora),
+        ).delete(synchronize_session=False)
+
+        if apagados:
+            logger.info(f"{apagados} convites sem uso e com mais de {dias} dias foram apagados.")
+        return apagados
 
     def get_user_claim_date(self, media_user_id):
+        """Desde quando é que esta pessoa está aqui — o "membro desde".
+
+        ⚠️ Esta é a leitura que NÃO filtra `deleted_at`, e é a razão de a
+        remoção suave existir nesta tabela. O convite pode ter sido removido há
+        muito tempo; a data em que a pessoa entrou por ele não muda por isso.
+        """
         profile = UserProfile.query.get(media_user_id)
         if not profile: return None
         invitation = Invitation.query.filter(Invitation.claimed_by_users.contains(profile.username)).order_by(Invitation.claimed_at.desc()).first()

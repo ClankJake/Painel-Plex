@@ -281,6 +281,18 @@ def cleanup_job():
             days_links = config.get("SHORT_LINK_MAX_AGE_DAYS", 30)
             extensions.data_manager.delete_old_short_links(days_links)
 
+        # Convites que expiraram ou foram removidos e que NINGUÉM resgatou.
+        # ⚠️ Os que foram resgatados ficam, tenham a idade que tiverem: são eles
+        # que respondem ao "membro desde" de quem entrou por eles. O que sai
+        # daqui é lixo — um código que ninguém chegou a usar —, a mesma
+        # distinção que já valia para as cobranças PIX abandonadas.
+        try:
+            extensions.data_manager.limpar_convites_antigos(
+                config.get("INVITE_CLEANUP_DAYS", 90)
+            )
+        except Exception as e:
+            logger.error(f"Falha ao limpar convites antigos: {e}", exc_info=True)
+
         # Pedidos de reposição de palavra-passe: os usados e os que expiraram.
         # Não é uma questão de segurança (o que lá está é o RESUMO do token, e
         # um pedido expirado já não serve) — é para a tabela não crescer para

@@ -230,6 +230,10 @@ def load_or_create_config():
             "IMAGE_CACHE_CLEANUP_TIME": "04:00",
             "SHORT_LINK_CLEANUP_ENABLED": True,
             "SHORT_LINK_MAX_AGE_DAYS": 30,
+            # Ao fim de quantos dias um convite que NINGUÉM resgatou é apagado.
+            # Os que foram resgatados ficam para sempre: são eles que respondem
+            # ao "membro desde" de quem entrou por eles. 0 desliga a limpeza.
+            "INVITE_CLEANUP_DAYS": 90,
             "BACKUP_ENABLED": False,
             "BACKUP_TIME": "05:00",
             "BACKUP_MAX_COUNT": 7
@@ -404,6 +408,7 @@ def load_or_create_config():
             _set_default("IMAGE_CACHE_CLEANUP_TIME", "04:00")
             _set_default("SHORT_LINK_CLEANUP_ENABLED", True)
             _set_default("SHORT_LINK_MAX_AGE_DAYS", 30)
+            _set_default("INVITE_CLEANUP_DAYS", 90)
             _set_default("BACKUP_ENABLED", False)
             _set_default("BACKUP_TIME", "05:00")
             _set_default("BACKUP_MAX_COUNT", 7)
