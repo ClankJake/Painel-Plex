@@ -22,6 +22,14 @@ quando a chave falta. Oito delas ficaram em português europeu ("A guardar...",
 "A enviar...", "descarregue filmes", "ficheiro de backup"). O teste percorre
 agora também `app/static/js`.
 
+⚠️ **E a lista de marcas tinha buracos por onde o fluxo do convite passava
+inteiro**: "registado", "aceite" como particípio, e o rótulo de carregamento,
+cuja lista de verbos era escrita à mão — "A reativar...", "A restaurar...", "A
+zerar..." passavam todos. O rótulo vale agora para QUALQUER verbo no
+infinitivo, que é o que define a forma, e a família do "registo" é apanhada
+pelo 'r' que a distingue de "registro" (`regist(?!r)`), o que inclui as formas
+que ninguém se lembraria de listar.
+
 ## Comandos
 
 ```bash
@@ -120,6 +128,64 @@ sobrevive) e reinicia com `_agendar_reinicio()`.
   nasceu sem: um convite de teste criava uma conta que **nunca expirava**, e o
   `referred_by` ficava sempre vazio, por isso o "Indique e Ganhe" nunca podia
   pagar. Um backend novo herda-as em vez de as reescrever.
+
+#### O convite: quatro coisas que já correram mal
+
+⚠️ **Os campos de tempo somam-se a `now()`, e uma data tem limites.**
+`timedelta(minutes=10**12)` levanta `OverflowError` — era um 500 com traceback
+numa rota que tinha acabado de validar a entrada. O `trial_duration_minutes`
+era o pior: a criação PASSAVA e só o resgate rebentava, dentro de
+`agendar_fim_do_teste`, na cara de quem estava a entrar. O teto está nos
+esquemas (`MAX_MINUTOS`), para as rotas, **e** em `_minutos_seguros`, para o
+que já está gravado — ali o 500 já não é de quem cria o convite.
+
+⚠️ **Reativar renova a validade; não a apaga.** `expires_at = None` quer dizer
+"não expira", e era o que `reset_invitation_usage` fazia a um convite vencido:
+um promocional de 24 horas reativado por engano passava a valer para sempre,
+com a mensagem a dizer "validade estendida". Hoje recebe outra vez a MESMA
+janela que teve à partida (`created_at` → `expires_at`), contada de agora.
+
+⚠️ **As bibliotecas são validadas na CRIAÇÃO.** Eram aceites quaisquer nomes e
+a falha só aparecia no resgate ("Nenhuma biblioteca válida foi encontrada para
+compartilhar") — quem pagava o engano do administrador era quem tinha acabado
+de clicar no link. Fica gravada a grafia do SERVIDOR: o backend do Plex compara
+`s.title in library_titles` exatamente, e um convite criado com "filmes" num
+servidor que tem "Filmes" nascia inútil. ⚠️ Mas **não saber não é saber que não
+existe**: com o servidor em baixo, `get_libraries()` devolve `[]` — o mesmo que
+devolve um servidor sem bibliotecas — e daí o vazio vale por "não sei" e a
+criação segue.
+
+⚠️ **Acrescentar o ID ao convite não é mexer nas vagas.** Onde as contas são
+LOCAIS, a vaga é reservada antes de a conta existir, logo sem ID; isso era
+corrigido com um `release` seguido de um `reserve`, e entre os dois a vaga fica
+LIVRE. Com o worker gevent, outro resgate ficava com ela, o `reserve` seguinte
+devolvia `False` (que ninguém verificava) e o ID nunca chegava ao convite — sem
+ele, nem o resgate duplicado nem o abuso de período de teste voltavam a
+reconhecer aquela pessoa. É para isso que existe
+`registar_identidade_no_convite`.
+
+🛡️ **Criar um convite concede acesso ao servidor, e isso vai para a
+auditoria** (`convite.criar`, `.apagar`, `.reativar`, `.resgatar`). Duas
+armadilhas: no RESGATE só entram os campos escolhidos à mão — o corpo desse
+pedido traz a palavra-passe que a pessoa acabou de escolher, e a auditoria vai
+dentro do ZIP de backup —, e ao APAGAR lê-se a linha CRUA
+(`data_manager.get_invitation`), porque `get_invitation_by_code` recusa um
+convite expirado e são esses os que mais se apagam: com a porta errada, a
+auditoria não ficava vazia, ficava com os valores por omissão de um dicionário
+vazio, que é uma mentira de aspeto plausível.
+
+⚠️ **Um link que SAI do painel não se monta com `url_for(_external=True)`** —
+ele lê o endereço do PEDIDO. Um bot que chama o painel pelo nome interno da
+rede de contentores recebia `http://painel:5000/invite/abc` e mandava-o para o
+Telegram de quem ia entrar. `endereco_publico()` (`utils/enderecos.py`) é a
+porta única: a `APP_BASE_URL` manda, o `url_for` externo é o recurso.
+
+🔒 **A chave de API tem uma verificação só** (`chave_de_api_necessaria`, em
+`api/decorators.py`), usada pelo endpoint de convites para bots e pelo webhook
+do Overseerr. Estava copiada nos dois e as cópias já tinham divergido — uma
+aceitava o `Authorization` sem o prefixo `Bearer` e a outra não, e a interface
+do Overseerr chama "Authorization" ao campo onde se escreve a chave e mais
+nada.
 
 Nos templates, o contexto global expõe `media_server.type`, `.name` e
 `.capabilities` — use-os para esconder o que não se aplica
