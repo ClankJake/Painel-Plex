@@ -117,14 +117,107 @@ Basta enviar `invite_url` ao usuário no Telegram.
 | `409` | **Conflito de unicidade** — ver abaixo. |
 | `429` | Limite de pedidos excedido (30 por minuto). |
 
-Exemplo de `409`:
+### `400` ou `409`: a diferença importa
+
+Toda a recusa traz uma chave `erro` **estável**, pensada para o seu código
+ler — a `message` é texto escrito para uma pessoa e pode ser reescrito a
+qualquer momento:
+
+| `erro` | Código | O que significa |
+|---|:---:|---|
+| `conflito` | `409` | O pedido está certo; é o estado que não deixa. Tentar de novo **com outro código** (ou depois de revogar o convite que já existe) funciona. |
+| `invalido` | `400` | O pedido está errado. Tentar de novo igual dá o mesmo. |
 
 ```json
 {
   "success": false,
+  "erro": "conflito",
   "message": "Este Telegram ID já está vinculado ao usuário 'joao'."
 }
 ```
+
+---
+
+## Consultar um convite
+
+```
+GET /api/invites/bot/invite/{code}
+```
+
+Responde `404` se o código não existir. Um convite **expirado ou esgotado
+continua a ser encontrado** — é essa a resposta que se veio buscar.
+
+```json
+{
+  "success": true,
+  "invite": {
+    "code": "aBcD1234EfGh",
+    "invite_url": "https://o-seu-painel/invite/aBcD1234EfGh",
+    "active": false,
+    "expired": false,
+    "exhausted": true,
+    "created_at": "2026-09-10T18:00:00+00:00",
+    "expires_at": "2026-09-11T18:00:00+00:00",
+    "claimed_at": "2026-09-10T19:22:31+00:00",
+    "use_count": 1,
+    "max_uses": 1,
+    "uses_left": 0,
+    "claimed_by": ["joao"],
+    "trial_duration_minutes": 60,
+    "screens": 1,
+    "allow_downloads": false,
+    "overseerr_access": false,
+    "telegram_id": "123456789"
+  }
+}
+```
+
+`active` é `false` quando o convite expirou **ou** esgotou as vagas — é o que
+o seu bot deve perguntar, em vez de repetir as duas regras e ter de conhecer o
+formato da data.
+
+> 🔒 A resposta não traz os nomes das bibliotecas: são infraestrutura do
+> servidor, e não fazem falta para mandar um link a alguém.
+
+Limite: 60 pedidos por minuto.
+
+---
+
+## Revogar um convite
+
+```
+DELETE /api/invites/bot/invite/{code}
+```
+
+Para o link que já foi enviado. Responde `404` se o código não existir.
+
+> ⚠️ Revogar **não** apaga quem já resgatou. Quem entrou, entrou — a conta
+> dessa pessoa não é assunto deste pedido. O que deixa de valer é o link.
+
+Limite: 30 pedidos por minuto.
+
+---
+
+## Os convites de um Telegram ID
+
+```
+GET /api/invites/bot/invites?telegram_id=123456789
+```
+
+Devolve `invites`, do mais recente para o mais antigo, com a mesma forma da
+consulta acima. Uma lista vazia significa que nunca foi gerado nenhum.
+
+É a pergunta a fazer **antes** de gerar outro convite: a criação recusa-se
+(`409`) quando já existe um ativo para aquele ID, e sem isto o seu bot só
+descobre ao levar com o erro — sem saber qual é o link que já mandou, nem se a
+pessoa já o usou.
+
+```bash
+curl "https://o-seu-painel/api/invites/bot/invites?telegram_id=123456789" \
+     -H "X-API-Key: SUA_CHAVE"
+```
+
+Limite: 60 pedidos por minuto.
 
 ---
 

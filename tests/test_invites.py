@@ -546,11 +546,17 @@ class TestEnderecoDoConvite:
 
 
 class _ServidorFalso:
-    """O mínimo da fachada que as rotas de criação tocam."""
+    """O mínimo da fachada que as rotas de criação tocam.
 
-    def __init__(self, bibliotecas=('Filmes', 'Séries'), rebenta=False):
+    `criar_a_serio` manda a criação para o ciclo de vida REAL: é o que permite
+    testar os conflitos (código repetido, Telegram ID já com convite), que são
+    decididos lá e não aqui.
+    """
+
+    def __init__(self, bibliotecas=('Filmes', 'Séries'), rebenta=False, criar_a_serio=False):
         self.bibliotecas = list(bibliotecas)
         self.rebenta = rebenta
+        self.criar_a_serio = criar_a_serio
         self.criados = []
 
     def get_libraries(self):
@@ -561,12 +567,31 @@ class _ServidorFalso:
 
     def create_invitation(self, **kwargs):
         self.criados.append(kwargs)
+        if self.criar_a_serio:
+            from app.extensions import media_server
+            return media_server.create_invitation(**kwargs)
         return {"success": True, "code": "CODIGO", "message": "ok"}
+
+    def delete_invitation(self, code):
+        from app.extensions import media_server
+        return media_server.delete_invitation(code)
+
+    def list_invitations(self):
+        from app.extensions import media_server
+        return media_server.list_invitations()
 
 
 @pytest.fixture()
 def servidor_falso(monkeypatch):
     duplo = _ServidorFalso()
+    monkeypatch.setattr('app.blueprints.api.invites.media_server', duplo)
+    return duplo
+
+
+@pytest.fixture()
+def servidor_que_cria_a_serio(monkeypatch):
+    """As bibliotecas são do duplo; a criação do convite é a de verdade."""
+    duplo = _ServidorFalso(criar_a_serio=True)
     monkeypatch.setattr('app.blueprints.api.invites.media_server', duplo)
     return duplo
 
@@ -888,3 +913,159 @@ class TestAuditoriaDeUmConviteJaExpirado:
 
         assert '"usos": "1/2"' in detalhe
         assert 'ana' in detalhe
+
+
+class TestAApiDeBotsSabeResponderSobreUmConvite:
+    """
+    A API de bots só sabia CRIAR. Um bot que gerava um convite ficava sem saber
+    o que lhe tinha acontecido — a única alternativa era perguntar à pessoa — e
+    um link mandado para o chat errado não tinha como ser travado sem entrar no
+    painel, que é o que uma automação, por definição, não faz.
+    """
+
+    def _chave(self):
+        from app.config import load_or_create_config
+        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+
+    def test_um_convite_por_usar_diz_que_esta_ativo(self, client, configurada, data_manager):
+        data_manager.add_invitation("ABERTO", detalhes(max_uses=2))
+
+        dados = client.get("/api/invites/bot/invite/ABERTO", headers=self._chave()).get_json()
+
+        assert dados["invite"]["active"] is True
+        assert dados["invite"]["uses_left"] == 2
+        assert dados["invite"]["invite_url"].endswith("/invite/ABERTO")
+
+    def test_um_convite_gasto_diz_quem_o_gastou(self, client, configurada, data_manager):
+        data_manager.add_invitation("GASTO", detalhes(max_uses=1))
+        data_manager.increment_invitation_use("GASTO", "ana")
+
+        dados = client.get("/api/invites/bot/invite/GASTO", headers=self._chave()).get_json()
+
+        assert dados["invite"]["active"] is False
+        assert dados["invite"]["exhausted"] is True
+        assert dados["invite"]["claimed_by"] == ["ana"]
+        assert dados["invite"]["uses_left"] == 0
+
+    def test_um_convite_expirado_continua_a_ser_encontrado(self, client, configurada, data_manager):
+        """
+        ⚠️ Com a porta do RESGATE (`get_invitation_by_code`), um convite gasto
+        seria indistinguível de um que nunca existiu — e "expirado" é
+        precisamente a resposta que se veio buscar.
+        """
+        data_manager.add_invitation("VENCIDO", detalhes(expires_at=iso(-1)))
+
+        resposta = client.get("/api/invites/bot/invite/VENCIDO", headers=self._chave())
+
+        assert resposta.status_code == 200
+        assert resposta.get_json()["invite"]["expired"] is True
+
+    def test_um_convite_que_nao_existe_da_404(self, client, configurada, db_session):
+        resposta = client.get("/api/invites/bot/invite/NADA", headers=self._chave())
+        assert resposta.status_code == 404
+
+    def test_sem_chave_nao_se_pergunta_nada(self, client, configurada, data_manager):
+        data_manager.add_invitation("ABERTO", detalhes())
+        assert client.get("/api/invites/bot/invite/ABERTO").status_code == 401
+
+    def test_a_vista_publica_nao_leva_as_bibliotecas(self, client, configurada, data_manager):
+        """🔒 Os nomes das bibliotecas são infraestrutura do servidor."""
+        data_manager.add_invitation("ABERTO", detalhes())
+
+        dados = client.get("/api/invites/bot/invite/ABERTO", headers=self._chave()).get_json()
+
+        assert "libraries" not in dados["invite"]
+
+    def test_revogar_trava_o_link(self, client, configurada, data_manager):
+        data_manager.add_invitation("ENGANO", detalhes())
+
+        resposta = client.delete("/api/invites/bot/invite/ENGANO", headers=self._chave())
+
+        assert resposta.get_json()["success"] is True
+        assert data_manager.get_invitation("ENGANO") is None
+
+    def test_revogar_o_que_nao_existe_da_404(self, client, configurada, db_session):
+        assert client.delete("/api/invites/bot/invite/NADA", headers=self._chave()).status_code == 404
+
+    def test_revogar_deixa_rasto_na_auditoria(self, client, configurada, data_manager):
+        from app.extensions import db
+        from sqlalchemy import text
+
+        data_manager.add_invitation("ENGANO", detalhes())
+        client.delete("/api/invites/bot/invite/ENGANO", headers=self._chave())
+
+        with db.engine.begin() as ligacao:
+            detalhe = ligacao.execute(text(
+                "SELECT detalhes FROM audit_logs WHERE acao = 'convite.apagar'"
+            )).scalar()
+        assert '"origem": "bot"' in detalhe
+
+
+class TestOsConvitesDeUmTelegramId:
+    def _chave(self):
+        from app.config import load_or_create_config
+        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+
+    def test_so_os_daquela_pessoa(self, client, configurada, data_manager):
+        data_manager.add_invitation("DELE", detalhes(telegram_id="123"))
+        data_manager.add_invitation("DOUTRO", detalhes(telegram_id="999"))
+        data_manager.add_invitation("DE-NINGUEM", detalhes())
+
+        dados = client.get("/api/invites/bot/invites?telegram_id=123",
+                           headers=self._chave()).get_json()
+
+        assert [c["code"] for c in dados["invites"]] == ["DELE"]
+
+    def test_o_id_com_espacos_encontra_o_mesmo(self, client, configurada, data_manager):
+        """A mesma normalização da criação: '123' tem de encontrar ' 123 '."""
+        data_manager.add_invitation("DELE", detalhes(telegram_id=" 123 "))
+
+        dados = client.get("/api/invites/bot/invites?telegram_id=123",
+                           headers=self._chave()).get_json()
+
+        assert len(dados["invites"]) == 1
+
+    def test_sem_telegram_id_e_um_erro_do_pedido(self, client, configurada, db_session):
+        resposta = client.get("/api/invites/bot/invites", headers=self._chave())
+        assert resposta.status_code == 400
+
+    def test_ninguem_com_convites_devolve_uma_lista_vazia(self, client, configurada, db_session):
+        dados = client.get("/api/invites/bot/invites?telegram_id=555",
+                           headers=self._chave()).get_json()
+        assert dados["success"] is True and dados["invites"] == []
+
+
+class TestOsCodigosHttpDaCriacao:
+    """
+    🐛 A rota respondia 409 a TUDO o que falhasse — inclusive a "informe pelo
+    menos uma biblioteca", que é um erro do PEDIDO. Do outro lado não havia
+    como saber se valia a pena tentar outra vez com outro código (409: o estado
+    é que não deixa) ou se o pedido estava errado (400: tentar de novo dá o
+    mesmo).
+    """
+
+    def _chave(self):
+        from app.config import load_or_create_config
+        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+
+    def test_um_codigo_ja_em_uso_e_409(self, client, configurada, data_manager, servidor_que_cria_a_serio):
+        data_manager.add_invitation("REPETIDO", detalhes())
+
+        resposta = client.post("/api/invites/bot/create",
+                               json={"telegram_id": 1, "custom_code": "REPETIDO"},
+                               headers=self._chave())
+        assert resposta.status_code == 409
+        assert resposta.get_json()["erro"] == "conflito"
+
+    def test_um_telegram_id_ja_com_convite_ativo_e_409(self, client, configurada, data_manager, servidor_que_cria_a_serio):
+        data_manager.add_invitation("JA-TEM", detalhes(telegram_id="777"))
+
+        resposta = client.post("/api/invites/bot/create", json={"telegram_id": 777},
+                               headers=self._chave())
+        assert resposta.status_code == 409
+
+    def test_uma_biblioteca_inventada_e_400(self, client, configurada, db_session, servidor_falso):
+        resposta = client.post("/api/invites/bot/create",
+                               json={"telegram_id": 1, "libraries": ["Nao-Existe"]},
+                               headers=self._chave())
+        assert resposta.status_code == 400

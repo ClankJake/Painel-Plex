@@ -55,6 +55,43 @@ def _minutos_seguros(valor):
     return minutos
 
 
+def convite_expirado(expires_at, code=''):
+    """Já passou da validade? Uma data ilegível conta como expirada.
+
+    ⚠️ O lado seguro do erro. Esta pergunta é feita a partir de rotas PÚBLICAS,
+    e uma data mal formada na base de dados (edição manual, importação antiga,
+    um valor sem fuso — comparar um datetime ingénuo com um consciente levanta
+    `TypeError`) devolvia 500 a quem abrisse o link do convite.
+    """
+    if not expires_at:
+        return False
+    try:
+        return datetime.fromisoformat(expires_at) < datetime.now(timezone.utc)
+    except (TypeError, ValueError):
+        logger.warning(
+            f"O convite '{mask_code(code)}' tem uma data de expiração inválida "
+            f"({expires_at!r}). Tratado como expirado."
+        )
+        return True
+
+
+def convite_esgotado(invitation):
+    """Já não há vagas."""
+    return invitation.get('use_count', 0) >= invitation.get('max_uses', 1)
+
+
+# ⚠️ **O motivo de uma recusa é uma CHAVE, não a mensagem.** Quem chama esta
+# camada precisa de distinguir "o pedido está mal" de "já existe" para escolher
+# o código HTTP, e a mensagem não serve para isso: é texto escrito para uma
+# pessoa ler, pode ser reescrito a qualquer momento e um dia será traduzido.
+# O endpoint dos bots respondia 409 a TUDO o que falhasse — inclusive a
+# "informe pelo menos uma biblioteca", que é um 400 — e do outro lado não havia
+# como saber se valia a pena tentar outra vez com outro código ou se o pedido
+# estava simplesmente errado.
+CONFLITO = 'conflito'          # já existe: o pedido é válido, o estado é que não deixa
+PEDIDO_INVALIDO = 'invalido'   # falta alguma coisa, ou está mal
+
+
 class InvitationLifecycle:
     """Métodos de convite partilhados por todos os backends.
 
@@ -133,7 +170,8 @@ class InvitationLifecycle:
 
     def create_invitation(self, **kwargs):
         if not kwargs.get('library_titles'):
-            return {"success": False, "message": _("Pelo menos uma biblioteca deve ser selecionada para o convite.")}
+            return {"success": False, "erro": PEDIDO_INVALIDO,
+                    "message": _("Pelo menos uma biblioteca deve ser selecionada para o convite.")}
 
         custom_code = kwargs.get('custom_code')
         max_uses = kwargs.get('max_uses', 1)
@@ -146,7 +184,8 @@ class InvitationLifecycle:
 
         if custom_code:
             if self.data_manager.get_invitation(custom_code):
-                return {"success": False, "message": _("Este código personalizado já está em uso.")}
+                return {"success": False, "erro": CONFLITO,
+                        "message": _("Este código personalizado já está em uso.")}
             code = custom_code
         else:
             code = secrets.token_urlsafe(16)
@@ -154,10 +193,12 @@ class InvitationLifecycle:
         if telegram_id:
             existing_user = self.data_manager.get_user_profile_by_telegram(telegram_id)
             if existing_user:
-                 return {"success": False, "message": _("Este Telegram ID já está vinculado ao usuário '%(username)s'.", username=existing_user['username'])}
+                 return {"success": False, "erro": CONFLITO,
+                         "message": _("Este Telegram ID já está vinculado ao usuário '%(username)s'.", username=existing_user['username'])}
             
             if self.data_manager.check_telegram_id_exists_in_invites(telegram_id):
-                 return {"success": False, "message": _("Já existe um convite ativo gerado para este Telegram ID.")}
+                 return {"success": False, "erro": CONFLITO,
+                         "message": _("Já existe um convite ativo gerado para este Telegram ID.")}
 
         expires_in_minutes = kwargs.get('expires_in_minutes')
         minutos_de_validade = _minutos_seguros(expires_in_minutes)
@@ -188,24 +229,12 @@ class InvitationLifecycle:
         if not invitation: 
             return None, _("Convite não encontrado.")
         
-        if invitation.get('use_count', 0) >= invitation.get('max_uses', 1):
+        if convite_esgotado(invitation):
             return None, _("Este convite já atingiu o limite máximo de usos.")
 
-        # Esta rota é pública: uma data mal formada na base de dados (edição
-        # manual, importação antiga, valor sem fuso horário — comparar um
-        # datetime ingénuo com um consciente levanta TypeError) devolvia 500 a
-        # quem abrisse o link. Tratamos o convite como expirado, que é o lado
-        # seguro do erro.
-        expires_at = invitation.get('expires_at')
-        if expires_at:
-            try:
-                expirado = datetime.fromisoformat(expires_at) < datetime.now(timezone.utc)
-            except (TypeError, ValueError):
-                logger.warning(f"O convite '{mask_code(code)}' tem uma data de expiração inválida ({expires_at!r}). Tratado como expirado.")
-                expirado = True
-            if expirado:
-                return None, _("Este convite expirou.")
-            
+        if convite_expirado(invitation.get('expires_at'), code):
+            return None, _("Este convite expirou.")
+
         return invitation, _("Convite válido.")
 
     def list_invitations(self):

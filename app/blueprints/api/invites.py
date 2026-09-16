@@ -15,9 +15,61 @@ from .schemas import CreateInviteSchema, CreateInviteBotSchema, validar_email
 from ...utils.log_sanitizer import mask_code
 from ...utils.enderecos import endereco_publico
 from ...services import audit
+from ...services.media_server.invitations import (
+    CONFLITO, convite_esgotado, convite_expirado,
+)
 
 logger = logging.getLogger(__name__)
 invites_api_bp = Blueprint('invites_api', __name__)
+
+def _estado_http(resultado):
+    """O código HTTP de uma criação recusada.
+
+    ⚠️ O endpoint dos bots respondia 409 a TUDO o que falhasse — inclusive a
+    "informe pelo menos uma biblioteca", que é um erro do PEDIDO. Do outro lado
+    não havia como saber se valia a pena tentar outra vez com outro código
+    (409: o estado é que não deixa) ou se o pedido estava simplesmente errado
+    (400: tentar de novo dá o mesmo).
+    """
+    return 409 if resultado.get('erro') == CONFLITO else 400
+
+
+def _convite_para_a_api(convite):
+    """O convite como uma integração o vê.
+
+    ⚠️ Os nomes são os da API pública e não os das colunas: `active` e
+    `uses_left` são o que um bot quer perguntar, e derivá-los no cliente
+    obrigava cada integração a repetir as duas regras (esgotado, expirado) e a
+    conhecer o formato da data. É o mesmo que o painel faz no cartão da lista.
+
+    🔒 Não leva `libraries`: os nomes das bibliotecas são infraestrutura do
+    servidor, e quem tem a chave de um bot não precisa deles para mandar um
+    link a alguém.
+    """
+    expirado = convite_expirado(convite.get('expires_at'), convite.get('code', ''))
+    esgotado = convite_esgotado(convite)
+    usados, maximo = convite.get('use_count', 0), convite.get('max_uses', 1)
+
+    return {
+        'code': convite.get('code'),
+        'invite_url': endereco_publico('main.claim_invite_page', code=convite.get('code')),
+        'active': not (expirado or esgotado),
+        'expired': expirado,
+        'exhausted': esgotado,
+        'created_at': convite.get('created_at'),
+        'expires_at': convite.get('expires_at'),
+        'claimed_at': convite.get('claimed_at'),
+        'use_count': usados,
+        'max_uses': maximo,
+        'uses_left': max(maximo - usados, 0),
+        'claimed_by': convite.get('claimed_by_users') or [],
+        'trial_duration_minutes': convite.get('trial_duration_minutes', 0),
+        'screens': convite.get('screen_limit', 0),
+        'allow_downloads': bool(convite.get('allow_downloads', False)),
+        'overseerr_access': bool(convite.get('overseerr_access', False)),
+        'telegram_id': convite.get('telegram_id'),
+    }
+
 
 def _para_a_auditoria(pedido, code):
     """O que fica registado sobre um convite criado.
@@ -191,8 +243,88 @@ def create_invite_for_bot(validated_data):
                                  'origem': 'bot'})
         return jsonify(result), 201
 
-    # Conflitos de unicidade (ID já vinculado, ou já com convite ativo) devolvem 409.
-    return jsonify(result), 409
+    return jsonify(result), _estado_http(result)
+
+
+@invites_api_bp.route('/bot/invite/<string:code>', methods=['GET'])
+@limiter.limit("60 per minute")
+@chave_de_api_necessaria
+def bot_invite_status(code):
+    """O estado de um convite: já foi usado? ainda vale?
+
+    Sem isto, um bot que gera um convite fica sem saber o que lhe aconteceu. A
+    única alternativa era perguntar à pessoa — ou esperar que ela diga que já
+    entrou.
+
+    ⚠️ A leitura é a CRUA (`data_manager.get_invitation`) e não a
+    `get_invitation_by_code`: esta última é a porta do RESGATE e devolve `None`
+    para um convite expirado ou esgotado. Aqui, "expirado" é precisamente a
+    resposta que se veio buscar — com a outra porta, um convite gasto seria
+    indistinguível de um que nunca existiu.
+
+    O caminho é `/bot/invite/<code>` e não `/bot/<code>` porque um código
+    personalizado pode ser a palavra `create`.
+    """
+    convite = data_manager.get_invitation(code)
+    if not convite:
+        return jsonify({"success": False, "message": _("Convite não encontrado.")}), 404
+    return jsonify({"success": True, "invite": _convite_para_a_api(convite)})
+
+
+@invites_api_bp.route('/bot/invite/<string:code>', methods=['DELETE'])
+@limiter.limit("30 per minute")
+@chave_de_api_necessaria
+def bot_invite_delete(code):
+    """Revoga um convite que já foi enviado.
+
+    Um link mandado para o chat errado não se desfaz do lado do Telegram, e até
+    aqui a única forma de o travar era entrar no painel — o que uma automação,
+    por definição, não faz.
+
+    ⚠️ Revogar NÃO apaga quem já resgatou: quem entrou, entrou, e a conta dessa
+    pessoa não é assunto deste pedido. O que deixa de valer é o link.
+    """
+    convite = data_manager.get_invitation(code) or {}
+    if not convite:
+        return jsonify({"success": False, "message": _("Convite não encontrado.")}), 404
+
+    resultado = media_server.delete_invitation(code)
+    if resultado.get('success'):
+        audit.registar('convite.apagar', alvo_tipo='convite', alvo_id=code, detalhes={
+            'codigo': code,
+            'usos': f"{convite.get('use_count', 0)}/{convite.get('max_uses', 1)}",
+            'resgatado_por': convite.get('claimed_by_users') or [],
+            'origem': 'bot',
+        })
+    return jsonify(resultado)
+
+
+@invites_api_bp.route('/bot/invites', methods=['GET'])
+@limiter.limit("60 per minute")
+@chave_de_api_necessaria
+def bot_invites_por_telegram():
+    """Os convites gerados para um Telegram ID, do mais recente para o mais antigo.
+
+    É a pergunta que um bot faz antes de gerar outro: a criação recusa-se
+    (409) quando já existe um convite ATIVO para aquele ID, e sem esta rota o
+    bot só descobria isso ao levar com o erro — sem saber qual é o link que já
+    tinha mandado, nem se a pessoa já o usou.
+    """
+    telegram_id = (request.args.get('telegram_id') or '').strip()
+    if not telegram_id:
+        return jsonify({
+            "success": False,
+            "message": _("Informe o 'telegram_id' na consulta."),
+        }), 400
+
+    convites = [
+        _convite_para_a_api(convite)
+        for convite in media_server.list_invitations()
+        # A mesma normalização da criação: um bot manda o ID como número e um
+        # formulário como texto, e '123' tem de encontrar ' 123 '.
+        if str(convite.get('telegram_id') or '').strip() == telegram_id
+    ]
+    return jsonify({"success": True, "telegram_id": telegram_id, "invites": convites})
 
 
 @invites_api_bp.route('/list', methods=['GET'])
