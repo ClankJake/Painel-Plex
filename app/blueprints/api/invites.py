@@ -447,15 +447,21 @@ def reactivate_invite_route():
     return jsonify(resultado)
 
 @invites_api_bp.route('/details/<string:code>', methods=['GET'])
-@limiter.limit("30 per minute")
+@limiter.limit("30 per minute", override_defaults=False)
 def get_invite_details_route(code):
     """
     🔒 Rota PÚBLICA (sem sessão): responde 200 para um código válido e 404 para
-    um inválido, ou seja, é um oráculo que diz se um código existe. O limitador
-    global não define `default_limits`, por isso sem este decorador não havia
-    limite nenhum e um código personalizado curto podia ser descoberto à força
-    bruta. 30/min chega para qualquer utilização legítima (a página valida o
-    convite uma vez ao abrir).
+    um inválido, ou seja, é um oráculo que diz se um código existe. 30/min chega
+    para qualquer utilização legítima (a página valida o convite uma vez ao
+    abrir).
+
+    🐛 Este comentário dizia que "o limitador global não define `default_limits`,
+    por isso sem este decorador não havia limite nenhum". É FALSO nas duas
+    pontas: a aplicação define `RATELIMIT_DEFAULT = "200 per day; 50 per hour"`,
+    e um `@limiter.limit` de rota SUBSTITUI esse padrão em vez de se somar a
+    ele. O decorador que existia para travar a força bruta estava a passá-la de
+    50/hora para 1800/hora — 36× mais rápida. É o que o `override_defaults=False`
+    corrige: com ele valem os três tetos, e o mais apertado ganha.
     """
     invitation, message = media_server.get_invitation_by_code(code)
     if not invitation: return jsonify({"success": False, "message": message}), 404
@@ -496,7 +502,7 @@ def _registar_resgate(code, resultado, username):
 
 
 @invites_api_bp.route('/claim', methods=['POST'])
-@limiter.limit("10 per minute")
+@limiter.limit("10 per minute", override_defaults=False)
 def claim_invite_route():
     """
     🔒 Rota PÚBLICA e a mais cara de todas: valida credenciais junto do servidor

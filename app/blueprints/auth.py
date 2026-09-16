@@ -406,7 +406,7 @@ def _texto_para_log(valor, limite=64):
 
 
 @auth_bp.route('/login/credentials', methods=['POST'])
-@limiter.limit("10 per minute")
+@limiter.limit("10 per minute", override_defaults=False)
 def login_with_credentials():
     """Login com utilizador e palavra-passe, para servidores de contas locais.
 
@@ -746,7 +746,7 @@ MIN_PALAVRA_PASSE = 6
 
 
 @auth_bp.route('/password/forgot', methods=['POST'])
-@limiter.limit("5 per minute")
+@limiter.limit("5 per minute", override_defaults=False)
 def pedir_reposicao_de_palavra_passe():
     """Envia o link de reposição pelos contactos que a pessoa registou.
 
@@ -779,7 +779,7 @@ def pedir_reposicao_de_palavra_passe():
 
 
 @auth_bp.route('/password/reset', methods=['POST'])
-@limiter.limit("10 per minute")
+@limiter.limit("10 per minute", override_defaults=False)
 def repor_palavra_passe():
     """Grava a palavra-passe nova, para quem chegou com um link válido."""
     if not servidor_repoe_palavras_passe(media_server):

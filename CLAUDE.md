@@ -1771,15 +1771,33 @@ guarda-as como texto, por isso um `datetime.now(timezone.utc)` sem o
 diferente das que já lá estão — e é por comparação de data que o `cleanup_job`
 decide o que apagar.
 
-⚠️ **Um `@limiter.limit` numa rota SUBSTITUI o padrão global**, e por isso pode
-AFROUXÁ-LA sem que ninguém repare. O `RATELIMIT_DEFAULT` da aplicação é
-`"200 per day; 50 per hour"` e aplica-se a toda a rota que não declare um
-limite próprio. Medido em `/s/<code>`: sem decorador o 429 chega ao 51.º
-pedido; com um `60 per minute` chega ao 61.º — e o teto DIÁRIO desaparece.
-Antes de acrescentar um limite a uma rota, compare-o com o padrão; e se quiser
-somar em vez de substituir, é `override_defaults=False`. ⚠️ Mas isso não é
-automático: há rotas de polling (`check_plex_pin`, a 60/min) onde juntar o
-teto de 200/dia partiria o fluxo ao fim de poucos minutos.
+⚠️ **Um `@limiter.limit` numa rota SUBSTITUI o padrão global**, e por isso
+AFROUXA-A quase sempre sem que ninguém repare. O `RATELIMIT_DEFAULT` é
+`"200 per day; 50 per hour"` e vale para toda a rota sem limite próprio.
+Medido:
+
+    @limiter.limit("100 per minute")                          → o 429 nunca chega
+    @limiter.limit("100 per minute", override_defaults=False) → o 429 chega ao 51.º
+
+O caso que doeu foi o `get_invite_details_route`: o docstring dele dizia que o
+decorador existia para travar força bruta sobre códigos de convite, e o
+decorador passava-a de 50/hora para 1800/hora — 36× mais depressa.
+
+`override_defaults=False` faz os três tetos valerem, e o mais apertado ganha.
+⚠️ **Mas não se aplica em bloco**: há rotas onde o teto diário parte o produto.
+O PIN do Plex faz polling de 3 em 3 segundos e o estado do pagamento de 5 em 5
+— um login de três minutos são 60 pedidos, e os 200/dia matariam o fluxo à
+terceira tentativa. A API de bots é autenticada por chave e um bot ativo passa
+os 200/dia sem esforço.
+
+Por isso a regra é: **ou a rota soma (`override_defaults=False`), ou está
+NOMEADA em `ACIMA_DO_PADRAO_DE_PROPOSITO`** (em
+`tests/test_tetos_do_limitador.py`) com o motivo. O teste recusa as duas
+distrações: a rota esquecida, e a exceção que ficou na lista depois de a rota
+deixar de existir. E não lê só o texto do decorador — pergunta ao próprio
+limitador (`limit_manager.resolve_limits`) o que ele vai mesmo aplicar, que é a
+diferença entre ler a intenção e medir o efeito. Foi a ler a intenção que isto
+passou.
 
 ⚠️ **E nunca um `except:` NU.** Sob gevent ele apanha o `GreenletExit`, que é
 como um greenlet é morto — engoli-lo faz o worker deixar de conseguir encerrar
