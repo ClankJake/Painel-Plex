@@ -1,6 +1,7 @@
 # app/blueprints/api/decorators.py
 
 import logging
+import secrets
 from functools import wraps
 from flask import jsonify, request
 from flask_babel import gettext as _
@@ -61,6 +62,47 @@ def user_lookup_by_id(f):
 
         return f(user=user, *args, **kwargs)
     return decorated_function
+
+
+def chave_de_api_necessaria(f):
+    """Protege uma rota que é chamada por uma integração, não por um navegador.
+
+    Um bot ou um webhook não tem sessão, por isso a prova é a chave partilhada
+    (`INTERNAL_TRIGGER_KEY`, em Configurações → Geral), enviada em `X-API-Key`
+    ou em `Authorization: Bearer <chave>`.
+
+    ⚠️ Isto existia duas vezes, copiado — no endpoint de convites para bots e
+    no webhook do Overseerr — e as duas cópias já tinham divergido: uma aceitava
+    o `Authorization` sem o prefixo `Bearer` e a outra não. Quem configurasse os
+    dois com o mesmo cliente levava 401 num deles e não tinha como perceber
+    porquê. Uma verificação de credenciais em duplicado é uma que vai divergir;
+    a pergunta "esta chave está certa?" só pode ter uma resposta no painel.
+
+    A comparação é `secrets.compare_digest` para não revelar a chave através do
+    tempo de resposta.
+    """
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        from ...config import load_or_create_config
+
+        esperada = str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')
+
+        fornecida = (request.headers.get('X-API-Key') or '').strip()
+        if not fornecida:
+            cabecalho = (request.headers.get('Authorization') or '').strip()
+            # O prefixo é opcional: a interface do Overseerr chama ao campo
+            # "Authorization" e quem o preenche escreve lá a chave e mais nada.
+            fornecida = cabecalho[7:].strip() if cabecalho.lower().startswith('bearer ') else cabecalho
+
+        if not esperada or not fornecida or not secrets.compare_digest(fornecida, esperada):
+            logger.warning(
+                f"Pedido a '{request.path}' recusado: chave de API inválida ou em falta "
+                f"(IP: {request.remote_addr})."
+            )
+            return jsonify({"success": False, "message": _("Chave de API inválida ou em falta.")}), 401
+
+        return f(*args, **kwargs)
+    return wrapper
 
 
 def validate_json(schema):

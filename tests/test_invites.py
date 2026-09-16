@@ -722,3 +722,51 @@ class TestIdentidadeRegistadaNoConvite:
 
     def test_um_convite_que_nao_existe_diz_que_nao(self, app_context, data_manager):
         assert data_manager.registar_identidade_no_convite("NADA", "ana", "guid") is False
+
+
+class TestChaveDeApi:
+    """
+    A verificação da chave existia copiada em dois sítios e as cópias já tinham
+    divergido: o webhook do Overseerr aceitava o `Authorization` sem o prefixo
+    `Bearer` e o endpoint dos convites não. Quem configurasse os dois com o
+    mesmo cliente levava 401 num deles sem perceber porquê.
+    """
+
+    def _chave(self):
+        from app.config import load_or_create_config
+        return str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')
+
+    def _criar(self, client, headers):
+        return client.post("/api/invites/bot/create", json={"telegram_id": 1}, headers=headers)
+
+    def test_sem_chave_nenhuma(self, client, configurada, db_session, servidor_falso):
+        assert self._criar(client, {}).status_code == 401
+
+    def test_com_a_chave_errada(self, client, configurada, db_session, servidor_falso):
+        assert self._criar(client, {"X-API-Key": "nao-e-esta"}).status_code == 401
+
+    def test_x_api_key(self, client, configurada, db_session, servidor_falso):
+        assert self._criar(client, {"X-API-Key": self._chave()}).status_code == 201
+
+    def test_authorization_com_bearer(self, client, configurada, db_session, servidor_falso):
+        cabecalhos = {"Authorization": f"Bearer {self._chave()}"}
+        assert self._criar(client, cabecalhos).status_code == 201
+
+    def test_authorization_sem_bearer(self, client, configurada, db_session, servidor_falso):
+        """
+        A interface do Overseerr chama ao campo "Authorization", e quem o
+        preenche escreve lá a chave e mais nada. Os dois caminhos passam a
+        aceitar as duas formas.
+        """
+        assert self._criar(client, {"Authorization": self._chave()}).status_code == 201
+
+    def test_o_webhook_do_overseerr_usa_a_mesma_porta(self, client, configurada, db_session):
+        recusado = client.post("/api/system/webhook/overseerr", json={"notification_type": "TEST"})
+        assert recusado.status_code == 401
+
+        aceite = client.post(
+            "/api/system/webhook/overseerr",
+            json={"notification_type": "TEST"},
+            headers={"Authorization": self._chave()},
+        )
+        assert aceite.status_code == 200

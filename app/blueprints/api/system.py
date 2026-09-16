@@ -28,6 +28,7 @@ from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
 from ..auth import admin_required, login_required
 from ...services import audit
+from .decorators import chave_de_api_necessaria
 
 logger = logging.getLogger(__name__)
 system_api_bp = Blueprint('system_api', __name__)
@@ -1300,16 +1301,16 @@ def test_whatsapp_connection():
 
 @system_api_bp.route('/webhook/overseerr', methods=['POST'])
 @limiter.exempt
+@chave_de_api_necessaria
 def overseerr_webhook():
     """
     Recebe notificações do agente de Webhook do Overseerr/Jellyseerr e reencaminha-as
     para o canal pessoal do utilizador que fez o pedido (Telegram, WhatsApp ou Discord).
 
-    🔒 SEGURANÇA: a rota é pública (o Overseerr não faz login), por isso é protegida
-    por uma chave partilhada enviada no cabeçalho 'X-API-Key' ou 'Authorization:
-    Bearer'. Usa-se a mesma chave das restantes integrações
-    (Configurações → Geral → Chave de API). Sem isso, qualquer pessoa poderia
-    enviar mensagens falsas aos utilizadores em nome do painel.
+    🔒 SEGURANÇA: a rota é pública (o Overseerr não faz login), por isso é
+    protegida pela chave de API — ver `chave_de_api_necessaria`. Sem isso,
+    qualquer pessoa poderia enviar mensagens falsas aos utilizadores em nome do
+    painel.
 
     Configuração no Overseerr:
       Settings → Notifications → Webhook
@@ -1317,18 +1318,6 @@ def overseerr_webhook():
         Authorization : a sua Chave de API
         (o payload JSON pode ficar com o modelo por omissão)
     """
-    config = load_or_create_config()
-    expected_key = str(config.get('INTERNAL_TRIGGER_KEY') or '')
-
-    provided = request.headers.get('X-API-Key', '')
-    if not provided:
-        auth = request.headers.get('Authorization', '')
-        provided = auth[7:].strip() if auth.lower().startswith('bearer ') else auth.strip()
-
-    if not expected_key or not provided or not secrets.compare_digest(provided, expected_key):
-        logger.warning(f"Webhook do Overseerr rejeitado: chave inválida ou ausente. IP: {request.remote_addr}")
-        return jsonify({"success": False, "message": "Unauthorized"}), 401
-
     data = request.get_json(silent=True) or {}
 
     # O Overseerr envia um evento de teste ao gravar as definições — respondemos

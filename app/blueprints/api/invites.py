@@ -1,7 +1,6 @@
 # app/blueprints/api/invites.py
 
 import logging
-import secrets
 from types import SimpleNamespace
 
 from flask import Blueprint, jsonify, request
@@ -11,9 +10,8 @@ from flask_login import login_required
 
 from ...extensions import media_server, limiter
 from ..auth import admin_required
-from .decorators import validate_json
+from .decorators import validate_json, chave_de_api_necessaria
 from .schemas import CreateInviteSchema, CreateInviteBotSchema, validar_email
-from ...config import load_or_create_config
 from ...utils.log_sanitizer import mask_code
 from ...utils.enderecos import endereco_publico
 
@@ -105,18 +103,15 @@ def create_invite_route(validated_data):
 
 @invites_api_bp.route('/bot/create', methods=['POST'])
 @limiter.limit("30 per minute")
+@chave_de_api_necessaria
 @validate_json(CreateInviteBotSchema)
 def create_invite_for_bot(validated_data):
     """
     Endpoint de integração para bots: cria um convite já vinculado a um Telegram ID.
 
-    🔒 AUTENTICAÇÃO: esta rota não usa sessão de navegador (um bot não tem uma), por
-    isso é protegida por uma chave de API enviada no cabeçalho 'X-API-Key' (ou
-    'Authorization: Bearer <chave>'). A chave é a 'INTERNAL_TRIGGER_KEY', que já é
-    gerada automaticamente na configuração e nunca é exposta pela API de definições.
-
-    A comparação é feita com 'secrets.compare_digest' para não vazar informação
-    através do tempo de resposta (timing attack).
+    🔒 AUTENTICAÇÃO: esta rota não usa sessão de navegador (um bot não tem uma),
+    por isso é protegida pela chave de API — ver `chave_de_api_necessaria`, que
+    é o único sítio do painel onde essa verificação vive.
 
     Exemplo:
         curl -X POST https://o-seu-painel/api/invites/bot/create \\
@@ -124,19 +119,6 @@ def create_invite_for_bot(validated_data):
              -H "Content-Type: application/json" \\
              -d '{"telegram_id": "123456789", "screens": 1, "trial_duration_minutes": 60}'
     """
-    config = load_or_create_config()
-    expected_key = str(config.get('INTERNAL_TRIGGER_KEY') or '')
-
-    provided_key = request.headers.get('X-API-Key', '')
-    if not provided_key:
-        auth_header = request.headers.get('Authorization', '')
-        if auth_header.lower().startswith('bearer '):
-            provided_key = auth_header[7:].strip()
-
-    if not expected_key or not provided_key or not secrets.compare_digest(provided_key, expected_key):
-        logger.warning(f"Tentativa de acesso não autorizado ao endpoint de convites para bots (IP: {request.remote_addr}).")
-        return jsonify({"success": False, "message": _("Chave de API inválida ou em falta.")}), 401
-
     data = validated_data.dict()
 
     # Se o bot não indicar bibliotecas, usamos todas as do servidor — é o
