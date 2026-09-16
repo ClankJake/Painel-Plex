@@ -129,7 +129,7 @@ sobrevive) e reinicia com `_agendar_reinicio()`.
   `referred_by` ficava sempre vazio, por isso o "Indique e Ganhe" nunca podia
   pagar. Um backend novo herda-as em vez de as reescrever.
 
-#### O convite: quatro coisas que já correram mal
+#### O convite: o que já correu mal, e o que passou a ser contrato
 
 ⚠️ **Os campos de tempo somam-se a `now()`, e uma data tem limites.**
 `timedelta(minutes=10**12)` levanta `OverflowError` — era um 500 com traceback
@@ -185,7 +185,122 @@ porta única: a `APP_BASE_URL` manda, o `url_for` externo é o recurso.
 do Overseerr. Estava copiada nos dois e as cópias já tinham divergido — uma
 aceitava o `Authorization` sem o prefixo `Bearer` e a outra não, e a interface
 do Overseerr chama "Authorization" ao campo onde se escreve a chave e mais
-nada.
+nada. O decorador recebe o **escopo** que a rota exige (ver as chaves de API,
+mais abaixo).
+
+⚠️ **A recusa diz de que TIPO é, e o código HTTP sai daí.** `CONFLITO` (409: o
+pedido está certo, é o estado que não deixa), `PEDIDO_INVALIDO` (400: tentar de
+novo dá o mesmo) e `CREDENCIAIS` (401). O endpoint dos bots respondia 409 a
+tudo o que falhasse — inclusive a "informe pelo menos uma biblioteca" — e o
+resgate respondia 401 a uma senha curta demais, o que fazia o cliente concluir
+que as credenciais estavam erradas quando o problema era o formato do corpo. A
+`message` não serve para isto: é texto escrito para uma pessoa ler e um dia
+será traduzido. `ESTADO_HTTP` traduz o motivo num sítio só.
+
+⚠️ **A API de bots não é só criar.** `GET /bot/invite/<code>` diz o estado,
+`DELETE` revoga e `GET /bot/invites?telegram_id=` lista os de uma pessoa. Três
+coisas que a implementação guarda: a consulta lê a linha CRUA (a
+`get_invitation_by_code` é a porta do RESGATE e devolve `None` para um convite
+expirado — e "expirado" é a resposta que se veio buscar); `active` e
+`uses_left` vêm calculados, para cada integração não repetir as duas regras; e
+🔒 a resposta não leva os nomes das bibliotecas, que são infraestrutura do
+servidor. O caminho é `/bot/invite/<code>` e não `/bot/<code>` porque um código
+personalizado pode ser a palavra `create`.
+
+📌 **A documentação da API está presa ao código por um teste**
+(`tests/test_documentacao_da_api_de_bots.py`): todo o campo do esquema tem de
+estar na tabela de parâmetros, toda a rota documentada tem de existir, e a
+documentação não pode prometer um campo que o Pydantic descarta em silêncio —
+que é o pior dos dois erros, porque quem escreve o bot a partir dela não
+percebe porque é que o convite não saiu como pedido.
+
+🛡️ **Apagar um convite é uma remoção SUAVE**, e a razão não é óbvia:
+`get_user_claim_date` — a única resposta do painel ao "desde quando é que esta
+pessoa está aqui" — procura o username dentro de `claimed_by_users`, e não há
+outra fonte. O botão que existe para arrumar a lista de convites gastos
+destruía em silêncio o histórico de entrada de cada pessoa que os tinha
+resgatado. É a leitura do "membro desde" a única que NÃO filtra `deleted_at`.
+
+⚠️ Isso obriga a decidir o que acontece a um **código personalizado
+reutilizado**: o código é a chave primária e a linha removida continua lá, por
+isso `create_invitation` lê também os apagados (`incluir_apagados=True`). Um
+convite removido que ninguém resgatou não guarda histórico nenhum e o código
+volta a estar livre; um que foi resgatado recusa, dizendo porquê.
+
+E a tabela não cresce para sempre: o `cleanup_job` apaga os convites SEM USO
+que expiraram ou foram removidos há mais de `INVITE_CLEANUP_DAYS`. Os
+resgatados ficam, tenham a idade que tiverem — a mesma distinção que já valia
+entre uma cobrança PIX abandonada, que é lixo, e um pagamento recebido, que
+aconteceu.
+
+⚡ **O polling da página de utilizadores não carrega a lista de convites.**
+`/list` devolvia a tabela inteira, com o histórico de resgates de cada um, de
+dez em dez segundos — para responder a "já foi usado algum?" e para filtrar as
+duas abas do lado do navegador. São duas perguntas e têm duas rotas:
+`/summary` são dois `COUNT(*)` e é o que o polling pede (e só recarrega a lista
+quando a contagem MUDA, senão cada volta reescrevia a lista e fechava os menus
+abertos); `/list` aceita `estado`, `pagina` e `por_pagina`, e ecoa os valores
+EFETIVOS — devolver os pedidos fazia a interface calcular as páginas sobre um
+tamanho que não foi o usado. ⚠️ As datas são comparadas como TEXTO no SQL, e
+isso funciona porque tudo o que o painel escreve nessas colunas vem de
+`datetime.now(timezone.utc).isoformat()`; uma data escrita à mão cai na aba
+errada, e quem decide se o convite vale continua a ser o `convite_expirado`,
+em Python.
+
+⚠️ **O que é uma "conta" no resgate muda com o servidor, e a rota já não sabe
+qual é.** `/api/invites/claim` importava `plexapi.myplex.MyPlexAccount` — uma
+rota a saber que o servidor é o Plex, e um painel Jellyfin a carregar a
+biblioteca do Plex para nada. É `conta_a_partir_de_credenciais`, do contrato,
+que interpreta o corpo do pedido. Um teste impede blueprints NOVOS de
+importarem `plexapi` e nomeia os dois que ainda o fazem (o fluxo de PIN no
+`auth.py`, a validação da ligação no assistente) — a lista existe para
+encolher e nunca para crescer.
+
+⚠️ E a validação das credenciais locais é uma função de MÓDULO
+(`jellyfin/account_manager.py`), não um método: não precisa de nada do manager,
+e assim os duplos de backend dos testes chamam-na tal e qual. Um duplo com a
+sua própria cópia das regras deixa de testar o que a aplicação faz — foi o que
+aconteceu quando os limites de tamanho passaram da rota para o backend.
+
+#### As chaves de API: uma por integração, com escopo
+
+🛡️ Havia **UMA chave para tudo** (`INTERNAL_TRIGGER_KEY`, no config.json),
+partilhada pelo endpoint de convites e pelo webhook do Seerr. Regenerá-la
+porque um bot foi comprometido derrubava também o Seerr, e a chave dada ao bot
+podia aceitar webhooks em nome do painel.
+
+`app/services/api_keys.py` dá-lhes nome, escopo (`ESCOPOS_DE_API`, em
+`dominios.py`) e revogação individual. Quatro coisas que o módulo guarda:
+
+- 🛡️ **fica o RESUMO, não a chave**, como em `password_resets`. Ela aparece
+  UMA vez, ao ser criada; quem lesse a tabela — ou um ZIP de backup, que é só
+  um ficheiro — ficava com uma porta aberta por cada integração ligada. Pela
+  mesma razão não entra na auditoria: fica o nome, o prefixo e as permissões;
+- 🛡️ **uma chave sem o escopo é recusada como se não existisse.** Dizer
+  "existe mas não pode" confirmava a quem tenta que acertou na chave;
+- ⚠️ **a chave antiga continua a valer, para todos os escopos.** Invalidá-la
+  seria cortar, de uma vez e sem aviso, todas as integrações que já existem lá
+  fora. Deixou de ser a única; não deixou de ser. E uma chave revogada FICA na
+  tabela: "revogada em março" é diferente de "nunca existiu";
+- 🐛 **o prefixo não pode sair do `token_urlsafe`**, cujo alfabeto inclui o
+  `_` — o separador da chave. Um prefixo como `-v_wYCdF` partia a chave em
+  quatro pedaços e a leitura ficava com `-v` no lugar do prefixo: a chave era
+  criada com sucesso e nunca mais reconhecida, em cerca de um terço dos casos.
+
+⚡ `last_used_at` não é escrito a cada pedido (um webhook bate dezenas de vezes
+por minuto). 🐛 E é escrito pela `db.session`, **não** por uma ligação própria:
+a ligação própria é o que o `audit.registar` faz e aqui seria pior, porque a
+auditoria corre DEPOIS do commit do chamador e isto corre a meio — com o
+ficheiro trancado, a segunda ligação espera o `busy_timeout` inteiro, trinta
+segundos para gravar uma data. Não há nada pendente a arrastar: isto corre
+antes do corpo da rota, e os dois `before_request` do painel só leem.
+
+🔔 **Um convite resgatado avisa o administrador por push**
+(`send_invite_claimed_admin_notification`, com o seu interruptor
+`PUSH_ADMIN_INVITES`). O sino do painel só avisa quem está com ele aberto, e
+quem gera convites por um bot não ficava a saber de todo. A nota do convite vai
+no corpo porque é ela que diz PARA QUEM ele era — "a ana entrou pelo convite do
+João do grupo" é uma informação; "alguém resgatou um convite" não é.
 
 Nos templates, o contexto global expõe `media_server.type`, `.name` e
 `.capabilities` — use-os para esconder o que não se aplica
