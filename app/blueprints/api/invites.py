@@ -14,9 +14,33 @@ from .decorators import validate_json, chave_de_api_necessaria
 from .schemas import CreateInviteSchema, CreateInviteBotSchema, validar_email
 from ...utils.log_sanitizer import mask_code
 from ...utils.enderecos import endereco_publico
+from ...services import audit
 
 logger = logging.getLogger(__name__)
 invites_api_bp = Blueprint('invites_api', __name__)
+
+def _para_a_auditoria(pedido, code):
+    """O que fica registado sobre um convite criado.
+
+    ⚠️ O código vai INTEIRO, ao contrário do que se faz no `app.log`. Ele é uma
+    credencial portadora, mas o `mask_code` do log existe porque o log é um
+    ficheiro à parte, que se copia e se cola num chat de suporte; a auditoria
+    vive na MESMA base de dados que a tabela `invitations`, onde os códigos já
+    estão em claro. Mascará-lo aqui não esconderia nada de ninguém e tornava a
+    linha inútil — "alguém apagou um convite" sem dizer qual.
+    """
+    return {
+        'codigo': code,
+        'bibliotecas': pedido.get('libraries') or [],
+        'telas': pedido.get('screens', 0),
+        'downloads': bool(pedido.get('allow_downloads', False)),
+        'expira_em_minutos': pedido.get('expires_in_minutes'),
+        'teste_em_minutos': pedido.get('trial_duration_minutes', 0),
+        'acesso_aos_pedidos': bool(pedido.get('overseerr_access', False)),
+        'usos': pedido.get('max_uses', 1),
+        'telegram_id': pedido.get('telegram_id'),
+    }
+
 
 def _titulos_do_servidor():
     """Os nomes das bibliotecas, ou None quando não foi possível perguntar.
@@ -99,6 +123,8 @@ def create_invite_route(validated_data):
     )
     if result.get('success'):
         result['invite_url'] = endereco_publico('main.claim_invite_page', code=result['code'])
+        audit.registar('convite.criar', alvo_tipo='convite', alvo_id=result['code'],
+                       detalhes=_para_a_auditoria({**data, 'libraries': libraries}, result['code']))
     return jsonify(result)
 
 @invites_api_bp.route('/bot/create', methods=['POST'])
@@ -158,6 +184,11 @@ def create_invite_for_bot(validated_data):
         result['invite_url'] = endereco_publico('main.claim_invite_page', code=result['code'])
         result['telegram_id'] = data.get('telegram_id')
         logger.info(f"Convite '{mask_code(result['code'])}' criado via API para o Telegram ID {data.get('telegram_id')}.")
+        # Sem sessão, o ator fica vazio e o que identifica quem agiu é o
+        # ENDEREÇO — que é a verdade sobre um convite criado por uma máquina.
+        audit.registar('convite.criar', alvo_tipo='convite', alvo_id=result['code'],
+                       detalhes={**_para_a_auditoria({**data, 'libraries': libraries}, result['code']),
+                                 'origem': 'bot'})
         return jsonify(result), 201
 
     # Conflitos de unicidade (ID já vinculado, ou já com convite ativo) devolvem 409.
@@ -178,7 +209,18 @@ def delete_invite_route():
     code = (request.get_json(silent=True) or {}).get('code')
     if not code:
         return jsonify({"success": False, "message": "Código do convite não fornecido."}), 400
-    return jsonify(media_server.delete_invitation(code))
+
+    # A auditoria fica com o que o convite ERA: depois de apagado não há a quem
+    # perguntar, e "apagou um convite" sem dizer qual não responde a nada.
+    convite = media_server.get_invitation_by_code(code)[0] or {}
+    resultado = media_server.delete_invitation(code)
+    if resultado.get('success'):
+        audit.registar('convite.apagar', alvo_tipo='convite', alvo_id=code, detalhes={
+            'codigo': code,
+            'usos': f"{convite.get('use_count', 0)}/{convite.get('max_uses', 1)}",
+            'resgatado_por': convite.get('claimed_by_users') or [],
+        })
+    return jsonify(resultado)
 
 # **NOVA ROTA**: Reativar convite (resetar uso)
 @invites_api_bp.route('/reactivate', methods=['POST'])
@@ -188,7 +230,12 @@ def reactivate_invite_route():
     code = (request.get_json(silent=True) or {}).get('code')
     if not code:
         return jsonify({"success": False, "message": "Código do convite não fornecido."}), 400
-    return jsonify(media_server.reactivate_invitation(code))
+
+    resultado = media_server.reactivate_invitation(code)
+    if resultado.get('success'):
+        audit.registar('convite.reativar', alvo_tipo='convite', alvo_id=code,
+                       detalhes={'codigo': code})
+    return jsonify(resultado)
 
 @invites_api_bp.route('/details/<string:code>', methods=['GET'])
 @limiter.limit("30 per minute")
@@ -210,6 +257,26 @@ def get_invite_details_route(code):
 MAX_UTILIZADOR = 128
 MAX_PALAVRA_PASSE = 256
 MAX_EMAIL = 254
+
+
+def _registar_resgate(code, resultado, username):
+    """Deixa na auditoria que um convite foi resgatado — e por quem.
+
+    🛡️ Só os campos escolhidos à mão. O corpo deste pedido traz a PALAVRA-PASSE
+    que a pessoa acabou de escolher num servidor de contas locais, e a
+    auditoria vai dentro do ZIP de backup: passar o corpo inteiro aqui era a
+    forma mais fácil de a fazer viajar para onde nunca devia ir.
+
+    O ator fica vazio de propósito — quem resgata ainda não tem sessão no
+    painel — e o que identifica o pedido é o endereço, que o `registar` já
+    guarda.
+    """
+    if not resultado.get('success'):
+        return
+    audit.registar('convite.resgatar', alvo_tipo='convite', alvo_id=code, detalhes={
+        'codigo': code,
+        'usuario': username,
+    })
 
 
 @invites_api_bp.route('/claim', methods=['POST'])
@@ -267,7 +334,9 @@ def claim_invite_route():
             }), 400
 
         registo = SimpleNamespace(username=username, password=password, email=email)
-        return jsonify(media_server.claim_invitation(data.get('code'), registo))
+        resultado = media_server.claim_invitation(data.get('code'), registo)
+        _registar_resgate(data.get('code'), resultado, username)
+        return jsonify(resultado)
 
     try:
         plex_token = data.get('plex_token')
@@ -275,7 +344,9 @@ def claim_invite_route():
             return jsonify({"success": False, "message": _("Token do Plex não fornecido.")}), 400
         new_user_account = MyPlexAccount(token=plex_token)
         logger.info(f"Token do novo utilizador '{new_user_account.username}' validado com sucesso.")
-        return jsonify(media_server.claim_invitation(data.get('code'), new_user_account))
+        resultado = media_server.claim_invitation(data.get('code'), new_user_account)
+        _registar_resgate(data.get('code'), resultado, new_user_account.username)
+        return jsonify(resultado)
     except Exception as e:
         logger.error(f"Falha ao validar o token do Plex do novo utilizador: {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Token do Plex inválido.")}), 401

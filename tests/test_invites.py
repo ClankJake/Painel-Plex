@@ -770,3 +770,95 @@ class TestChaveDeApi:
             headers={"Authorization": self._chave()},
         )
         assert aceite.status_code == 200
+
+
+class TestAuditoriaDosConvites:
+    """
+    🛡️ Criar um convite CONCEDE ACESSO ao servidor, e nada disso deixava rasto.
+    Cupões, pagamentos e bloqueios eram todos auditados; os convites — a porta
+    de entrada — não.
+    """
+
+    def _linhas(self, acao=None):
+        from app.extensions import db
+        from sqlalchemy import text
+
+        with db.engine.begin() as ligacao:
+            filas = ligacao.execute(text(
+                'SELECT acao, alvo_id, detalhes, ator FROM audit_logs ORDER BY id'
+            )).fetchall()
+        return [f for f in filas if acao is None or f[0] == acao]
+
+    def test_criar_fica_registrado_com_o_que_o_convite_da(self, admin, db_session, servidor_falso):
+        admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "max_uses": 3, "screens": 2,
+        })
+
+        linhas = self._linhas('convite.criar')
+        assert len(linhas) == 1
+        assert linhas[0][1] == "CODIGO"
+        assert '"usos": 3' in linhas[0][2]
+        assert linhas[0][3] == "admin", "o administrador que criou tem de ficar nomeado"
+
+    def test_apagar_guarda_o_que_o_convite_era(self, admin, data_manager):
+        data_manager.add_invitation("PROMO", detalhes(max_uses=2))
+        data_manager.increment_invitation_use("PROMO", "ana")
+
+        admin.post("/api/invites/delete", json={"code": "PROMO"})
+
+        linhas = self._linhas('convite.apagar')
+        assert len(linhas) == 1
+        # Depois de apagado não há a quem perguntar o que ele era.
+        assert '"usos": "1/2"' in linhas[0][2]
+        assert 'ana' in linhas[0][2]
+
+    def test_apagar_um_convite_que_nao_existe_nao_regista_nada(self, admin, db_session):
+        admin.post("/api/invites/delete", json={"code": "NUNCA-EXISTIU"})
+        assert self._linhas('convite.apagar') == []
+
+    def test_reativar_fica_registrado(self, admin, data_manager):
+        data_manager.add_invitation("PROMO", detalhes(max_uses=1))
+        admin.post("/api/invites/reactivate", json={"code": "PROMO"})
+
+        assert len(self._linhas('convite.reativar')) == 1
+
+    def test_um_convite_criado_por_um_bot_nao_inventa_um_ator(self, client, configurada, db_session, servidor_falso):
+        from app.config import load_or_create_config
+
+        client.post(
+            "/api/invites/bot/create",
+            json={"telegram_id": 42},
+            headers={"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY'))},
+        )
+
+        linhas = self._linhas('convite.criar')
+        assert len(linhas) == 1
+        assert linhas[0][3] is None, "uma máquina não é uma pessoa; a coluna vazia diz a verdade"
+        assert '"origem": "bot"' in linhas[0][2]
+
+    def test_a_palavra_passe_do_resgate_nunca_entra_na_auditoria(self, app_context, monkeypatch):
+        """
+        🛡️ O corpo do resgate traz a senha que a pessoa acabou de escolher, e a
+        auditoria vai dentro do ZIP de backup. Só os campos escolhidos à mão.
+        """
+        from app.blueprints.api import invites as rotas
+
+        registados = []
+        monkeypatch.setattr(rotas.audit, 'registar',
+                            lambda *a, **k: registados.append((a, k)))
+
+        rotas._registar_resgate("CODIGO", {"success": True}, "ana")
+
+        assert len(registados) == 1
+        corpo = str(registados[0])
+        assert "senha" not in corpo.lower() and "password" not in corpo.lower()
+        assert "ana" in corpo
+
+    def test_um_resgate_falhado_nao_e_registrado_como_resgate(self, app_context, monkeypatch):
+        from app.blueprints.api import invites as rotas
+
+        registados = []
+        monkeypatch.setattr(rotas.audit, 'registar', lambda *a, **k: registados.append(a))
+        rotas._registar_resgate("CODIGO", {"success": False, "message": "expirou"}, "ana")
+
+        assert registados == []

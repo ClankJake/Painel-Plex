@@ -53,6 +53,10 @@ const ROTULOS = {
     'cupao.criar': 'acaoCupomCriar',
     'cupao.apagar': 'acaoCupomApagar',
     'cupao.alternar_estado': 'acaoCupomEstado',
+    'convite.criar': 'acaoConviteCriar',
+    'convite.apagar': 'acaoConviteApagar',
+    'convite.reativar': 'acaoConviteReativar',
+    'convite.resgatar': 'acaoConviteResgatar',
 };
 
 // A cor e o ícone vêm da FAMÍLIA (o que vem antes do ponto), para uma ação
@@ -64,6 +68,7 @@ const FAMILIAS = {
     cupao: { cor: 'pink', icone: 'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z' },
     backup: { cor: 'sky', icone: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4' },
     chave_api: { cor: 'violet', icone: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
+    convite: { cor: 'teal', icone: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
     log: { cor: 'slate', icone: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
 };
 
@@ -81,6 +86,7 @@ const CORES = {
     sky: 'bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-400',
     violet: 'bg-violet-100 text-violet-600 dark:bg-violet-900/40 dark:text-violet-400',
     slate: 'bg-slate-100 text-slate-600 dark:bg-slate-700/60 dark:text-slate-300',
+    teal: 'bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-400',
 };
 
 // Ações que tiram alguma coisa a alguém. Ganham uma marca vermelha para
@@ -91,6 +97,7 @@ const DESTRUTIVAS = new Set([
     'utilizador.apagar_permanentemente',
     'pagamento.apagar',
     'cupao.apagar',
+    'convite.apagar',
     'log.limpar',
     'backup.restaurar',
     'chave_api.regenerar',
