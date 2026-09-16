@@ -249,7 +249,10 @@ def payment_page(token):
     Acede através do token único e seguro enviado por notificação (Telegram/Discord/Email).
     """
     config = load_or_create_config()
-    profile = UserProfile.query.filter_by(payment_token=token).first()
+    # 🛡️ Pela porta única: é ela que verifica a VALIDADE do token, além de o
+    # encontrar. Um `filter_by(payment_token=...)` à mão continuava a aceitar
+    # um link de há dois anos.
+    profile = extensions.data_manager.perfil_por_payment_token(token)
 
     if not profile:
         logger.warning(f"Tentativa de acesso com token de pagamento inválido ou expirado: {mask_token(token)}")

@@ -7,6 +7,7 @@ from flask_login import login_required
 from flask_babel import gettext as _
 
 from ...extensions import data_manager
+from ...services import audit
 from ...services.data_manager import get_app_timezone
 from ..auth import admin_required
 from .decorators import validate_json
@@ -64,6 +65,8 @@ def create_coupon(validated_data):
             coupon_details['expires_at'] = _fim_do_dia_em_utc(validated_data.expires_at)
 
         new_coupon = data_manager.create_coupon(coupon_details)
+        audit.registar('cupao.criar', alvo_tipo='cupao',
+                       alvo_id=(new_coupon or {}).get('id'), detalhes=coupon_details)
         return jsonify({"success": True, "coupon": new_coupon, "message": _("Cupão criado com sucesso.")})
     except (ValueError, TypeError) as e:
         return jsonify({"success": False, "message": f"Dados inválidos: {e}"}), 400
@@ -76,7 +79,10 @@ def create_coupon(validated_data):
 @admin_required
 def delete_coupon(coupon_id):
     try:
+        anterior = data_manager.get_coupon_by_id(coupon_id)
         if data_manager.delete_coupon(coupon_id):
+            audit.registar('cupao.apagar', alvo_tipo='cupao', alvo_id=coupon_id,
+                           detalhes={'cupao': anterior})
             return jsonify({"success": True, "message": "Cupão apagado com sucesso."})
         else:
             return jsonify({"success": False, "message": "Cupão não encontrado."}), 404
@@ -92,6 +98,8 @@ def toggle_coupon(coupon_id):
         updated_coupon = data_manager.toggle_coupon_active(coupon_id)
         if updated_coupon:
             status = "ativado" if updated_coupon['is_active'] else "desativado"
+            audit.registar('cupao.alternar_estado', alvo_tipo='cupao', alvo_id=coupon_id,
+                           detalhes={'depois': updated_coupon['is_active']})
             return jsonify({"success": True, "coupon": updated_coupon, "message": f"Cupão {status} com sucesso."})
         else:
             return jsonify({"success": False, "message": "Cupão não encontrado."}), 404

@@ -9,6 +9,7 @@ import * as ui from './ui.js';
 import { i18n, fieldMap, urls } from './config.js';
 import { initGamificationSubtabs, addLevelRow, collectLevelsFromEditor, collectResetMonths, loadSeasonStatus, handleManualSeasonReset } from './gamification.js';
 import { collectOnlineMediaSources } from './online_media.js';
+import { initAuditListeners } from './audit.js';
 import { showToast, fetchAPI, setButtonLoading, restoreButton as restoreButtonState, escapeHTML, copyToClipboard } from '../utils.js';
 import { aguardarReinicio } from '../reinicio.js';
 
@@ -628,6 +629,13 @@ export function initializeEventListeners() {
     document.getElementById('toggle-api-key')?.addEventListener('click', handleToggleApiKey);
     document.getElementById('copy-api-key')?.addEventListener('click', handleCopyApiKey);
     document.getElementById('regenerate-api-key')?.addEventListener('click', handleRegenerateApiKey);
+
+    // --- Auditoria ---
+    // ⚠️ Os ouvintes ficam ligados já; a LISTA só é buscada quando a aba abre
+    // (ver `handleTabChange`), como o polling dos logs. Carregá-la aqui era
+    // mais um pedido a cada abertura das Configurações, para uma aba que
+    // quase sempre ninguém abre.
+    initAuditListeners();
 
     // --- Gamificação: sub-abas, editor de níveis e temporadas de XP ---
     initGamificationSubtabs();

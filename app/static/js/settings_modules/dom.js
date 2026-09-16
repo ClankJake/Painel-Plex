@@ -5,6 +5,7 @@
 
 export const form = document.getElementById('settingsForm');
 export const saveButton = document.getElementById('saveButton');
+export const saveBar = document.getElementById('save-bar');
 export const saveBulkTemplatesButton = document.getElementById('saveBulkTemplatesButton');
 export const logLevelSelector = document.getElementById('log_level_selector');
 export const testTautulliButton = document.getElementById('testTautulliButton');

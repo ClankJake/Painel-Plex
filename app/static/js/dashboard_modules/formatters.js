@@ -1,5 +1,6 @@
 // Funções puras de formatação de dados
 import { state } from './config.js';
+import { formatarDataHora } from '../utils.js';
 
 /**
  * Obtém as cores do gráfico com base no tema (claro/escuro).
@@ -74,16 +75,16 @@ export function formatTimeAgo(date) {
  * Usada na Auditoria de Cortes: o "há X minutos" diz há quanto tempo foi, mas
  * não diz QUANDO — e era essa a informação que se perdia quando o título do
  * filme/série era longo e empurrava a hora para fora do ecrã.
- * @param {Date} date - O objeto Date.
+ *
+ * 📌 A implementação mudou-se para `utils.js`, onde vivem os helpers
+ * partilhados: havia três cópias disto e elas não concordavam no formato nem
+ * no que fazer com uma data em falta. O nome fica aqui para os chamadores
+ * desta página não terem de mudar.
+ *
+ * @param {Date|string|number} date
  * @returns {string} - Data e hora formatadas.
  */
-export function formatDateTime(date) {
-    if (!(date instanceof Date) || isNaN(date.getTime())) return '';
-    const locale = document.documentElement.lang || navigator.language || 'pt-BR';
-    const day = date.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
-    return `${day} ${time}`;
-}
+export const formatDateTime = (date) => formatarDataHora(date);
 
 /**
  * Escapa texto vindo do Plex (nomes de utilizador, títulos, plataformas) antes

@@ -72,6 +72,7 @@
                 <button type="button" data-tab="comunicacoes" class="tab-button">{{ _('Comunicações') }}</button>
                 <button type="button" data-tab="conexoes" class="tab-button">{{ _('Conexões') }}</button>
                 <button type="button" data-tab="logs" class="tab-button">{{ _('Logs') }}</button>
+                <button type="button" data-tab="auditoria" class="tab-button">{{ _('Auditoria') }}</button>
             </nav>
         </div>
 
@@ -85,12 +86,16 @@
             {% include "settings/tabs/communications.html" %}
             {% include "settings/tabs/connections.html" %}
             {% include "settings/tabs/logs.html" %}
+            {% include "settings/tabs/audit.html" %}
         </div>
         
     </div>
 
     <!-- Botão de Guardar Flutuante (Sticky Footer) -->
-    <div class="sticky bottom-6 z-40 mt-6 flex justify-end sticky-btn-wrapper px-2">
+    <!-- O id serve para o esconder nas abas que se declaram `data-somente-leitura`:
+         um botão de salvar por cima de uma lista que não se edita só levanta a
+         pergunta do que é que ele faria. -->
+    <div id="save-bar" class="sticky bottom-6 z-40 mt-6 flex justify-end sticky-btn-wrapper px-2">
         <button type="submit" id="saveButton" class="btn bg-green-600 hover:bg-green-500 text-white shadow-xl shadow-green-500/30 px-8 py-3.5 text-lg font-bold w-full sm:w-auto rounded-xl transition-all transform hover:-translate-y-1 border border-green-400 dark:border-green-700 flex items-center justify-center gap-2 group">
             <svg class="w-6 h-6 transition-transform group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
             <span>{{ _('Salvar Alterações') }}</span>
@@ -216,6 +221,34 @@
     data-urls-api-settings="{{ url_for('system_api.api_settings') }}"
     data-urls-clear-logs="{{ url_for('system_api.clear_logs') }}"
     data-urls-get-logs="{{ url_for('system_api.get_logs') }}"
+    data-urls-audit-logs="{{ url_for('system_api.get_audit_logs') }}"
+    data-i18n-audit-falha="{{ _('Não foi possível carregar a auditoria.') }}"
+    data-i18n-audit-vazio-lista="{{ _('Nenhuma ação registrada ainda.') }}"
+    data-i18n-audit-ver-detalhes="{{ _('Ver detalhes') }}"
+    data-i18n-audit-contagem="{{ _('{mostrados} de {total}') }}"
+    data-i18n-audit-sem-autor="{{ _('Sistema') }}"
+    data-i18n-audit-vazio="{{ _('(vazio)') }}"
+    data-i18n-audit-sim="{{ _('Sim') }}"
+    data-i18n-audit-nao="{{ _('Não') }}"
+    data-i18n-acao-definicoes-gravar="{{ _('Configurações salvas') }}"
+    data-i18n-acao-log-limpar="{{ _('Logs do sistema apagados') }}"
+    data-i18n-acao-backup-restaurar="{{ _('Backup restaurado') }}"
+    data-i18n-acao-chave-api-regenerar="{{ _('Chave de API regerada') }}"
+    data-i18n-acao-usuario-bloquear="{{ _('Usuário bloqueado') }}"
+    data-i18n-acao-usuario-desbloquear="{{ _('Usuário desbloqueado') }}"
+    data-i18n-acao-usuario-remover="{{ _('Usuário removido do servidor') }}"
+    data-i18n-acao-usuario-apagar="{{ _('Usuário apagado em definitivo') }}"
+    data-i18n-acao-usuario-editar="{{ _('Perfil editado') }}"
+    data-i18n-acao-usuario-telas="{{ _('Limite de telas alterado') }}"
+    data-i18n-acao-usuario-telas-global="{{ _('Limite de telas alterado para todos') }}"
+    data-i18n-acao-usuario-pedidos="{{ _('Acesso aos pedidos alterado') }}"
+    data-i18n-acao-pagamento-manual="{{ _('Pagamento manual lançado') }}"
+    data-i18n-acao-pagamento-confirmar="{{ _('Pagamento confirmado') }}"
+    data-i18n-acao-pagamento-apagar="{{ _('Pagamento removido do relatório') }}"
+    data-i18n-acao-pagamento-restaurar="{{ _('Pagamento restaurado') }}"
+    data-i18n-acao-cupom-criar="{{ _('Cupom criado') }}"
+    data-i18n-acao-cupom-apagar="{{ _('Cupom removido') }}"
+    data-i18n-acao-cupom-estado="{{ _('Cupom ativado ou desativado') }}"
     data-urls-test-tautulli="{{ url_for('system_api.test_tautulli_connection') }}"
     data-urls-test-jellyfin="{{ url_for('system_api.test_jellyfin_connection') }}"
     data-urls-test-gates2b="{{ url_for('system_api.test_gates2b_connection') }}"

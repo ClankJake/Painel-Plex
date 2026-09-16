@@ -9,6 +9,8 @@ import zipfile
 import tempfile
 from datetime import datetime
 
+from ..utils.ficheiros import proteger_base_de_dados, proteger_ficheiro
+
 logger = logging.getLogger(__name__)
 
 # Nome dos ficheiros dentro do ZIP de backup — usados também para validar
@@ -236,6 +238,11 @@ class BackupManager:
             backup_bytes = self.create_backup_bytes()
             with open(filepath, "wb") as f:
                 f.write(backup_bytes)
+            # 🛡️ O ZIP leva o config.json INTEIRO — SECRET_KEY, token do Plex,
+            # chave de administrador do Jellyfin e as credenciais dos gateways —
+            # mais as bases de dados. Um backup automático é o ficheiro mais
+            # sensível que o painel escreve, e ficava com as permissões do umask.
+            proteger_ficheiro(filepath)
             logger.info(f"[Backup] Backup automático criado com sucesso: {filename} ({len(backup_bytes) / 1024:.1f} KB)")
             self._prune_old_backups(max_backups)
             return filename
@@ -401,6 +408,11 @@ class BackupManager:
                 tmp_path = dest_path + ".restoring.tmp"
                 with open(tmp_path, "wb") as f:
                     f.write(data)
+                # ⚠️ O temporário é protegido ANTES do `os.replace`: entre a
+                # escrita e a troca ele já tem o conteúdo todo, e o `replace`
+                # leva as permissões do ficheiro de origem consigo. Proteger só
+                # no fim deixava uma janela — curta, mas com tudo lá dentro.
+                proteger_ficheiro(tmp_path)
                 os.replace(tmp_path, dest_path)
 
             _atomic_write(self.config_file, zf.read(CONFIG_ENTRY_NAME))
@@ -413,5 +425,10 @@ class BackupManager:
             if SCHEDULER_DB_ENTRY_NAME in names:
                 _atomic_write(self.scheduler_db_path, zf.read(SCHEDULER_DB_ENTRY_NAME))
                 logger.info("[Backup] scheduler_jobs.db restaurado.")
+
+        # Os `-wal`/`-shm` que sobraram do processo antigo ficam ao lado dos
+        # ficheiros restaurados até o SQLite os reescrever; protegem-se na mesma.
+        proteger_base_de_dados(self.app_db_path)
+        proteger_base_de_dados(self.scheduler_db_path)
 
         return True

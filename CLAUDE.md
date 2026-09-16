@@ -851,6 +851,222 @@ coluna existe para um painel que troque de servidor não confundir um ID do Plex
 com um GUID do Jellyfin que por acaso coincida — e ficava a NULL em tudo o que
 o painel criava. Quem passa o valor explicitamente manda.
 
+#### As chaves estrangeiras são IMPOSTAS, e dividem as tabelas em duas famílias
+
+⚠️ **`PRAGMA foreign_keys` vem DESLIGADO por omissão no SQLite**, e durante
+muito tempo ninguém o ligava: as chaves estavam declaradas nos modelos e não
+valiam nada. Apagar um perfil deixava para trás os pagamentos, os bloqueios e
+os registos de corte que lhe apontavam — órfãos silenciosos —, e era possível
+gravar um pagamento com um `media_user_id` que nunca existiu. Hoje
+`set_sqlite_pragma` liga-o, depois de `e1c7a4f92db6` limpar o que ficou.
+
+A limpeza obrigou a separar as tabelas por aquilo que elas são:
+
+- **ESTADO** (`blocked_users`, `notifications`, `coupon_usages`,
+  `unlocked_achievements`, `password_resets`) — não faz sentido sem o perfil,
+  por isso tem `ON DELETE CASCADE`. E `ON UPDATE CASCADE`, que é o que permite
+  ao `migrar_identidade` trocar a chave primária de um perfil com filhas;
+- **HISTÓRICO** (`pix_payments`, `stream_termination_logs`) — **não tem chave
+  estrangeira nenhuma, de propósito.** Um pagamento recebido aconteceu:
+  apagá-lo porque a conta foi removida falsifica o relatório financeiro do mês
+  em que entrou. É a mesma decisão que já valia para `pix_payments.coupon_code`.
+
+⚠️ **As migrações correm com as chaves DESLIGADAS** (`_chaves_estrangeiras_desligadas`,
+em `migrations/env.py`): no SQLite, alterar uma tabela é copiá-la e trocar os
+nomes, e com as chaves ligadas esse baile dispara violações sobre um estado que
+só é intermédio. ⚠️ E o PRAGMA tem de ser posto no evento `connect` do engine,
+não na ligação já aberta: **dentro de uma transação o SQLite ignora-o em
+silêncio**, e a transação aberta à frente do Alembic fazia o `upgrade` inteiro
+ser desfeito no fim sem erro nenhum — a base de dados ficava no esquema inicial
+com a `alembic_version` VAZIA.
+
+#### Restrições de domínio: o que a coluna aceita
+
+⚠️ **O SQLite não impõe o comprimento de um VARCHAR** (um `String(20)` aceita
+200 caracteres) e não havia um único `CHECK`. `status = 'qualquer-coisa'`
+passava, e a partir daí a pessoa não era nem ativa nem inativa: não aparecia
+nas listagens, não era bloqueada, não era removida. Um estado inventado não dá
+erro, dá um utilizador invisível. O mesmo valia para um pagamento de valor
+NEGATIVO, que subtraía da receita do mês.
+
+Os valores aceites vivem em `app/dominios.py` — fonte única, usada pelos
+`CheckConstraint` dos modelos. ⚠️ **Uma migração NÃO importa daqui**: é uma
+fotografia do esquema no momento em que foi escrita, e tem de continuar a
+correr igual quando a lista mudar (ver `b9e4a7c15fd2`, que repete os valores).
+
+🐛 **O telefone é guardado só com dígitos** (`@validates` em `UserProfile`, e
+`validar_telefone` nos schemas). O destinatário do WhatsApp é montado como
+`{phone_number}@s.whatsapp.net`: um número escrito da forma natural —
+`(11) 99999-9999` — produzia um identificador inválido e a mensagem não chegava
+a ninguém, sem erro nenhum. ⚠️ O **email** é NORMALIZADO mas nunca recusado no
+modelo: grande parte dos que entram vem do SERVIDOR de média, e recusar um
+partia a sincronização de perfis. Quem o escreve à mão passa pelos schemas, e
+esses recusam.
+
+#### Índices: declarado não é o mesmo que USADO
+
+⚠️ `user_profiles.username` e `coupons.code` estavam indexados desde sempre e o
+índice **nunca era usado**: todas as consultas comparam `func.lower(...)` /
+`func.upper(...)`, e o SQLite não usa o índice de uma coluna quando a comparação
+é sobre uma EXPRESSÃO dela. A correção é um índice sobre a mesma expressão
+(`ix_user_profiles_username_lower`, `ix_coupons_code_upper`).
+
+⚠️ Os índices de `expiration_date`, `trial_end_date` e `deleted_at` são
+**PARCIAIS**. Um índice completo sobre uma coluna maioritariamente NULL indexa
+sobretudo nada, e o SQLite — estimando que teria de ler quase a tabela toda —
+continuava a varrê-la: ficava um índice a custar escritas e a não servir
+ninguém.
+
+🐛 **E um `batch_alter_table` deita fora os índices que não sabe reflectir.** Um
+índice sobre uma expressão não é reflectido (fica um `SAWarning` e segue), por
+isso a tabela reconstruída nasce sem ele. `b9e4a7c15fd2` repõe-nos no fim;
+`tests/test_esquema_migrado.py` compara o esquema que as MIGRAÇÕES constroem com
+o que o `create_all` constrói e falha se divergirem — foi assim que
+`coupon_usages` andou anos sem o UNIQUE que impede o mesmo cupão de ser usado
+duas vezes pela mesma pessoa (nos testes existia, em produção não).
+
+#### Remoção suave: o que se apaga não sai da base de dados
+
+🛡️ `pix_payments`, `coupons` e `stream_termination_logs` têm `deleted_at`. São
+as três que mais custa perder — o histórico financeiro, o registo de quem usou
+cada cupão, a auditoria de cortes — e as três tinham um botão que as apagava
+para sempre, sem confirmação e sem volta. Agora saem das leituras (que filtram
+`deleted_at IS NULL`) e ficam na tabela; `restaurar_pix_payment` devolve-as.
+
+⚠️ Duas exceções que são exceções de propósito: **as cobranças abandonadas
+continuam a ser apagadas mesmo** (`delete_old_pending_payments` — um QR code
+que ninguém pagou não é histórico, é lixo), e **a marca de água da importação
+de cortes conta os apagados** (`get_last_termination_timestamp` não mostra
+nada; serve para não reimportar o que já foi importado, e ignorá-los fazia a
+importação seguinte duplicar tudo).
+
+⚠️ E apagar um cupão deixou de arrastar `coupon_usages` pelo cascade do ORM: é
+esse registo que impede a mesma pessoa de o usar outra vez, e apagar um cupão
+para o recriar — que é o que se faz para lhe corrigir o valor — dava a toda a
+gente um segundo desconto.
+
+#### Auditoria: `app/services/audit.py`
+
+🛡️ O único rasto de uma ação administrativa era uma linha no `app.log` — um
+ficheiro que roda e que as Configurações têm um botão para truncar. E as
+mudanças que mais interessam nem lá chegavam: gravar as Configurações reescreve
+preços e credenciais e não escrevia nada sobre o que tinha mudado.
+
+`audit.registar(acao, alvo_tipo, alvo_id, detalhes)` grava em `audit_logs`, e
+`audit.diferenca(antes, depois)` reduz dois dicionários ao que MUDOU. Três
+regras que o módulo existe para guardar:
+
+- 🛡️ **nenhum segredo entra**, em três camadas. Uma regra sobre o NOME da
+  chave (`TOKEN`, `KEY`, `SECRET`, `PASSWORD`, `SENHA`, `AUTHORIZATION`,
+  `WEBHOOK_URL`) regista que mudou, nunca o valor; uma regra sobre o VALOR
+  esconde um URL com credenciais embutidas (`https://user:senha@…`) chame-se a
+  chave como se chamar; e o `_serializavel` repete a verificação, mais
+  grosseira, para o caso de alguém chamar `registar` com um dicionário que não
+  passou pela `diferenca`.
+  🐛 **A regra do VALOR usa o `urlsplit`, nunca uma expressão regular.** A
+  primeira versão era um `[^/@\s]+:[^/@\s]+@` cujos quantificadores se
+  sobrepõem — o `:` pertence à própria classe —, o que dá retrocesso
+  quadrático: **4,65 segundos** com 40 KB de entrada, contra 0,0002 do
+  `urlsplit`. E por ali passam os `detalhes` de qualquer ação, onde entram
+  nomes escolhidos por quem cria a conta no servidor de mídia — bastava alguém
+  chamar-se assim para segurar o worker, e o painel corre com UM de propósito.
+  🐛 **A regra do nome sozinha já falhou uma vez**: os cinco pedaços iniciais
+  deixavam passar em claro o `DISCORD_WEBHOOK_URL` (o token do canal está
+  DENTRO do caminho), o `WEBHOOK_URL` (pode trazer `user:senha@`) e o
+  `WEBHOOK_AUTHORIZATION_HEADER`. Bastava editá-los para o valor antigo E o
+  novo ficarem em texto puro numa tabela que vai dentro do ZIP de backup. ⚠️ O
+  `WEBHOOK_URL` como pedaço é escolhido para NÃO apanhar os
+  `WEBHOOK_*_MESSAGE_TEMPLATE`, que são formatos e não segredos — e que
+  interessa muito poder auditar, porque são o que chega ao telefone de quem
+  paga. Há um teste que percorre o esquema real do config e exige que toda a
+  chave com credencial esteja coberta;
+- ⚠️ **falhar a registar nunca derruba a ação**: um erro vira um aviso no log.
+  Perder a linha de auditoria é mau; perder o pagamento que ela descreve é pior;
+- ⚠️ **a escrita vai por uma ligação PRÓPRIA**, não pela `db.session`. Pela
+  sessão partilhada, o `commit` da auditoria levava consigo tudo o que o
+  chamador tivesse pendente. Por isso também se chama sempre DEPOIS de a ação
+  estar feita — o que fica registado aconteceu mesmo.
+
+A tabela não tem chave estrangeira para `user_profiles`: a auditoria de uma
+conta tem de continuar a responder depois de a conta deixar de existir, que é
+precisamente quando alguém vai perguntar. Lê-se em `GET /api/system/audit-logs`
+(só administradores) e **não há rota para a apagar**, ao contrário do `app.log`.
+
+A interface é a aba **Auditoria** das Configurações (`settings/tabs/audit.html`
++ `settings_modules/audit.js`), ao lado da de Logs e de propósito: são as duas
+listas de "o que aconteceu", e a diferença entre elas é que esta não tem botão
+de limpar. Há um teste que a prende (`tests/test_aba_de_auditoria.py`) — se
+alguém lhe acrescentar um, ele falha.
+
+Quatro coisas que essa aba tem de respeitar, todas com teste:
+
+- ⚠️ **os rótulos das ações vivem no template, a chave no código.** A chave
+  (`utilizador.bloquear`) é o identificador estável por onde se filtra; o
+  rótulo ("Usuário bloqueado") é o que a pessoa lê. Uma ação nova sem rótulo
+  aparece com a chave crua — que é vocabulário interno e nem sequer é
+  brasileiro. O teste compara os `audit.registar(...)` do código com a tabela
+  `ROTULOS` e com os `data-i18n-*` do `settings.html`;
+- ⚠️ **a data é UTC "nua" e leva um 'Z' antes do `new Date`.** Sem ele o
+  JavaScript lê-a como hora LOCAL e cada registo aparece três horas adiantado
+  no Brasil. É a mesma convenção da Auditoria de Cortes no painel principal;
+- ⚠️ **as classes do Tailwind são escritas por extenso** (o mapa `CORES`), e
+  não montadas com `bg-${cor}-100`: o compilador procura nomes de classes
+  LITERAIS nos ficheiros, e uma classe montada em tempo de execução nunca
+  chega ao CSS — o ícone ficava sem cor, sem erro nenhum;
+- 🛡️ **tudo o que vem da resposta é escapado.** O `username` que aparece nos
+  detalhes é escolhido por quem cria a conta no servidor de mídia, e a lista é
+  montada com `innerHTML`: alguém chamado `<img src=x onerror=…>` executava
+  código na sessão de um administrador.
+
+A lista é buscada ao ABRIR a aba (como o polling dos logs), e não no arranque
+da página: é uma aba que quase ninguém abre, e um pedido a cada visita às
+Configurações seria trabalho para nada. Não faz polling — ao contrário dos
+logs, o que aqui entra não muda enquanto se está a olhar.
+
+⚠️ **O botão "Salvar Alterações" esconde-se aqui**, porque não há nada para
+salvar. Quem o decide é a ABA, com `data-somente-leitura="true"` no seu
+`tab-content`, e não uma dedução do JavaScript — deduzir pela presença de
+campos de formulário dá a resposta errada nas DUAS pontas: a Auditoria TEM um
+`<select>` (o filtro por ação) e não grava nada, e a de Logs PARECE só leitura
+mas guarda o nível de log no `LOG_LEVEL`, por isso escondê-lo lá tirava a única
+forma de o mudar. Um teste confirma que nenhuma aba marcada assim contém um id
+que esteja no `fieldMap`.
+
+#### O `payment_token` é uma credencial portadora, e agora expira
+
+🛡️ Quem tiver o link `/pay/<token>` vê o nome e o vencimento de quem lá está e
+pode gerar uma cobrança. Ele viaja por Telegram, Discord e WhatsApp e fica no
+histórico dessas conversas para sempre — e **nunca expirava nem mudava**: o
+primeiro link enviado a alguém continuava a funcionar anos depois, e um dump da
+base de dados entregava o de toda a gente pronto a usar.
+
+`payment_token_expires_at` dá-lhe validade (`PAYMENT_TOKEN_VALIDITY_DAYS`, 30
+dias; 0 desliga). `perfil_por_payment_token` é a **porta única** para o
+resolver — enquanto cada rota fazia o seu `filter_by(payment_token=...)`,
+acrescentar a verificação obrigava a lembrar-se dela em cinco sítios, e o
+esquecido não dava erro, dava um token eterno. `garantir_payment_token` renova
+no momento em que um link é ENVIADO (é isso que faz a validade ser utilizável
+sem ser um incómodo) e `rodar_payment_token` troca-o depois de um pagamento
+confirmado.
+
+⚠️ NULL continua a querer dizer "sem validade": é o que os perfis anteriores a
+esta coluna têm. Invalidar de repente os links que estão no telemóvel de toda a
+gente seria uma migração a cortar o acesso a quem quer pagar.
+
+#### Permissões dos ficheiros
+
+🛡️ `app/utils/ficheiros.py` põe a 0600 o `config.json`, as bases de dados
+SQLite e os ZIPs de backup — nasciam com o que o umask ditasse. O que lá está
+não é pouco: o `config.json` guarda em texto puro a SECRET_KEY, o token do
+Plex, a chave de administrador do Jellyfin e as credenciais dos três gateways,
+e o ZIP de backup leva o `config.json` inteiro mais as bases de dados.
+
+⚠️ `proteger_base_de_dados` trata também do `-wal` e do `-shm`: em modo WAL as
+escritas mais recentes vivem no diário, e proteger só o `.db` deixava à vista
+tudo o que ainda não tinha sido integrado. ⚠️ E falhar aqui nunca derruba nada
+— num sistema de ficheiros sem permissões POSIX o `chmod` levanta, e um painel
+que não arranca por causa disso é muito pior.
+
 ### Restaurar um backup de outra versão
 
 🛡️ Restaurar é **substituir a base de dados por baixo da aplicação**; o esquema
@@ -1191,6 +1407,23 @@ grandes quebram em `*_modules/` com a mesma divisão (`api`, `config`, `dom`,
 `handlers`, `ui`, `state`). Helpers partilhados em `utils.js` — `escapeHTML` /
 `sanitizeHTML` escapam também aspas, porque o resultado é interpolado dentro de
 atributos.
+
+📌 **As datas formatam-se num sítio só**: `formatarDataHora()` e
+`formatarData()`, em `utils.js`. Havia TRÊS cópias de `formatDateTime` — uma em
+`dashboard_modules`, duas em `users_modules` — e elas não concordavam: a do
+painel principal pedia dia/mês/ano e hora:minuto explícitos, as da página de
+usuários faziam `toLocaleString()`, que em pt-BR sai com vírgula e SEGUNDOS
+(`15/09/2026, 20:48:33`). A mesma data de vencimento aparecia de duas maneiras
+conforme a página. Os nomes antigos ficaram, a delegar, para os chamadores não
+mudarem.
+
+⚠️ **O idioma vem do `<html lang>`, não do navegador**: quem usa o painel em
+português com o navegador em inglês via `09/15/2026, 08:48 PM` — o mês antes do
+dia, que se lê ao contrário do que diz. E quem tem um valor que pode não
+existir (a data de fim de teste, o "membro desde") passa `{ ausente: '...' }`
+em vez de deixar um espaço em branco. Há um teste que falha se algum módulo
+voltar a chamar `toLocale*String` sozinho para uma data
+(`tests/test_aba_de_auditoria.py`).
 
 ⚠️ **NUNCA termine um atributo `data-*` com traço e número.** O browser só come
 o '-' quando o que vem a seguir é uma LETRA MINÚSCULA: `data-i18n-step-local-1`

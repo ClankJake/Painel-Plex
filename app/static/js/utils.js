@@ -269,6 +269,66 @@ export function restoreButton(button) {
 }
 
 /**
+ * O idioma em que a interface mostra datas e números.
+ *
+ * ⚠️ **Vem do `<html lang>` e não do navegador.** Quem usa o painel em
+ * português com um navegador em inglês via `09/15/2026, 08:48 PM` — o mês
+ * antes do dia, que num painel brasileiro se lê ao contrário do que diz. O
+ * `navigator.language` fica como segunda escolha e o 'pt-BR' como terceira,
+ * porque a página pode não declarar língua nenhuma.
+ *
+ * ⚠️ É lido A CADA CHAMADA, e não guardado num `const` de módulo: o seletor de
+ * idioma recarrega a página, mas um módulo que leia o `lang` no momento do
+ * import corre o risco de o fazer antes de o atributo existir.
+ */
+function idiomaDaInterface() {
+    return document.documentElement.lang || navigator.language || 'pt-BR';
+}
+
+/**
+ * Uma data como "dd/mm/aaaa hh:mm", no idioma da interface.
+ *
+ * 📌 **Esta é a porta única.** Havia três cópias disto — uma em
+ * `dashboard_modules/formatters.js` e duas em `users_modules` — e elas não
+ * concordavam: a do dashboard pedia dia/mês/ano e hora:minuto explícitos, as
+ * dos usuários faziam `toLocaleString()` e saíam com vírgula e SEGUNDOS
+ * (`15/09/2026, 20:48:33`). A mesma data aparecia de duas maneiras conforme a
+ * página. Também não concordavam no que fazer com um valor em falta: uma
+ * devolvia texto vazio, outra "Não disponível", outra rebentava.
+ *
+ * Absorve as três diferenças que eram reais:
+ *   • aceita um `Date`, um texto ISO ou um número — as chamadas tinham as três;
+ *   • `ausente` é o que sai quando não há data (vazio, nulo ou inválido), para
+ *     quem precisa de escrever "Não disponível" em vez de um espaço em branco;
+ *   • nunca levanta: uma data estragada não pode derrubar a linha da tabela
+ *     onde ela aparece.
+ */
+export function formatarDataHora(valor, { ausente = '' } = {}) {
+    if (valor === null || valor === undefined || valor === '') return ausente;
+
+    const data = valor instanceof Date ? valor : new Date(valor);
+    if (Number.isNaN(data.getTime())) return ausente;
+
+    const idioma = idiomaDaInterface();
+    const dia = data.toLocaleDateString(idioma, { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const hora = data.toLocaleTimeString(idioma, { hour: '2-digit', minute: '2-digit' });
+    return `${dia} ${hora}`;
+}
+
+/**
+ * Só o dia, como "dd/mm/aaaa". Segue as mesmas regras da `formatarDataHora`.
+ */
+export function formatarData(valor, { ausente = '' } = {}) {
+    if (valor === null || valor === undefined || valor === '') return ausente;
+
+    const data = valor instanceof Date ? valor : new Date(valor);
+    if (Number.isNaN(data.getTime())) return ausente;
+
+    return data.toLocaleDateString(idiomaDaInterface(),
+        { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/**
  * Escapa texto para inclusão segura dentro de uma string de HTML.
  * Usar sempre que um valor de origem externa (API, utilizador, nome de ficheiro,
  * mensagem de erro) tiver de ser interpolado num template literal com HTML.

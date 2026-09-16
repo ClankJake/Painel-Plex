@@ -1,4 +1,4 @@
-import { createModal, showToast, sanitizeHTML, copyToClipboard } from '../utils.js';
+import { createModal, showToast, sanitizeHTML, copyToClipboard, formatarDataHora } from '../utils.js';
 import { i18n } from './config.js';
 import * as state from './state.js';
 import * as api from './api.js';
@@ -28,18 +28,16 @@ function toggleSelectAll(container, button) {
 const btnCancelClass = "btn bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors w-full sm:w-auto";
 
 /**
- * Idioma ativo da página (de `<html lang="...">`). As datas estavam presas a
- * 'pt-BR' numa aplicação que é traduzida — quem usava o painel noutro idioma
- * continuava a ver datas em formato brasileiro.
+ * Uma data/hora no idioma ativo, dizendo "Não disponível" quando não há.
+ *
+ * 📌 Passou a delegar em `utils.js`. A versão local fazia `toLocaleString()`,
+ * que em pt-BR sai com vírgula e SEGUNDOS (`15/09/2026, 20:48:33`) — a mesma
+ * data aparecia aqui de uma maneira e no painel principal de outra. O valor em
+ * falta continua a ser tratado, porque a data de fim de teste e a de "membro
+ * desde" podem mesmo não existir.
  */
-const pageLocale = document.documentElement.lang || undefined;
-
-/** Formata uma data/hora no idioma ativo, tolerando valores em falta. */
-const formatDateTime = (value) => {
-    if (!value) return i18n.notAvailable || 'Não disponível';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? (i18n.notAvailable || 'Não disponível') : date.toLocaleString(pageLocale);
-};
+const formatDateTime = (value) =>
+    formatarDataHora(value, { ausente: i18n.notAvailable || 'Não disponível' });
 
 // ==========================================
 // MODAIS GENÉRICOS

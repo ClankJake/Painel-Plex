@@ -3,6 +3,8 @@ import json
 import secrets
 import logging
 
+from .utils.ficheiros import proteger_ficheiro
+
 logger = logging.getLogger(__name__)
 
 # --- Constantes ---
@@ -142,6 +144,11 @@ def load_or_create_config():
             "CLEANUP_TIME": "03:00",
             "ENABLE_LINK_SHORTENER": True,
             "PAYMENT_LINK_GRACE_PERIOD_DAYS": 7,
+            # 🛡️ Quantos dias vale um link de pagamento a contar do envio. É
+            # renovado sempre que uma notificação leva o link, por isso quem
+            # recebe um aviso de vencimento tem sempre um link bom. 0 desliga a
+            # validade e volta ao comportamento antigo (um token eterno).
+            "PAYMENT_TOKEN_VALIDITY_DAYS": 30,
             "ACHIEVEMENT_MOVIE_MARATHON_BRONZE": 5,
             "ACHIEVEMENT_MOVIE_MARATHON_SILVER": 10,
             "ACHIEVEMENT_MOVIE_MARATHON_GOLD": 20,
@@ -317,6 +324,7 @@ def load_or_create_config():
             _set_default("CLEANUP_TIME", "03:00")
             _set_default("ENABLE_LINK_SHORTENER", True)
             _set_default("PAYMENT_LINK_GRACE_PERIOD_DAYS", 7)
+            _set_default("PAYMENT_TOKEN_VALIDITY_DAYS", 30)
             _set_default("ACHIEVEMENT_MOVIE_MARATHON_BRONZE", 5)
             _set_default("ACHIEVEMENT_MOVIE_MARATHON_SILVER", 10)
             _set_default("ACHIEVEMENT_MOVIE_MARATHON_GOLD", 20)
@@ -476,10 +484,18 @@ def load_or_create_config():
             return {"SECRET_KEY": secrets.token_hex(16)}
 
 def save_app_config(new_config):
-    """Salva a nova configuração no config.json."""
+    """Salva a nova configuração no config.json.
+
+    🛡️ O ficheiro fica com permissões 0600 a cada gravação, e não só quando é
+    criado: guarda a SECRET_KEY, o token do Plex, a chave de administrador do
+    Jellyfin e as credenciais dos gateways de pagamento, tudo em texto puro. Sem
+    isto nascia com o que o umask ditasse — normalmente legível por qualquer
+    conta com acesso ao volume.
+    """
     try:
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(new_config, f, indent=4)
+        proteger_ficheiro(CONFIG_FILE)
         return True
     except IOError as e:
         logger.error(f"Não foi possível salvar a configuração em {CONFIG_FILE}: {e}")

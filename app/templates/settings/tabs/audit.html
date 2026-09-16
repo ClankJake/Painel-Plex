@@ -1,0 +1,78 @@
+{#
+  A Auditoria: quem mudou o quê, quando e de onde.
+
+  ⚠️ **Só leitura, e de propósito.** Esta aba é a irmã da de Logs, mas sem o
+  botão "Limpar" — e essa é a diferença que a faz existir. O `app.log` roda
+  sozinho ao fim de alguns megabytes e tem um botão que o trunca; uma trilha que
+  a pessoa auditada apaga com um clique não responde à única pergunta para que
+  serve. Quem precisar mesmo de a truncar tem o banco de dados.
+#}
+{#
+  ⚠️ `data-somente-leitura` esconde o botão "Salvar Alterações" enquanto esta
+  aba está aberta. É uma DECLARAÇÃO e não uma dedução: a aba tem um `<select>`
+  (o filtro por ação), por isso "tem campos de formulário?" daria a resposta
+  errada — e a aba de Logs, que PARECE só leitura, guarda mesmo o nível de log
+  no `LOG_LEVEL`. Adivinhar acertava numa e falhava na outra.
+
+  Há um teste que confirma que nenhuma aba marcada assim contém um campo que o
+  formulário grave (`tests/test_aba_de_auditoria.py`).
+#}
+<div id="tab-auditoria" class="tab-content hidden" data-somente-leitura="true">
+
+    <!-- Cabeçalho da Aba -->
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <svg class="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            {{ _('Auditoria') }}
+        </h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1 text-sm">{{ _('Quem alterou o quê, quando e de onde. Diferente dos Logs do Sistema: aqui ficam apenas as ações administrativas, o registro é permanente e não pode ser apagado pelo painel.') }}</p>
+    </div>
+
+    <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+
+        <!-- Barra de Ferramentas -->
+        <div class="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center mb-6">
+
+            <!-- Filtro por Ação -->
+            <div class="flex items-center gap-3 w-full sm:w-auto">
+                <label for="audit-action-filter" class="text-sm font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    <svg class="w-4 h-4 inline mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                    {{ _('Ação:') }}
+                </label>
+                <div class="relative w-full sm:w-64">
+                    <select id="audit-action-filter" class="block w-full pl-3 pr-10 py-2 text-sm rounded-lg border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-900 dark:border-gray-600 dark:text-white appearance-none shadow-sm cursor-pointer transition-shadow">
+                        <option value="">{{ _('Todas as ações') }}</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contagem + Atualizar -->
+            <div class="flex items-center gap-3 w-full sm:w-auto">
+                <span id="audit-count" class="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap"></span>
+                <button type="button" id="audit-refresh" class="btn flex-1 sm:flex-none justify-center bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    {{ _('Atualizar') }}
+                </button>
+            </div>
+        </div>
+
+        <!-- Lista de Registros -->
+        <div id="audit-list" class="space-y-2 min-h-[300px]">
+            <div class="flex items-center gap-3 text-gray-500 dark:text-gray-400 animate-pulse py-8 justify-center">
+                <svg class="w-5 h-5 animate-spin text-yellow-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                {{ _('Carregando a auditoria...') }}
+            </div>
+        </div>
+
+        <!-- Carregar mais -->
+        <div class="mt-5 flex justify-center">
+            <button type="button" id="audit-load-more" class="hidden btn bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 px-5 py-2 text-sm font-semibold rounded-lg shadow-sm transition-colors">
+                {{ _('Carregar mais') }}
+            </button>
+        </div>
+
+    </div>
+</div>

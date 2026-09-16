@@ -45,6 +45,31 @@ RESERVED_COUPON_MAX_AGE_MINUTES = 30
 EXPORT_BATCH_SIZE = 500
 
 
+# Quantos dias vale um link de pagamento, quando o config não diz outra coisa.
+DIAS_DE_VALIDADE_DO_PAYMENT_TOKEN = 30
+
+
+def _validade_do_payment_token():
+    """A partir de quando um link de pagamento deixa de servir.
+
+    `0` (ou um valor sem sentido) quer dizer SEM VALIDADE, que é o
+    comportamento antigo — fica disponível para quem dependa de links de vida
+    longa, mas não é o padrão: um token que nunca expira é uma credencial
+    portadora eterna a viajar por Telegram e WhatsApp.
+    """
+    try:
+        from ..config import load_or_create_config
+        dias = int(load_or_create_config().get(
+            'PAYMENT_TOKEN_VALIDITY_DAYS', DIAS_DE_VALIDADE_DO_PAYMENT_TOKEN))
+    except (TypeError, ValueError):
+        dias = DIAS_DE_VALIDADE_DO_PAYMENT_TOKEN
+
+    if dias <= 0:
+        return None
+    # Guardada sem fuso, como o resto das colunas `DateTime` desta base de dados.
+    return (datetime.now(timezone.utc) + timedelta(days=dias)).replace(tzinfo=None)
+
+
 def tipo_de_servidor_configurado():
     """Que servidor de média este painel administra, para marcar o que grava.
 
@@ -153,24 +178,50 @@ class DataManager:
         normalizado = normalize_coupon_code(code)
         if not normalizado:
             return None
-        coupon = Coupon.query.filter(func.upper(Coupon.code) == normalizado).first()
+        coupon = Coupon.query.filter(
+            func.upper(Coupon.code) == normalizado, Coupon.deleted_at.is_(None)
+        ).first()
         return self._row_to_dict(coupon) if coupon else None
 
+    def get_coupon_by_id(self, coupon_id, incluir_apagados=False):
+        consulta = Coupon.query.filter(Coupon.id == coupon_id)
+        if not incluir_apagados:
+            consulta = consulta.filter(Coupon.deleted_at.is_(None))
+        return self._row_to_dict(consulta.first())
+
     def get_all_coupons(self):
-        coupons = Coupon.query.order_by(Coupon.created_at.desc()).all()
+        coupons = (Coupon.query.filter(Coupon.deleted_at.is_(None))
+                   .order_by(Coupon.created_at.desc()).all())
         return [self._row_to_dict(c) for c in coupons]
 
     @db_transaction
     def delete_coupon(self, coupon_id):
-        coupon = Coupon.query.get(coupon_id)
+        """Marca um cupão como apagado, sem apagar quem o usou.
+
+        🛡️ O DELETE de antes arrastava consigo, por `cascade='all,
+        delete-orphan'`, todas as linhas de `coupon_usages` — ou seja, o
+        registo de QUEM já tinha usado aquele cupão. E é esse registo que
+        impede a mesma pessoa de o usar outra vez. Apagar um cupão para o
+        recriar a seguir (que é o que se faz para lhe corrigir o valor) dava a
+        toda a gente um segundo desconto.
+        """
+        coupon = Coupon.query.filter(
+            Coupon.id == coupon_id, Coupon.deleted_at.is_(None)
+        ).first()
         if coupon:
-            db.session.delete(coupon)
+            coupon.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            # Um cupão apagado também não pode continuar a ser aceite: a
+            # procura por código ignora os apagados, mas desativá-lo torna a
+            # intenção explícita para quem olhe direto para a tabela.
+            coupon.is_active = False
             return True
         return False
 
     @db_transaction
     def toggle_coupon_active(self, coupon_id):
-        coupon = Coupon.query.get(coupon_id)
+        coupon = Coupon.query.filter(
+            Coupon.id == coupon_id, Coupon.deleted_at.is_(None)
+        ).first()
         if coupon:
             coupon.is_active = not coupon.is_active
             return self._row_to_dict(coupon)
@@ -190,7 +241,9 @@ class DataManager:
         transação desaparecia do relatório financeiro e do CSV.
         """
         normalizado = normalize_coupon_code(code)
-        coupon = Coupon.query.filter(func.upper(Coupon.code) == normalizado).first() if normalizado else None
+        coupon = Coupon.query.filter(
+            func.upper(Coupon.code) == normalizado, Coupon.deleted_at.is_(None)
+        ).first() if normalizado else None
         if not coupon or not media_user_id:
             logger.warning(f"Tentativa de registar o uso de um cupão inválido ('{code}') ou para um utilizador inválido.")
             return False
@@ -246,7 +299,8 @@ class DataManager:
             query = db.session.query(func.count(PixPayment.txid)).filter(
                 func.upper(PixPayment.coupon_code) == normalizado,
                 PixPayment.status.in_(('ATIVA', 'PROCESSANDO')),
-                PixPayment.created_at >= cutoff
+                PixPayment.created_at >= cutoff,
+                PixPayment.deleted_at.is_(None),
             )
             return int(query.scalar() or 0)
         except Exception:
@@ -271,7 +325,8 @@ class DataManager:
                 PixPayment.media_user_id == media_user_id,
                 func.upper(PixPayment.coupon_code) == normalizado,
                 PixPayment.status.in_(('ATIVA', 'PROCESSANDO')),
-                PixPayment.created_at >= cutoff
+                PixPayment.created_at >= cutoff,
+                PixPayment.deleted_at.is_(None),
             ).first()
             return existe is not None
         except Exception:
@@ -357,6 +412,10 @@ class DataManager:
         É a marca de água de quem importa cortes de fora: sem ela, cada leitura
         do log do servidor voltava a gravar o que já lá estava.
         """
+        # ⚠️ A marca de água conta os cortes APAGADOS também, de propósito: ela
+        # não serve para mostrar nada, serve para não voltar a importar o que já
+        # foi importado. Ignorar os apagados fazia a importação seguinte reler
+        # tudo desde o início e duplicar o que tinha sido escondido.
         ultimo = (StreamTerminationLog.query
                   .filter(StreamTerminationLog.reason == reason)
                   .order_by(StreamTerminationLog.timestamp.desc())
@@ -364,21 +423,43 @@ class DataManager:
         return ultimo.timestamp if ultimo else None
 
     def get_stream_termination_logs(self, limit=20):
-        logs = StreamTerminationLog.query.order_by(StreamTerminationLog.timestamp.desc()).limit(limit).all()
+        logs = (StreamTerminationLog.query
+                .filter(StreamTerminationLog.deleted_at.is_(None))
+                .order_by(StreamTerminationLog.timestamp.desc())
+                .limit(limit).all())
         return [self._row_to_dict(log) for log in logs]
 
     @db_transaction
     def delete_stream_termination_log(self, log_id):
-        log_entry = StreamTerminationLog.query.get(log_id)
+        """Tira um corte da Auditoria de Cortes, sem o apagar da base de dados.
+
+        🛡️ A auditoria de cortes é o único registo de que alguém foi
+        interrompido, e porquê — e tinha um botão que a apagava para sempre,
+        linha a linha ou toda de uma vez. Uma auditoria que se apaga com um
+        clique não responde à pergunta para que existe.
+        """
+        log_entry = StreamTerminationLog.query.filter(
+            StreamTerminationLog.id == log_id,
+            StreamTerminationLog.deleted_at.is_(None),
+        ).first()
         if log_entry:
-            db.session.delete(log_entry)
+            log_entry.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
             return True
         return False
 
     @db_transaction
     def clear_all_stream_termination_logs(self):
-        num_rows_deleted = db.session.query(StreamTerminationLog).delete(synchronize_session=False)
-        return num_rows_deleted
+        """Limpa a Auditoria de Cortes da VISTA. Nada sai da base de dados.
+
+        🛡️ Era um `DELETE` sem cláusula nenhuma: um botão que apagava para
+        sempre, de uma vez, todo o registo de quem tinha sido interrompido e
+        porquê. Continua a limpar o ecrã — é para isso que serve — mas as
+        linhas ficam, marcadas com a data.
+        """
+        return (db.session.query(StreamTerminationLog)
+                .filter(StreamTerminationLog.deleted_at.is_(None))
+                .update({'deleted_at': datetime.now(timezone.utc).replace(tzinfo=None)},
+                        synchronize_session=False))
 
     # --- MÉTODOS FINANCEIROS OTIMIZADOS ---
     def get_financial_summary(self, year, month, renewal_days=7):
@@ -400,7 +481,8 @@ class DataManager:
         payments_in_month = db.session.query(PixPayment).filter(
             PixPayment.created_at >= utc_start_str,
             PixPayment.created_at <= utc_end_str,
-            PixPayment.status == 'CONCLUIDA'
+            PixPayment.status == 'CONCLUIDA',
+            PixPayment.deleted_at.is_(None),
         ).order_by(PixPayment.created_at.desc()).all()
 
         total_revenue = 0.0
@@ -487,7 +569,8 @@ class DataManager:
         return PixPayment.query.filter(
             PixPayment.status == 'CONCLUIDA',
             PixPayment.created_at >= start_date_iso,
-            PixPayment.created_at <= end_date_iso
+            PixPayment.created_at <= end_date_iso,
+            PixPayment.deleted_at.is_(None),
         ).order_by(PixPayment.created_at.asc())
 
     def get_payments_for_export(self, start_date_iso, end_date_iso):
@@ -515,7 +598,7 @@ class DataManager:
         payment = PixPayment.query.filter_by(
             media_user_id=media_user_id,
             status='CONCLUIDA'
-        ).order_by(PixPayment.created_at.desc()).first()
+        ).filter(PixPayment.deleted_at.is_(None)).order_by(PixPayment.created_at.desc()).first()
         return self._row_to_dict(payment) if payment else None
         
     # --- MÉTODOS para Perfis de Utilizador ---
@@ -703,7 +786,8 @@ class DataManager:
                 PixPayment.media_user_id == media_user_id,
                 PixPayment.status.in_(('ATIVA', 'PROCESSANDO')),
                 PixPayment.referral_credit_used > 0,
-                PixPayment.created_at >= cutoff
+                PixPayment.created_at >= cutoff,
+                PixPayment.deleted_at.is_(None),
             )
             if exclude_txid:
                 query = query.filter(PixPayment.txid != exclude_txid)
@@ -753,7 +837,7 @@ class DataManager:
         try:
             return bool(PixPayment.query.filter_by(
                 media_user_id=media_user_id, status='CONCLUIDA'
-            ).first())
+            ).filter(PixPayment.deleted_at.is_(None)).first())
         except Exception:
             return False
 
@@ -804,7 +888,8 @@ class DataManager:
                 (profile_data or {}).get('media_server_type') or tipo_de_servidor_configurado()
             )
         if not profile.payment_token:
-            profile.payment_token = secrets.token_urlsafe(16)
+            profile.payment_token = secrets.token_urlsafe(32)
+            profile.payment_token_expires_at = _validade_do_payment_token()
         
         for key, value in profile_data.items():
             if hasattr(profile, key):
@@ -846,11 +931,19 @@ class DataManager:
         novo, recusa-se. Juntar dois históricos é uma decisão de quem administra,
         não de uma rotina automática.
 
-        🛡️ As chaves estrangeiras do SQLite não estão a ser impostas (o
-        `PRAGMA foreign_keys` fica no valor por omissão, que é OFF), por isso a
-        ordem das atualizações não tranca nada — mas todas correm na MESMA
-        transação: ou muda tudo, ou não muda nada. Metade migrada seria pior do
-        que não migrar.
+        ⚠️ **As chaves estrangeiras são agora IMPOSTAS** (`e1c7a4f92db6` ligou o
+        `PRAGMA foreign_keys`), e isso muda o que este método pode fazer. Mudar
+        a chave primária do perfil com filhas a apontar-lhe é, para o SQLite,
+        uma violação — a não ser que a chave diga `ON UPDATE CASCADE`, que é o
+        que as tabelas de ESTADO dizem. Elas seguem sozinhas; o ciclo abaixo
+        passa por lá e não encontra nada para mudar, o que está certo.
+
+        Quem PRECISA mesmo do ciclo são as tabelas de HISTÓRICO — os pagamentos
+        e a auditoria de cortes — que não têm chave estrangeira de propósito
+        (têm de sobreviver ao perfil) e por isso ninguém as arrasta.
+
+        Tudo corre na MESMA transação: ou muda tudo, ou não muda nada. Metade
+        migrada seria pior do que não migrar.
         """
         from sqlalchemy import text
 
@@ -1003,6 +1096,93 @@ class DataManager:
             return True
         return False
 
+    # --- MÉTODOS do token de pagamento ---
+    #
+    # 🛡️ O `payment_token` é uma credencial PORTADORA: quem tiver o link
+    # `/pay/<token>` vê o nome e o vencimento de quem lá está, e pode gerar uma
+    # cobrança. Ele viaja por Telegram, Discord e WhatsApp — canais que a pessoa
+    # pode reencaminhar sem pensar, e que ficam no histórico do telemóvel para
+    # sempre.
+    #
+    # Até aqui esse token **nunca expirava e nunca mudava**: o primeiro link
+    # enviado a alguém continuava a funcionar anos depois, e um dump da base de
+    # dados entregava o de toda a gente, em texto puro e prontos a usar. Agora
+    # tem validade, é renovado quando se manda um link novo, e é trocado depois
+    # de um pagamento ser confirmado.
+
+    def perfil_por_payment_token(self, token):
+        """O perfil dono deste token, ou None se ele não existir ou ter expirado.
+
+        ⚠️ **Todas as rotas públicas de pagamento passam por aqui.** Enquanto
+        cada uma fazia o seu `filter_by(payment_token=...)`, acrescentar a
+        verificação de validade obrigava a lembrar-se dela em cinco sítios — e
+        o sítio esquecido não dava erro, dava um token eterno.
+        """
+        if not token:
+            return None
+
+        perfil = UserProfile.query.filter_by(payment_token=token).first()
+        if not perfil:
+            return None
+
+        validade = perfil.payment_token_expires_at
+        # Sem validade gravada é um perfil anterior a esta mudança: vale, e é
+        # renovado no próximo link que lhe for enviado. Invalidar de repente os
+        # links que já estão no telemóvel de toda a gente seria uma migração a
+        # cortar o acesso a quem quer pagar.
+        if validade and validade < datetime.now(timezone.utc).replace(tzinfo=None):
+            logger.info(
+                f"Token de pagamento expirado para '{perfil.username}': "
+                "é preciso um link novo."
+            )
+            return None
+
+        return perfil
+
+    @db_transaction
+    def garantir_payment_token(self, media_user_id):
+        """Um token VÁLIDO para este perfil, renovando-o se for preciso.
+
+        É por aqui que passa quem vai ENVIAR um link. Renovar no envio (e não
+        num relógio qualquer) é o que faz a validade ser útil sem ser um
+        incómodo: o link que a pessoa acabou de receber está sempre bom, e o que
+        ela recebeu há três meses já não.
+        """
+        perfil = UserProfile.query.get(media_user_id)
+        if not perfil:
+            return None
+
+        agora = datetime.now(timezone.utc).replace(tzinfo=None)
+        expirado = perfil.payment_token_expires_at and perfil.payment_token_expires_at < agora
+
+        if not perfil.payment_token or expirado:
+            perfil.payment_token = secrets.token_urlsafe(32)
+
+        # A validade é sempre estendida, mesmo quando o token se mantém: o que
+        # conta é a data do ÚLTIMO link enviado.
+        perfil.payment_token_expires_at = _validade_do_payment_token()
+        return perfil.payment_token
+
+    @db_transaction
+    def rodar_payment_token(self, media_user_id):
+        """Troca o token depois de um pagamento confirmado.
+
+        🛡️ O link já cumpriu o que tinha a fazer. Deixá-lo a funcionar era
+        manter viva, indefinidamente, uma credencial que passou por três
+        aplicações de mensagens — e que qualquer pessoa com acesso ao telemóvel
+        ou ao histórico da conversa podia voltar a abrir.
+
+        Quem recarregar a página de pagamento a seguir vê a mensagem de link
+        inválido, que já diz o que fazer ("solicite um novo link").
+        """
+        perfil = UserProfile.query.get(media_user_id)
+        if not perfil:
+            return None
+
+        perfil.payment_token = secrets.token_urlsafe(32)
+        perfil.payment_token_expires_at = _validade_do_payment_token()
+        return perfil.payment_token
+
     def get_all_user_expirations(self):
         profiles = UserProfile.query.filter(UserProfile.expiration_date.isnot(None), UserProfile.expiration_date != '').all()
         return {p.media_user_id: self._row_to_dict(p) for p in profiles}
@@ -1056,8 +1236,17 @@ class DataManager:
         payment.is_proration = True
         return True
 
-    def get_pix_payment(self, txid):
-        return self._row_to_dict(PixPayment.query.get(txid))
+    def get_pix_payment(self, txid, incluir_apagados=False):
+        """A cobrança com este txid, ou None.
+
+        `incluir_apagados` existe para quem precisa mesmo de lá chegar — a
+        auditoria, uma reposição — e não para as consultas normais. Sem ele, um
+        pagamento apagado por engano continuava a aparecer em todo o lado.
+        """
+        consulta = PixPayment.query.filter(PixPayment.txid == txid)
+        if not incluir_apagados:
+            consulta = consulta.filter(PixPayment.deleted_at.is_(None))
+        return self._row_to_dict(consulta.first())
 
     @db_transaction
     def update_pix_payment_status(self, txid, status):
@@ -1075,22 +1264,57 @@ class DataManager:
 
     def get_payments_by_user(self, media_user_id):
         try:
-            return [self._row_to_dict(p) for p in PixPayment.query.filter_by(media_user_id=media_user_id, status='CONCLUIDA').order_by(PixPayment.created_at.desc()).all()]
+            return [self._row_to_dict(p) for p in PixPayment.query
+                    .filter_by(media_user_id=media_user_id, status='CONCLUIDA')
+                    .filter(PixPayment.deleted_at.is_(None))
+                    .order_by(PixPayment.created_at.desc()).all()]
         except Exception: return []
 
     @db_transaction
     def delete_pix_payment(self, txid):
-        payment = PixPayment.query.get(txid)
+        """Marca uma cobrança como apagada, sem a apagar.
+
+        🛡️ **Era um DELETE sem volta, sobre a tabela onde estão os pagamentos
+        recebidos.** Um clique enganado na página financeira e a transação
+        desaparecia do relatório, do CSV e do histórico da pessoa — sem
+        recuperação nenhuma tirando o backup da noite anterior, que traz de
+        volta tudo o resto junto.
+
+        Agora fica: sai de todas as leituras (que filtram `deleted_at IS NULL`)
+        e continua na base de dados, com a data em que saiu. A auditoria guarda
+        quem a mandou apagar.
+        """
+        payment = PixPayment.query.filter(
+            PixPayment.txid == txid, PixPayment.deleted_at.is_(None)
+        ).first()
         if payment:
-            db.session.delete(payment)
+            payment.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
             return True
         return False
+
+    @db_transaction
+    def restaurar_pix_payment(self, txid):
+        """Devolve às contas uma cobrança apagada por engano.
+
+        É a outra metade da remoção suave: sem uma forma de voltar atrás, a
+        coluna `deleted_at` era só um DELETE mais lento.
+        """
+        payment = PixPayment.query.get(txid)
+        if not payment or payment.deleted_at is None:
+            return False
+        payment.deleted_at = None
+        return True
 
     # --- MÉTODOS de Limpeza de Dados ---
     @db_transaction
     def delete_old_pending_payments(self, days_old):
         if not isinstance(days_old, int) or days_old <= 0: return 0
         cutoff_date_str = (datetime.now(timezone.utc) - timedelta(days=days_old)).isoformat()
+        # ⚠️ Estas são apagadas MESMO, e continua certo: uma cobrança nunca
+        # concluída e abandonada há semanas não é histórico financeiro nenhum —
+        # é lixo de QR codes que ninguém chegou a pagar. A remoção suave existe
+        # para o que tem valor, e guardar isto para sempre só faria a tabela
+        # crescer sem que nada a fosse ler.
         num_deleted = PixPayment.query.filter(PixPayment.status != 'CONCLUIDA', PixPayment.created_at < cutoff_date_str).delete(synchronize_session=False)
         if num_deleted > 0: 
             logger.info(f"{num_deleted} cobranças PIX pendentes com mais de {days_old} dias foram apagadas.")
@@ -1306,8 +1530,21 @@ class DataManager:
         return {u.media_user_id: self._row_to_dict(u) for u in BlockedUser.query.all()}
 
     def add_blocked_user(self, media_user_id, username, reason='manual'):
-        """Adiciona ou atualiza um utilizador bloqueado. Protegido contra colisões de threads."""
+        """Adiciona ou atualiza um utilizador bloqueado. Protegido contra colisões de threads.
+
+        ⚠️ **O perfil local tem de existir primeiro.** Um bloqueio é ESTADO de
+        alguém, e desde que as chaves estrangeiras passaram a ser impostas
+        (`e1c7a4f92db6`) não há como gravar um sobre um perfil que não existe.
+        Isso acontece de verdade: o administrador pode bloquear, na página de
+        utilizadores, alguém que está no servidor de média mas nunca entrou no
+        painel — antes disto a conta era suspensa no servidor e o registo do
+        bloqueio desaparecia pelo `except IntegrityError` abaixo, devolvendo
+        `None` sem uma linha de log. A conta ficava bloqueada e o painel não
+        sabia porquê nem desde quando.
+        """
         try:
+            self._garantir_perfil_para_bloqueio(media_user_id, username)
+
             user = BlockedUser.query.get(media_user_id)
             if not user:
                 user = BlockedUser(media_user_id=media_user_id, username=username)
@@ -1335,6 +1572,35 @@ class DataManager:
             db.session.rollback()
             logger.error(f"Erro inesperado em add_blocked_user: {e}", exc_info=True)
             raise
+
+    def _garantir_perfil_para_bloqueio(self, media_user_id, username):
+        """Cria o perfil mínimo de quem vai ser bloqueado, se ainda não houver.
+
+        Mínimo é mesmo mínimo: o identificador e o nome. Tudo o resto —
+        vencimento, plano, bibliotecas — é escolha de quem administra e não se
+        inventa aqui. Um perfil que já exista não é tocado.
+        """
+        if UserProfile.query.get(media_user_id):
+            return
+
+        if not username:
+            # Sem nome não há perfil (a coluna é NOT NULL) e o bloqueio local
+            # não se consegue gravar. Dizê-lo é melhor do que o IntegrityError.
+            raise ValueError(
+                f"Não se regista um bloqueio sem nome de utilizador "
+                f"(media_user_id={media_user_id})."
+            )
+
+        db.session.add(UserProfile(
+            media_user_id=media_user_id,
+            username=username,
+            media_server_type=tipo_de_servidor_configurado(),
+        ))
+        db.session.flush()
+        logger.info(
+            f"Perfil local criado para '{username}' (ID: {media_user_id}) por não "
+            "existir no momento do bloqueio."
+        )
 
     @db_transaction
     def remove_blocked_user(self, media_user_id):
