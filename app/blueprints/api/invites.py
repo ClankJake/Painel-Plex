@@ -182,7 +182,7 @@ def create_invite_route(validated_data):
 
 @invites_api_bp.route('/bot/create', methods=['POST'])
 @limiter.limit("30 per minute")
-@chave_de_api_necessaria
+@chave_de_api_necessaria('convites')
 @validate_json(CreateInviteBotSchema)
 def create_invite_for_bot(validated_data):
     """
@@ -250,7 +250,7 @@ def create_invite_for_bot(validated_data):
 
 @invites_api_bp.route('/bot/invite/<string:code>', methods=['GET'])
 @limiter.limit("60 per minute")
-@chave_de_api_necessaria
+@chave_de_api_necessaria('convites')
 def bot_invite_status(code):
     """O estado de um convite: já foi usado? ainda vale?
 
@@ -275,7 +275,7 @@ def bot_invite_status(code):
 
 @invites_api_bp.route('/bot/invite/<string:code>', methods=['DELETE'])
 @limiter.limit("30 per minute")
-@chave_de_api_necessaria
+@chave_de_api_necessaria('convites')
 def bot_invite_delete(code):
     """Revoga um convite que já foi enviado.
 
@@ -303,7 +303,7 @@ def bot_invite_delete(code):
 
 @invites_api_bp.route('/bot/invites', methods=['GET'])
 @limiter.limit("60 per minute")
-@chave_de_api_necessaria
+@chave_de_api_necessaria('convites')
 def bot_invites_por_telegram():
     """Os convites gerados para um Telegram ID, do mais recente para o mais antigo.
 

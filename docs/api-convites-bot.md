@@ -23,6 +23,28 @@ ou, em alternativa:
 Authorization: Bearer SUA_CHAVE
 ```
 
+### Uma chave por integração (recomendado)
+
+Em **Configurações → Geral → Chaves por integração**, crie uma chave com um
+nome e as permissões que ela precisa:
+
+| Permissão | O que abre |
+|---|---|
+| `convites` | Criar, consultar e revogar convites (as rotas deste documento). |
+| `webhooks` | Receber o webhook do Overseerr/Jellyseerr. |
+
+Assim, um bot de Telegram não pode aceitar webhooks em nome do painel, e
+revogar a chave de um bot comprometido não derruba as outras integrações.
+
+> 🛡️ **A chave é mostrada uma única vez, ao ser criada.** O painel guarda
+> apenas um resumo dela e não a consegue mostrar de novo — se a perder, revogue
+> essa e crie outra.
+
+### A chave única (o modo antigo)
+
+Continua a funcionar, e serve para tudo. É a que aparece em **Configurações →
+Geral → Chave de API (Integrações)**.
+
 ### Onde encontrar a chave
 
 No painel, vá a **Configurações → Geral → Chave de API (Integrações)**:

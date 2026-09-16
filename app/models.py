@@ -491,6 +491,50 @@ class PasswordReset(db.Model):
     used_at = db.Column(db.DateTime, nullable=True)
 
 
+class ApiKey(db.Model):
+    """Uma chave de integração, com nome e com escopo.
+
+    ⚠️ **Havia UMA chave para tudo** (`INTERNAL_TRIGGER_KEY`, no config.json),
+    partilhada pelo endpoint de convites para bots e pelo webhook do Seerr.
+    Isso tem duas consequências que só se notam no pior dia: regenerá-la porque
+    um bot foi comprometido derrubava também o Seerr, e a chave do bot de
+    Telegram do vizinho podia aceitar webhooks em nome do painel.
+
+    🛡️ **Guarda-se o RESUMO, não a chave** — a mesma decisão de
+    `PasswordReset`. O que fica na base de dados (e dentro do ZIP de backup,
+    que é só um ficheiro) não serve para nada: só quem copiou a chave no
+    momento em que ela foi criada a tem. Por isso ela é mostrada UMA vez e o
+    painel não sabe recuperá-la.
+
+    O `prefixo` é o que a interface mostra para se distinguirem umas das
+    outras, e é também por ele que a verificação encontra a linha sem ter de
+    percorrer a tabela a comparar resumos.
+
+    Uma chave revogada FICA, com `revoked_at` preenchido: a auditoria fala dela
+    pelo id, e "esta chave foi revogada em março" é diferente de "esta chave
+    nunca existiu".
+    """
+
+    __tablename__ = 'api_keys'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(80), nullable=False)
+    prefixo = db.Column(db.String(16), nullable=False, unique=True, index=True)
+    resumo = db.Column(db.String(64), nullable=False)
+    escopos = db.Column(db.Text, nullable=False, default='[]')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    last_used_at = db.Column(db.DateTime, nullable=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        # PARCIAL, como os outros `deleted_at`: quase todas as chaves estão
+        # vivas, e um índice completo sobre uma coluna maioritariamente NULL
+        # indexa sobretudo nada.
+        db.Index('ix_api_keys_revoked_at', revoked_at,
+                 sqlite_where=db.text('revoked_at IS NOT NULL')),
+    )
+
+
 class UnlockedAchievement(db.Model):
     __tablename__ = 'unlocked_achievements'
     id = db.Column(db.Integer, primary_key=True)

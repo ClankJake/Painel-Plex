@@ -125,6 +125,52 @@
                 </div>
             </div>
 
+            <!-- Chaves por integração.
+                 ⚠️ A chave acima é UMA para tudo: regenerá-la porque um bot foi
+                 comprometido derruba também o Seerr, e a chave dada ao bot pode
+                 aceitar webhooks em nome do painel. Estas são o caminho novo —
+                 uma por integração, com permissões e revogável sozinha. -->
+            <div class="bg-white dark:bg-[#1e293b] rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/60 overflow-hidden mt-6">
+                <div class="px-6 py-5 border-b border-gray-200 dark:border-gray-700/60">
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                        {{ _('Chaves por integração') }}
+                    </h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {{ _('Uma chave para cada bot ou serviço, com as permissões que ele precisa. Revogar uma não mexe nas outras.') }}
+                    </p>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div id="apiKeysList" class="space-y-2"></div>
+
+                    <div class="pt-4 border-t border-gray-200 dark:border-gray-700/50 space-y-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label for="novaChaveNome" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Nome da chave') }}</label>
+                                <input type="text" id="novaChaveNome" maxlength="80" placeholder="{{ _('Ex.: Bot do Telegram') }}" class="block w-full p-2.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 dark:bg-gray-900 dark:border-gray-600 dark:text-white">
+                            </div>
+                            <div>
+                                <span class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{{ _('Permissões') }}</span>
+                                <label class="inline-flex items-center gap-2 mr-4 text-sm text-gray-700 dark:text-gray-300">
+                                    <input type="checkbox" id="escopoConvites" value="convites" checked class="form-checkbox h-4 w-4 rounded text-indigo-500 focus:ring-indigo-500">
+                                    {{ _('Convites') }}
+                                </label>
+                                <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                    <input type="checkbox" id="escopoWebhooks" value="webhooks" class="form-checkbox h-4 w-4 rounded text-indigo-500 focus:ring-indigo-500">
+                                    {{ _('Webhooks') }}
+                                </label>
+                            </div>
+                        </div>
+                        <button type="button" id="criarChaveDeApi" class="btn bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 text-sm font-semibold">
+                            {{ _('Criar Chave') }}
+                        </button>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">
+                            {{ _('A chave é mostrada uma única vez, ao ser criada. O painel guarda apenas um resumo dela e não consegue mostrá-la de novo.') }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>

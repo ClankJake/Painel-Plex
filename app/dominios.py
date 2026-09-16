@@ -33,6 +33,16 @@ CATEGORIAS_DE_NOTIFICACAO = ('info', 'success', 'warning', 'error')
 # O estado de uma tarefa da fila de envios em massa.
 ESTADOS_DE_TAREFA = ('pending', 'running', 'completed', 'failed')
 
+# O que uma chave de API pode fazer. ⚠️ Um escopo é uma promessa ao
+# administrador — "esta chave só cria convites" — e por isso a lista é fechada:
+# um escopo inventado numa linha da base de dados dava uma chave que ninguém
+# sabe o que faz, e a dúvida resolver-se-ia sempre para o lado errado.
+#
+# São dois porque são dois os sítios que pedem chave, e são usos bem diferentes:
+# um bot de Telegram que gera convites não tem nada que aceitar webhooks do
+# Seerr em nome do painel, e o Seerr não tem nada que criar convites.
+ESCOPOS_DE_API = ('convites', 'webhooks')
+
 
 def clausula_in(coluna, valores, anulavel=False):
     """O texto SQL de um `CHECK` que limita `coluna` a `valores`.

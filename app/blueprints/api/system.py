@@ -1302,7 +1302,7 @@ def test_whatsapp_connection():
 
 @system_api_bp.route('/webhook/overseerr', methods=['POST'])
 @limiter.exempt
-@chave_de_api_necessaria
+@chave_de_api_necessaria('webhooks')
 def overseerr_webhook():
     """
     Recebe notificações do agente de Webhook do Overseerr/Jellyseerr e reencaminha-as
@@ -1431,6 +1431,83 @@ def regenerate_api_key():
     except Exception as e:
         logger.error(f"Erro ao regenerar a chave de API: {e}", exc_info=True)
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+# ==========================================
+# CHAVES DE API COM ESCOPO
+# ==========================================
+#
+# ⚠️ A `INTERNAL_TRIGGER_KEY` acima continua a valer, para todos os escopos:
+# invalidá-la seria cortar, de uma vez e sem aviso, todas as integrações que já
+# existem lá fora. Estas rotas são o caminho novo — uma chave por integração,
+# com nome, com permissões e revogável sem tocar nas outras.
+
+@system_api_bp.route('/api-keys', methods=['GET'])
+@login_required
+@admin_required
+def listar_chaves_de_api():
+    """As chaves existentes. 🛡️ NUNCA a chave em si: ela não está guardada."""
+    from ...dominios import ESCOPOS_DE_API
+    from ...services import api_keys
+
+    return jsonify({
+        "success": True,
+        "keys": api_keys.listar(),
+        "scopes": list(ESCOPOS_DE_API),
+    })
+
+
+@system_api_bp.route('/api-keys', methods=['POST'])
+@login_required
+@admin_required
+def criar_chave_de_api():
+    """Cria uma chave e devolve-a — a ÚNICA vez que ela existe fora de quem a copiar.
+
+    🛡️ O que fica na base de dados é o resumo. Não voltar a aparecer é o ponto,
+    não um incómodo: quem lesse a tabela (ou um ZIP de backup, que é só um
+    ficheiro) ficava com uma porta aberta por cada integração ligada.
+    """
+    from ...services import api_keys
+
+    dados = request.get_json(silent=True) or {}
+    try:
+        linha, chave = api_keys.criar(dados.get('nome'), dados.get('escopos'))
+    except ValueError as e:
+        return jsonify({"success": False, "message": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Erro ao criar a chave de API: {e}", exc_info=True)
+        return jsonify({"success": False, "message": _("Não foi possível criar a chave.")}), 500
+
+    # A CHAVE não entra na auditoria — só o facto de ter sido criada, com que
+    # nome e com que permissões, que é o que interessa saber depois.
+    audit.registar('chave_api.criar', alvo_tipo='chave_api', alvo_id=linha.id, detalhes={
+        'nome': linha.nome,
+        'prefixo': linha.prefixo,
+        'escopos': api_keys.escopos_validos(dados.get('escopos')),
+    })
+
+    return jsonify({
+        "success": True,
+        "key": chave,
+        "id": linha.id,
+        "message": _("Chave criada. Copie-a agora: ela não volta a ser mostrada."),
+    }), 201
+
+
+@system_api_bp.route('/api-keys/<int:id_da_chave>', methods=['DELETE'])
+@login_required
+@admin_required
+def revogar_chave_de_api(id_da_chave):
+    """Desliga uma chave sem tocar nas outras — que é a razão de elas existirem."""
+    from ...services import api_keys
+
+    linha = api_keys.revogar(id_da_chave)
+    if linha is None:
+        return jsonify({"success": False, "message": _("Chave não encontrada.")}), 404
+
+    audit.registar('chave_api.revogar', alvo_tipo='chave_api', alvo_id=linha.id,
+                   detalhes={'nome': linha.nome, 'prefixo': linha.prefixo})
+    return jsonify({"success": True, "message": _("Chave revogada.")})
 
 
 # ==========================================

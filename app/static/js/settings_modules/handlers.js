@@ -10,6 +10,7 @@ import { i18n, fieldMap, urls } from './config.js';
 import { initGamificationSubtabs, addLevelRow, collectLevelsFromEditor, collectResetMonths, loadSeasonStatus, handleManualSeasonReset } from './gamification.js';
 import { collectOnlineMediaSources } from './online_media.js';
 import { initAuditListeners } from './audit.js';
+import { initApiKeys } from './api_keys.js';
 import { showToast, fetchAPI, setButtonLoading, restoreButton as restoreButtonState, escapeHTML, copyToClipboard } from '../utils.js';
 import { aguardarReinicio } from '../reinicio.js';
 
@@ -650,6 +651,9 @@ export function initializeEventListeners() {
     document.getElementById('toggle-api-key')?.addEventListener('click', handleToggleApiKey);
     document.getElementById('copy-api-key')?.addEventListener('click', handleCopyApiKey);
     document.getElementById('regenerate-api-key')?.addEventListener('click', handleRegenerateApiKey);
+    // As chaves por integração: listadas no arranque, porque o cartão está
+    // visível na aba Geral e uma lista vazia não diz se ainda não carregou.
+    initApiKeys();
 
     // --- Auditoria ---
     // ⚠️ Os ouvintes ficam ligados já; a LISTA só é buscada quando a aba abre

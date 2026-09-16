@@ -38,6 +38,8 @@ const ROTULOS = {
     'log.limpar': 'acaoLogLimpar',
     'backup.restaurar': 'acaoBackupRestaurar',
     'chave_api.regenerar': 'acaoChaveApiRegenerar',
+    'chave_api.criar': 'acaoChaveApiCriar',
+    'chave_api.revogar': 'acaoChaveApiRevogar',
     'utilizador.bloquear': 'acaoUsuarioBloquear',
     'utilizador.desbloquear': 'acaoUsuarioDesbloquear',
     'utilizador.remover': 'acaoUsuarioRemover',
@@ -101,6 +103,7 @@ const DESTRUTIVAS = new Set([
     'log.limpar',
     'backup.restaurar',
     'chave_api.regenerar',
+    'chave_api.revogar',
 ]);
 
 
