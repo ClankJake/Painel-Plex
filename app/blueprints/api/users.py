@@ -648,7 +648,7 @@ def renew_user_subscription_route(user, validated_data):
             )
             # Cria a notificação para o Admin (sino vermelho)
             extensions.data_manager.create_notification(
-                message=_("Renovação manual de %(username)s (%(value)s) registada.", username=user['username'], value=f"R$ {total_value:.2f}"),
+                message=_("Renovação manual de %(username)s (%(value)s) registrada.", username=user['username'], value=f"R$ {total_value:.2f}"),
                 category='success', link=url_for('main.users_page')
             )
         extensions.db.session.commit()

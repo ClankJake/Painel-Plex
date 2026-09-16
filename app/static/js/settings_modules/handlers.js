@@ -57,7 +57,7 @@ async function handleTestGates2b() {
 async function handleSyncProfiles() {
     const btn = document.getElementById('syncProfilesButton');
     const resultado = document.getElementById('sync-profiles-result');
-    setButtonLoading(btn, i18n.importing || 'A importar...');
+    setButtonLoading(btn, i18n.importing || 'Importando...');
     if (resultado) resultado.textContent = '';
     try {
         const r = await api.syncProfiles({});
@@ -203,7 +203,7 @@ async function handleRegenerateApiKey() {
     if (!confirm(i18n.confirmRegenerateKey || 'Gerar uma nova chave invalida a atual. Continuar?')) return;
 
     const btn = document.getElementById('regenerate-api-key');
-    setButtonLoading(btn, i18n.generating || 'A gerar...');
+    setButtonLoading(btn, i18n.generating || 'Gerando...');
 
     try {
         const result = await fetchAPI(urls.apiKeyRegenerate, 'POST');
@@ -293,7 +293,7 @@ async function handleDeleteBackup(filename) {
 
 function handleBackupDownloadNow(button) {
     if (!urls.backupDownloadNow) return;
-    setButtonLoading(button, i18n.generatingBackup || 'A gerar backup...');
+    setButtonLoading(button, i18n.generatingBackup || 'Gerando o backup...');
 
     // Navega diretamente para a rota GET: o navegador trata o download nativamente
     // (o servidor responde com Content-Disposition: attachment). Não usamos fetchAPI
@@ -327,7 +327,7 @@ async function handleBackupRestore(file) {
     }
 
     const restoreBtn = document.getElementById('backupRestoreButton');
-    setButtonLoading(restoreBtn, i18n.restoring || 'A restaurar...');
+    setButtonLoading(restoreBtn, i18n.restoring || 'Restaurando...');
 
     try {
         const formData = new FormData();
@@ -435,7 +435,7 @@ async function handleSaveBulkTemplates() {
     
     const originalText = dom.saveBulkTemplatesButton.textContent;
     dom.saveBulkTemplatesButton.disabled = true;
-    dom.saveBulkTemplatesButton.innerHTML = `${getSpinner()} ${i18n.savingTemplates || 'A gravar...'}`;
+    dom.saveBulkTemplatesButton.innerHTML = `${getSpinner()} ${i18n.savingTemplates || 'Salvando...'}`;
 
     const templateData = {
         'TELEGRAM_BULK_MESSAGE_TEMPLATE': document.getElementById('TELEGRAM_BULK_MESSAGE_TEMPLATE')?.value || '',
@@ -480,7 +480,7 @@ async function handleTestConnection(button, endpoint, payloadBuilder) {
 async function handlePlexAuth() {
     const restoreButton = () => restoreButtonState(dom.reauthPlexButton);
 
-    setButtonLoading(dom.reauthPlexButton, i18n.verifying || 'A aguardar autenticação...');
+    setButtonLoading(dom.reauthPlexButton, i18n.verifying || 'Aguardando a autenticação...');
 
     if (pinCheckInterval) clearInterval(pinCheckInterval);
 

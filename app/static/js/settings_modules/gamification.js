@@ -242,7 +242,7 @@ export async function handleManualSeasonReset(urls, fetchAPI, showToast) {
     }
 
     const btn = document.getElementById('xp-season-reset-btn');
-    setButtonLoading(btn, i18n.resetting || 'A zerar...');
+    setButtonLoading(btn, i18n.resetting || 'Zerando...');
 
     try {
         const result = await fetchAPI(urls.xpSeasonReset, 'POST');

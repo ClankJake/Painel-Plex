@@ -356,7 +356,7 @@ class PricingManager:
         if max_uses is not None:
             usos = int(coupon.get('use_count', 0) or 0) + self._usos_reservados(coupon_code)
             if usos >= max_uses:
-                return False, _("Este cupão já atingiu o seu limite de utilizações.")
+                return False, _("Este cupom já atingiu o limite de usos.")
 
         return True, coupon
 

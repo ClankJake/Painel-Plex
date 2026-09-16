@@ -196,7 +196,7 @@ def claim_invite_route():
         # sessão. Os limites acompanham os do login (`auth.py`).
         if len(username) > MAX_UTILIZADOR or len(password) > MAX_PALAVRA_PASSE or len(email) > MAX_EMAIL:
             logger.warning("Resgate de convite recusado: campos acima do tamanho aceite.")
-            return jsonify({"success": False, "message": _("Os dados indicados são longos demais.")}), 400
+            return jsonify({"success": False, "message": _("Os dados informados são longos demais.")}), 400
 
         # ⚠️ O email é OPCIONAL aqui (nas contas locais ninguém é obrigado a
         # dar um), mas quando vem tem de ter forma: é por ele que o Seerr

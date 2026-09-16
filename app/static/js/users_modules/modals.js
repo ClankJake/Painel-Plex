@@ -72,7 +72,7 @@ export function showInviteDetailsModal(details) {
                 ${claimedUsersList.map(user => `<li>${sanitizeHTML(user)}</li>`).join('')}
             </ul>`;
     } else {
-        historyHtml = `<p class="text-sm text-gray-500 italic">${i18n.noUsesYet || 'Nenhum uso registado.'}</p>`;
+        historyHtml = `<p class="text-sm text-gray-500 italic">${i18n.noUsesYet || 'Nenhum uso registrado.'}</p>`;
     }
 
     const dateCreated = formatDateTime(created_at);
@@ -780,7 +780,7 @@ export function showExtendTrialModal(user) {
         }
 
         confirmButton.disabled = true;
-        confirmButton.textContent = i18n.extending || 'A estender...';
+        confirmButton.textContent = i18n.extending || 'Estendendo...';
 
         try {
             const result = await api.extendTrial(user.id, { extend_minutes });
@@ -889,7 +889,7 @@ export async function showReactivationModal(user) {
         }
 
         confirmButton.disabled = true;
-        confirmButton.textContent = i18n.reactivating || 'A reativar...';
+        confirmButton.textContent = i18n.reactivating || 'Reativando...';
 
         try {
             const result = await api.reactivateUser(user.id, selectedLibraries);

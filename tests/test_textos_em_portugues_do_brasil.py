@@ -47,8 +47,29 @@ MARCAS = [
     (r'\bestá a [a-zç]+ar\b', 'está + gerúndio ("está salvando")'),
     # Só o RÓTULO de carregamento: "obriga o usuário a entrar" é português do
     # Brasil correto e não pode ser apanhado aqui.
-    (r'^A (entrar|guardar|enviar|criar|alterar|conectar|reconectar|carregar|ligar)\b',
+    #
+    # ⚠️ A lista de verbos era escrita à mão, e por isso tinha buracos: "A
+    # reativar...", "A restaurar...", "A zerar...", "A gravar..." e mais uma
+    # dúzia passavam à vontade — um rótulo que a pessoa lê a cada operação
+    # demorada do painel. Hoje vale para QUALQUER verbo no infinitivo, que é o
+    # que define a forma ("A" + infinitivo), em vez de uma lista que alguém tem
+    # de se lembrar de alargar. A maiúscula é o que distingue isto de português
+    # do Brasil correto: só se apanha no INÍCIO do texto.
+    (r'^A [a-zà-ú]+[aei]r\b',
      'gerúndio ("Salvando...", "Enviando...")'),
+    # A família do "registo": em pt-PT regista-se, no Brasil registra-se.
+    # O 'r' é o que distingue as duas famílias: registo/registado/registar de
+    # um lado, registro/registrado/registrar do outro. A negação apanha todas as
+    # formas europeias de uma vez, incluindo as que ninguém se lembraria de
+    # listar ("registámos", "registando").
+    (r'\bregist(?!r)[a-zà-ú]*\b', 'registro / registrado / registra'),
+    # O particípio: em pt-PT "aceite", no Brasil "aceito".
+    (r'\baceites?\b', 'aceito'),
+    (r'\butiliza(ção|ções)\b', 'uso / usos'),
+    # "precisa de resgatar" -> "precisa resgatar"; "necessita de" não existe
+    # no registro falado brasileiro.
+    (r'\b(precisa|necessita|necessitam|precisam) de [a-zà-ú]+[aei]r\b',
+     'o verbo sem a preposição ("precisa resgatar")'),
     # A ênclise antes do infinitivo: "para a criar" -> "para criá-la".
     (r'\bpara (a|o|as|os) [a-zà-ú]+ar\b', 'o pronome depois do verbo ("para criá-la")'),
     (r'\bcontrolo\b', 'controle'),

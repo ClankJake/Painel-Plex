@@ -145,7 +145,7 @@ class JellyfinAccountManager(InvitationLifecycle):
         # greenlets. Dois resgates simultâneos do mesmo código passavam ambos.
         if not self.data_manager.reserve_invitation_use(code, username, None):
             logger.warning(f"Resgate do convite '{mask_code(code)}' recusado: as vagas esgotaram-se entretanto.")
-            return {"success": False, "message": _("Este convite já atingiu o seu limite máximo de utilizações.")}
+            return {"success": False, "message": _("Este convite já atingiu o limite máximo de usos.")}
 
         try:
             criado = self.create_account(username, password)
@@ -211,7 +211,7 @@ class JellyfinAccountManager(InvitationLifecycle):
         if existente and (existente.get('trial_end_date') or existente.get('status') == 'inactive'):
             return {
                 "success": False,
-                "message": _("Já utilizou um período de teste anteriormente. Para continuar a utilizar o serviço, adquira um plano."),
+                "message": _("Já utilizou um período de teste anteriormente. Para continuar usando o serviço, contrate um plano."),
             }
         return None
 

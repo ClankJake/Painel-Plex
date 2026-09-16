@@ -140,7 +140,7 @@ class TautulliApiClient:
             
         try:
             api_url = f"{url.rstrip('/')}/api/v2"
-            logger.info(_("A testar a conexão de configuração com o Tautulli em: %(url)s", url=api_url))
+            logger.info(_("Testando a conexão de configuração com o Tautulli em: %(url)s", url=api_url))
             
             # Como é um teste isolado e único, usa requests base sem polling para testar a rota "crua"
             response = requests.get(

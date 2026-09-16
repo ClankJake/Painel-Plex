@@ -85,7 +85,7 @@ class PlexInviteManager(InvitationLifecycle):
             or username in invitation.get('claimed_by_users', [])
         )
         if ja_resgatou:
-            return {"success": False, "message": _("Já resgatou este convite anteriormente.")}
+            return {"success": False, "message": _("Você já resgatou este convite.")}
             
         # 🛡️ 1.5. SISTEMA ANTI-BURLA (O bloqueio de espertinhos)
         # Verifica se esta conta do Plex já faz parte do nosso sistema
@@ -98,14 +98,14 @@ class PlexInviteManager(InvitationLifecycle):
                 logger.warning(f"O utilizador inativo '{username}' tentou usar o convite '{mask_code(code)}' para contornar o pagamento.")
                 return {
                     "success": False,
-                    "message": _("Sua conta encontra-se inativa ou expirada. Por favor, acesse à página minha conta para renovar a assinatura em vez de utilizar um novo convite.")
+                    "message": _("Sua conta encontra-se inativa ou expirada. Acesse a página Minha Conta para renovar a assinatura, em vez de usar um convite novo.")
                 }
             
             # Se o utilizador já está ativo, não precisa de gastar um convite
             if existing_profile.get('status') == 'active':
                 return {
                     "success": False,
-                    "message": _("Você já possui acesso ativo a este servidor. Não necessita de resgatar novos convites.")
+                    "message": _("Você já possui acesso ativo a este servidor. Não precisa resgatar convites novos.")
                 }
         
         # 2. Prevenção de Abuso de Testes (Trials)
@@ -114,7 +114,7 @@ class PlexInviteManager(InvitationLifecycle):
                 logger.warning(f"Bloqueio de Abuso: O utilizador {username} tentou resgatar um segundo convite de teste.")
                 return {
                     "success": False, 
-                    "message": _("Já utilizou um período de teste anteriormente. Para continuar a utilizar o serviço, adquira um plano.")
+                    "message": _("Já utilizou um período de teste anteriormente. Para continuar usando o serviço, contrate um plano.")
                 }
         
         telegram_id_from_invite = self._handle_telegram_linking(invitation, username)
@@ -127,7 +127,7 @@ class PlexInviteManager(InvitationLifecycle):
         # A reserva é atómica na base de dados, por isso só um pode ganhar.
         if not self.data_manager.reserve_invitation_use(code, username, media_user_id):
             logger.warning(f"Resgate do convite '{mask_code(code)}' recusado: as vagas esgotaram-se entretanto.")
-            return {"success": False, "message": _("Este convite já atingiu o seu limite máximo de utilizações.")}
+            return {"success": False, "message": _("Este convite já atingiu o limite máximo de usos.")}
 
         # A partir daqui, QUALQUER saída sem sucesso tem de devolver a vaga —
         # caso contrário uma tentativa falhada queimava uma utilização do convite.
@@ -144,7 +144,7 @@ class PlexInviteManager(InvitationLifecycle):
                 return invite_result
             if invite_result.get("already_exists"):
                 self.data_manager.release_invitation_use(code, username, media_user_id)
-                return {"success": False, "message": _("Já tem acesso a este servidor.")}
+                return {"success": False, "message": _("Você já tem acesso a este servidor.")}
 
             accept_result = self._accept_invite_v2(account)
             if not accept_result.get("success"):
@@ -534,7 +534,7 @@ class PlexInviteManager(InvitationLifecycle):
                 return accept_result
 
             self._apply_online_media_preferences(user_account)
-            return {"success": True, "message": _("Convite aceite com sucesso."), "user": user_account}
+            return {"success": True, "message": _("Convite aceito com sucesso."), "user": user_account}
             
         except Exception as e:
             logger.error(f"Erro ao processar aceite manual via token: {e}")

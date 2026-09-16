@@ -469,7 +469,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const original = restoreSubmit.textContent;
         restoreSubmit.disabled = true;
-        restoreSubmit.textContent = i18n.restoring || 'A restaurar...';
+        restoreSubmit.textContent = i18n.restoring || 'Restaurando...';
 
         try {
             const formData = new FormData();

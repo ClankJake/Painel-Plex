@@ -1046,7 +1046,7 @@ def add_manual_payment_route():
                        alvo_id=payment.get('txid') if isinstance(payment, dict) else None,
                        detalhes={'media_user_id': media_user_id, 'username': user['username'],
                                  'valor': value, 'descricao': desc, 'data': payment_date})
-        return jsonify({"success": True, "message": _("Pagamento registado."), "payment": payment})
+        return jsonify({"success": True, "message": _("Pagamento registrado."), "payment": payment})
     except Exception as e:
         extensions.db.session.rollback()
         logger.error(f"Erro ao adicionar pagamento manual: {e}", exc_info=True)

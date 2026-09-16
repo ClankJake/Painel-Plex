@@ -189,7 +189,7 @@ class InvitationLifecycle:
             return None, _("Convite não encontrado.")
         
         if invitation.get('use_count', 0) >= invitation.get('max_uses', 1):
-            return None, _("Este convite já atingiu o seu limite máximo de utilizações.")
+            return None, _("Este convite já atingiu o limite máximo de usos.")
 
         # Esta rota é pública: uma data mal formada na base de dados (edição
         # manual, importação antiga, valor sem fuso horário — comparar um
