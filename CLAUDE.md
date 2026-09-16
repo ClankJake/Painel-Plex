@@ -295,6 +295,32 @@ ficheiro trancado, a segunda ligação espera o `busy_timeout` inteiro, trinta
 segundos para gravar uma data. Não há nada pendente a arrastar: isto corre
 antes do corpo da rota, e os dois `before_request` do painel só leem.
 
+⚠️ **O contacto pré-atribuído a um convite é por CANAL, e o mapa é a porta
+única.** `CONTACTOS` (em `media_server/invitations.py`) liga cada canal às suas
+duas colunas, que **têm nomes diferentes dos dois lados**:
+`invitations.telegram_id` contra `user_profiles.telegram_user`,
+`invitations.discord_id` contra `user_profiles.discord_user_id`. A divergência
+já custou um bug — código a ler `profile.get("telegram_id")`, que devolve
+sempre `None` porque essa coluna não existe no perfil, e a parecer funcionar
+por causa de um `or` à frente. Acrescentar um canal é uma linha no mapa, e não
+a terceira cópia das mesmas quatro verificações.
+
+🛡️ **Duas pessoas não podem ficar no mesmo contacto**, e é por isso que a
+criação recusa (409) um ID já vinculado ou já num convite ATIVO: as
+notificações de uma iriam para a outra, e entre elas vai o link de pagamento,
+que funciona para quem o tiver. Um convite gasto ou expirado não bloqueia — já
+não vai vincular ninguém.
+
+🐛 **E `resolver_contactos_do_convite` é do ciclo de vida partilhado porque o
+Jellyfin nasceu sem ele.** Vivia só no backend do Plex, como
+`_handle_telegram_linking`: um convite gerado por um bot para um contacto
+concreto criava a conta no Jellyfin e o perfil ficava SEM o vínculo — a pessoa
+entrava e nunca mais recebia um aviso de vencimento, porque o painel não sabia
+por onde lhe falar. A mesma família do `agendar_fim_do_teste` e do
+`resolver_indicacao_pendente`. ⚠️ Ele revalida no RESGATE: entre gerar o
+convite e usá-lo o ID pode ter passado a ser de outra pessoa, e nesse caso o
+registo prossegue — o que se ignora é só o vínculo.
+
 🔔 **Um convite resgatado avisa o administrador por push**
 (`send_invite_claimed_admin_notification`, com o seu interruptor
 `PUSH_ADMIN_INVITES`). O sino do painel só avisa quem está com ele aberto, e
