@@ -111,12 +111,16 @@ def load_or_create_config():
             "PUSH_ENABLED": False,
             "PUSH_VAPID_PUBLIC_KEY": "",
             "PUSH_VAPID_PRIVATE_KEY": "",
+            # O segredo que entra no resumo das chaves de API. Nasce na
+            # primeira chave criada e nunca muda: trocá-lo invalida todas.
+            "API_KEYS_PEPPER": "",
             # Contato de quem envia, que a norma pede no JWT ("mailto:..." ou um
             # endereço). Vazio usa a APP_BASE_URL.
             "PUSH_VAPID_SUBJECT": "",
             # O que o ADMINISTRADOR quer receber no celular dele.
             "PUSH_ADMIN_PAYMENTS": True,
             "PUSH_ADMIN_MEDIA_REQUESTS": True,
+            "PUSH_ADMIN_INVITES": True,
             "DAYS_TO_NOTIFY_EXPIRATION": 2,
             "EFI_ENABLED": False,
             "EFI_CLIENT_ID": "",
@@ -230,6 +234,10 @@ def load_or_create_config():
             "IMAGE_CACHE_CLEANUP_TIME": "04:00",
             "SHORT_LINK_CLEANUP_ENABLED": True,
             "SHORT_LINK_MAX_AGE_DAYS": 30,
+            # Ao fim de quantos dias um convite que NINGUÉM resgatou é apagado.
+            # Os que foram resgatados ficam para sempre: são eles que respondem
+            # ao "membro desde" de quem entrou por eles. 0 desliga a limpeza.
+            "INVITE_CLEANUP_DAYS": 90,
             "BACKUP_ENABLED": False,
             "BACKUP_TIME": "05:00",
             "BACKUP_MAX_COUNT": 7
@@ -301,9 +309,11 @@ def load_or_create_config():
             _set_default("PUSH_ENABLED", False)
             _set_default("PUSH_VAPID_PUBLIC_KEY", "")
             _set_default("PUSH_VAPID_PRIVATE_KEY", "")
+            _set_default("API_KEYS_PEPPER", "")
             _set_default("PUSH_VAPID_SUBJECT", "")
             _set_default("PUSH_ADMIN_PAYMENTS", True)
             _set_default("PUSH_ADMIN_MEDIA_REQUESTS", True)
+            _set_default("PUSH_ADMIN_INVITES", True)
             _set_default("DISCORD_WEBHOOK_URL", "")
             _set_default("LAST_NOTIFICATION_CHECK", "1970-01-01T00:00:00")
             _set_default("EFI_ENABLED", False)
@@ -404,6 +414,7 @@ def load_or_create_config():
             _set_default("IMAGE_CACHE_CLEANUP_TIME", "04:00")
             _set_default("SHORT_LINK_CLEANUP_ENABLED", True)
             _set_default("SHORT_LINK_MAX_AGE_DAYS", 30)
+            _set_default("INVITE_CLEANUP_DAYS", 90)
             _set_default("BACKUP_ENABLED", False)
             _set_default("BACKUP_TIME", "05:00")
             _set_default("BACKUP_MAX_COUNT", 7)

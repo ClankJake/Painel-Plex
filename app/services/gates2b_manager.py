@@ -148,7 +148,7 @@ class Gates2bManager:
             logger.warning(f"Cobrança Gates2b recusada localmente: R$ {float(price):.2f} é inferior ao mínimo de R$ {minimo:.2f}.")
             return {
                 "success": False,
-                "message": _("O valor mínimo aceite pelo gateway é de R$ %(min).2f. Ajuste o preço do plano ou o desconto aplicado.", min=minimo)
+                "message": _("O valor mínimo aceito pelo gateway é de R$ %(min).2f. Ajuste o preço do plano ou o desconto aplicado.", min=minimo)
             }
 
         endpoint = f"{self.base_url}/charge"

@@ -9,6 +9,10 @@
 
 export const userGrid = document.getElementById('userGrid');
 export const inviteListDiv = document.getElementById('inviteList');
+export const invitePagination = document.getElementById('invitePagination');
+export const invitePrev = document.getElementById('invitePrev');
+export const inviteNext = document.getElementById('inviteNext');
+export const invitePageLabel = document.getElementById('invitePageLabel');
 export const createInviteButton = document.getElementById('createInviteButton');
 export const refreshButton = document.getElementById('refreshButton');
 export const searchInput = document.getElementById('searchInput');

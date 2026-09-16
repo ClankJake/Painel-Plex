@@ -55,7 +55,7 @@ class PlexConnectionManager:
         Retorna um tuplo (sucesso, mensagem_de_status).
         """
         if not from_job:
-            logger.info(_("A iniciar conexão com o servidor Plex..."))
+            logger.info(_("Iniciando a conexão com o servidor Plex..."))
         else:
             logger.debug("A verificar conexão com o Plex (Background Job)...")
 

@@ -254,15 +254,30 @@ class TestConvites:
         assert data_manager.get_all_pending_invitations() == []
         assert len(data_manager.get_all_invitations()) == 1
 
-    def test_reset_reativa_e_limpa_a_expiracao_passada(self, data_manager):
-        data_manager.add_invitation("ABC123", self._detalhes(max_uses=1, expires_at=iso(-1)))
+    def test_reset_reativa_e_da_validade_nova_a_um_convite_expirado(self, data_manager):
+        """
+        🐛 A validade não era estendida, era APAGADA: `expires_at = None` quer
+        dizer "não expira", por isso um convite promocional reativado por
+        engano passava a valer para sempre. Agora recebe outra vez a MESMA
+        janela que teve à partida, contada de agora.
+        """
+        from datetime import datetime, timezone
+
+        # Criado há três dias para expirar há um: uma janela de dois dias.
+        data_manager.add_invitation("ABC123", self._detalhes(
+            max_uses=1, created_at=iso(-3), expires_at=iso(-1),
+        ))
         data_manager.increment_invitation_use("ABC123", "ana")
 
         assert data_manager.reset_invitation_usage("ABC123") is True
 
         convite = data_manager.get_invitation("ABC123")
         assert convite["use_count"] == 0
-        assert convite["expires_at"] is None
+        assert convite["expires_at"] is not None, "reativar não pode tornar o convite eterno"
+
+        nova = datetime.fromisoformat(convite["expires_at"])
+        faltam = (nova - datetime.now(timezone.utc)).total_seconds() / 86400
+        assert 1.9 < faltam < 2.1, "a janela nova devia ser a mesma de dois dias"
 
     def test_apagar_convite(self, data_manager):
         data_manager.add_invitation("ABC123", self._detalhes())

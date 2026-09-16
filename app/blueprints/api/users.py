@@ -373,7 +373,12 @@ def get_status():
     return jsonify({
         'users': sorted(all_users_to_return, key=lambda u: (u.get('username') or '').lower()),
         'libraries': extensions.media_server.get_libraries(),
-        'telegram_enabled': config.get("TELEGRAM_ENABLED", False)
+        # Que canais de contacto podem ser pré-atribuídos a um convite. A
+        # interface esconde o campo do canal que não está ligado: pedir um
+        # Discord ID num painel sem Discord configurado é pedir um dado que
+        # nunca vai ser usado.
+        'telegram_enabled': config.get("TELEGRAM_ENABLED", False),
+        'discord_enabled': config.get("DISCORD_ENABLED", False),
     })
 
 @users_api_bp.route('/list')
@@ -648,7 +653,7 @@ def renew_user_subscription_route(user, validated_data):
             )
             # Cria a notificação para o Admin (sino vermelho)
             extensions.data_manager.create_notification(
-                message=_("Renovação manual de %(username)s (%(value)s) registada.", username=user['username'], value=f"R$ {total_value:.2f}"),
+                message=_("Renovação manual de %(username)s (%(value)s) registrada.", username=user['username'], value=f"R$ {total_value:.2f}"),
                 category='success', link=url_for('main.users_page')
             )
         extensions.db.session.commit()

@@ -440,3 +440,1182 @@ class TestAcessoAosPedidosNoResgate:
         gestor = _gestor(data_manager, envio={"success": True})
 
         assert gestor._dar_acesso_aos_pedidos(_ContaPlex(10, "ana", "ana@exemplo.pt")) is False
+
+
+class TestLimitesNumericos:
+    """
+    🐛 Os campos de tempo tinham `ge=0` e mais nada, e `create_invitation`
+    soma-os a `datetime.now()`. Um número grande o suficiente levantava
+    `OverflowError: date value out of range` — um 500 com traceback numa rota
+    que tinha acabado de validar a entrada.
+
+    O `trial_duration_minutes` era o pior dos dois: a CRIAÇÃO passava e só o
+    RESGATE rebentava, na cara de quem estava a entrar.
+    """
+
+    @pytest.mark.parametrize("campo", ["expires_in_minutes", "trial_duration_minutes"])
+    def test_um_tempo_impossivel_e_recusado_e_nao_rebenta(self, admin, db_session, campo):
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], campo: 10 ** 12,
+        })
+        assert resposta.status_code == 400
+
+    def test_um_numero_de_usos_absurdo_e_recusado(self, admin, db_session):
+        """Mil milhões de vagas é um convite público e eterno criado por engano."""
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "max_uses": 10 ** 9,
+        })
+        assert resposta.status_code == 400
+
+    def test_os_valores_normais_continuam_a_passar(self, admin, db_session):
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "expires_in_minutes": 1440,
+            "trial_duration_minutes": 60, "max_uses": 5,
+        })
+        assert resposta.status_code != 400
+
+    def test_um_convite_ja_gravado_com_um_tempo_impossivel_nao_rebenta(self, app_context, data_manager):
+        """
+        O esquema defende a ENTRADA; isto defende o que já está na base de
+        dados. Um convite criado antes deste limite existir continua lá com o
+        valor absurdo, e quem o resgatasse levava com o `OverflowError`.
+        """
+        from app.services.media_server.invitations import _minutos_seguros, TETO_DE_MINUTOS
+
+        assert _minutos_seguros(10 ** 12) == TETO_DE_MINUTOS
+        assert _minutos_seguros(10 ** 20) == TETO_DE_MINUTOS
+        assert _minutos_seguros(60) == 60
+        assert _minutos_seguros(0) == 0
+        assert _minutos_seguros(None) == 0
+        assert _minutos_seguros("nem um número") == 0
+
+    def test_o_teto_continua_a_dar_uma_data_valida(self, app_context, data_manager):
+        from app.services.media_server.invitations import TETO_DE_MINUTOS
+
+        data_manager.add_invitation("TETO", detalhes())
+        # O que interessa é não levantar: a data tem de ser representável.
+        from datetime import datetime as dt
+        assert dt.now(timezone.utc) + timedelta(minutes=TETO_DE_MINUTOS)
+
+
+class TestApagarUmConviteQueNaoExiste:
+    """
+    🐛 O retorno do `data_manager` era deitado fora e a resposta era sempre
+    "Convite removido com sucesso" — mesmo para um código que nunca existiu.
+    Quem apagasse pelo código errado ficava convencido de que tinha apagado.
+    """
+
+    def test_apagar_um_codigo_inexistente_diz_que_nao_existe(self, admin, db_session):
+        resposta = admin.post("/api/invites/delete", json={"code": "NUNCA-EXISTIU"})
+        assert resposta.get_json()["success"] is False
+
+    def test_apagar_um_convite_a_serio_continua_a_funcionar(self, admin, data_manager):
+        data_manager.add_invitation("PARA-APAGAR", detalhes())
+        resposta = admin.post("/api/invites/delete", json={"code": "PARA-APAGAR"})
+        assert resposta.get_json()["success"] is True
+        assert data_manager.get_invitation("PARA-APAGAR") is None
+
+
+class TestEnderecoDoConvite:
+    """
+    🐛 O `invite_url` era montado com `url_for(_external=True)`, que lê o
+    endereço do PEDIDO. Um bot que corre na mesma rede de contentores chama o
+    painel pelo nome interno, e o link que ele recebia — e mandava para o
+    Telegram de quem ia entrar — só funcionava de dentro dessa rede.
+
+    O resto do painel (o link de pagamento, o de reposição de palavra-passe) já
+    resolvia isto com a `APP_BASE_URL`.
+    """
+
+    def test_o_link_respeita_a_app_base_url(self, admin, db_session, config_file):
+        config_file(IS_CONFIGURED=True, APP_BASE_URL="https://painel.exemplo.com")
+        resposta = admin.post("/api/invites/create", json={"libraries": ["Filmes"]})
+        dados = resposta.get_json()
+        assert dados["success"] is True
+        assert dados["invite_url"].startswith("https://painel.exemplo.com/invite/")
+
+    def test_uma_barra_a_mais_no_fim_nao_duplica(self, admin, db_session, config_file):
+        config_file(IS_CONFIGURED=True, APP_BASE_URL="https://painel.exemplo.com/")
+        resposta = admin.post("/api/invites/create", json={"libraries": ["Filmes"]})
+        assert "//invite/" not in resposta.get_json()["invite_url"].replace("https://", "")
+
+    def test_sem_app_base_url_continua_a_usar_o_pedido(self, admin, db_session, config_file):
+        config_file(IS_CONFIGURED=True, APP_BASE_URL="")
+        resposta = admin.post("/api/invites/create", json={"libraries": ["Filmes"]})
+        assert resposta.get_json()["invite_url"].startswith("http://localhost/invite/")
+
+
+class _ServidorFalso:
+    """O mínimo da fachada que as rotas de criação tocam.
+
+    `criar_a_serio` manda a criação para o ciclo de vida REAL: é o que permite
+    testar os conflitos (código repetido, Telegram ID já com convite), que são
+    decididos lá e não aqui.
+    """
+
+    def __init__(self, bibliotecas=('Filmes', 'Séries'), rebenta=False, criar_a_serio=False):
+        self.bibliotecas = list(bibliotecas)
+        self.rebenta = rebenta
+        self.criar_a_serio = criar_a_serio
+        self.criados = []
+
+    def get_libraries(self):
+        if self.rebenta:
+            raise RuntimeError("servidor em baixo")
+        # A forma REAL do contrato: uma lista, não um dicionário com 'success'.
+        return [{'title': t, 'key': str(i)} for i, t in enumerate(self.bibliotecas)]
+
+    def create_invitation(self, **kwargs):
+        self.criados.append(kwargs)
+        if self.criar_a_serio:
+            from app.extensions import media_server
+            return media_server.create_invitation(**kwargs)
+        return {"success": True, "code": "CODIGO", "message": "ok"}
+
+    def delete_invitation(self, code):
+        from app.extensions import media_server
+        return media_server.delete_invitation(code)
+
+    def list_invitations(self):
+        from app.extensions import media_server
+        return media_server.list_invitations()
+
+
+@pytest.fixture()
+def servidor_falso(monkeypatch):
+    duplo = _ServidorFalso()
+    monkeypatch.setattr('app.blueprints.api.invites.media_server', duplo)
+    return duplo
+
+
+@pytest.fixture()
+def servidor_que_cria_a_serio(monkeypatch):
+    """As bibliotecas são do duplo; a criação do convite é a de verdade."""
+    duplo = _ServidorFalso(criar_a_serio=True)
+    monkeypatch.setattr('app.blueprints.api.invites.media_server', duplo)
+    return duplo
+
+
+class TestBibliotecasDoConvite:
+    """
+    🐛 Um convite era aceite com QUALQUER nome de biblioteca. A falha só
+    aparecia no RESGATE, dentro do `send_invite` — quem pagava o engano do
+    administrador era quem tinha acabado de clicar no link.
+    """
+
+    def test_uma_biblioteca_que_nao_existe_e_recusada_logo(self, admin, db_session, servidor_falso):
+        resposta = admin.post("/api/invites/create", json={"libraries": ["Documentários"]})
+        assert resposta.status_code == 400
+        assert "Documentários" in resposta.get_json()["message"]
+        assert servidor_falso.criados == []
+
+    def test_a_grafia_do_servidor_e_a_que_fica_gravada(self, admin, db_session, servidor_falso):
+        """
+        O backend do Plex compara `s.title in library_titles` exatamente: um
+        convite criado com "filmes" num servidor que tem "Filmes" nascia com
+        uma biblioteca que nunca ia ser encontrada.
+        """
+        resposta = admin.post("/api/invites/create", json={"libraries": ["filmes", "SÉRIES"]})
+        assert resposta.status_code == 200
+        assert servidor_falso.criados[0]["library_titles"] == ["Filmes", "Séries"]
+
+    def test_o_servidor_em_baixo_nao_impede_criar_um_convite(self, admin, db_session, monkeypatch):
+        """Não saber que bibliotecas existem não é o mesmo que saber que não existem."""
+        duplo = _ServidorFalso(rebenta=True)
+        monkeypatch.setattr('app.blueprints.api.invites.media_server', duplo)
+
+        resposta = admin.post("/api/invites/create", json={"libraries": ["Filmes"]})
+        assert resposta.status_code == 200
+        assert duplo.criados[0]["library_titles"] == ["Filmes"]
+
+
+class TestBibliotecasNoEndpointDosBots:
+    """
+    🐛 `get_libraries()` devolve uma LISTA e o código pedia-lhe
+    `.get('success')`. O `AttributeError` caía no `except` mesmo com o servidor
+    a responder: o campo que a documentação anuncia como opcional dava sempre
+    400, e nenhum bot podia deixar de conhecer os nomes das bibliotecas.
+    """
+
+    def _chave(self):
+        from app.config import load_or_create_config
+        return str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')
+
+    def test_sem_bibliotecas_usa_todas_as_do_servidor(self, client, configurada, db_session, servidor_falso):
+        resposta = client.post(
+            "/api/invites/bot/create",
+            json={"telegram_id": 123456789},
+            headers={"X-API-Key": self._chave()},
+        )
+        assert resposta.status_code == 201
+        assert servidor_falso.criados[0]["library_titles"] == ["Filmes", "Séries"]
+
+    def test_uma_biblioteca_inventada_pelo_bot_e_recusada(self, client, configurada, db_session, servidor_falso):
+        resposta = client.post(
+            "/api/invites/bot/create",
+            json={"telegram_id": 123456789, "libraries": ["Anime"]},
+            headers={"X-API-Key": self._chave()},
+        )
+        assert resposta.status_code == 400
+        assert servidor_falso.criados == []
+
+
+class TestReativarNaoTornaOConviteEterno:
+    def test_um_convite_expirado_ganha_a_mesma_janela(self, admin, data_manager):
+        data_manager.add_invitation("PROMO-24H", detalhes(
+            max_uses=1, created_at=iso(-3), expires_at=iso(-1),
+        ))
+        data_manager.increment_invitation_use("PROMO-24H", "ana")
+
+        resposta = admin.post("/api/invites/reactivate", json={"code": "PROMO-24H"})
+
+        assert resposta.get_json()["success"] is True
+        assert data_manager.get_invitation("PROMO-24H")["expires_at"] is not None
+
+    def test_um_convite_sem_prazo_continua_sem_prazo(self, admin, data_manager):
+        """E a mensagem não pode prometer uma validade que não existe."""
+        data_manager.add_invitation("SEM-PRAZO", detalhes(max_uses=1, expires_at=None))
+        data_manager.increment_invitation_use("SEM-PRAZO", "ana")
+
+        resposta = admin.post("/api/invites/reactivate", json={"code": "SEM-PRAZO"})
+        dados = resposta.get_json()
+
+        assert dados["success"] is True
+        assert data_manager.get_invitation("SEM-PRAZO")["expires_at"] is None
+        assert "não tem prazo" in dados["message"]
+
+    def test_um_convite_ainda_valido_mantem_a_data_que_tinha(self, admin, data_manager):
+        futuro = iso(5)
+        data_manager.add_invitation("AINDA-VALE", detalhes(max_uses=1, expires_at=futuro))
+        data_manager.increment_invitation_use("AINDA-VALE", "ana")
+
+        admin.post("/api/invites/reactivate", json={"code": "AINDA-VALE"})
+
+        assert data_manager.get_invitation("AINDA-VALE")["expires_at"] == futuro
+
+    def test_uma_data_corrompida_nao_rebenta_a_reativacao(self, admin, data_manager):
+        data_manager.add_invitation("DATA-MA", detalhes(max_uses=1, expires_at="nem-uma-data"))
+
+        resposta = admin.post("/api/invites/reactivate", json={"code": "DATA-MA"})
+
+        assert resposta.get_json()["success"] is True
+        assert data_manager.get_invitation("DATA-MA")["expires_at"] is not None
+
+
+class TestIdentidadeRegistadaNoConvite:
+    """
+    🐛 Onde as contas são LOCAIS, a vaga é reservada antes de a conta existir —
+    e por isso sem ID. Isso era corrigido com um `release` seguido de um
+    `reserve`, e entre os dois a vaga ficava LIVRE: com o worker gevent, outro
+    resgate podia ficar com ela, o `reserve` seguinte devolvia False (que
+    ninguém verificava) e o ID nunca chegava ao convite.
+    """
+
+    def test_o_id_entra_sem_gastar_outra_vaga(self, app_context, data_manager):
+        data_manager.add_invitation("LOCAL", detalhes(max_uses=1))
+        data_manager.reserve_invitation_use("LOCAL", "ana", None)
+
+        assert data_manager.registar_identidade_no_convite("LOCAL", "ana", "guid-da-ana") is True
+
+        convite = data_manager.get_invitation("LOCAL")
+        assert convite["use_count"] == 1, "registar o ID não é gastar outra vaga"
+        assert convite["claimed_by_ids"] == ["guid-da-ana"]
+        assert convite["claimed_by_users"] == ["ana"]
+
+    def test_um_convite_esgotado_continua_a_aceitar_o_id_de_quem_o_gastou(self, app_context, data_manager):
+        """
+        É este o caso que o `release`+`reserve` perdia: com as vagas esgotadas
+        entretanto, o segundo `reserve` falhava e a pessoa ficava sem ID.
+        """
+        data_manager.add_invitation("LOCAL", detalhes(max_uses=1))
+        data_manager.reserve_invitation_use("LOCAL", "ana", None)
+        assert data_manager.reserve_invitation_use("LOCAL", "bruno", None) is False
+
+        assert data_manager.registar_identidade_no_convite("LOCAL", "ana", "guid-da-ana") is True
+        assert data_manager.get_invitation("LOCAL")["claimed_by_ids"] == ["guid-da-ana"]
+
+    def test_repetir_nao_duplica(self, app_context, data_manager):
+        data_manager.add_invitation("LOCAL", detalhes(max_uses=1))
+        data_manager.reserve_invitation_use("LOCAL", "ana", None)
+
+        data_manager.registar_identidade_no_convite("LOCAL", "ana", "guid-da-ana")
+        data_manager.registar_identidade_no_convite("LOCAL", "ana", "guid-da-ana")
+
+        convite = data_manager.get_invitation("LOCAL")
+        assert convite["claimed_by_ids"] == ["guid-da-ana"]
+        assert convite["claimed_by_users"] == ["ana"]
+
+    def test_um_convite_que_nao_existe_diz_que_nao(self, app_context, data_manager):
+        assert data_manager.registar_identidade_no_convite("NADA", "ana", "guid") is False
+
+
+class TestChaveDeApi:
+    """
+    A verificação da chave existia copiada em dois sítios e as cópias já tinham
+    divergido: o webhook do Overseerr aceitava o `Authorization` sem o prefixo
+    `Bearer` e o endpoint dos convites não. Quem configurasse os dois com o
+    mesmo cliente levava 401 num deles sem perceber porquê.
+    """
+
+    def _chave(self):
+        from app.config import load_or_create_config
+        return str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')
+
+    def _criar(self, client, headers):
+        return client.post("/api/invites/bot/create", json={"telegram_id": 1}, headers=headers)
+
+    def test_sem_chave_nenhuma(self, client, configurada, db_session, servidor_falso):
+        assert self._criar(client, {}).status_code == 401
+
+    def test_com_a_chave_errada(self, client, configurada, db_session, servidor_falso):
+        assert self._criar(client, {"X-API-Key": "nao-e-esta"}).status_code == 401
+
+    def test_x_api_key(self, client, configurada, db_session, servidor_falso):
+        assert self._criar(client, {"X-API-Key": self._chave()}).status_code == 201
+
+    def test_authorization_com_bearer(self, client, configurada, db_session, servidor_falso):
+        cabecalhos = {"Authorization": f"Bearer {self._chave()}"}
+        assert self._criar(client, cabecalhos).status_code == 201
+
+    def test_authorization_sem_bearer(self, client, configurada, db_session, servidor_falso):
+        """
+        A interface do Overseerr chama ao campo "Authorization", e quem o
+        preenche escreve lá a chave e mais nada. Os dois caminhos passam a
+        aceitar as duas formas.
+        """
+        assert self._criar(client, {"Authorization": self._chave()}).status_code == 201
+
+    def test_o_webhook_do_overseerr_usa_a_mesma_porta(self, client, configurada, db_session):
+        recusado = client.post("/api/system/webhook/overseerr", json={"notification_type": "TEST"})
+        assert recusado.status_code == 401
+
+        aceite = client.post(
+            "/api/system/webhook/overseerr",
+            json={"notification_type": "TEST"},
+            headers={"Authorization": self._chave()},
+        )
+        assert aceite.status_code == 200
+
+
+class TestAuditoriaDosConvites:
+    """
+    🛡️ Criar um convite CONCEDE ACESSO ao servidor, e nada disso deixava rasto.
+    Cupões, pagamentos e bloqueios eram todos auditados; os convites — a porta
+    de entrada — não.
+    """
+
+    def _linhas(self, acao=None):
+        from app.extensions import db
+        from sqlalchemy import text
+
+        with db.engine.begin() as ligacao:
+            filas = ligacao.execute(text(
+                'SELECT acao, alvo_id, detalhes, ator FROM audit_logs ORDER BY id'
+            )).fetchall()
+        return [f for f in filas if acao is None or f[0] == acao]
+
+    def test_criar_fica_registrado_com_o_que_o_convite_da(self, admin, db_session, servidor_falso):
+        admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "max_uses": 3, "screens": 2,
+        })
+
+        linhas = self._linhas('convite.criar')
+        assert len(linhas) == 1
+        assert linhas[0][1] == "CODIGO"
+        assert '"usos": 3' in linhas[0][2]
+        assert linhas[0][3] == "admin", "o administrador que criou tem de ficar nomeado"
+
+    def test_apagar_guarda_o_que_o_convite_era(self, admin, data_manager):
+        data_manager.add_invitation("PROMO", detalhes(max_uses=2))
+        data_manager.increment_invitation_use("PROMO", "ana")
+
+        admin.post("/api/invites/delete", json={"code": "PROMO"})
+
+        linhas = self._linhas('convite.apagar')
+        assert len(linhas) == 1
+        # Depois de apagado não há a quem perguntar o que ele era.
+        assert '"usos": "1/2"' in linhas[0][2]
+        assert 'ana' in linhas[0][2]
+
+    def test_apagar_um_convite_que_nao_existe_nao_regista_nada(self, admin, db_session):
+        admin.post("/api/invites/delete", json={"code": "NUNCA-EXISTIU"})
+        assert self._linhas('convite.apagar') == []
+
+    def test_reativar_fica_registrado(self, admin, data_manager):
+        data_manager.add_invitation("PROMO", detalhes(max_uses=1))
+        admin.post("/api/invites/reactivate", json={"code": "PROMO"})
+
+        assert len(self._linhas('convite.reativar')) == 1
+
+    def test_um_convite_criado_por_um_bot_nao_inventa_um_ator(self, client, configurada, db_session, servidor_falso):
+        from app.config import load_or_create_config
+
+        client.post(
+            "/api/invites/bot/create",
+            json={"telegram_id": 42},
+            headers={"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY'))},
+        )
+
+        linhas = self._linhas('convite.criar')
+        assert len(linhas) == 1
+        assert linhas[0][3] is None, "uma máquina não é uma pessoa; a coluna vazia diz a verdade"
+        assert '"origem": "bot"' in linhas[0][2]
+
+    def test_a_palavra_passe_do_resgate_nunca_entra_na_auditoria(self, app_context, monkeypatch):
+        """
+        🛡️ O corpo do resgate traz a senha que a pessoa acabou de escolher, e a
+        auditoria vai dentro do ZIP de backup. Só os campos escolhidos à mão.
+        """
+        from app.blueprints.api import invites as rotas
+
+        registados = []
+        monkeypatch.setattr(rotas.audit, 'registar',
+                            lambda *a, **k: registados.append((a, k)))
+
+        rotas._registar_resgate("CODIGO", {"success": True}, "ana")
+
+        assert len(registados) == 1
+        corpo = str(registados[0])
+        assert "senha" not in corpo.lower() and "password" not in corpo.lower()
+        assert "ana" in corpo
+
+    def test_um_resgate_falhado_nao_e_registrado_como_resgate(self, app_context, monkeypatch):
+        from app.blueprints.api import invites as rotas
+
+        registados = []
+        monkeypatch.setattr(rotas.audit, 'registar', lambda *a, **k: registados.append(a))
+        rotas._registar_resgate("CODIGO", {"success": False, "message": "expirou"}, "ana")
+
+        assert registados == []
+
+
+class TestAuditoriaDeUmConviteJaExpirado:
+    """
+    ⚠️ Um convite expirado ou esgotado é o que mais se apaga, e
+    `get_invitation_by_code` recusa-se a devolvê-lo (é a porta do resgate, não
+    a de leitura). A auditoria tem de ler a linha CRUA, ou ficava vazia
+    precisamente no caso comum.
+    """
+
+    def test_o_que_ele_era_fica_registrado_mesmo_expirado(self, admin, data_manager):
+        from app.extensions import db
+        from sqlalchemy import text
+
+        data_manager.add_invitation("VENCIDO", detalhes(max_uses=2, expires_at=iso(-5)))
+        data_manager.increment_invitation_use("VENCIDO", "ana")
+
+        admin.post("/api/invites/delete", json={"code": "VENCIDO"})
+
+        with db.engine.begin() as ligacao:
+            detalhe = ligacao.execute(text(
+                "SELECT detalhes FROM audit_logs WHERE acao = 'convite.apagar'"
+            )).scalar()
+
+        assert '"usos": "1/2"' in detalhe
+        assert 'ana' in detalhe
+
+
+class TestAApiDeBotsSabeResponderSobreUmConvite:
+    """
+    A API de bots só sabia CRIAR. Um bot que gerava um convite ficava sem saber
+    o que lhe tinha acontecido — a única alternativa era perguntar à pessoa — e
+    um link mandado para o chat errado não tinha como ser travado sem entrar no
+    painel, que é o que uma automação, por definição, não faz.
+    """
+
+    def _chave(self):
+        from app.config import load_or_create_config
+        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+
+    def test_um_convite_por_usar_diz_que_esta_ativo(self, client, configurada, data_manager):
+        data_manager.add_invitation("ABERTO", detalhes(max_uses=2))
+
+        dados = client.get("/api/invites/bot/invite/ABERTO", headers=self._chave()).get_json()
+
+        assert dados["invite"]["active"] is True
+        assert dados["invite"]["uses_left"] == 2
+        assert dados["invite"]["invite_url"].endswith("/invite/ABERTO")
+
+    def test_um_convite_gasto_diz_quem_o_gastou(self, client, configurada, data_manager):
+        data_manager.add_invitation("GASTO", detalhes(max_uses=1))
+        data_manager.increment_invitation_use("GASTO", "ana")
+
+        dados = client.get("/api/invites/bot/invite/GASTO", headers=self._chave()).get_json()
+
+        assert dados["invite"]["active"] is False
+        assert dados["invite"]["exhausted"] is True
+        assert dados["invite"]["claimed_by"] == ["ana"]
+        assert dados["invite"]["uses_left"] == 0
+
+    def test_um_convite_expirado_continua_a_ser_encontrado(self, client, configurada, data_manager):
+        """
+        ⚠️ Com a porta do RESGATE (`get_invitation_by_code`), um convite gasto
+        seria indistinguível de um que nunca existiu — e "expirado" é
+        precisamente a resposta que se veio buscar.
+        """
+        data_manager.add_invitation("VENCIDO", detalhes(expires_at=iso(-1)))
+
+        resposta = client.get("/api/invites/bot/invite/VENCIDO", headers=self._chave())
+
+        assert resposta.status_code == 200
+        assert resposta.get_json()["invite"]["expired"] is True
+
+    def test_um_convite_que_nao_existe_da_404(self, client, configurada, db_session):
+        resposta = client.get("/api/invites/bot/invite/NADA", headers=self._chave())
+        assert resposta.status_code == 404
+
+    def test_sem_chave_nao_se_pergunta_nada(self, client, configurada, data_manager):
+        data_manager.add_invitation("ABERTO", detalhes())
+        assert client.get("/api/invites/bot/invite/ABERTO").status_code == 401
+
+    def test_a_vista_publica_nao_leva_as_bibliotecas(self, client, configurada, data_manager):
+        """🔒 Os nomes das bibliotecas são infraestrutura do servidor."""
+        data_manager.add_invitation("ABERTO", detalhes())
+
+        dados = client.get("/api/invites/bot/invite/ABERTO", headers=self._chave()).get_json()
+
+        assert "libraries" not in dados["invite"]
+
+    def test_revogar_trava_o_link(self, client, configurada, data_manager):
+        data_manager.add_invitation("ENGANO", detalhes())
+
+        resposta = client.delete("/api/invites/bot/invite/ENGANO", headers=self._chave())
+
+        assert resposta.get_json()["success"] is True
+        assert data_manager.get_invitation("ENGANO") is None
+
+    def test_revogar_o_que_nao_existe_da_404(self, client, configurada, db_session):
+        assert client.delete("/api/invites/bot/invite/NADA", headers=self._chave()).status_code == 404
+
+    def test_revogar_deixa_rasto_na_auditoria(self, client, configurada, data_manager):
+        from app.extensions import db
+        from sqlalchemy import text
+
+        data_manager.add_invitation("ENGANO", detalhes())
+        client.delete("/api/invites/bot/invite/ENGANO", headers=self._chave())
+
+        with db.engine.begin() as ligacao:
+            detalhe = ligacao.execute(text(
+                "SELECT detalhes FROM audit_logs WHERE acao = 'convite.apagar'"
+            )).scalar()
+        assert '"origem": "bot"' in detalhe
+
+
+class TestOsConvitesDeUmTelegramId:
+    def _chave(self):
+        from app.config import load_or_create_config
+        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+
+    def test_so_os_daquela_pessoa(self, client, configurada, data_manager):
+        data_manager.add_invitation("DELE", detalhes(telegram_id="123"))
+        data_manager.add_invitation("DOUTRO", detalhes(telegram_id="999"))
+        data_manager.add_invitation("DE-NINGUEM", detalhes())
+
+        dados = client.get("/api/invites/bot/invites?telegram_id=123",
+                           headers=self._chave()).get_json()
+
+        assert [c["code"] for c in dados["invites"]] == ["DELE"]
+
+    def test_o_id_com_espacos_encontra_o_mesmo(self, client, configurada, data_manager):
+        """A mesma normalização da criação: '123' tem de encontrar ' 123 '."""
+        data_manager.add_invitation("DELE", detalhes(telegram_id=" 123 "))
+
+        dados = client.get("/api/invites/bot/invites?telegram_id=123",
+                           headers=self._chave()).get_json()
+
+        assert len(dados["invites"]) == 1
+
+    def test_sem_telegram_id_e_um_erro_do_pedido(self, client, configurada, db_session):
+        resposta = client.get("/api/invites/bot/invites", headers=self._chave())
+        assert resposta.status_code == 400
+
+    def test_ninguem_com_convites_devolve_uma_lista_vazia(self, client, configurada, db_session):
+        dados = client.get("/api/invites/bot/invites?telegram_id=555",
+                           headers=self._chave()).get_json()
+        assert dados["success"] is True and dados["invites"] == []
+
+
+class TestOsCodigosHttpDaCriacao:
+    """
+    🐛 A rota respondia 409 a TUDO o que falhasse — inclusive a "informe pelo
+    menos uma biblioteca", que é um erro do PEDIDO. Do outro lado não havia
+    como saber se valia a pena tentar outra vez com outro código (409: o estado
+    é que não deixa) ou se o pedido estava errado (400: tentar de novo dá o
+    mesmo).
+    """
+
+    def _chave(self):
+        from app.config import load_or_create_config
+        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+
+    def test_um_codigo_ja_em_uso_e_409(self, client, configurada, data_manager, servidor_que_cria_a_serio):
+        data_manager.add_invitation("REPETIDO", detalhes())
+
+        resposta = client.post("/api/invites/bot/create",
+                               json={"telegram_id": 1, "custom_code": "REPETIDO"},
+                               headers=self._chave())
+        assert resposta.status_code == 409
+        assert resposta.get_json()["erro"] == "conflito"
+
+    def test_um_telegram_id_ja_com_convite_ativo_e_409(self, client, configurada, data_manager, servidor_que_cria_a_serio):
+        data_manager.add_invitation("JA-TEM", detalhes(telegram_id="777"))
+
+        resposta = client.post("/api/invites/bot/create", json={"telegram_id": 777},
+                               headers=self._chave())
+        assert resposta.status_code == 409
+
+    def test_uma_biblioteca_inventada_e_400(self, client, configurada, db_session, servidor_falso):
+        resposta = client.post("/api/invites/bot/create",
+                               json={"telegram_id": 1, "libraries": ["Nao-Existe"]},
+                               headers=self._chave())
+        assert resposta.status_code == 400
+
+
+class TestApagarUmConviteNaoApagaOMembroDesde:
+    """
+    🛡️ `get_user_claim_date` — a única resposta do painel ao "desde quando é
+    que esta pessoa está aqui" — procura o username dentro de
+    `claimed_by_users`. Não há outra fonte: a data não está no perfil. O botão
+    que existe para arrumar a lista de convites gastos destruía em silêncio o
+    histórico de entrada de cada pessoa que os tinha resgatado.
+    """
+
+    def _perfil(self, data_manager, nome="ana", id_="10"):
+        data_manager.set_user_profile(id_, {"username": nome})
+        return id_
+
+    def test_a_data_de_entrada_sobrevive_ao_convite(self, admin, data_manager):
+        media_user_id = self._perfil(data_manager)
+        data_manager.add_invitation("PROMO", detalhes(max_uses=1))
+        data_manager.increment_invitation_use("PROMO", "ana", media_user_id)
+        antes = data_manager.get_user_claim_date(media_user_id)
+        assert antes is not None
+
+        admin.post("/api/invites/delete", json={"code": "PROMO"})
+
+        assert data_manager.get_user_claim_date(media_user_id) == antes
+
+    def test_o_link_deixa_de_funcionar_mesmo_assim(self, admin, client, configurada, data_manager):
+        data_manager.add_invitation("PROMO", detalhes(max_uses=3))
+        admin.post("/api/invites/delete", json={"code": "PROMO"})
+
+        assert data_manager.get_invitation("PROMO") is None
+        assert client.get("/api/invites/details/PROMO").status_code == 404
+
+    def test_sai_da_lista_do_painel(self, admin, data_manager):
+        data_manager.add_invitation("PROMO", detalhes())
+        admin.post("/api/invites/delete", json={"code": "PROMO"})
+
+        assert [c["code"] for c in data_manager.get_all_invitations()] == []
+
+    def test_apagar_duas_vezes_diz_que_nao_ha_nada(self, admin, data_manager):
+        data_manager.add_invitation("PROMO", detalhes())
+        admin.post("/api/invites/delete", json={"code": "PROMO"})
+
+        segunda = admin.post("/api/invites/delete", json={"code": "PROMO"})
+        assert segunda.get_json()["success"] is False
+
+
+class TestReutilizarUmCodigoPersonalizado:
+    def test_um_codigo_removido_e_nunca_usado_volta_a_estar_livre(self, admin, data_manager, servidor_que_cria_a_serio):
+        data_manager.add_invitation("VERAO", detalhes())
+        admin.post("/api/invites/delete", json={"code": "VERAO"})
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "VERAO",
+        })
+
+        assert resposta.get_json()["success"] is True
+        assert data_manager.get_invitation("VERAO") is not None
+
+    def test_um_codigo_que_alguem_resgatou_nao_volta(self, admin, data_manager, servidor_que_cria_a_serio):
+        """O registro de quem entrou por ele é o que se está a proteger."""
+        data_manager.add_invitation("VERAO", detalhes(max_uses=1))
+        data_manager.increment_invitation_use("VERAO", "ana")
+        admin.post("/api/invites/delete", json={"code": "VERAO"})
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "VERAO",
+        })
+        dados = resposta.get_json()
+
+        assert dados["success"] is False
+        assert "escolha outro código" in dados["message"]
+
+    def test_um_codigo_vivo_continua_a_ser_recusado(self, admin, data_manager, servidor_que_cria_a_serio):
+        data_manager.add_invitation("VERAO", detalhes())
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "VERAO",
+        })
+        assert resposta.get_json()["success"] is False
+
+
+class TestLimpezaDeConvitesAntigos:
+    def test_um_convite_expirado_e_nunca_usado_sai(self, app_context, data_manager):
+        data_manager.add_invitation("LIXO", detalhes(created_at=iso(-200), expires_at=iso(-190)))
+
+        assert data_manager.limpar_convites_antigos(90) == 1
+        assert data_manager.get_invitation("LIXO", incluir_apagados=True) is None
+
+    def test_um_convite_resgatado_fica_para_sempre(self, app_context, data_manager):
+        """É ele que responde ao "membro desde" de quem entrou por ele."""
+        data_manager.add_invitation("HISTORIA", detalhes(created_at=iso(-500), expires_at=iso(-490)))
+        data_manager.increment_invitation_use("HISTORIA", "ana")
+
+        assert data_manager.limpar_convites_antigos(90) == 0
+        assert data_manager.get_invitation("HISTORIA") is not None
+
+    def test_um_convite_removido_e_nunca_usado_sai(self, app_context, data_manager):
+        data_manager.add_invitation("REMOVIDO", detalhes(created_at=iso(-200)))
+        data_manager.delete_invitation("REMOVIDO")
+
+        assert data_manager.limpar_convites_antigos(90) == 1
+
+    def test_um_convite_recente_fica(self, app_context, data_manager):
+        data_manager.add_invitation("NOVO", detalhes(created_at=iso(-2), expires_at=iso(-1)))
+        assert data_manager.limpar_convites_antigos(90) == 0
+
+    def test_um_convite_sem_prazo_e_por_usar_fica(self, app_context, data_manager):
+        """Antigo mas ainda válido: não é lixo, é um convite aberto."""
+        data_manager.add_invitation("ABERTO", detalhes(created_at=iso(-500), expires_at=None))
+        assert data_manager.limpar_convites_antigos(90) == 0
+
+    def test_zero_dias_desliga_a_limpeza(self, app_context, data_manager):
+        data_manager.add_invitation("LIXO", detalhes(created_at=iso(-900), expires_at=iso(-890)))
+        assert data_manager.limpar_convites_antigos(0) == 0
+        assert data_manager.get_invitation("LIXO") is not None
+
+
+class TestANotaDoConvite:
+    """
+    O painel já guardava para QUEM um convite era, mas só quando havia
+    Telegram. Todos os outros ficavam a ser um código aleatório e mais nada, e
+    um convite gasto só dizia o nome de quem o usou — não o de quem o devia ter
+    usado.
+    """
+
+    def test_a_nota_e_gravada(self, admin, data_manager, servidor_que_cria_a_serio):
+        admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "COM-NOTA",
+            "note": "João do grupo do WhatsApp",
+        })
+        assert data_manager.get_invitation("COM-NOTA")["note"] == "João do grupo do WhatsApp"
+
+    def test_uma_nota_em_branco_e_o_mesmo_que_nota_nenhuma(self, admin, data_manager, servidor_que_cria_a_serio):
+        admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "SEM-NOTA", "note": "   ",
+        })
+        assert data_manager.get_invitation("SEM-NOTA")["note"] is None
+
+    def test_uma_nota_enorme_e_recusada(self, admin, db_session, servidor_falso):
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "note": "x" * 201,
+        })
+        assert resposta.status_code == 400
+
+    def test_a_nota_chega_ao_bot(self, client, configurada, data_manager):
+        from app.config import load_or_create_config
+
+        data_manager.add_invitation("COM-NOTA", detalhes(note="Para a Ana"))
+        dados = client.get("/api/invites/bot/invite/COM-NOTA", headers={
+            "X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')
+        }).get_json()
+
+        assert dados["invite"]["note"] == "Para a Ana"
+
+    def test_a_nota_fica_na_auditoria_da_criacao(self, admin, db_session, servidor_falso):
+        from app.extensions import db
+        from sqlalchemy import text
+
+        admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "note": "Para a Ana",
+        })
+        with db.engine.begin() as ligacao:
+            detalhe = ligacao.execute(text(
+                "SELECT detalhes FROM audit_logs WHERE acao = 'convite.criar'"
+            )).scalar()
+        assert "Para a Ana" in detalhe
+
+
+class TestAListaPaginada:
+    """
+    ⚡ `/list` devolvia a tabela INTEIRA, com o histórico de resgates de cada
+    convite, e a página pedia-a de dez em dez segundos — para contar quantos
+    estavam abertos e para filtrar as duas abas do lado do navegador.
+    """
+
+    def _semear(self, data_manager, quantos, **extra):
+        for i in range(quantos):
+            data_manager.add_invitation(f"C{i:03d}", detalhes(created_at=iso(-i), **extra))
+
+    def test_a_pagina_tem_o_tamanho_pedido(self, admin, data_manager):
+        self._semear(data_manager, 25)
+
+        dados = admin.get("/api/invites/list?estado=ativos&pagina=1&por_pagina=10").get_json()
+
+        assert len(dados["invites"]) == 10
+        assert dados["total"] == 25
+        assert dados["paginas"] == 3
+
+    def test_a_ultima_pagina_traz_o_resto(self, admin, data_manager):
+        self._semear(data_manager, 25)
+
+        dados = admin.get("/api/invites/list?estado=ativos&pagina=3&por_pagina=10").get_json()
+
+        assert len(dados["invites"]) == 5
+
+    def test_vem_do_mais_recente_para_o_mais_antigo(self, admin, data_manager):
+        self._semear(data_manager, 5)
+
+        dados = admin.get("/api/invites/list?estado=ativos&por_pagina=5").get_json()
+
+        assert [c["code"] for c in dados["invites"]] == ["C000", "C001", "C002", "C003", "C004"]
+
+    def test_a_aba_dos_ativos_nao_traz_os_esgotados(self, admin, data_manager):
+        data_manager.add_invitation("ABERTO", detalhes(max_uses=2))
+        data_manager.add_invitation("GASTO", detalhes(max_uses=1))
+        data_manager.increment_invitation_use("GASTO", "ana")
+
+        ativos = admin.get("/api/invites/list?estado=ativos").get_json()
+        historico = admin.get("/api/invites/list?estado=historico").get_json()
+
+        assert [c["code"] for c in ativos["invites"]] == ["ABERTO"]
+        assert [c["code"] for c in historico["invites"]] == ["GASTO"]
+
+    def test_a_aba_dos_ativos_nao_traz_os_expirados(self, admin, data_manager):
+        data_manager.add_invitation("ABERTO", detalhes(expires_at=iso(5)))
+        data_manager.add_invitation("VENCIDO", detalhes(expires_at=iso(-5)))
+
+        ativos = admin.get("/api/invites/list?estado=ativos").get_json()
+        historico = admin.get("/api/invites/list?estado=historico").get_json()
+
+        assert [c["code"] for c in ativos["invites"]] == ["ABERTO"]
+        assert [c["code"] for c in historico["invites"]] == ["VENCIDO"]
+
+    def test_um_convite_sem_prazo_conta_como_ativo(self, admin, data_manager):
+        data_manager.add_invitation("SEM-PRAZO", detalhes(expires_at=None))
+        dados = admin.get("/api/invites/list?estado=ativos").get_json()
+        assert [c["code"] for c in dados["invites"]] == ["SEM-PRAZO"]
+
+    def test_os_removidos_nao_aparecem_em_aba_nenhuma(self, admin, data_manager):
+        data_manager.add_invitation("REMOVIDO", detalhes())
+        data_manager.delete_invitation("REMOVIDO")
+
+        for aba in ("ativos", "historico"):
+            assert admin.get(f"/api/invites/list?estado={aba}").get_json()["invites"] == []
+
+    def test_uma_pagina_que_nao_e_um_numero_e_um_erro_do_pedido(self, admin, db_session):
+        assert admin.get("/api/invites/list?pagina=abc").status_code == 400
+
+    def test_o_tamanho_da_pagina_tem_teto(self, admin, data_manager):
+        """Pedir 100000 por página era pedir a tabela inteira por outro caminho."""
+        self._semear(data_manager, 5)
+
+        dados = admin.get("/api/invites/list?por_pagina=100000").get_json()
+
+        # ⚠️ A resposta ecoa o valor EFETIVO. Ecoar o pedido fazia a interface
+        # calcular o número de páginas sobre um tamanho que não foi o usado.
+        assert dados["por_pagina"] == 100
+        assert len(dados["invites"]) == 5
+
+    def test_uma_pagina_de_zero_nao_e_uma_pagina(self, admin, data_manager):
+        self._semear(data_manager, 3)
+        dados = admin.get("/api/invites/list?por_pagina=0&pagina=0").get_json()
+        assert dados["por_pagina"] == 20 and dados["pagina"] == 1
+
+
+class TestOResumoDosConvites:
+    """É esta a pergunta que o polling faz: "já foi usado algum?"."""
+
+    def test_conta_os_abertos_e_o_total(self, admin, data_manager):
+        data_manager.add_invitation("ABERTO", detalhes(max_uses=2))
+        data_manager.add_invitation("GASTO", detalhes(max_uses=1))
+        data_manager.increment_invitation_use("GASTO", "ana")
+        data_manager.add_invitation("VENCIDO", detalhes(expires_at=iso(-1)))
+
+        dados = admin.get("/api/invites/summary").get_json()
+
+        assert dados["ativos"] == 1
+        assert dados["total"] == 3
+
+    def test_os_removidos_nao_contam(self, admin, data_manager):
+        data_manager.add_invitation("REMOVIDO", detalhes())
+        data_manager.delete_invitation("REMOVIDO")
+
+        dados = admin.get("/api/invites/summary").get_json()
+        assert dados["ativos"] == 0 and dados["total"] == 0
+
+    def test_e_so_para_administradores(self, client, configurada, db_session):
+        assert client.get("/api/invites/summary").status_code in (302, 401, 403)
+
+
+class TestOAvisoDeConviteResgatado:
+    """
+    O sino do painel só avisa quem está com ele aberto. Quem gera convites e
+    fecha o portátil ficava a saber no dia seguinte, e quem os gera por um bot
+    não ficava a saber de todo: o link era mandado e o ciclo acabava ali.
+    """
+
+    def _espiar(self, monkeypatch):
+        from app.blueprints.api import invites as rotas
+
+        avisos = []
+        monkeypatch.setattr(rotas.notifier_manager,
+                            'send_invite_claimed_admin_notification',
+                            lambda *a, **k: avisos.append((a, k)))
+        return avisos
+
+    def test_um_resgate_avisa_o_administrador(self, app_context, data_manager, monkeypatch):
+        from app.blueprints.api import invites as rotas
+
+        avisos = self._espiar(monkeypatch)
+        data_manager.add_invitation("PROMO", detalhes(note="João do grupo"))
+
+        rotas._registar_resgate("PROMO", {"success": True}, "ana")
+
+        assert len(avisos) == 1
+        # A nota diz PARA QUEM o convite era, e é isso que torna o aviso útil.
+        assert avisos[0][0] == ("ana", "PROMO", "João do grupo")
+
+    def test_um_resgate_falhado_nao_avisa_ninguem(self, app_context, data_manager, monkeypatch):
+        from app.blueprints.api import invites as rotas
+
+        avisos = self._espiar(monkeypatch)
+        data_manager.add_invitation("PROMO", detalhes())
+
+        rotas._registar_resgate("PROMO", {"success": False, "message": "expirou"}, "ana")
+
+        assert avisos == []
+
+    def test_uma_falha_a_avisar_nao_derruba_o_resgate(self, app_context, data_manager, monkeypatch):
+        """A pessoa já tem acesso; o aviso é sobre isso ter acontecido."""
+        from app.blueprints.api import invites as rotas
+
+        def rebenta(*a, **k):
+            raise RuntimeError("sem rede")
+
+        monkeypatch.setattr(rotas.notifier_manager,
+                            'send_invite_claimed_admin_notification', rebenta)
+        data_manager.add_invitation("PROMO", detalhes())
+
+        rotas._registar_resgate("PROMO", {"success": True}, "ana")  # não levanta
+
+    def test_o_administrador_pode_desligar_so_este_aviso(self, app_context, config_file):
+        from app.services.push_manager import PushManager
+
+        config_file(IS_CONFIGURED=True, PUSH_ADMIN_INVITES=False, PUSH_ADMIN_PAYMENTS=True)
+        gestor = PushManager()
+        gestor.reload_credentials()
+
+        assert gestor.avisar_administrador['convite'] is False
+        assert gestor.avisar_administrador['pagamento'] is True
+
+
+class TestOConviteAceitaTelegramEDiscord:
+    """
+    O painel notifica por Telegram, Discord, WhatsApp e webhook, mas só o
+    Telegram podia ser pré-atribuído a um convite. Quem administra pelo Discord
+    gerava o convite e depois vinculava a conta à mão, à procura de quem acabou
+    de entrar.
+    """
+
+    def _chave(self):
+        from app.config import load_or_create_config
+        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+
+    def test_um_convite_pode_trazer_um_discord_id(self, admin, data_manager, servidor_que_cria_a_serio):
+        admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "DISCORD", "discord_id": "987654321098765432",
+        })
+        assert data_manager.get_invitation("DISCORD")["discord_id"] == "987654321098765432"
+
+    def test_pode_trazer_os_dois(self, admin, data_manager, servidor_que_cria_a_serio):
+        admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "AMBOS",
+            "telegram_id": "111", "discord_id": "222",
+        })
+        convite = data_manager.get_invitation("AMBOS")
+        assert (convite["telegram_id"], convite["discord_id"]) == ("111", "222")
+
+    def test_o_bot_pode_mandar_so_o_discord(self, client, configurada, db_session, servidor_falso):
+        resposta = client.post("/api/invites/bot/create",
+                               json={"discord_id": 987654321098765432},
+                               headers=self._chave())
+        assert resposta.status_code == 201
+
+    def test_o_bot_continua_a_poder_mandar_so_o_telegram(self, client, configurada, db_session, servidor_falso):
+        """Uma folga, não uma quebra: os bots que já existem continuam a valer."""
+        resposta = client.post("/api/invites/bot/create", json={"telegram_id": 123},
+                               headers=self._chave())
+        assert resposta.status_code == 201
+
+    def test_sem_contacto_nenhum_o_bot_e_recusado(self, client, configurada, db_session, servidor_falso):
+        """Um convite deste endpoint existe para ficar atribuído a alguém."""
+        resposta = client.post("/api/invites/bot/create", json={"screens": 1},
+                               headers=self._chave())
+        assert resposta.status_code == 400
+
+    def test_um_contacto_em_branco_conta_como_ausente(self, client, configurada, db_session, servidor_falso):
+        resposta = client.post("/api/invites/bot/create",
+                               json={"telegram_id": "   ", "discord_id": ""},
+                               headers=self._chave())
+        assert resposta.status_code == 400
+
+
+class TestUnicidadeDoContacto:
+    """
+    Duas pessoas ligadas ao mesmo contacto recebiam as notificações uma da
+    outra — a de vencimento, com nome e valor, e o link de pagamento, que é uma
+    credencial portadora.
+    """
+
+    def test_um_discord_ja_vinculado_a_alguem_e_recusado(self, admin, data_manager, servidor_que_cria_a_serio):
+        data_manager.set_user_profile("10", {"username": "ana", "discord_user_id": "999"})
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "discord_id": "999",
+        })
+        dados = resposta.get_json()
+
+        assert dados["success"] is False
+        assert "ana" in dados["message"] and "Discord" in dados["message"]
+
+    def test_um_discord_ja_com_convite_ativo_e_recusado(self, admin, data_manager, servidor_que_cria_a_serio):
+        data_manager.add_invitation("JA-TEM", detalhes(discord_id="999"))
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "discord_id": "999",
+        })
+        assert resposta.get_json()["success"] is False
+
+    def test_um_convite_gasto_nao_bloqueia(self, admin, data_manager, servidor_que_cria_a_serio):
+        data_manager.add_invitation("GASTO", detalhes(discord_id="999", max_uses=1))
+        data_manager.increment_invitation_use("GASTO", "ana")
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "discord_id": "999",
+        })
+        assert resposta.get_json()["success"] is True
+
+    def test_os_canais_nao_se_confundem(self, admin, data_manager, servidor_que_cria_a_serio):
+        """O mesmo número no Telegram de uma pessoa e no Discord de outra é possível."""
+        data_manager.set_user_profile("10", {"username": "ana", "telegram_user": "999"})
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "discord_id": "999",
+        })
+        assert resposta.get_json()["success"] is True
+
+    def test_o_id_com_espacos_e_o_mesmo_id(self, admin, data_manager, servidor_que_cria_a_serio):
+        data_manager.set_user_profile("10", {"username": "ana", "discord_user_id": "999"})
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "discord_id": "  999  ",
+        })
+        assert resposta.get_json()["success"] is False
+
+
+class TestABuscaPorContacto:
+    def _chave(self):
+        from app.config import load_or_create_config
+        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+
+    def test_procura_por_discord(self, client, configurada, data_manager):
+        data_manager.add_invitation("DELE", detalhes(discord_id="999"))
+        data_manager.add_invitation("DOUTRO", detalhes(telegram_id="999"))
+
+        dados = client.get("/api/invites/bot/invites?discord_id=999",
+                           headers=self._chave()).get_json()
+
+        assert [c["code"] for c in dados["invites"]] == ["DELE"]
+
+    def test_sem_contacto_nenhum_e_um_erro_do_pedido(self, client, configurada, db_session):
+        resposta = client.get("/api/invites/bot/invites", headers=self._chave())
+        assert resposta.status_code == 400
+        assert resposta.get_json()["erro"] == "invalido"
+
+
+class TestOContactoEVinculadoNoResgate:
+    """
+    🐛 Isto vivia só no backend do Plex (`_handle_telegram_linking`) e o do
+    Jellyfin nasceu sem: um convite gerado por um bot para um contacto concreto
+    criava a conta e o perfil ficava SEM o vínculo — a pessoa entrava e nunca
+    mais recebia um aviso de vencimento, porque o painel não sabia por onde lhe
+    falar. É a mesma família do `agendar_fim_do_teste` e do
+    `resolver_indicacao_pendente`.
+    """
+
+    def test_o_plex_vincula_os_dois_canais(self, app_context, data_manager):
+        gestor = _gestor(data_manager, envio={"success": True})
+        # O duplo de `_setup_local_profile_and_integrations` esconde o que se
+        # quer ver, por isso aqui pergunta-se diretamente ao método partilhado.
+        convite = detalhes(telegram_id="111", discord_id="222")
+
+        assert gestor.resolver_contactos_do_convite(convite, "ana") == {
+            "telegram_user": "111",
+            "discord_user_id": "222",
+        }
+
+    def test_um_convite_sem_contacto_nao_grava_nada(self, app_context, data_manager):
+        gestor = _gestor(data_manager, envio={"success": True})
+        assert gestor.resolver_contactos_do_convite(detalhes(), "ana") == {}
+
+    def test_um_contacto_entretanto_de_outra_pessoa_e_ignorado(self, app_context, data_manager):
+        """
+        🛡️ O registo prossegue — o que se ignora é só o vínculo. Duas pessoas a
+        apontar para o mesmo chat era uma a receber o link de pagamento da
+        outra.
+        """
+        data_manager.set_user_profile("10", {"username": "bruno", "telegram_user": "111"})
+        gestor = _gestor(data_manager, envio={"success": True})
+
+        assert gestor.resolver_contactos_do_convite(detalhes(telegram_id="111"), "ana") == {}
+
+    def test_o_proprio_dono_continua_a_ser_vinculado(self, app_context, data_manager):
+        data_manager.set_user_profile("10", {"username": "ana", "telegram_user": "111"})
+        gestor = _gestor(data_manager, envio={"success": True})
+
+        assert gestor.resolver_contactos_do_convite(detalhes(telegram_id="111"), "ana") == {
+            "telegram_user": "111",
+        }
+
+    def test_o_backend_do_jellyfin_tambem_o_faz(self, app_context, data_manager):
+        """
+        Não basta herdar o método: é preciso CHAMÁ-LO. Era este o buraco — o
+        `_criar_perfil_local` do Jellyfin montava o perfil inteiro e nunca
+        tocava no contacto do convite.
+        """
+        from types import SimpleNamespace
+
+        from app.services.media_server.jellyfin.account_manager import JellyfinAccountManager
+
+        gestor = JellyfinAccountManager(
+            connection=SimpleNamespace(api=SimpleNamespace(base_url='http://jellyfin:8096')),
+            user_manager=None, data_manager=data_manager, backend=None,
+        )
+        gestor._dar_acesso_aos_pedidos = lambda *a, **k: False
+
+        gestor._criar_perfil_local(
+            "guid-da-ana", "ana", "ana@exemplo.test",
+            detalhes(telegram_id="111", discord_id="222"),
+        )
+
+        perfil = data_manager.get_user_profile("guid-da-ana")
+        assert perfil["telegram_user"] == "111"
+        assert perfil["discord_user_id"] == "222"
+
+    def test_o_perfil_criado_pelo_resgate_do_plex_leva_o_contacto(self, app_context, data_manager):
+        """O caminho inteiro, e não só o método partilhado."""
+        gestor = _gestor(data_manager, envio={"success": True})
+        # Repõe o método real, que o `_gestor` substitui por um duplo.
+        from app.services.media_server.plex.invite_manager import PlexInviteManager
+        gestor._setup_local_profile_and_integrations = (
+            lambda *a, **k: PlexInviteManager._setup_local_profile_and_integrations(gestor, *a, **k)
+        )
+        data_manager.add_invitation("COM-DISCORD", detalhes(max_uses=1, discord_id="222"))
+
+        resultado = gestor.claim_invitation("COM-DISCORD", _ContaPlex(10, "ana", "ana@exemplo.test"))
+
+        assert resultado["success"] is True
+        assert data_manager.get_user_profile("10")["discord_user_id"] == "222"

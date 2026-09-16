@@ -1,6 +1,7 @@
 # app/blueprints/api/decorators.py
 
 import logging
+import secrets
 from functools import wraps
 from flask import jsonify, request
 from flask_babel import gettext as _
@@ -61,6 +62,83 @@ def user_lookup_by_id(f):
 
         return f(user=user, *args, **kwargs)
     return decorated_function
+
+
+def chave_de_api_necessaria(escopo):
+    """Protege uma rota que é chamada por uma integração, não por um navegador.
+
+    Um bot ou um webhook não tem sessão, por isso a prova é uma chave enviada em
+    `X-API-Key` ou em `Authorization: Bearer <chave>`.
+
+    ⚠️ **O `escopo` é o que esta rota exige**, e é o que faz de uma chave uma
+    promessa: "esta só cria convites". Havia UMA chave para tudo, partilhada
+    pelo endpoint de convites e pelo webhook do Seerr — regenerá-la porque um
+    bot foi comprometido derrubava também o Seerr, e a chave do bot podia
+    aceitar webhooks em nome do painel.
+
+    ⚠️ **A chave antiga (`INTERNAL_TRIGGER_KEY`) continua a valer, para todos
+    os escopos.** Invalidá-la seria cortar, de uma vez e sem aviso, todas as
+    integrações que já existem lá fora — onde este repositório não chega. Ela
+    deixou de ser a única; não deixou de ser.
+
+    ⚠️ Isto existia duas vezes, copiado, e as duas cópias já tinham divergido:
+    uma aceitava o `Authorization` sem o prefixo `Bearer` e a outra não. A
+    interface do Seerr chama "Authorization" ao campo onde se escreve a chave e
+    mais nada, por isso as duas formas passam.
+
+    A comparação é `secrets.compare_digest` para não revelar a chave através do
+    tempo de resposta.
+    """
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            fornecida = _chave_do_pedido()
+
+            if not fornecida or not _autorizada(fornecida, escopo):
+                logger.warning(
+                    f"Pedido a '{request.path}' recusado: chave de API inválida, "
+                    f"revogada ou sem a permissão '{escopo}' (IP: {request.remote_addr})."
+                )
+                return jsonify({
+                    "success": False,
+                    "message": _("Chave de API inválida ou em falta."),
+                }), 401
+
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def _chave_do_pedido():
+    """A chave que veio nos cabeçalhos, em qualquer das duas formas."""
+    fornecida = (request.headers.get('X-API-Key') or '').strip()
+    if fornecida:
+        return fornecida
+
+    cabecalho = (request.headers.get('Authorization') or '').strip()
+    # O prefixo é opcional: a interface do Overseerr chama "Authorization" ao
+    # campo, e quem o preenche escreve lá a chave e mais nada.
+    if cabecalho.lower().startswith('bearer '):
+        return cabecalho[7:].strip()
+    return cabecalho
+
+
+def _autorizada(fornecida, escopo):
+    from ...config import load_or_create_config
+    from ...services import api_keys
+
+    # A chave do config, que serve todos os escopos enquanto existir.
+    antiga = str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')
+    if antiga and secrets.compare_digest(fornecida, antiga):
+        return True
+
+    try:
+        return api_keys.verificar(fornecida, escopo) is not None
+    except Exception as e:
+        # ⚠️ Uma falha a consultar a tabela NUNCA pode ser um "sim". O lado
+        # seguro do erro aqui é recusar.
+        logger.error(f"Falha ao verificar a chave de API: {e}", exc_info=True)
+        return False
 
 
 def validate_json(schema):

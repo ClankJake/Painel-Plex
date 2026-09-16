@@ -16,7 +16,11 @@ export let activeInviteCount = 0;
 export let inviteCheckInterval = null;
 export let activeInviteTab = 'active'; 
 export let allInvitesCache = [];
+export let invitePage = 1;
+export let invitePageCount = 1;
+export let inviteTotal = 0;
 export let telegramEnabled = false;
+export let discordEnabled = false;
 
 // ==========================================
 // PREFERÊNCIAS DO UTILIZADOR (PERSISTENTES)
@@ -62,7 +66,11 @@ export function setAllUsersCache(users) { allUsersCache = users; }
 export function setActiveInviteCount(count) { activeInviteCount = count; }
 export function setActiveInviteTab(tab) { activeInviteTab = tab; }
 export function setAllInvitesCache(invites) { allInvitesCache = invites; }
+export function setInvitePage(pagina) { invitePage = Math.max(pagina, 1); }
+export function setInvitePageCount(paginas) { invitePageCount = Math.max(paginas, 1); }
+export function setInviteTotal(total) { inviteTotal = total; }
 export function setTelegramEnabled(enabled) { telegramEnabled = enabled; }
+export function setDiscordEnabled(enabled) { discordEnabled = enabled; }
 
 export function setInviteCheckInterval(intervalId) {
     if (inviteCheckInterval) clearInterval(inviteCheckInterval);

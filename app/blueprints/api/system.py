@@ -1,5 +1,6 @@
 # app/blueprints/api/system.py
 
+import json
 import logging
 import secrets
 import os
@@ -28,6 +29,7 @@ from ...config import load_or_create_config, save_app_config, is_configured
 from ...models import User
 from ..auth import admin_required, login_required
 from ...services import audit
+from .decorators import chave_de_api_necessaria
 
 logger = logging.getLogger(__name__)
 system_api_bp = Blueprint('system_api', __name__)
@@ -334,7 +336,7 @@ def api_settings():
             # qualquer administrador invalidar, sem saber, todas as
             # subscrições já feitas.
             'PUSH_ENABLED', 'PUSH_VAPID_SUBJECT',
-            'PUSH_ADMIN_PAYMENTS', 'PUSH_ADMIN_MEDIA_REQUESTS',
+            'PUSH_ADMIN_PAYMENTS', 'PUSH_ADMIN_MEDIA_REQUESTS', 'PUSH_ADMIN_INVITES',
             'PUSH_EXPIRATION_TITLE_TEMPLATE', 'PUSH_EXPIRATION_MESSAGE_TEMPLATE',
             'PUSH_RENEWAL_TITLE_TEMPLATE', 'PUSH_RENEWAL_MESSAGE_TEMPLATE',
             'PUSH_REACTIVATION_TITLE_TEMPLATE', 'PUSH_REACTIVATION_MESSAGE_TEMPLATE',
@@ -484,7 +486,8 @@ def api_settings():
         # chaves VAPID nasce. Sem isto, a interface mostrava o botão "Ativar
         # notificações" sem chave nenhuma para dar ao navegador.
         if _changed('PUSH_ENABLED', 'PUSH_VAPID_SUBJECT',
-                    'PUSH_ADMIN_PAYMENTS', 'PUSH_ADMIN_MEDIA_REQUESTS'):
+                    'PUSH_ADMIN_PAYMENTS', 'PUSH_ADMIN_MEDIA_REQUESTS',
+                    'PUSH_ADMIN_INVITES'):
             if config_to_update.get('PUSH_ENABLED'):
                 push_manager.garantir_chaves()
             push_manager.reload_credentials()
@@ -593,7 +596,10 @@ def api_settings():
         # 🛡️ A chave PRIVADA do VAPID assina cada notificação em nome deste
         # painel. Quem a tiver consegue entregar notificações que os aparelhos
         # aceitam como sendo daqui.
-        'PUSH_VAPID_PRIVATE_KEY'
+        'PUSH_VAPID_PRIVATE_KEY',
+        # Quem o tiver, mais a tabela `api_keys`, pode testar chaves
+        # offline — que é precisamente o que ele existe para impedir.
+        'API_KEYS_PEPPER',
     ]
 
     for key in sensitive_keys:
@@ -1300,16 +1306,16 @@ def test_whatsapp_connection():
 
 @system_api_bp.route('/webhook/overseerr', methods=['POST'])
 @limiter.exempt
+@chave_de_api_necessaria('webhooks')
 def overseerr_webhook():
     """
     Recebe notificações do agente de Webhook do Overseerr/Jellyseerr e reencaminha-as
     para o canal pessoal do utilizador que fez o pedido (Telegram, WhatsApp ou Discord).
 
-    🔒 SEGURANÇA: a rota é pública (o Overseerr não faz login), por isso é protegida
-    por uma chave partilhada enviada no cabeçalho 'X-API-Key' ou 'Authorization:
-    Bearer'. Usa-se a mesma chave das restantes integrações
-    (Configurações → Geral → Chave de API). Sem isso, qualquer pessoa poderia
-    enviar mensagens falsas aos utilizadores em nome do painel.
+    🔒 SEGURANÇA: a rota é pública (o Overseerr não faz login), por isso é
+    protegida pela chave de API — ver `chave_de_api_necessaria`. Sem isso,
+    qualquer pessoa poderia enviar mensagens falsas aos utilizadores em nome do
+    painel.
 
     Configuração no Overseerr:
       Settings → Notifications → Webhook
@@ -1317,18 +1323,6 @@ def overseerr_webhook():
         Authorization : a sua Chave de API
         (o payload JSON pode ficar com o modelo por omissão)
     """
-    config = load_or_create_config()
-    expected_key = str(config.get('INTERNAL_TRIGGER_KEY') or '')
-
-    provided = request.headers.get('X-API-Key', '')
-    if not provided:
-        auth = request.headers.get('Authorization', '')
-        provided = auth[7:].strip() if auth.lower().startswith('bearer ') else auth.strip()
-
-    if not expected_key or not provided or not secrets.compare_digest(provided, expected_key):
-        logger.warning(f"Webhook do Overseerr rejeitado: chave inválida ou ausente. IP: {request.remote_addr}")
-        return jsonify({"success": False, "message": "Unauthorized"}), 401
-
     data = request.get_json(silent=True) or {}
 
     # O Overseerr envia um evento de teste ao gravar as definições — respondemos
@@ -1441,6 +1435,100 @@ def regenerate_api_key():
     except Exception as e:
         logger.error(f"Erro ao regenerar a chave de API: {e}", exc_info=True)
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+# ==========================================
+# CHAVES DE API COM ESCOPO
+# ==========================================
+#
+# ⚠️ A `INTERNAL_TRIGGER_KEY` acima continua a valer, para todos os escopos:
+# invalidá-la seria cortar, de uma vez e sem aviso, todas as integrações que já
+# existem lá fora. Estas rotas são o caminho novo — uma chave por integração,
+# com nome, com permissões e revogável sem tocar nas outras.
+
+@system_api_bp.route('/api-keys', methods=['GET'])
+@login_required
+@admin_required
+def listar_chaves_de_api():
+    """As chaves existentes. 🛡️ NUNCA a chave em si: ela não está guardada."""
+    from ...dominios import ESCOPOS_DE_API
+    from ...services import api_keys
+
+    return jsonify({
+        "success": True,
+        "keys": api_keys.listar(),
+        "scopes": list(ESCOPOS_DE_API),
+    })
+
+
+@system_api_bp.route('/api-keys', methods=['POST'])
+@login_required
+@admin_required
+def criar_chave_de_api():
+    """Cria uma chave e devolve-a — a ÚNICA vez que ela existe fora de quem a copiar.
+
+    🛡️ O que fica na base de dados é o resumo. Não voltar a aparecer é o ponto,
+    não um incómodo: quem lesse a tabela (ou um ZIP de backup, que é só um
+    ficheiro) ficava com uma porta aberta por cada integração ligada.
+    """
+    from ...services import api_keys
+
+    # 🛡️ O texto que a pessoa lê é escolhido AQUI, a partir de um motivo
+    # estável. Devolver `str(e)` faz sair na resposta o que quer que tenha sido
+    # levantado dentro do `try` — hoje são mensagens escritas por nós, amanhã é
+    # o texto de um erro do SQLAlchemy com o caminho da base de dados lá
+    # dentro. É a mesma decisão do resgate de convites, e o CodeQL já marcou
+    # este padrão neste repositório.
+    MOTIVOS = {
+        api_keys.DadosInvalidos.SEM_NOME: _("A chave precisa de um nome."),
+        api_keys.DadosInvalidos.SEM_ESCOPO: _("Escolha pelo menos uma permissão para a chave."),
+    }
+
+    dados = request.get_json(silent=True) or {}
+    try:
+        linha, chave = api_keys.criar(dados.get('nome'), dados.get('escopos'))
+    except api_keys.DadosInvalidos as e:
+        return jsonify({
+            "success": False,
+            "message": MOTIVOS.get(e.motivo, _("Não foi possível criar a chave.")),
+        }), 400
+    except Exception as e:
+        logger.error(f"Erro ao criar a chave de API: {e}", exc_info=True)
+        return jsonify({"success": False, "message": _("Não foi possível criar a chave.")}), 500
+
+    # A CHAVE não entra na auditoria — só o facto de ter sido criada, com que
+    # nome e com que permissões, que é o que interessa saber depois.
+    audit.registar('chave_api.criar', alvo_tipo='chave_api', alvo_id=linha.id, detalhes={
+        'nome': linha.nome,
+        'prefixo': linha.prefixo,
+        # Os escopos GRAVADOS, não os pedidos: um escopo inventado é descartado
+        # em silêncio, e a auditoria tem de dizer o que a chave pode fazer —
+        # não o que alguém escreveu no pedido.
+        'escopos': json.loads(linha.escopos or '[]'),
+    })
+
+    return jsonify({
+        "success": True,
+        "key": chave,
+        "id": linha.id,
+        "message": _("Chave criada. Copie-a agora: ela não volta a ser mostrada."),
+    }), 201
+
+
+@system_api_bp.route('/api-keys/<int:id_da_chave>', methods=['DELETE'])
+@login_required
+@admin_required
+def revogar_chave_de_api(id_da_chave):
+    """Desliga uma chave sem tocar nas outras — que é a razão de elas existirem."""
+    from ...services import api_keys
+
+    linha = api_keys.revogar(id_da_chave)
+    if linha is None:
+        return jsonify({"success": False, "message": _("Chave não encontrada.")}), 404
+
+    audit.registar('chave_api.revogar', alvo_tipo='chave_api', alvo_id=linha.id,
+                   detalhes={'nome': linha.nome, 'prefixo': linha.prefixo})
+    return jsonify({"success": True, "message": _("Chave revogada.")})
 
 
 # ==========================================

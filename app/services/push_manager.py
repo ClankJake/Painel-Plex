@@ -60,6 +60,7 @@ class PushManager:
         self.avisar_administrador = {
             'pagamento': bool(config.get('PUSH_ADMIN_PAYMENTS', True)),
             'pedido': bool(config.get('PUSH_ADMIN_MEDIA_REQUESTS', True)),
+            'convite': bool(config.get('PUSH_ADMIN_INVITES', True)),
         }
 
     @property
@@ -158,8 +159,8 @@ class PushManager:
     def enviar_ao_administrador(self, assunto, titulo, corpo, url=None, tag=None):
         """O aviso que é do dono do painel — se ele o quiser para este assunto.
 
-        `assunto` é 'pagamento' ou 'pedido': o administrador pode desligar cada
-        um nas Configurações sem perder o outro. Um assunto desconhecido passa,
+        `assunto` é 'pagamento', 'pedido' ou 'convite': o administrador pode
+        desligar cada um nas Configurações sem perder os outros. Um assunto desconhecido passa,
         para que um aviso novo nunca fique calado por esquecimento.
         """
         if not self.avisar_administrador.get(assunto, True):

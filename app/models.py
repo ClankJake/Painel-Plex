@@ -163,7 +163,31 @@ class Invitation(db.Model):
     overseerr_access = db.Column(db.Boolean, default=False)
     max_uses = db.Column(db.Integer, nullable=False, default=1)
     use_count = db.Column(db.Integer, nullable=False, default=0)
-    telegram_id = db.Column(db.String, nullable=True)  # Novo campo
+    # O contacto pré-atribuído ao convite. São duas colunas e não uma porque
+    # são dois canais independentes — a mesma pessoa pode ser convidada pelo
+    # Discord e ter o Telegram registado depois. ⚠️ Os nomes DIVERGEM dos do
+    # perfil (`telegram_user`, `discord_user_id`) por razões históricas; quem
+    # faz a ponte é o mapa `CONTACTOS` em `media_server/invitations.py`.
+    telegram_id = db.Column(db.String, nullable=True)
+    discord_id = db.Column(db.String, nullable=True)
+    # Para quem é este convite. O painel só sabia responder a isso quando havia
+    # Telegram; os outros ficavam a ser um código aleatório e mais nada, e um
+    # convite gasto só dizia o nome de quem o usou — não o de quem o devia ter
+    # usado.
+    note = db.Column(db.String(200), nullable=True)
+    # 🛡️ Apagar um convite apagava o "membro desde" de quem entrou por ele:
+    # `get_user_claim_date` procura o username dentro de `claimed_by_users` e
+    # não há outra fonte para essa data. A mesma decisão de `pix_payments`,
+    # `coupons` e `stream_termination_logs` — o que custa perder sai das
+    # leituras e fica na tabela.
+    deleted_at = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        # PARCIAL: a esmagadora maioria das linhas tem isto a NULL, e um índice
+        # completo sobre uma coluna assim indexa sobretudo nada.
+        db.Index('ix_invitations_deleted_at', deleted_at,
+                 sqlite_where=db.text('deleted_at IS NOT NULL')),
+    )
 
 class BlockedUser(db.Model):
     __tablename__ = 'blocked_users'
@@ -471,6 +495,50 @@ class PasswordReset(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     expires_at = db.Column(db.DateTime, nullable=False)
     used_at = db.Column(db.DateTime, nullable=True)
+
+
+class ApiKey(db.Model):
+    """Uma chave de integração, com nome e com escopo.
+
+    ⚠️ **Havia UMA chave para tudo** (`INTERNAL_TRIGGER_KEY`, no config.json),
+    partilhada pelo endpoint de convites para bots e pelo webhook do Seerr.
+    Isso tem duas consequências que só se notam no pior dia: regenerá-la porque
+    um bot foi comprometido derrubava também o Seerr, e a chave do bot de
+    Telegram do vizinho podia aceitar webhooks em nome do painel.
+
+    🛡️ **Guarda-se o RESUMO, não a chave** — a mesma decisão de
+    `PasswordReset`. O que fica na base de dados (e dentro do ZIP de backup,
+    que é só um ficheiro) não serve para nada: só quem copiou a chave no
+    momento em que ela foi criada a tem. Por isso ela é mostrada UMA vez e o
+    painel não sabe recuperá-la.
+
+    O `prefixo` é o que a interface mostra para se distinguirem umas das
+    outras, e é também por ele que a verificação encontra a linha sem ter de
+    percorrer a tabela a comparar resumos.
+
+    Uma chave revogada FICA, com `revoked_at` preenchido: a auditoria fala dela
+    pelo id, e "esta chave foi revogada em março" é diferente de "esta chave
+    nunca existiu".
+    """
+
+    __tablename__ = 'api_keys'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(80), nullable=False)
+    prefixo = db.Column(db.String(16), nullable=False, unique=True, index=True)
+    resumo = db.Column(db.String(64), nullable=False)
+    escopos = db.Column(db.Text, nullable=False, default='[]')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    last_used_at = db.Column(db.DateTime, nullable=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        # PARCIAL, como os outros `deleted_at`: quase todas as chaves estão
+        # vivas, e um índice completo sobre uma coluna maioritariamente NULL
+        # indexa sobretudo nada.
+        db.Index('ix_api_keys_revoked_at', revoked_at,
+                 sqlite_where=db.text('revoked_at IS NOT NULL')),
+    )
 
 
 class UnlockedAchievement(db.Model):

@@ -140,7 +140,7 @@ export function resetBulkNotificationUI(delay = 0) {
         if (dom.openUserSelectionBtn) dom.openUserSelectionBtn.disabled = true;
         if (dom.progressContainer) dom.progressContainer.classList.add('hidden');
         
-        setProgressBarState('active', 0, i18n.bulkSendStart || 'A iniciar...');
+        setProgressBarState('active', 0, i18n.bulkSendStart || 'Iniciando...');
     }, delay);
 }
 
@@ -218,7 +218,7 @@ async function _executeBulkNotification(payload) {
     if (dom.sendBulkBtnText) dom.sendBulkBtnText.textContent = i18n.sendingBulkNotification || 'Enviando...';
     if (dom.progressContainer) dom.progressContainer.classList.remove('hidden');
     
-    setProgressBarState('active', 0, i18n.bulkSendStart || 'A iniciar...');
+    setProgressBarState('active', 0, i18n.bulkSendStart || 'Iniciando...');
 
     try {
         const result = await sendBulkNotification(payload);

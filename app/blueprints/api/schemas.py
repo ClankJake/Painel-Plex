@@ -6,6 +6,14 @@ from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Literal, Union
 from datetime import datetime
 
+# ⚠️ Estas vivem em `utils` porque o backend do servidor de média também
+# precisa delas (num servidor de contas locais, o resgate de um convite é
+# quem cria a conta) e uma camada de baixo não pode importar de
+# `app/blueprints/`. Continuam a ser exportadas daqui com os mesmos nomes.
+from ...utils.validacao import (  # noqa: F401  (reexportados)
+    EMAIL_RE, TELEFONE_MAX, TELEFONE_MIN, validar_email, validar_telefone,
+)
+
 # Um código personalizado vira a chave primária do convite E um segmento do URL
 # público (/invite/<code>). Antes era aceite tal e qual, sem qualquer limite:
 #   • um código de 1 ou 2 caracteres é adivinhável à força bruta;
@@ -15,54 +23,35 @@ from datetime import datetime
 # por isso nenhum convite gerado pelo painel deixa de ser válido.
 CUSTOM_CODE_RE = re.compile(r'^[A-Za-z0-9_-]{4,64}$')
 
-# ⚠️ O email e o telefone eram `Optional[str]` e mais nada: aceitavam qualquer
-# coisa. Nenhum dos dois é usado para autenticar, por isso o sintoma nunca era
-# um erro — era uma notificação que não chegava e uma pessoa que o Seerr não
-# encontrava, meses depois, sem ninguém ligar as duas pontas.
+# ⚠️ Os campos de tempo de um convite tinham `ge=0` e mais nada, e isso não
+# chegava: `create_invitation` soma-os a `datetime.now()`, e o `timedelta` de
+# Python não aguenta qualquer número.
 #
-# A expressão do email é PROPOSITADAMENTE larga (algo@algo.algo, sem espaços):
-# validar emails a sério com uma expressão regular é um problema conhecido por
-# não ter solução, e o que aqui interessa é apanhar o erro de escrita, não
-# recusar um domínio exótico.
-EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]{2,}$')
+#     >>> datetime.now(timezone.utc) + timedelta(minutes=10**12)
+#     OverflowError: date value out of range
+#
+# O sintoma era um 500 com traceback — na rota de administração e na dos bots.
+# Pior: com `trial_duration_minutes`, a criação passava e a conta só rebentava
+# no RESGATE, dentro de `agendar_fim_do_teste`, na cara de quem estava a
+# entrar. Cinco anos é muito mais do que qualquer convite legítimo precisa e
+# está a uma distância confortável do limite do `date`.
+MAX_MINUTOS = 5 * 365 * 24 * 60
 
-# Só dígitos, entre 8 e 15 — o máximo do E.164. O que a pessoa escreve com
-# parênteses, espaços e traços é limpo primeiro: o formato natural de escrever
-# um número não pode ser um erro de validação.
-TELEFONE_MIN, TELEFONE_MAX = 8, 15
+# Um convite é para um grupo de pessoas, não para o mundo. Sem teto, um engano
+# de digitação no formulário criava um convite com mil milhões de vagas — que é
+# o mesmo que um convite público e eterno, sem que nada no painel o diga. O
+# `screens` sempre teve um limite; este não tinha nenhum.
+MAX_UTILIZACOES = 1000
+
+# A nota é para caber num cartão da lista, não para guardar um texto.
+MAX_NOTA = 200
 
 
-def validar_email(v):
-    """Aceita vazio (o email é opcional em todo o painel) ou algo com forma."""
+def _validar_nota(v):
+    """Uma nota em branco é o mesmo que nota nenhuma."""
     if v is None:
         return None
-    limpo = str(v).strip().lower()
-    if not limpo:
-        return None
-    if not EMAIL_RE.match(limpo):
-        raise ValueError("Informe um e-mail válido, como nome@exemplo.com.")
-    return limpo
-
-
-def validar_telefone(v):
-    """Devolve o número só com dígitos, que é o formato que o envio precisa.
-
-    🐛 O destinatário do WhatsApp é `{phone_number}@s.whatsapp.net`: um número
-    guardado como '(11) 99999-9999' produzia um identificador inválido e a
-    mensagem não chegava — sem erro nenhum, porque o painel só sabe que
-    entregou o pedido.
-    """
-    if v is None:
-        return None
-    so_digitos = re.sub(r'\D', '', str(v))
-    if not so_digitos:
-        return None
-    if not (TELEFONE_MIN <= len(so_digitos) <= TELEFONE_MAX):
-        raise ValueError(
-            f"O telefone deve ter entre {TELEFONE_MIN} e {TELEFONE_MAX} dígitos, "
-            "incluindo o código do país (ex.: 5511999999999)."
-        )
-    return so_digitos
+    return str(v).strip() or None
 
 
 def _validar_custom_code(v):
@@ -83,16 +72,23 @@ class CreateInviteSchema(BaseModel):
     libraries: List[str] = Field(..., min_items=1, description="Pelo menos uma biblioteca deve ser selecionada.")
     screens: int = Field(0, ge=0, le=6)
     allow_downloads: bool = False
-    expires_in_minutes: Optional[int] = Field(None, ge=0)
-    trial_duration_minutes: int = Field(0, ge=0)
+    expires_in_minutes: Optional[int] = Field(None, ge=0, le=MAX_MINUTOS)
+    trial_duration_minutes: int = Field(0, ge=0, le=MAX_MINUTOS)
     overseerr_access: bool = False
     custom_code: Optional[str] = None
-    max_uses: int = Field(1, ge=1)
-    telegram_id: Optional[str] = None # Novo campo opcional
+    max_uses: int = Field(1, ge=1, le=MAX_UTILIZACOES)
+    # O contacto pré-atribuído. Os dois são opcionais e independentes.
+    telegram_id: Optional[str] = None
+    discord_id: Optional[str] = None
+    note: Optional[str] = Field(None, max_length=MAX_NOTA)
 
     @validator('custom_code')
     def custom_code_valido(cls, v):
         return _validar_custom_code(v)
+
+    @validator('note')
+    def nota_limpa(cls, v):
+        return _validar_nota(v)
 
 
 class CreateInviteBotSchema(BaseModel):
@@ -100,35 +96,59 @@ class CreateInviteBotSchema(BaseModel):
     Esquema do endpoint de integração para bots (POST /api/invites/bot/create).
 
     Diferenças em relação ao esquema usado pelo painel:
-      • 'telegram_id' é OBRIGATÓRIO — é o propósito deste endpoint.
+      • é preciso UM contacto — 'telegram_id' ou 'discord_id' —, que é o
+        propósito deste endpoint: o convite fica pré-atribuído a alguém.
       • 'libraries' é opcional: um bot raramente conhece os nomes das bibliotecas,
         por isso, se não for indicado, o servidor usa todas as disponíveis.
+
+    ⚠️ O 'telegram_id' era OBRIGATÓRIO e passou a ser opcional. É uma folga, não
+    uma quebra: os bots que já existem continuam a mandá-lo e continuam a
+    funcionar. O que mudou é que um bot de Discord deixou de ser obrigado a
+    inventar um Telegram ID para conseguir criar um convite.
     """
-    # 'Union[str, int]' é deliberado: a API de bots do Telegram trata o chat_id como
-    # um INTEIRO, por isso um bot envia naturalmente {"telegram_id": 123456789}.
-    # Se aceitássemos apenas 'str', o Pydantic rejeitaria esses pedidos com 400 e a
-    # integração falharia logo à partida. O validador abaixo converte tudo para texto.
-    telegram_id: Union[str, int] = Field(..., description="ID do chat/utilizador no Telegram.")
+    # 'Union[str, int]' é deliberado: as APIs de bots do Telegram e do Discord
+    # tratam o id como um INTEIRO, por isso um bot envia naturalmente
+    # {"telegram_id": 123456789}. Se aceitássemos apenas 'str', o Pydantic
+    # rejeitaria esses pedidos com 400 e a integração falhava logo à partida.
+    # O validador abaixo converte tudo para texto.
+    telegram_id: Optional[Union[str, int]] = Field(None, description="ID do chat/usuário no Telegram.")
+    discord_id: Optional[Union[str, int]] = Field(None, description="ID do usuário no Discord.")
     libraries: Optional[List[str]] = None
     screens: int = Field(0, ge=0, le=6)
     allow_downloads: bool = False
-    expires_in_minutes: Optional[int] = Field(None, ge=0)
-    trial_duration_minutes: int = Field(0, ge=0)
+    expires_in_minutes: Optional[int] = Field(None, ge=0, le=MAX_MINUTOS)
+    trial_duration_minutes: int = Field(0, ge=0, le=MAX_MINUTOS)
     overseerr_access: bool = False
     custom_code: Optional[str] = None
-    max_uses: int = Field(1, ge=1)
+    max_uses: int = Field(1, ge=1, le=MAX_UTILIZACOES)
+    note: Optional[str] = Field(None, max_length=MAX_NOTA)
 
     @validator('custom_code')
     def custom_code_valido(cls, v):
         return _validar_custom_code(v)
 
-    @validator('telegram_id')
-    def telegram_id_not_blank(cls, v):
-        # Normaliza aqui também: o bot pode enviar o ID como número, que o Pydantic
-        # converte para string, possivelmente com espaços.
-        v = str(v).strip()
-        if not v:
-            raise ValueError("O telegram_id não pode estar vazio.")
+    @validator('note')
+    def nota_limpa(cls, v):
+        return _validar_nota(v)
+
+    @validator('telegram_id', 'discord_id')
+    def contacto_limpo(cls, v):
+        # Normaliza aqui também: o bot pode enviar o ID como número, que o
+        # Pydantic converte para texto, possivelmente com espaços. Um valor em
+        # branco é o mesmo que não o mandar.
+        if v is None:
+            return None
+        return str(v).strip() or None
+
+    @validator('discord_id', always=True)
+    def pelo_menos_um_contacto(cls, v, values):
+        # ⚠️ Corre no ÚLTIMO dos dois campos e com `always=True`, para ver o
+        # telegram_id já validado em `values` e para correr mesmo quando nenhum
+        # dos dois vem no pedido — sem isso, um corpo sem contacto nenhum
+        # passava em silêncio e criava um convite que não fica atribuído a
+        # ninguém, que é precisamente o que este endpoint não faz.
+        if not v and not values.get('telegram_id'):
+            raise ValueError("Informe 'telegram_id' ou 'discord_id'.")
         return v
 
 class RenewSubscriptionSchema(BaseModel):

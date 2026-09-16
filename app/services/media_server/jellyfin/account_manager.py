@@ -25,6 +25,7 @@ de `InvitationLifecycle`.
 import json
 import logging
 import secrets
+from types import SimpleNamespace
 from typing import Any, Dict
 
 from flask import url_for
@@ -34,10 +35,63 @@ from ....config import load_or_create_config
 from ....utils.identity import normalize_user_id
 from ....utils.log_formatting import describe
 from ....utils.log_sanitizer import mask_code
-from ..invitations import InvitationLifecycle
+from ....utils.validacao import validar_email
+from ..invitations import PEDIDO_INVALIDO, InvitationLifecycle, recusa
 from .api_client import JellyfinApiError
 
 logger = logging.getLogger(__name__)
+
+# Os mesmos limites do login: é aqui que o pedido para, antes de haver viagem ao
+# servidor de média. 🛡️ Esta entrada é PÚBLICA e o que aqui chega vai direto
+# para o servidor (criar a conta) e para a base de dados (o perfil): sem um
+# limite ao tamanho, um nome ou uma senha de megabytes era lido para memória,
+# enviado ao servidor e gravado por quem nem precisa de ter sessão.
+MAX_UTILIZADOR = 128
+MAX_PALAVRA_PASSE = 256
+MAX_EMAIL = 254
+MIN_PALAVRA_PASSE = 6
+
+
+def conta_a_partir_de_credenciais(credenciais):
+    """Aqui a conta ainda NÃO EXISTE: o que chega é o que a pessoa escolheu.
+
+    ⚠️ É uma função de MÓDULO e não um método porque não precisa de nada do
+    manager — não fala com o servidor, só lê o corpo do pedido. Assim os duplos
+    de backend dos testes chamam-na tal e qual, em vez de cada um ter a sua
+    cópia das regras: foi precisamente o que aconteceu quando estes limites
+    passaram da rota para o backend e os duplos continuaram a responder como
+    dantes, deixando de testar o que a aplicação faz.
+    """
+    username = (credenciais.get('username') or '').strip()
+    password = credenciais.get('password') or ''
+    email = (credenciais.get('email') or '').strip()
+
+    if not username or not password:
+        return None, recusa(PEDIDO_INVALIDO, _("Informe um nome de usuário e uma senha."))
+
+    if len(password) < MIN_PALAVRA_PASSE:
+        return None, recusa(PEDIDO_INVALIDO, _("A senha precisa ter pelo menos 6 caracteres."))
+
+    if len(username) > MAX_UTILIZADOR or len(password) > MAX_PALAVRA_PASSE or len(email) > MAX_EMAIL:
+        logger.warning("Resgate de convite recusado: campos acima do tamanho aceite.")
+        return None, recusa(PEDIDO_INVALIDO, _("Os dados informados são longos demais."))
+
+    # ⚠️ O email é OPCIONAL aqui (nas contas locais ninguém é obrigado a dar um),
+    # mas quando vem tem de ter forma: é por ele que o Seerr encontra a pessoa e
+    # que os avisos chegam. Um erro de escrita não dava erro nenhum — dava uma
+    # aba "Meus Pedidos" vazia para sempre.
+    #
+    # 🛡️ A mensagem é FIXA e não o texto da exceção. Aqui seria inofensivo (quem
+    # a escreve somos nós, em `validar_email`), mas o padrão não é: basta alguém
+    # pôr outra coisa a levantar dentro deste `try` para passar a sair daqui o
+    # que essa outra coisa quiser dizer.
+    try:
+        email = validar_email(email) or ''
+    except ValueError:
+        return None, recusa(PEDIDO_INVALIDO, _("Informe um e-mail válido, como nome@exemplo.com."))
+
+    return SimpleNamespace(username=username, password=password, email=email), None
+
 
 
 class JellyfinAccountManager(InvitationLifecycle):
@@ -116,6 +170,9 @@ class JellyfinAccountManager(InvitationLifecycle):
     # RESGATE DE CONVITE
     # =========================================================================
 
+    def conta_a_partir_de_credenciais(self, credenciais):
+        return conta_a_partir_de_credenciais(credenciais)
+
     def claim_invitation(self, code, account) -> Dict[str, Any]:
         """Resgata um convite criando a conta no servidor.
 
@@ -145,7 +202,7 @@ class JellyfinAccountManager(InvitationLifecycle):
         # greenlets. Dois resgates simultâneos do mesmo código passavam ambos.
         if not self.data_manager.reserve_invitation_use(code, username, None):
             logger.warning(f"Resgate do convite '{mask_code(code)}' recusado: as vagas esgotaram-se entretanto.")
-            return {"success": False, "message": _("Este convite já atingiu o seu limite máximo de utilizações.")}
+            return {"success": False, "message": _("Este convite já atingiu o limite máximo de usos.")}
 
         try:
             criado = self.create_account(username, password)
@@ -169,8 +226,15 @@ class JellyfinAccountManager(InvitationLifecycle):
         # A reserva foi feita sem ID (a conta ainda não existia): agora que
         # existe, regista-se o ID no convite, que é a identidade estável para a
         # verificação de resgates repetidos.
-        self.data_manager.release_invitation_use(code, username, None)
-        self.data_manager.reserve_invitation_use(code, username, user_id)
+        #
+        # 🐛 Isto era um `release` seguido de um `reserve`, e entre os dois a
+        # vaga ficava LIVRE. Com o worker gevent, outro resgate podia ficar com
+        # ela; o `reserve` seguinte devolvia False — que ninguém verificava — e
+        # a conta ficava criada com o ID nunca registado no convite. Sem ele,
+        # nem o resgate duplicado nem o abuso de período de teste voltavam a
+        # reconhecer esta pessoa. Acrescentar o ID não precisa de mexer nas
+        # vagas, por isso deixou de o fazer.
+        self.data_manager.registar_identidade_no_convite(code, username, user_id)
 
         perfil = self._criar_perfil_local(user_id, username, email, invitation)
 
@@ -211,12 +275,22 @@ class JellyfinAccountManager(InvitationLifecycle):
         if existente and (existente.get('trial_end_date') or existente.get('status') == 'inactive'):
             return {
                 "success": False,
-                "message": _("Já utilizou um período de teste anteriormente. Para continuar a utilizar o serviço, adquira um plano."),
+                "message": _("Já utilizou um período de teste anteriormente. Para continuar usando o serviço, contrate um plano."),
             }
         return None
 
     def _criar_perfil_local(self, user_id, username, email, invitation):
         perfil = self.data_manager.get_user_profile(user_id) or {}
+
+        # 🐛 O contacto pré-atribuído ao convite NUNCA era vinculado aqui. Um
+        # convite gerado por um bot para um Telegram ID concreto criava a conta
+        # e o perfil ficava sem o vínculo: a pessoa entrava e nunca mais recebia
+        # um aviso de vencimento, porque o painel não sabia por onde lhe falar.
+        # A mesma família do `agendar_fim_do_teste` e do
+        # `resolver_indicacao_pendente`, que também só existiam no backend do
+        # Plex.
+        perfil.update(self.resolver_contactos_do_convite(invitation, username))
+
         perfil.update({
             'username': username,
             'email': email or perfil.get('email'),

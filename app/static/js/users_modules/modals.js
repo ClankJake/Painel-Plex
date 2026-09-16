@@ -57,37 +57,85 @@ export function showConfirmationModal({ title, message, confirmText, confirmClas
 // ==========================================
 
 export function showInviteDetailsModal(details) {
-    const { code, created_at, claimed_by_users, use_count, max_uses, libraries, screen_limit, telegram_id } = details;
+    const {
+        code, created_at, expires_at, claimed_at, claimed_by_users, use_count, max_uses,
+        libraries, screen_limit, telegram_id, discord_id, note, trial_duration_minutes,
+        allow_downloads, overseerr_access,
+    } = details;
     const claimedUsersList = claimed_by_users ? claimed_by_users : [];
     const safeCode = sanitizeHTML(code);
-    
-    const isExpired = details.expires_at && new Date(details.expires_at) < new Date();
+
+    const isExpired = expires_at && new Date(expires_at) < new Date();
     const isFull = use_count >= max_uses;
     const isActive = !isExpired && !isFull;
+
+    // ⚠️ Tudo isto já estava gravado e nenhum destes campos aparecia: quem
+    // abria os detalhes de um convite via metade do que tinha escolhido ao
+    // criá-lo, e a única forma de confirmar a validade ou o período de teste
+    // era gerar outro e comparar.
+    const linha = (rotulo, valor, largura = '') => `
+        <div class="${largura}">
+            <span class="font-bold block text-gray-500 dark:text-gray-400">${rotulo}</span>
+            <span class="block text-gray-900 dark:text-white">${valor}</span>
+        </div>`;
+
+    const sim = i18n.yes || 'Sim';
+    const nao = i18n.no || 'Não';
+    const marca = (ligado) => ligado
+        ? `<span class="text-green-600 dark:text-green-400">${sim}</span>`
+        : `<span class="text-gray-500">${nao}</span>`;
+
+    const minutosPorExtenso = (minutos) => {
+        if (!minutos) return i18n.noTrial || 'Sem teste';
+        if (minutos % 1440 === 0) {
+            const dias = minutos / 1440;
+            return `${dias} ${dias === 1 ? (i18n.day || 'dia') : (i18n.days || 'dias')}`;
+        }
+        if (minutos % 60 === 0) {
+            const horas = minutos / 60;
+            return `${horas} ${horas === 1 ? (i18n.hour || 'hora') : (i18n.hours || 'horas')}`;
+        }
+        return `${minutos} ${i18n.minutes || 'minutos'}`;
+    };
 
     let historyHtml = '';
     if (claimedUsersList.length > 0) {
         historyHtml = `
             <ul class="list-disc list-inside text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700 max-h-32 overflow-y-auto">
                 ${claimedUsersList.map(user => `<li>${sanitizeHTML(user)}</li>`).join('')}
-            </ul>`;
+            </ul>
+            ${claimed_at ? `<p class="text-xs text-gray-500 mt-1.5">${i18n.lastClaimAt || 'Último resgate em'}: ${sanitizeHTML(formatarDataHora(claimed_at))}</p>` : ''}`;
     } else {
-        historyHtml = `<p class="text-sm text-gray-500 italic">${i18n.noUsesYet || 'Nenhum uso registado.'}</p>`;
+        historyHtml = `<p class="text-sm text-gray-500 italic">${i18n.noUsesYet || 'Nenhum uso registrado.'}</p>`;
     }
 
-    const dateCreated = formatDateTime(created_at);
     const libList = libraries && libraries.length > 0
         ? sanitizeHTML(libraries.join(', '))
         : sanitizeHTML(i18n.allLibraries || 'Todas');
 
+    // ⚠️ `formatarDataHora` e não `toLocaleString`: o idioma vem do <html lang>
+    // e não do navegador, senão quem tem o browser em inglês lê o mês antes do
+    // dia. E `{ ausente: ... }` para o que pode não existir, em vez de um
+    // espaço em branco que não explica nada.
+    const semPrazo = i18n.never || 'Nunca';
+
     const body = `
         <div class="space-y-4">
+            ${note ? `<div class="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800/50">
+                <span class="font-bold block text-xs text-yellow-800 dark:text-yellow-500">${i18n.inviteNote || 'Para quem é'}</span>
+                <span class="text-sm text-gray-900 dark:text-white">${sanitizeHTML(note)}</span>
+            </div>` : ''}
             <div class="grid grid-cols-2 gap-3 text-sm bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                <div><span class="font-bold block text-gray-500 dark:text-gray-400">${i18n.createdAt || 'Criado em:'}</span> <span class="text-gray-900 dark:text-white">${dateCreated}</span></div>
-                <div><span class="font-bold block text-gray-500 dark:text-gray-400">${i18n.usage || 'Uso'}:</span> <span class="text-gray-900 dark:text-white">${use_count} / ${max_uses}</span></div>
-                <div><span class="font-bold block text-gray-500 dark:text-gray-400">${i18n.screenLimitShort || 'Limite Telas'}:</span> <span class="text-gray-900 dark:text-white">${sanitizeHTML(screen_limit || i18n.default || 'Padrão')}</span></div>
-                <div><span class="font-bold block text-gray-500 dark:text-gray-400">${i18n.libraries}:</span> <span class="truncate block text-gray-900 dark:text-white" title="${libList}">${libList}</span></div>
-                ${telegram_id ? `<div class="col-span-2"><span class="font-bold block text-gray-500 dark:text-gray-400">${i18n.preassignedTelegramId || 'ID do Telegram pré-atribuído'}:</span> <span class="font-mono text-gray-900 dark:text-white">${sanitizeHTML(telegram_id)}</span></div>` : ''}
+                ${linha(i18n.createdAt || 'Criado em:', sanitizeHTML(formatarDataHora(created_at)))}
+                ${linha(i18n.usage || 'Uso', `${use_count} / ${max_uses}`)}
+                ${linha(i18n.inviteExpiresIn || 'Expira em:', sanitizeHTML(formatarDataHora(expires_at, { ausente: semPrazo })))}
+                ${linha(i18n.trialDuration || 'Período de teste:', minutosPorExtenso(trial_duration_minutes))}
+                ${linha(i18n.screenLimitShort || 'Limite Telas', sanitizeHTML(String(screen_limit || i18n.noLimit || 'Sem limite')))}
+                ${linha(i18n.allowDownloads || 'Downloads', marca(allow_downloads))}
+                ${linha(i18n.overseerrAccess || 'Acesso aos pedidos', marca(overseerr_access))}
+                ${telegram_id ? linha(i18n.preassignedTelegramId || 'ID do Telegram pré-atribuído', `<span class="font-mono">${sanitizeHTML(telegram_id)}</span>`) : ''}
+                ${discord_id ? linha(i18n.preassignedDiscordId || 'ID do Discord pré-atribuído', `<span class="font-mono">${sanitizeHTML(discord_id)}</span>`) : ''}
+                ${linha(i18n.libraries, `<span class="truncate block" title="${libList}">${libList}</span>`, 'col-span-2')}
             </div>
             <div class="pt-2">
                 <h4 class="text-sm font-bold text-gray-900 dark:text-white mb-2">${i18n.usageHistory || 'Histórico de Utilização'}:</h4>
@@ -151,11 +199,28 @@ export function showInviteDetailsModal(details) {
 }
 
 export function showCreateInviteModal() {
-    const telegramIdField = state.telegramEnabled ? `
+    // O campo de cada canal só aparece se esse canal estiver ligado: pedir um
+    // Discord ID num painel sem Discord configurado é pedir um dado que nunca
+    // vai ser usado.
+    const campoDeContacto = (id, rotulo, exemplo) => `
         <div>
-            <label for="inviteTelegramId" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.telegramIdOptional || 'Telegram ID (Opcional)'}</label>
-            <input type="text" id="inviteTelegramId" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" placeholder="Ex: 123456789">
-            <p class="text-xs text-gray-500 mt-1">${i18n.telegramIdHint || 'Se preenchido, a conta ficará logo vinculada a este ID.'}</p>
+            <label for="${id}" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${rotulo}</label>
+            <input type="text" id="${id}" maxlength="64" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" placeholder="${exemplo}">
+        </div>`;
+
+    const camposDeContacto = [
+        state.telegramEnabled && campoDeContacto(
+            'inviteTelegramId', i18n.telegramIdOptional || 'Telegram ID (opcional)', 'Ex: 123456789'),
+        state.discordEnabled && campoDeContacto(
+            'inviteDiscordId', i18n.discordIdOptional || 'Discord ID (opcional)', 'Ex: 987654321098765432'),
+    ].filter(Boolean);
+
+    const telegramIdField = camposDeContacto.length ? `
+        <div>
+            <div class="grid grid-cols-1 ${camposDeContacto.length > 1 ? 'md:grid-cols-2' : ''} gap-4">
+                ${camposDeContacto.join('')}
+            </div>
+            <p class="text-xs text-gray-500 mt-1">${i18n.contactIdHint || 'Se preenchido, a conta fica vinculada assim que o convite for resgatado — é por aí que os avisos de vencimento chegam.'}</p>
         </div>
     ` : '';
 
@@ -168,8 +233,13 @@ export function showCreateInviteModal() {
                 </div>
                 <div>
                     <label for="inviteMaxUses" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.numberOfUses}</label>
-                    <input type="number" id="inviteMaxUses" value="1" min="1" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white">
+                    <input type="number" id="inviteMaxUses" value="1" min="1" max="1000" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white">
                 </div>
+            </div>
+            <div>
+                <label for="inviteNote" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.inviteNote || 'Para quem é (opcional)'}</label>
+                <input type="text" id="inviteNote" maxlength="200" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" placeholder="${i18n.inviteNotePlaceholder || 'Ex.: João do grupo do WhatsApp'}">
+                <p class="text-xs text-gray-500 mt-1">${i18n.inviteNoteHint || 'Só você vê. Serve para saber de quem era o código três meses depois.'}</p>
             </div>
             ${telegramIdField}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -233,8 +303,12 @@ export function showCreateInviteModal() {
         button.disabled = true;
         button.textContent = i18n.generating;
 
-        const telegramInput = modal.querySelector('#inviteTelegramId');
-        const telegramId = telegramInput ? telegramInput.value.trim() || null : null;
+        const valorDoCampo = (id) => {
+            const campo = modal.querySelector(id);
+            return campo ? campo.value.trim() || null : null;
+        };
+        const telegramId = valorDoCampo('#inviteTelegramId');
+        const discordId = valorDoCampo('#inviteDiscordId');
 
         try {
             const result = await api.createInvite({
@@ -246,7 +320,9 @@ export function showCreateInviteModal() {
                 overseerr_access: modal.querySelector('#inviteOverseerrAccess').checked,
                 custom_code: modal.querySelector('#inviteCustomCode').value.trim() || null,
                 max_uses: parseInt(modal.querySelector('#inviteMaxUses').value) || 1,
-                telegram_id: telegramId
+                telegram_id: telegramId,
+                discord_id: discordId,
+                note: modal.querySelector('#inviteNote').value.trim() || null
             });
 
             if (result && result.success) {
@@ -780,7 +856,7 @@ export function showExtendTrialModal(user) {
         }
 
         confirmButton.disabled = true;
-        confirmButton.textContent = i18n.extending || 'A estender...';
+        confirmButton.textContent = i18n.extending || 'Estendendo...';
 
         try {
             const result = await api.extendTrial(user.id, { extend_minutes });
@@ -889,7 +965,7 @@ export async function showReactivationModal(user) {
         }
 
         confirmButton.disabled = true;
-        confirmButton.textContent = i18n.reactivating || 'A reativar...';
+        confirmButton.textContent = i18n.reactivating || 'Reativando...';
 
         try {
             const result = await api.reactivateUser(user.id, selectedLibraries);

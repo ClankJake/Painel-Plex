@@ -12,7 +12,7 @@ from plexapi.exceptions import BadRequest, NotFound
 from flask_babel import gettext as _
 from flask import url_for
 from ....utils.log_sanitizer import mask_email, mask_code
-from ..invitations import InvitationLifecycle
+from ..invitations import CREDENCIAIS, PEDIDO_INVALIDO, InvitationLifecycle, recusa
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,36 @@ class PlexInviteManager(InvitationLifecycle):
         self.overseerr_manager = overseerr_manager
         self.notifier_manager = notifier_manager
 
+    # Os limites do que se aceita antes de tocar na rede. Os mesmos do login:
+    # é aqui que o pedido para.
+    MAX_TOKEN = 512
+
+    def conta_a_partir_de_credenciais(self, credenciais):
+        """No Plex a conta JÁ EXISTE: o que chega é um token do plex.tv.
+
+        🛡️ A mensagem devolvida é FIXA e nunca o texto da exceção. Esta rota é
+        pública, e `str(e)` num caminho público entrega a quem pede aquilo que
+        o servidor sabe sobre a falha — aqui seria o endereço a que o painel
+        tentou chegar e o que a plex.tv respondeu.
+        """
+        token = (credenciais.get('plex_token') or '').strip()
+        if not token:
+            return None, recusa(PEDIDO_INVALIDO, _("Token do Plex não fornecido."))
+
+        # Um token com megabytes era lido para memória e enviado à plex.tv por
+        # quem nem precisa de ter sessão.
+        if len(token) > self.MAX_TOKEN:
+            logger.warning("Resgate de convite recusado: token acima do tamanho aceite.")
+            return None, recusa(PEDIDO_INVALIDO, _("Os dados informados são longos demais."))
+
+        try:
+            conta = MyPlexAccount(token=token)
+            logger.info(f"Token do novo utilizador '{conta.username}' validado com sucesso.")
+            return conta, None
+        except Exception as e:
+            logger.error(f"Falha ao validar o token do Plex do novo utilizador: {e}", exc_info=True)
+            return None, recusa(CREDENCIAIS, _("Token do Plex inválido."))
+
     def claim_invitation(self, code, account):
         """
         Orquestra o resgate de um convite inicial, com proteção anti-espertos.
@@ -85,7 +115,7 @@ class PlexInviteManager(InvitationLifecycle):
             or username in invitation.get('claimed_by_users', [])
         )
         if ja_resgatou:
-            return {"success": False, "message": _("Já resgatou este convite anteriormente.")}
+            return {"success": False, "message": _("Você já resgatou este convite.")}
             
         # 🛡️ 1.5. SISTEMA ANTI-BURLA (O bloqueio de espertinhos)
         # Verifica se esta conta do Plex já faz parte do nosso sistema
@@ -98,14 +128,14 @@ class PlexInviteManager(InvitationLifecycle):
                 logger.warning(f"O utilizador inativo '{username}' tentou usar o convite '{mask_code(code)}' para contornar o pagamento.")
                 return {
                     "success": False,
-                    "message": _("Sua conta encontra-se inativa ou expirada. Por favor, acesse à página minha conta para renovar a assinatura em vez de utilizar um novo convite.")
+                    "message": _("Sua conta encontra-se inativa ou expirada. Acesse a página Minha Conta para renovar a assinatura, em vez de usar um convite novo.")
                 }
             
             # Se o utilizador já está ativo, não precisa de gastar um convite
             if existing_profile.get('status') == 'active':
                 return {
                     "success": False,
-                    "message": _("Você já possui acesso ativo a este servidor. Não necessita de resgatar novos convites.")
+                    "message": _("Você já possui acesso ativo a este servidor. Não precisa resgatar convites novos.")
                 }
         
         # 2. Prevenção de Abuso de Testes (Trials)
@@ -114,10 +144,10 @@ class PlexInviteManager(InvitationLifecycle):
                 logger.warning(f"Bloqueio de Abuso: O utilizador {username} tentou resgatar um segundo convite de teste.")
                 return {
                     "success": False, 
-                    "message": _("Já utilizou um período de teste anteriormente. Para continuar a utilizar o serviço, adquira um plano.")
+                    "message": _("Já utilizou um período de teste anteriormente. Para continuar usando o serviço, contrate um plano.")
                 }
         
-        telegram_id_from_invite = self._handle_telegram_linking(invitation, username)
+        contactos_do_convite = self.resolver_contactos_do_convite(invitation, username)
 
         # 🛡️ RESERVA A VAGA ANTES DE FALAR COM O PLEX.
         # A validação acima (get_invitation_by_code) é só uma leitura, e a partir
@@ -127,7 +157,7 @@ class PlexInviteManager(InvitationLifecycle):
         # A reserva é atómica na base de dados, por isso só um pode ganhar.
         if not self.data_manager.reserve_invitation_use(code, username, media_user_id):
             logger.warning(f"Resgate do convite '{mask_code(code)}' recusado: as vagas esgotaram-se entretanto.")
-            return {"success": False, "message": _("Este convite já atingiu o seu limite máximo de utilizações.")}
+            return {"success": False, "message": _("Este convite já atingiu o limite máximo de usos.")}
 
         # A partir daqui, QUALQUER saída sem sucesso tem de devolver a vaga —
         # caso contrário uma tentativa falhada queimava uma utilização do convite.
@@ -144,7 +174,7 @@ class PlexInviteManager(InvitationLifecycle):
                 return invite_result
             if invite_result.get("already_exists"):
                 self.data_manager.release_invitation_use(code, username, media_user_id)
-                return {"success": False, "message": _("Já tem acesso a este servidor.")}
+                return {"success": False, "message": _("Você já tem acesso a este servidor.")}
 
             accept_result = self._accept_invite_v2(account)
             if not accept_result.get("success"):
@@ -171,7 +201,7 @@ class PlexInviteManager(InvitationLifecycle):
              self.data_manager.create_notification(message=_("'%(username)s' resgatou um convite.", username=username), category='success')
 
         user_data_response = self._setup_local_profile_and_integrations(
-            account, invitation, telegram_id_from_invite
+            account, invitation, contactos_do_convite
         )
 
         return {
@@ -214,30 +244,7 @@ class PlexInviteManager(InvitationLifecycle):
             logger.error(f"Erro ao verificar histórico de testes do utilizador {username}: {e}")
             return False
 
-    def _handle_telegram_linking(self, invitation, username):
-        telegram_id = invitation.get('telegram_id')
-        if telegram_id is None or str(telegram_id).strip() == "":
-            return None
-
-        # Normaliza para comparar de forma fiável com o que está guardado.
-        telegram_id = str(telegram_id).strip()
-
-        # 🛡️ Revalidação no momento do RESGATE: entre a geração do convite e o seu
-        # uso pode ter passado bastante tempo, e nesse intervalo o mesmo Telegram ID
-        # pode ter sido vinculado a outra conta. Neste caso, o registo prossegue
-        # normalmente — apenas o vínculo do Telegram é ignorado, para nunca deixar
-        # dois utilizadores a apontar para o mesmo chat.
-        existing_user = self.data_manager.get_user_profile_by_telegram(telegram_id)
-        if existing_user and existing_user['username'] != username:
-            logger.warning(
-                f"Conflito de Telegram ID: o convite tinha o ID {telegram_id}, mas este já está "
-                f"vinculado a '{existing_user['username']}'. O registo continua, mas sem o vínculo do Telegram."
-            )
-            return None
-
-        return telegram_id
-
-    def _setup_local_profile_and_integrations(self, plex_account, invitation, telegram_id):
+    def _setup_local_profile_and_integrations(self, plex_account, invitation, contactos):
         from app.config import load_or_create_config
         
         profile_data = {
@@ -248,9 +255,9 @@ class PlexInviteManager(InvitationLifecycle):
             'libraries': json.dumps(invitation.get('libraries', []))
         }
         
-        if telegram_id:
-            profile_data['telegram_user'] = telegram_id
-            logger.info(f"Telegram ID {telegram_id} vinculado ao utilizador {plex_account.username}.")
+        # Já vêm resolvidos e revalidados por `resolver_contactos_do_convite`,
+        # com as chaves do PERFIL (`telegram_user`, `discord_user_id`).
+        profile_data.update(contactos)
 
         # 🎁 INDIQUE E GANHE: se o utilizador chegou através de um link de indicação
         # (/r/CODIGO), o código ficou guardado na sessão. É neste momento — quando o
@@ -534,7 +541,7 @@ class PlexInviteManager(InvitationLifecycle):
                 return accept_result
 
             self._apply_online_media_preferences(user_account)
-            return {"success": True, "message": _("Convite aceite com sucesso."), "user": user_account}
+            return {"success": True, "message": _("Convite aceito com sucesso."), "user": user_account}
             
         except Exception as e:
             logger.error(f"Erro ao processar aceite manual via token: {e}")
