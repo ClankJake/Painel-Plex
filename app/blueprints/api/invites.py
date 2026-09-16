@@ -68,6 +68,7 @@ def _convite_para_a_api(convite):
         'allow_downloads': bool(convite.get('allow_downloads', False)),
         'overseerr_access': bool(convite.get('overseerr_access', False)),
         'telegram_id': convite.get('telegram_id'),
+        'note': convite.get('note'),
     }
 
 
@@ -91,6 +92,7 @@ def _para_a_auditoria(pedido, code):
         'acesso_aos_pedidos': bool(pedido.get('overseerr_access', False)),
         'usos': pedido.get('max_uses', 1),
         'telegram_id': pedido.get('telegram_id'),
+        'nota': pedido.get('note'),
     }
 
 
@@ -171,7 +173,8 @@ def create_invite_route(validated_data):
         overseerr_access=data.get('overseerr_access', False),
         custom_code=data.get('custom_code'),
         max_uses=data.get('max_uses', 1),
-        telegram_id=data.get('telegram_id') 
+        telegram_id=data.get('telegram_id'),
+        note=data.get('note'),
     )
     if result.get('success'):
         result['invite_url'] = endereco_publico('main.claim_invite_page', code=result['code'])
@@ -229,7 +232,8 @@ def create_invite_for_bot(validated_data):
         overseerr_access=data.get('overseerr_access', False),
         custom_code=data.get('custom_code'),
         max_uses=data.get('max_uses', 1),
-        telegram_id=data.get('telegram_id')
+        telegram_id=data.get('telegram_id'),
+        note=data.get('note'),
     )
 
     if result.get('success'):

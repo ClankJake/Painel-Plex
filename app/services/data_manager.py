@@ -1396,7 +1396,8 @@ class DataManager:
             max_uses=details.get('max_uses', 1), 
             use_count=details.get('use_count', 0), 
             claimed_by_users=json.dumps(details.get('claimed_by_users', [])),
-            telegram_id=details.get('telegram_id')
+            telegram_id=details.get('telegram_id'),
+            note=details.get('note'),
         )
         db.session.add(invitation)
         return self._row_to_dict(invitation)

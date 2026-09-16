@@ -235,7 +235,8 @@ class InvitationLifecycle:
             "max_uses": max_uses,
             "use_count": 0,
             "claimed_by_users": [],
-            "telegram_id": telegram_id
+            "telegram_id": telegram_id,
+            "note": (kwargs.get('note') or '').strip() or None,
         }
 
         self.data_manager.add_invitation(code, invitation_details)

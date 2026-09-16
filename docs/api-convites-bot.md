@@ -69,7 +69,8 @@ Content-Type: application/json
 | `trial_duration_minutes` | int | não | `0` | Duração do período de teste. `0` = sem teste. |
 | `overseerr_access` | bool | não | `false` | Criar também acesso no Seerr (Overseerr / Jellyseerr). Ver [integracao-seerr.md](integracao-seerr.md). |
 | `custom_code` | string | não | *aleatório* | Código personalizado para o convite. |
-| `max_uses` | int | não | `1` | Número de utilizações permitidas. |
+| `max_uses` | int | não | `1` | Número de usos permitidos. |
+| `note` | string | não | — | Para quem é o convite. Só o administrador a vê, no painel; serve para saber de quem era o código três meses depois. Até 200 caracteres. |
 
 ### Limites dos valores
 
@@ -167,7 +168,8 @@ continua a ser encontrado** — é essa a resposta que se veio buscar.
     "screens": 1,
     "allow_downloads": false,
     "overseerr_access": false,
-    "telegram_id": "123456789"
+    "telegram_id": "123456789",
+    "note": "João do grupo do WhatsApp"
   }
 }
 ```

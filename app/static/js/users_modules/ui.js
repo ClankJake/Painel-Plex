@@ -167,7 +167,7 @@ export function handleInviteTabChange(tab) {
  * Retorna o HTML de um cartão de convite único.
  */
 function renderInviteCard(details) {
-    const { code, expires_at, use_count, max_uses, trial_duration_minutes } = details;
+    const { code, expires_at, use_count, max_uses, trial_duration_minutes, note } = details;
     const isExpired = expires_at && new Date(expires_at) < new Date();
     const isFull = use_count >= max_uses;
     const isActive = !isExpired && !isFull;
@@ -203,10 +203,18 @@ function renderInviteCard(details) {
         }
     }
 
+    // Para quem o convite foi feito. Sem isto, um código aleatório numa lista
+    // de vinte não diz nada a ninguém três meses depois — e, enquanto ninguém
+    // o resgatasse, não havia sequer um nome a que o ligar.
+    const noteHtml = note
+        ? `<span class="text-xs text-gray-600 dark:text-gray-300 truncate max-w-[14rem]" title="${sanitizeHTML(note)}">${sanitizeHTML(note)}</span>`
+        : '';
+
     return `
     <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700/50 border border-gray-100 dark:border-gray-700/30">
         <div class="flex items-center gap-3 flex-wrap">
             <span class="font-mono font-bold text-sm text-gray-900 dark:text-white">${safeCode}</span>
+            ${noteHtml}
             ${statusHtml} ${trialHtml} ${usageHtml} ${expirationHtml}
         </div>
         <div class="flex items-center gap-2">

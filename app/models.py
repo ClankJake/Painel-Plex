@@ -164,6 +164,11 @@ class Invitation(db.Model):
     max_uses = db.Column(db.Integer, nullable=False, default=1)
     use_count = db.Column(db.Integer, nullable=False, default=0)
     telegram_id = db.Column(db.String, nullable=True)  # Novo campo
+    # Para quem é este convite. O painel só sabia responder a isso quando havia
+    # Telegram; os outros ficavam a ser um código aleatório e mais nada, e um
+    # convite gasto só dizia o nome de quem o usou — não o de quem o devia ter
+    # usado.
+    note = db.Column(db.String(200), nullable=True)
     # 🛡️ Apagar um convite apagava o "membro desde" de quem entrou por ele:
     # `get_user_claim_date` procura o username dentro de `claimed_by_users` e
     # não há outra fonte para essa data. A mesma decisão de `pix_payments`,

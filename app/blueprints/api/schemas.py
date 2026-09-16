@@ -46,6 +46,9 @@ MAX_MINUTOS = 5 * 365 * 24 * 60
 # `screens` sempre teve um limite; este não tinha nenhum.
 MAX_UTILIZACOES = 1000
 
+# A nota é para caber num cartão da lista, não para guardar um texto.
+MAX_NOTA = 200
+
 # Só dígitos, entre 8 e 15 — o máximo do E.164. O que a pessoa escreve com
 # parênteses, espaços e traços é limpo primeiro: o formato natural de escrever
 # um número não pode ser um erro de validação.
@@ -85,6 +88,13 @@ def validar_telefone(v):
     return so_digitos
 
 
+def _validar_nota(v):
+    """Uma nota em branco é o mesmo que nota nenhuma."""
+    if v is None:
+        return None
+    return str(v).strip() or None
+
+
 def _validar_custom_code(v):
     """Partilhado pelos dois esquemas de criação de convite."""
     if v is None:
@@ -109,10 +119,15 @@ class CreateInviteSchema(BaseModel):
     custom_code: Optional[str] = None
     max_uses: int = Field(1, ge=1, le=MAX_UTILIZACOES)
     telegram_id: Optional[str] = None # Novo campo opcional
+    note: Optional[str] = Field(None, max_length=MAX_NOTA)
 
     @validator('custom_code')
     def custom_code_valido(cls, v):
         return _validar_custom_code(v)
+
+    @validator('note')
+    def nota_limpa(cls, v):
+        return _validar_nota(v)
 
 
 class CreateInviteBotSchema(BaseModel):
@@ -137,10 +152,15 @@ class CreateInviteBotSchema(BaseModel):
     overseerr_access: bool = False
     custom_code: Optional[str] = None
     max_uses: int = Field(1, ge=1, le=MAX_UTILIZACOES)
+    note: Optional[str] = Field(None, max_length=MAX_NOTA)
 
     @validator('custom_code')
     def custom_code_valido(cls, v):
         return _validar_custom_code(v)
+
+    @validator('note')
+    def nota_limpa(cls, v):
+        return _validar_nota(v)
 
     @validator('telegram_id')
     def telegram_id_not_blank(cls, v):

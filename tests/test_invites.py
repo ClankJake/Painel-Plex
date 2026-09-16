@@ -1185,3 +1185,54 @@ class TestLimpezaDeConvitesAntigos:
         data_manager.add_invitation("LIXO", detalhes(created_at=iso(-900), expires_at=iso(-890)))
         assert data_manager.limpar_convites_antigos(0) == 0
         assert data_manager.get_invitation("LIXO") is not None
+
+
+class TestANotaDoConvite:
+    """
+    O painel já guardava para QUEM um convite era, mas só quando havia
+    Telegram. Todos os outros ficavam a ser um código aleatório e mais nada, e
+    um convite gasto só dizia o nome de quem o usou — não o de quem o devia ter
+    usado.
+    """
+
+    def test_a_nota_e_gravada(self, admin, data_manager, servidor_que_cria_a_serio):
+        admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "COM-NOTA",
+            "note": "João do grupo do WhatsApp",
+        })
+        assert data_manager.get_invitation("COM-NOTA")["note"] == "João do grupo do WhatsApp"
+
+    def test_uma_nota_em_branco_e_o_mesmo_que_nota_nenhuma(self, admin, data_manager, servidor_que_cria_a_serio):
+        admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "SEM-NOTA", "note": "   ",
+        })
+        assert data_manager.get_invitation("SEM-NOTA")["note"] is None
+
+    def test_uma_nota_enorme_e_recusada(self, admin, db_session, servidor_falso):
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "note": "x" * 201,
+        })
+        assert resposta.status_code == 400
+
+    def test_a_nota_chega_ao_bot(self, client, configurada, data_manager):
+        from app.config import load_or_create_config
+
+        data_manager.add_invitation("COM-NOTA", detalhes(note="Para a Ana"))
+        dados = client.get("/api/invites/bot/invite/COM-NOTA", headers={
+            "X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')
+        }).get_json()
+
+        assert dados["invite"]["note"] == "Para a Ana"
+
+    def test_a_nota_fica_na_auditoria_da_criacao(self, admin, db_session, servidor_falso):
+        from app.extensions import db
+        from sqlalchemy import text
+
+        admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "note": "Para a Ana",
+        })
+        with db.engine.begin() as ligacao:
+            detalhe = ligacao.execute(text(
+                "SELECT detalhes FROM audit_logs WHERE acao = 'convite.criar'"
+            )).scalar()
+        assert "Para a Ana" in detalhe
