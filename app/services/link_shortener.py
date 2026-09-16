@@ -3,29 +3,17 @@
 import secrets
 import logging
 import os
-from datetime import datetime, timezone
 from typing import Optional
 
 from flask import url_for
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..extensions import db
-from ..models import ShortLink
+from ..models import ShortLink, agora_utc
 from ..config import load_or_create_config
 from ..utils.log_sanitizer import mask_code, mask_link
 
 logger = logging.getLogger(__name__)
-
-
-def _agora_utc_ingenuo():
-    """O "agora" na forma que a coluna `ShortLink.created_at` guarda.
-
-    A coluna é um `DateTime` sem fuso e o seu `default` é o `datetime.utcnow`.
-    Escrever aqui um valor COM fuso misturaria as duas formas na mesma coluna,
-    que é pior do que a inconsistência que já existe. É o mesmo idioma do
-    `garantir_payment_token`, e não usa o `utcnow`, depreciado desde o 3.12.
-    """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class LinkShortener:
@@ -71,13 +59,13 @@ class LinkShortener:
                 # no dia 30 — logo a seguir a ter sido enviado. É a mesma regra
                 # que `garantir_payment_token` já segue: o que conta é a data do
                 # ÚLTIMO envio, não a do primeiro.
-                existente.created_at = _agora_utc_ingenuo()
+                existente.created_at = agora_utc()
                 db.session.commit()
                 logger.info(f"Link curto '{mask_code(code)}' reutilizado para: {mask_link(original_url)}")
             else:
                 code = self._generate_short_code()
                 db.session.add(ShortLink(short_code=code, original_url=original_url,
-                                         created_at=_agora_utc_ingenuo()))
+                                         created_at=agora_utc()))
                 db.session.commit()
                 logger.info(f"Novo Link curto '{mask_code(code)}' criado com sucesso para: {mask_link(original_url)}")
             

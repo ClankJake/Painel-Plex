@@ -166,3 +166,57 @@ class TestARotaQueAPessoaAbre:
         assert resposta.status_code == 200, (
             "um código desconhecido mostra uma página com explicação, não um 404 cru."
         )
+
+
+class TestOTetoDePedidos:
+    """`/s/<code>` é pública, sem sessão, e consulta a base de dados por pedido.
+
+    ⚠️ Eu tinha escrito que ela "não tem limite de pedidos". É FALSO, e medi-o:
+    o `RATELIMIT_DEFAULT` da aplicação ("200 per day; 50 per hour") aplica-se a
+    toda a rota que não declare um limite próprio, e esta não declara. O 429
+    chega ao 51.º pedido.
+
+    ⚠️ E acrescentar-lhe um `@limiter.limit` teria AFROUXADO a rota, não
+    apertado: no Flask-Limiter um limite de rota SUBSTITUI o padrão. Medido:
+    com `60 per minute` o 429 passava do 51.º para o 61.º pedido, e o teto
+    diário desaparecia. Este teste existe para que a rota fique sem decorador
+    — e para ninguém lhe acrescentar um a pensar que a está a proteger.
+    """
+
+    @pytest.fixture(autouse=True)
+    def contador_limpo(self):
+        """O limitador conta em memória, partilhada pela sessão de testes
+        inteira. Sem limpar, este teste gastaria a quota de `/s/` e os outros
+        desta suíte apanhariam 429 sem nada a ver com o que testam."""
+        from app.extensions import limiter
+
+        limiter.reset()
+        yield
+        limiter.reset()
+
+    def test_a_rota_e_travada_pelo_padrao_global(self, client, config_file, shortener):
+        config_file(IS_CONFIGURED=True)
+        codigo = shortener.create_short_link(
+            "https://painel.exemplo.com/pay/tk"
+        ).rsplit("/", 1)[-1]
+
+        estados = [client.get(f"/s/{codigo}").status_code for _ in range(70)]
+
+        assert 429 in estados, "a rota aceitou 70 pedidos seguidos sem travar."
+        primeiro = estados.index(429) + 1
+        assert primeiro <= 51, (
+            f"o 429 só apareceu ao {primeiro}.º pedido. O padrão global trava "
+            f"ao 51.º; um número maior quer dizer que alguém pôs um "
+            f"`@limiter.limit` nesta rota e, com isso, AFROUXOU-A."
+        )
+
+    def test_um_clique_normal_nunca_e_travado(self, client, config_file, shortener):
+        """O caso que não pode partir: a pessoa toca no link e entra."""
+        config_file(IS_CONFIGURED=True)
+        destino = "https://painel.exemplo.com/pay/tk"
+        codigo = shortener.create_short_link(destino).rsplit("/", 1)[-1]
+
+        for _ in range(5):
+            resposta = client.get(f"/s/{codigo}", follow_redirects=False)
+            assert resposta.status_code in (301, 302)
+            assert resposta.headers["Location"] == destino

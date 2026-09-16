@@ -1761,6 +1761,26 @@ NÃO derrubar o pedido (o webhook é o caminho principal de confirmação); o qu
 mudou é ficar rasto, com o txid mascarado por `mask_token` como no resto do
 módulo.
 
+⚠️ **`datetime.utcnow` está proibido** (`test_nenhum_datetime_utcnow_no_codigo_da_aplicacao`).
+O Python 3.12 — que o CI já corre — diz "deprecated and scheduled for removal":
+um dia o painel deixa de arrancar. Havia doze chamadas, onze delas o `default=`
+de colunas `DateTime`. Use `agora_utc()`, de `app/models.py`. ⚠️ E NÃO a
+substituição óbvia: as colunas deste esquema são todas SEM FUSO e o SQLite
+guarda-as como texto, por isso um `datetime.now(timezone.utc)` sem o
+`replace(tzinfo=None)` escreveria linhas que ordenam e comparam de forma
+diferente das que já lá estão — e é por comparação de data que o `cleanup_job`
+decide o que apagar.
+
+⚠️ **Um `@limiter.limit` numa rota SUBSTITUI o padrão global**, e por isso pode
+AFROUXÁ-LA sem que ninguém repare. O `RATELIMIT_DEFAULT` da aplicação é
+`"200 per day; 50 per hour"` e aplica-se a toda a rota que não declare um
+limite próprio. Medido em `/s/<code>`: sem decorador o 429 chega ao 51.º
+pedido; com um `60 per minute` chega ao 61.º — e o teto DIÁRIO desaparece.
+Antes de acrescentar um limite a uma rota, compare-o com o padrão; e se quiser
+somar em vez de substituir, é `override_defaults=False`. ⚠️ Mas isso não é
+automático: há rotas de polling (`check_plex_pin`, a 60/min) onde juntar o
+teto de 200/dia partiria o fluxo ao fim de poucos minutos.
+
 ⚠️ **E nunca um `except:` NU.** Sob gevent ele apanha o `GreenletExit`, que é
 como um greenlet é morto — engoli-lo faz o worker deixar de conseguir encerrar
 aquele pedido —, além do `KeyboardInterrupt` e do `SystemExit`, num painel que

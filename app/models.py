@@ -10,13 +10,32 @@ from .dominios import (
     clausula_in,
 )
 from .extensions import db
+
+
+def agora_utc():
+    """O "agora" na forma que as colunas `DateTime` deste esquema guardam.
+
+    ⚠️ Elas são todas SEM FUSO, e o valor tem de continuar a sê-lo: o SQLite
+    guarda-o como texto, e uma linha escrita com fuso ordenaria e compararia
+    de forma diferente das que já lá estão. `replace(tzinfo=None)` é o que
+    torna esta função um substituto exato do `datetime.utcnow`.
+
+    🐛 E é por isso que ela existe: o `utcnow` está DEPRECIADO desde o Python
+    3.12 — que o CI já corre — e o aviso diz "scheduled for removal". Havia
+    doze chamadas, onze delas `default=` de colunas. Trocá-las por
+    `datetime.now(timezone.utc)` sem o `replace` teria sido pior do que não
+    mexer: passaria a escrever com fuso numa coluna que não o tem.
+
+    É o mesmo idioma que o `garantir_payment_token` já usava à mão.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 from .utils.identity import normalize_user_id
 from flask_login import UserMixin
 from sqlalchemy.orm import validates
 import json
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class UserId(db.TypeDecorator):
@@ -84,7 +103,7 @@ class Task(db.Model):
     progress_current = db.Column(db.Integer, default=0)
     progress_total = db.Column(db.Integer, default=0)
     result = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=agora_utc)
     started_at = db.Column(db.DateTime, nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
 
@@ -104,7 +123,7 @@ class Coupon(db.Model):
     use_count = db.Column(db.Integer, nullable=False, default=0)
     expires_at = db.Column(db.DateTime, nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=agora_utc)
     # 🛡️ Quando esta linha foi tirada da vista, se foi. NULL quer dizer que
     # está viva, que é o caso de quase todas — daí o índice ser PARCIAL.
     # A remoção suave está nestas três tabelas e não em todas de propósito:
@@ -141,7 +160,7 @@ class CouponUsage(db.Model):
         nullable=False, index=True,
     )
     coupon_id = db.Column(db.Integer, db.ForeignKey('coupons.id'), nullable=False)
-    used_at = db.Column(db.DateTime, default=datetime.utcnow)
+    used_at = db.Column(db.DateTime, default=agora_utc)
     __table_args__ = (db.UniqueConstraint('media_user_id', 'coupon_id', name='_user_coupon_uc'),)
 
 class Invitation(db.Model):
@@ -433,7 +452,7 @@ class PushSubscription(db.Model):
     auth = db.Column(db.String(64), nullable=False)
     # Para a pessoa reconhecer o aparelho na lista ("Chrome no Android").
     device_label = db.Column(db.String(120), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=agora_utc, nullable=False)
     # Quando foi a última entrega aceite. Serve para a lista de aparelhos dizer
     # o que ainda está vivo — uma subscrição morta só se descobre ao tentar.
     last_success_at = db.Column(db.DateTime, nullable=True)
@@ -449,7 +468,7 @@ class Notification(db.Model):
     )
     message = db.Column(db.String, nullable=False)
     category = db.Column(db.String(20), nullable=False, default='info')
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=agora_utc)
     is_read = db.Column(db.Boolean, default=False, nullable=False)
     link = db.Column(db.String, nullable=True)
 
@@ -465,7 +484,7 @@ class ShortLink(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     short_code = db.Column(db.String(10), unique=True, nullable=False, index=True)
     original_url = db.Column(db.String(512), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=agora_utc)
 
 class PasswordReset(db.Model):
     """Um pedido de reposição de palavra-passe, à espera de ser usado.
@@ -492,7 +511,7 @@ class PasswordReset(db.Model):
         db.ForeignKey('user_profiles.media_user_id', ondelete='CASCADE', onupdate='CASCADE'),
         nullable=False, index=True,
     )
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=agora_utc)
     expires_at = db.Column(db.DateTime, nullable=False)
     used_at = db.Column(db.DateTime, nullable=True)
 
@@ -528,7 +547,7 @@ class ApiKey(db.Model):
     prefixo = db.Column(db.String(16), nullable=False, unique=True, index=True)
     resumo = db.Column(db.String(64), nullable=False)
     escopos = db.Column(db.Text, nullable=False, default='[]')
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=agora_utc)
     last_used_at = db.Column(db.DateTime, nullable=True)
     revoked_at = db.Column(db.DateTime, nullable=True)
 
@@ -551,7 +570,7 @@ class UnlockedAchievement(db.Model):
     )
     username = db.Column(db.String, nullable=False)
     achievement_id = db.Column(db.String, nullable=False)
-    unlocked_at = db.Column(db.DateTime, default=datetime.utcnow)
+    unlocked_at = db.Column(db.DateTime, default=agora_utc)
     __table_args__ = (db.UniqueConstraint('media_user_id', 'achievement_id', name='_user_achievement_uc'),)
 
 class AuditLog(db.Model):
@@ -587,7 +606,7 @@ class AuditLog(db.Model):
     __tablename__ = 'audit_logs'
 
     id = db.Column(db.Integer, primary_key=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    timestamp = db.Column(db.DateTime, default=agora_utc, nullable=False)
     # Quem. Fica o nome E o identificador: o nome é o que se lê, o
     # identificador é o que continua a servir se a pessoa mudar de nome no
     # servidor de média. Ambos anuláveis — há ações que nascem de um webhook ou
@@ -616,7 +635,7 @@ class StreamTerminationLog(db.Model):
     # deixar de existir. Uma auditoria que se apaga sozinha não é uma auditoria.
     media_user_id = db.Column(UserId(), nullable=False, index=True)
     username = db.Column(db.String, nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=agora_utc)
     media_title = db.Column(db.String, nullable=False)
     platform = db.Column(db.String, nullable=True)
     reason = db.Column(db.String, nullable=False)

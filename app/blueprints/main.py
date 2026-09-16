@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from flask_babel import get_locale, gettext as _
 
-from ..models import UserProfile
+from ..models import UserProfile, agora_utc
 from .auth import admin_required  # Otimizado: Importação direta do módulo irmão auth.py
 from ..config import is_configured, load_or_create_config
 from .. import extensions
@@ -329,4 +329,4 @@ def payment_page(token):
         except (ValueError, TypeError) as e:
              logger.error(f"Erro ao processar cálculos de datas de expiração no portal de pagamentos para '{username}': {e}")
 
-    return render_template('payment_public.html', token=token, username=username, is_reactivation=is_reactivation, current_year=datetime.utcnow().year)
+    return render_template('payment_public.html', token=token, username=username, is_reactivation=is_reactivation, current_year=agora_utc().year)
