@@ -36,7 +36,7 @@ class ExtendTrialSchema(BaseModel):
 # ==========================================
 
 @users_api_bp.route('/public-profile-by-token/<string:token>')
-@limiter.limit("30 per minute")
+@limiter.limit("30 per minute", override_defaults=False)
 def get_public_user_profile_by_token(token):
     """O nome, o avatar e o vencimento de quem é dono deste link de pagamento.
 
@@ -258,7 +258,7 @@ def update_privacy_settings():
 
 @users_api_bp.route('/account/password', methods=['POST'])
 @login_required
-@limiter.limit("10 per minute")
+@limiter.limit("10 per minute", override_defaults=False)
 def alterar_palavra_passe():
     """Muda a palavra-passe de quem está autenticado.
 
@@ -1096,7 +1096,7 @@ def get_my_referral_info():
 
 @users_api_bp.route('/referral/claim', methods=['POST'])
 @login_required
-@limiter.limit("10 per hour")
+@limiter.limit("10 per hour", override_defaults=False)
 def claim_referral_code():
     """
     Regista que o utilizador autenticado foi indicado por alguém. Só tem efeito

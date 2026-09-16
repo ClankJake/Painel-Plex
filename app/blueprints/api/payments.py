@@ -424,7 +424,7 @@ def get_payment_options():
     })
 
 @payments_api_bp.route('/validate-coupon', methods=['POST'])
-@limiter.limit("5 per minute")
+@limiter.limit("5 per minute", override_defaults=False)
 def validate_coupon_route():
     data = request.json or {}
     
@@ -471,7 +471,7 @@ def get_upgrade_quote():
 
 
 @payments_api_bp.route('/create-charge', methods=['POST'])
-@limiter.limit("3 per minute")
+@limiter.limit("3 per minute", override_defaults=False)
 def create_charge_route():
     data = request.json or {}
     provider = data.get('provider')
