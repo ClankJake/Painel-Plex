@@ -50,6 +50,7 @@ npm run build          # CSS + bibliotecas (socket.io, chart.js) — é o que fa
                        # a quem vê 'io is not defined' no navegador
 npm run build:css      # só o CSS
 npm run watch:css      # em desenvolvimento, num terminal à parte
+npm run lint           # referências do JS (uma regra: `no-undef`)
 
 # Executar a aplicação (aplica `flask db upgrade` antes de subir)
 python run.py
@@ -59,9 +60,26 @@ flask db migrate -m "descrição"
 flask db upgrade
 ```
 
-Não há linter nem formatador configurados. O CI
-(`.github/workflows/tests.yml`) tem dois jobs: o **pytest**, em Python 3.11 e
-3.12, e o **build do frontend** (`npm ci` + `npm run build`).
+Não há formatador configurado, e o ESLint que existe **não é um linter de
+estilo**: tem UMA regra, `no-undef`. O CI (`.github/workflows/tests.yml`) tem
+dois jobs: o **pytest**, em Python 3.11 e 3.12, e o **build do frontend**
+(`npm ci` + `npm run lint` + `npm run build`).
+
+🐛 **Uma referência pendurada num módulo ES só levanta quando a LINHA CORRE.**
+O `renderInvites()` tinha duas listas — tudo o que estava em cache e o que a
+aba mostra — e elas colapsaram numa só quando a filtragem passou para o
+servidor; o nome antigo (`allInvites`) ficou para trás dentro do `onclick` do
+botão "Detalhes". A página carregava sem uma queixa e o servidor não registava
+nada: o modal simplesmente não abria, e o erro ficava na consola do navegador
+de quem usa o painel. Nem o pytest (não executa JavaScript) nem o build do
+Tailwind (lê os templates à procura de NOMES DE CLASSES, não analisa os
+módulos) conseguem ver isto. ⚠️ Os globais do `eslint.config.mjs` são
+declarados à mão de propósito: o que não estiver na lista é um erro, por isso
+uma biblioteca nova carregada por `<script>` no template tem de ser
+acrescentada ali — que é exatamente o momento em que alguém deve reparar que
+ela passou a existir. O contrato (o script, a regra, o alcance, o passo do CI)
+está preso por `tests/test_referencias_do_javascript.py`, porque um guarda
+desligado em silêncio deixa de ser um guarda.
 
 ⚠️ **O `package-lock.json` tem de vir do registo PÚBLICO.** O que estava
 versionado registava os hashes de tarballs RE-EMPACOTADOS por um espelho: 68 dos

@@ -70,6 +70,15 @@ jobs:
       - name: Instalar as dependências do frontend
         run: npm ci
 
+      # 🐛 Uma referência pendurada num módulo ES não dá erro a carregar a
+      # página — só quando a linha CORRE. O `allInvites` deixado para trás numa
+      # substituição incompleta ficou à espera dentro de um `onclick`, e o modal
+      # de detalhes do convite deixou de abrir sem nada no log do servidor. Nem
+      # o pytest (não executa JavaScript) nem o build do Tailwind (lê nomes de
+      # classes, não analisa módulos) conseguem ver isso.
+      - name: Verificar as referências do JavaScript
+        run: npm run lint
+
       - name: Gerar o CSS e copiar as bibliotecas
         run: npm run build
 
