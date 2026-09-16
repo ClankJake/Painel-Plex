@@ -4,7 +4,7 @@ import logging
 import secrets
 from types import SimpleNamespace
 
-from flask import Blueprint, jsonify, request, url_for
+from flask import Blueprint, jsonify, request
 from plexapi.myplex import MyPlexAccount
 from flask_babel import gettext as _
 from flask_login import login_required
@@ -15,6 +15,7 @@ from .decorators import validate_json
 from .schemas import CreateInviteSchema, CreateInviteBotSchema, validar_email
 from ...config import load_or_create_config
 from ...utils.log_sanitizer import mask_code
+from ...utils.enderecos import endereco_publico
 
 logger = logging.getLogger(__name__)
 invites_api_bp = Blueprint('invites_api', __name__)
@@ -37,7 +38,7 @@ def create_invite_route(validated_data):
         telegram_id=data.get('telegram_id') 
     )
     if result.get('success'):
-        result['invite_url'] = url_for('main.claim_invite_page', code=result['code'], _external=True)
+        result['invite_url'] = endereco_publico('main.claim_invite_page', code=result['code'])
     return jsonify(result)
 
 @invites_api_bp.route('/bot/create', methods=['POST'])
@@ -106,7 +107,7 @@ def create_invite_for_bot(validated_data):
     )
 
     if result.get('success'):
-        result['invite_url'] = url_for('main.claim_invite_page', code=result['code'], _external=True)
+        result['invite_url'] = endereco_publico('main.claim_invite_page', code=result['code'])
         result['telegram_id'] = data.get('telegram_id')
         logger.info(f"Convite '{mask_code(result['code'])}' criado via API para o Telegram ID {data.get('telegram_id')}.")
         return jsonify(result), 201

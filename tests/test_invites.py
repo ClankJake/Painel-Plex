@@ -514,3 +514,32 @@ class TestApagarUmConviteQueNaoExiste:
         resposta = admin.post("/api/invites/delete", json={"code": "PARA-APAGAR"})
         assert resposta.get_json()["success"] is True
         assert data_manager.get_invitation("PARA-APAGAR") is None
+
+
+class TestEnderecoDoConvite:
+    """
+    🐛 O `invite_url` era montado com `url_for(_external=True)`, que lê o
+    endereço do PEDIDO. Um bot que corre na mesma rede de contentores chama o
+    painel pelo nome interno, e o link que ele recebia — e mandava para o
+    Telegram de quem ia entrar — só funcionava de dentro dessa rede.
+
+    O resto do painel (o link de pagamento, o de reposição de palavra-passe) já
+    resolvia isto com a `APP_BASE_URL`.
+    """
+
+    def test_o_link_respeita_a_app_base_url(self, admin, db_session, config_file):
+        config_file(IS_CONFIGURED=True, APP_BASE_URL="https://painel.exemplo.com")
+        resposta = admin.post("/api/invites/create", json={"libraries": ["Filmes"]})
+        dados = resposta.get_json()
+        assert dados["success"] is True
+        assert dados["invite_url"].startswith("https://painel.exemplo.com/invite/")
+
+    def test_uma_barra_a_mais_no_fim_nao_duplica(self, admin, db_session, config_file):
+        config_file(IS_CONFIGURED=True, APP_BASE_URL="https://painel.exemplo.com/")
+        resposta = admin.post("/api/invites/create", json={"libraries": ["Filmes"]})
+        assert "//invite/" not in resposta.get_json()["invite_url"].replace("https://", "")
+
+    def test_sem_app_base_url_continua_a_usar_o_pedido(self, admin, db_session, config_file):
+        config_file(IS_CONFIGURED=True, APP_BASE_URL="")
+        resposta = admin.post("/api/invites/create", json={"libraries": ["Filmes"]})
+        assert resposta.get_json()["invite_url"].startswith("http://localhost/invite/")
