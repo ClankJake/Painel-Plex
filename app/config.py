@@ -111,6 +111,9 @@ def load_or_create_config():
             "PUSH_ENABLED": False,
             "PUSH_VAPID_PUBLIC_KEY": "",
             "PUSH_VAPID_PRIVATE_KEY": "",
+            # O segredo que entra no resumo das chaves de API. Nasce na
+            # primeira chave criada e nunca muda: trocá-lo invalida todas.
+            "API_KEYS_PEPPER": "",
             # Contato de quem envia, que a norma pede no JWT ("mailto:..." ou um
             # endereço). Vazio usa a APP_BASE_URL.
             "PUSH_VAPID_SUBJECT": "",
@@ -306,6 +309,7 @@ def load_or_create_config():
             _set_default("PUSH_ENABLED", False)
             _set_default("PUSH_VAPID_PUBLIC_KEY", "")
             _set_default("PUSH_VAPID_PRIVATE_KEY", "")
+            _set_default("API_KEYS_PEPPER", "")
             _set_default("PUSH_VAPID_SUBJECT", "")
             _set_default("PUSH_ADMIN_PAYMENTS", True)
             _set_default("PUSH_ADMIN_MEDIA_REQUESTS", True)

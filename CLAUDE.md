@@ -287,6 +287,22 @@ podia aceitar webhooks em nome do painel.
   quatro pedaços e a leitura ficava com `-v` no lugar do prefixo: a chave era
   criada com sucesso e nunca mais reconhecida, em cerca de um terço dos casos.
 
+🛡️ **O resumo é um HMAC com um segredo do painel** (`API_KEYS_PEPPER`, gerado
+com a primeira chave e nunca substituído — trocá-lo invalida todas de uma vez e
+em silêncio, a mesma regra do par VAPID). Quem leia só a base de dados fica com
+resumos que não consegue verificar.
+
+⚠️ **E NÃO é um KDF lento, de propósito.** O CodeQL marca isto como "hash fraco
+sobre dados sensíveis" e, para uma palavra-passe escolhida por uma pessoa,
+teria razão. Aqui o que se resume é `pnl_<prefixo>_<token_urlsafe(32)>` — 256
+bits do `secrets` —, e contra isso não há força bruta que um hash lento trave,
+porque não há espaço de palpites para encarecer. Pior: este resumo é calculado
+a CADA pedido autenticado, incluindo em `/api/system/webhook/overseerr`, que é
+`@limiter.exempt`, e o painel corre com UM worker gevent, onde trabalho de CPU
+não cede a vez a ninguém. Um bcrypt ali dava a qualquer pessoa na rede uma forma
+de consumir o worker inteiro com chaves inválidas: uma negação de serviço sem
+autenticação, trocada por uma força bruta que já era impossível.
+
 ⚡ `last_used_at` não é escrito a cada pedido (um webhook bate dezenas de vezes
 por minuto). 🐛 E é escrito pela `db.session`, **não** por uma ligação própria:
 a ligação própria é o que o `audit.registar` faz e aqui seria pior, porque a

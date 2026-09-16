@@ -596,7 +596,10 @@ def api_settings():
         # 🛡️ A chave PRIVADA do VAPID assina cada notificação em nome deste
         # painel. Quem a tiver consegue entregar notificações que os aparelhos
         # aceitam como sendo daqui.
-        'PUSH_VAPID_PRIVATE_KEY'
+        'PUSH_VAPID_PRIVATE_KEY',
+        # Quem o tiver, mais a tabela `api_keys`, pode testar chaves
+        # offline — que é precisamente o que ele existe para impedir.
+        'API_KEYS_PEPPER',
     ]
 
     for key in sensitive_keys:

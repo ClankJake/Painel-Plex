@@ -19,6 +19,7 @@ recuperar depois.
 """
 
 import hashlib
+import hmac
 import json
 import logging
 import secrets
@@ -72,8 +73,56 @@ class DadosInvalidos(Exception):
         self.motivo = motivo
 
 
+def _pepper():
+    """O segredo do painel que entra no resumo. Vazio se ainda não houver chaves."""
+    from ..config import load_or_create_config
+
+    return (load_or_create_config().get('API_KEYS_PEPPER') or '').encode('utf-8')
+
+
+def garantir_pepper():
+    """Gera o segredo UMA vez, e nunca substitui um que já exista.
+
+    ⚠️ Trocá-lo invalida TODAS as chaves de uma vez, em silêncio — as
+    integrações passam a levar 401 e nada no painel diz porquê. É a mesma
+    regra do par VAPID das notificações push.
+    """
+    from ..config import load_or_create_config, save_app_config
+
+    config = load_or_create_config()
+    if config.get('API_KEYS_PEPPER'):
+        return
+
+    config['API_KEYS_PEPPER'] = secrets.token_hex(32)
+    save_app_config(config)
+    logger.info("Segredo das chaves de API gerado.")
+
+
 def _resumo(chave):
-    return hashlib.sha256(chave.encode('utf-8')).hexdigest()
+    """O que fica gravado no lugar da chave.
+
+    🛡️ **HMAC com um segredo do painel, e não um resumo simples.** Quem leia só
+    a base de dados — um `.db` copiado, uma injeção de SQL — fica com resumos
+    que não consegue verificar: para testar um palpite é preciso também o
+    `API_KEYS_PEPPER`, que vive no config.json (a 0600, como tudo o que lá
+    está).
+
+    ⚠️ **E NÃO é um KDF lento (bcrypt, scrypt, argon2), de propósito.** O
+    CodeQL marca isto como "hash fraco sobre dados sensíveis" e, para uma
+    palavra-passe escolhida por uma pessoa, teria razão. Aqui não é: o que se
+    resume é `pnl_<prefixo>_<token_urlsafe(32)>` — 256 bits vindos do
+    `secrets`. Contra isso não há força bruta que um hash lento trave, porque
+    não há espaço de palpites para encarecer.
+
+    E um KDF lento aqui seria pior do que o problema que resolve. Este resumo é
+    calculado a CADA pedido autenticado, incluindo em
+    `/api/system/webhook/overseerr`, que é `@limiter.exempt` — e o painel corre
+    com UM worker gevent de propósito, onde trabalho de CPU não cede a vez a
+    ninguém. Qualquer pessoa na rede podia mandar chaves inválidas a esse
+    endpoint e consumir o worker inteiro: uma negação de serviço sem
+    autenticação, trocada por uma força bruta que já era impossível.
+    """
+    return hmac.new(_pepper(), chave.encode('utf-8'), hashlib.sha256).hexdigest()
 
 
 def _agora():
@@ -100,6 +149,9 @@ def criar(nome, escopos):
     escolhidos = escopos_validos(escopos)
     if not escolhidos:
         raise DadosInvalidos(DadosInvalidos.SEM_ESCOPO)
+
+    # Antes de calcular o primeiro resumo: sem segredo, ele não valeria nada.
+    garantir_pepper()
 
     # Um prefixo repetido é improvável (64 bits) mas não impossível, e a coluna
     # é única: falhar aqui seria um 500 numa ação que o administrador pediu.
@@ -164,6 +216,14 @@ def verificar(chave, escopo):
     # 🛡️ `compare_digest` para o tempo de resposta não dizer quantos caracteres
     # do resumo estavam certos.
     if not secrets.compare_digest(linha.resumo, _resumo(chave)):
+        if not _pepper():
+            # Há chaves na tabela e o segredo desapareceu do config.json — um
+            # config restaurado à mão, provavelmente. NENHUMA chave vai voltar
+            # a valer, e sem esta linha o log só mostrava 401 sem explicação.
+            logger.error(
+                "A tabela tem chaves de API mas o API_KEYS_PEPPER está vazio: "
+                "nenhuma vai ser aceite. Crie chaves novas."
+            )
         return None
 
     if escopo not in json.loads(linha.escopos or '[]'):

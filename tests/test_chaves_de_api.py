@@ -392,3 +392,77 @@ class TestORegistoDeUso:
         comeco = time.monotonic()
         assert api_keys.verificar(chave, 'convites') is not None
         assert time.monotonic() - comeco < 2, "ficou à espera de um lock do SQLite"
+
+
+class TestOResumoNaoSeVerificaSoComABaseDeDados:
+    """
+    🛡️ O resumo é um HMAC com um segredo do painel. Quem leia só a base de
+    dados — um `.db` copiado, uma injeção de SQL — fica com resumos que não
+    consegue verificar: para testar um palpite precisa também do
+    `API_KEYS_PEPPER`, que vive no config.json.
+    """
+
+    def test_o_resumo_nao_e_o_sha256_da_chave(self, app_context, db_session):
+        import hashlib
+
+        from app.models import ApiKey
+
+        linha, chave = criar()
+
+        simples = hashlib.sha256(chave.encode('utf-8')).hexdigest()
+        assert ApiKey.query.get(linha.id).resumo != simples
+
+    def test_o_segredo_nasce_com_a_primeira_chave(self, app_context, db_session, config_file):
+        from app.config import load_or_create_config
+        from app.services import api_keys
+
+        config_file(IS_CONFIGURED=True, API_KEYS_PEPPER="")
+        assert not load_or_create_config().get('API_KEYS_PEPPER')
+
+        api_keys.criar("Bot", ["convites"])
+
+        assert load_or_create_config().get('API_KEYS_PEPPER')
+
+    def test_o_segredo_nunca_e_substituido(self, app_context, db_session):
+        """Trocá-lo invalidaria todas as chaves de uma vez, e em silêncio."""
+        from app.config import load_or_create_config
+        from app.services import api_keys
+
+        _, chave = criar("Primeira")
+        segredo = load_or_create_config().get('API_KEYS_PEPPER')
+
+        criar("Segunda")
+
+        assert load_or_create_config().get('API_KEYS_PEPPER') == segredo
+        assert api_keys.verificar(chave, 'convites') is not None
+
+    def test_com_outro_segredo_a_chave_deixa_de_valer(self, app_context, db_session, config_file):
+        import secrets as _secrets
+
+        from app.config import load_or_create_config, save_app_config
+        from app.services import api_keys
+
+        _, chave = criar()
+        assert api_keys.verificar(chave, 'convites') is not None
+
+        config = load_or_create_config()
+        config['API_KEYS_PEPPER'] = _secrets.token_hex(32)
+        save_app_config(config)
+
+        assert api_keys.verificar(chave, 'convites') is None
+
+    def test_o_segredo_nao_desce_para_o_navegador(self, admin, db_session):
+        """Ele mais a tabela dão exatamente o que o HMAC existe para impedir."""
+        from app.config import load_or_create_config
+
+        criar()  # o segredo passa a existir
+        real = load_or_create_config()['API_KEYS_PEPPER']
+        assert real, "o segredo devia ter nascido com a chave"
+
+        resposta = admin.get("/api/system/settings").get_json()
+        enviado = resposta.get('config', resposta)
+
+        # A convenção do painel para uma credencial: diz que está posta e o
+        # tamanho, nunca o valor.
+        assert real not in str(resposta)
+        assert enviado['API_KEYS_PEPPER'] == {'is_set': True, 'length': len(real)}
