@@ -3,7 +3,7 @@
  * Lógica para a página de resgate de convites.
  */
 
-import { setButtonLoading, restoreButton, escapeHTML, buildPinCheckUrl, chaveEmCamelCase } from './utils.js';
+import { setButtonLoading, restoreButton, escapeHTML, buildPinCheckUrl, lerConfiguracaoDoScript } from './utils.js';
 
 // --- INICIALIZAÇÃO ---
 const scriptTag = document.getElementById('invite-script');
@@ -41,23 +41,14 @@ function formatTime(date) {
 }
 
 // Mapeia os data-attributes para objetos para facilitar o acesso
-const urls = {};
-const i18n = {};
-const config = {};
-// 🐛 A conversão TEM de comer os traços que o browser deixou: ele só os
-// remove quando vêm seguidos de uma letra minúscula, e `data-i18n-step-local-1`
+// 🐛 A conversão das chaves TEM de comer os traços que o browser deixou: ele só
+// os remove quando vêm seguidos de uma letra minúscula, e `data-i18n-step-local-1`
 // chega ao dataset como `i18nStepLocal-1`. Sem isto, a chave ficava
 // `stepLocal-1`, o consumidor pedia `stepLocal1` e a página escrevia
-// "undefined" no "Como começar". Ver `chaveEmCamelCase`.
-for (const key in scriptTag.dataset) {
-    if (key.startsWith('config')) {
-        config[chaveEmCamelCase(key, 6)] = scriptTag.dataset[key];
-    } else if (key.startsWith('url')) {
-        urls[chaveEmCamelCase(key, 3)] = scriptTag.dataset[key];
-    } else if (key.startsWith('i18n')) {
-        i18n[chaveEmCamelCase(key, 4)] = scriptTag.dataset[key];
-    }
-}
+// "undefined" no "Como começar". Quem trata disso é o `chaveEmCamelCase`, dentro
+// do `lerConfiguracaoDoScript`.
+const { urls, i18n, config } = lerConfiguracaoDoScript('invite-script');
+
 
 /**
  * Um texto do dicionário, nunca `undefined`.

@@ -1,4 +1,4 @@
-import { showToast, buildPinCheckUrl, escapeHTML } from './utils.js';
+import { showToast, buildPinCheckUrl, escapeHTML, lerConfiguracaoDoScript } from './utils.js';
 import { aguardarReinicio } from './reinicio.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -20,18 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const wizardContainer = document.getElementById('wizardContainer');
     
     // --- DADOS DO BACKEND (URLs e Traduções) ---
-    const scriptTag = document.getElementById('setup-script');
-    const urls = {};
-    const i18n = {};
-    for (const key in scriptTag.dataset) {
-        if (key.startsWith('urls')) {
-            const urlKey = key.charAt(4).toLowerCase() + key.slice(5);
-            urls[urlKey] = scriptTag.dataset[key];
-        } else if (key.startsWith('i18n')) {
-            const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
-            i18n[i18nKey] = scriptTag.dataset[key];
-        }
-    }
+    const { urls, i18n } = lerConfiguracaoDoScript('setup-script');
     const stepTitles = [i18n.step0Title, i18n.step1Title, i18n.step2Title, i18n.step3Title];
     // Passo especial, acessível a partir do ecrã de boas-vindas.
     const RESTORE_STEP = 4;

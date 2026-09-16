@@ -1,22 +1,16 @@
-import { fetchAPI, showToast, createModal, escapeHTML } from './utils.js';
+import { fetchAPI, showToast, createModal, escapeHTML, lerConfiguracaoDoScript } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     // GLOBAIS E CONFIGURAÇÃO
     // ==========================================
-    const scriptTag = document.getElementById('statistics-script');
-    const currentUser = JSON.parse(scriptTag.dataset.currentUser);
-    
-    const urls = {};
-    const i18n = {};
-    for (const key in scriptTag.dataset) {
-        if (key.startsWith('i18n')) {
-            const i18nKey = key.charAt(4).toLowerCase() + key.slice(5).replace(/-(\w)/g, (_, letter) => letter.toUpperCase());
-            i18n[i18nKey] = scriptTag.dataset[key];
-        } else if (key.endsWith('Url')) {
-             urls[key.replace(/Url$/, '')] = scriptTag.dataset[key];
-        }
-    }
+    // ⚠️ Esta página era a única a cortar o SUFIXO `Url` da chave: `data-stats-url`
+    // dava uma chave sem ele. Com o carregador único a chave fica como o template
+    // a escreve, e é por isso que os consumidores abaixo passaram a pedir
+    // `statsUrl`, `userStatsUrl`, `recentlyAddedUrl` e `recommendationsUrl`.
+    // Nenhum `data-*` do template mexeu.
+    const { urls, i18n, dataset } = lerConfiguracaoDoScript('statistics-script');
+    const currentUser = JSON.parse(dataset.currentUser);
     
     Chart.defaults.font.family = "'Inter', sans-serif";
 
@@ -464,7 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderUserAnalysis = async (userId, username, days, containerElement) => {
         try {
-            const url = urls.userStats.replace('/0', `/${userId}`);
+            const url = urls.userStatsUrl.replace('/0', `/${userId}`);
             const data = await fetchAPI(`${url}?days=${days}`);
             const details = data.details;
             
@@ -668,14 +662,14 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.errorContainer.classList.add('hidden');
         
         try {
-            const dataPromise = fetchAPI(`${urls.stats}?days=${days}`);
+            const dataPromise = fetchAPI(`${urls.statsUrl}?days=${days}`);
 
             if (currentUser.role !== 'admin') {
-                const newlyAddedPromise = fetchAPI(`${urls.recentlyAdded}?days=${days}`);
+                const newlyAddedPromise = fetchAPI(`${urls.recentlyAddedUrl}?days=${days}`);
                 // 🎯 As recomendações não dependem do filtro de dias (usam a janela
                 // longa configurada pelo admin) e falham em silêncio: uma falha aqui
                 // nunca deve impedir as estatísticas de aparecerem.
-                const recommendationsPromise = fetchAPI(urls.recommendations).catch(() => null);
+                const recommendationsPromise = fetchAPI(urls.recommendationsUrl).catch(() => null);
 
                 const [data, newlyAddedData, recommendationsData] = await Promise.all([
                     dataPromise, newlyAddedPromise, recommendationsPromise

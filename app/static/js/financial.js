@@ -1,24 +1,10 @@
-import { fetchAPI, showToast, createModal } from './utils.js';
+import { fetchAPI, showToast, createModal, lerConfiguracaoDoScript } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     // 1. DADOS GLOBAIS E CONFIGURAÇÃO INICIAL
     // ==========================================
-    const scriptTag = document.getElementById('financial-script');
-    const urls = {};
-    const i18n = {};
-    
-    if (scriptTag) {
-        for (const key in scriptTag.dataset) {
-            if (key.startsWith('i18n')) {
-                const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
-                i18n[i18nKey] = scriptTag.dataset[key];
-            } else {
-                const urlKey = key.replace(/-(\w)/g, (match, letter) => letter.toUpperCase());
-                urls[urlKey] = scriptTag.dataset[key];
-            }
-        }
-    }
+    const { urls, i18n } = lerConfiguracaoDoScript('financial-script');
 
     let revenueChart = null;
     let currentDate = new Date();
