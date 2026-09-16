@@ -64,7 +64,9 @@ Daí saem as diferenças que você vai notar na interface. Onde um recurso não 
 -   **Recomendações "Porque assistiu X, pode gostar de Y"**: O painel cruza o histórico de todos os usuários e encontra os títulos que costumam ser vistos pelas mesmas pessoas (filtro colaborativo item-item, com semelhança de cosseno para que "o filme que todo mundo viu" não seja recomendado a todo mundo). Em servidores pequenos, um plano B por gênero entra em ação. Cada sugestão explica o motivo e leva direto ao título no seu servidor — e quem ativou "esconder do ranking" deixa de influenciar as recomendações dos outros.
 
 ### Notificações
--   **Quatro canais**: **Telegram**, **WhatsApp** (via Evolution API, GOWA ou WAHA), **Discord** e **Webhook genérico**.
+-   **Cinco canais**: **Telegram**, **WhatsApp** (via Evolution API, GOWA ou WAHA), **Discord**, **Webhook genérico** e **notificação push**.
+-   **Push no celular e no navegador**: Com o painel instalado no Android ou no iPhone (adicionado à tela de início), ou apenas com as notificações do navegador ligadas no computador, os avisos chegam **mesmo com o painel fechado**. Cada pessoa liga no próprio aparelho, pelo sino do painel. O **administrador** é avisado de cada pagamento confirmado e de cada pedido de conteúdo novo à espera de aprovação; o **usuário**, do vencimento, da renovação e do andamento dos pedidos dele. Não precisa de conta em serviço nenhum: o painel gera as próprias chaves na primeira vez que você liga a opção (Configurações > Notificações > Push). Só exige que o painel esteja em **HTTPS** — é o que o navegador pede.
+    > 🛡️ A senha de uma conta recriada e o link de "esqueci minha senha" **nunca** vão por push: eles aparecem na tela de bloqueio, à vista de quem estiver perto. Continuam indo pelos canais pessoais.
 -   **Mensagens personalizáveis** por evento: vencimento, renovação, reativação, fim de teste, credenciais de acesso, recuperação de senha e avisos em massa.
 -   **Disparo em massa com relatório real**: O console de envio mostra, por usuário, quais canais entregaram e quais falharam (com o motivo) — e o ritmo do disparo é ajustável em Comunicações > Avisos em Massa.
 -   **Pedidos do Seerr**: O usuário é avisado no canal pessoal dele — com a capa do filme/série — sempre que o pedido muda de estado (pendente, aprovado, disponível, recusado).
@@ -157,6 +159,7 @@ Cada integração tem um guia próprio, com passo a passo e resolução de probl
 | **Seerr** (pedidos) | [docs/integracao-seerr.md](docs/integracao-seerr.md) | Pedidos no portal, notificações com capa |
 | **API de Convites** | [docs/api-convites-bot.md](docs/api-convites-bot.md) | Criar convites via bot, vínculo de Telegram ID |
 | **Plugins do Jellyfin** | [docs/plugins-jellyfin.md](docs/plugins-jellyfin.md) | Limite de telas que qualquer aplicativo respeita, histórico por reprodução |
+| **Notificações Push** | [docs/notificacoes-push.md](docs/notificacoes-push.md) | Avisos no celular e no navegador com o painel fechado, instalação no Android/iPhone |
 
 As demais funcionalidades (notificações, gamificação, indicações, backup) são configuradas diretamente em **Configurações**, com explicações na própria interface.
 

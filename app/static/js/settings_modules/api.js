@@ -33,5 +33,6 @@ export const getOnlineMediaSources = () => fetchAPI(urls.onlineMediaSources);
 export const syncProfiles = (payload) => fetchAPI(urls.syncProfiles, 'POST', payload);
 export const testGates2b = (payload) => fetchAPI(urls.testGates2b, 'POST', payload);
 export const testWhatsapp = (payload) => fetchAPI(urls.testWhatsapp, 'POST', payload);
+export const testPush = () => fetchAPI(urls.testPush, 'POST');
 export const backupList = () => fetchAPI(urls.backupList);
 export const backupDelete = (filename) => fetchAPI(urls.backupDelete.replace('__FILENAME__', encodeURIComponent(filename)), 'DELETE');

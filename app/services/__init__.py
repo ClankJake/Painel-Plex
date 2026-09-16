@@ -20,6 +20,7 @@ from .stream_manager import StreamManager
 from .pricing_manager import PricingManager
 from .backup_manager import BackupManager
 from .referral_manager import ReferralManager
+from .push_manager import PushManager
 
 __all__ = [
     'DataManager',
@@ -37,4 +38,5 @@ __all__ = [
     'PricingManager',
     'BackupManager',
     'ReferralManager',
+    'PushManager',
 ]

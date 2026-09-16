@@ -231,3 +231,78 @@ class CreateCouponSchema(BaseModel):
             return v
         except (ValueError, TypeError):
             raise ValueError("O formato da data de expiração deve ser YYYY-MM-DD")
+
+
+class ChavesDaSubscricaoPush(BaseModel):
+    """As duas chaves que o navegador entrega ao subscrever.
+
+    🛡️ Validam-se AQUI, e não no momento do envio: uma chave malformada gravada
+    na tabela só dava erro semanas depois, a cada notificação, e o log dizia
+    apenas que a entrega tinha falhado. Recusar à entrada faz o navegador tentar
+    outra vez.
+    """
+
+    # A chave pública do aparelho: um ponto não comprimido da curva P-256, que
+    # em base64 de URL dá sempre 87 ou 88 caracteres.
+    p256dh: str = Field(..., min_length=80, max_length=255)
+    # O segredo de autenticação: 16 bytes, 22 caracteres em base64 de URL.
+    auth: str = Field(..., min_length=16, max_length=64)
+
+    @staticmethod
+    def _bytes_da_chave(valor, nome, tamanho):
+        from ...services.web_push import de_b64url
+
+        try:
+            bruto = de_b64url(valor)
+        except Exception:
+            raise ValueError(f"A chave '{nome}' não está em base64 de URL.")
+        if len(bruto) != tamanho:
+            raise ValueError(
+                f"A chave '{nome}' devia ter {tamanho} bytes e tem {len(bruto)}.")
+        return bruto
+
+    @validator('p256dh')
+    def validar_p256dh(cls, v):
+        bruto = cls._bytes_da_chave(v, 'p256dh', 65)
+        if bruto[0] != 0x04:
+            raise ValueError("A chave pública do navegador não é um ponto não comprimido.")
+        return v.strip()
+
+    @validator('auth')
+    def validar_auth(cls, v):
+        cls._bytes_da_chave(v, 'auth', 16)
+        return v.strip()
+
+
+class SubscricaoPushSchema(BaseModel):
+    """O que o navegador devolve de `pushManager.subscribe()`."""
+
+    # 🛡️ O endereço é para onde o painel vai fazer POST às escuras, a partir do
+    # servidor — por isso não basta ser HTTPS: **tem de ser de um serviço de
+    # push conhecido** (`SERVICOS_DE_PUSH`). Só com o esquema verificado, quem
+    # tivesse sessão registava um aparelho a apontar para um endereço INTERNO e
+    # usava o painel para lhe bater de dentro da rede, com a rota `/push/test`
+    # por gatilho. A coluna tem 512 caracteres.
+    endpoint: str = Field(..., min_length=12, max_length=512)
+    keys: ChavesDaSubscricaoPush
+    # Como a pessoa reconhece este aparelho na lista ("Chrome no Android").
+    device_label: Optional[str] = Field(None, max_length=120)
+
+    @validator('endpoint')
+    def validar_endpoint(cls, v):
+        from urllib.parse import urlsplit
+
+        from ...services.web_push import endpoint_permitido
+
+        endereco = (v or '').strip()
+        partes = urlsplit(endereco)
+        if partes.scheme != 'https' or not partes.netloc:
+            raise ValueError("O endereço de entrega tem de ser um URL https.")
+        if not endpoint_permitido(endereco):
+            raise ValueError(
+                "O endereço de entrega não é de um serviço de push conhecido.")
+        return endereco
+
+
+class RemocaoDeSubscricaoPushSchema(BaseModel):
+    endpoint: str = Field(..., min_length=12, max_length=512)

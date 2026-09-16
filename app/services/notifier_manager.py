@@ -171,6 +171,34 @@ DEFAULT_TEMPLATES = {
     "WHATSAPP_MEDIA_FAILED_MESSAGE_TEMPLATE": "⚠️ *Falha no Pedido*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\nℹ️ *Ver detalhes:*\n{media_url}",
     "DISCORD_MEDIA_FAILED_MESSAGE_TEMPLATE": '{"embeds": [{"title": "⚠️ Falha no Pedido", "description": "**{title}**\\n\\n📝 {overview}", "color": 10181046, "fields": [{"name": "👤 Usuário", "value": "{username}", "inline": true}, {"name": "📊 Status", "value": "{status}", "inline": true}], "url": "{media_url}"}]}',
 
+    # --- NOTIFICAÇÃO PUSH (navegador e celular) ---
+    # ⚠️ Uma notificação push tem DUAS partes, e o sistema operacional trata-as
+    # de forma diferente: o TÍTULO aparece em negrito e é o que se lê de
+    # relance; o CORPO é cortado ao fim de duas linhas na tela de bloqueio. Por
+    # isso os textos aqui são curtos — não é o mesmo tipo de mensagem que a do
+    # Telegram, e reaproveitar aquela dava um aviso ilegível.
+    "PUSH_EXPIRATION_TITLE_TEMPLATE": "Seu acesso vence em {days} dia(s)",
+    "PUSH_EXPIRATION_MESSAGE_TEMPLATE": "Olá {name}! Vence em {date}, no valor de {price}. Toque para renovar.",
+    "PUSH_RENEWAL_TITLE_TEMPLATE": "Renovação confirmada",
+    "PUSH_RENEWAL_MESSAGE_TEMPLATE": "Tudo certo, {name}! Seu novo vencimento é {new_date}.",
+    "PUSH_REACTIVATION_TITLE_TEMPLATE": "Conta reativada",
+    "PUSH_REACTIVATION_MESSAGE_TEMPLATE": "Olá {name}, seu acesso ao {server_name} voltou. Novo vencimento: {new_date}.",
+    "PUSH_TRIAL_END_TITLE_TEMPLATE": "Seu período de teste terminou",
+    "PUSH_TRIAL_END_MESSAGE_TEMPLATE": "{name}, para continuar com acesso ao {server_name}, toque aqui e faça sua assinatura.",
+    "PUSH_BULK_TITLE_TEMPLATE": "Aviso do servidor",
+    "PUSH_BULK_MESSAGE_TEMPLATE": "{message}",
+    "PUSH_MEDIA_REQUEST_TITLE_TEMPLATE": "Novo conteúdo solicitado",
+    "PUSH_MEDIA_REQUEST_MESSAGE_TEMPLATE": "{title} — {status}",
+    "PUSH_MEDIA_PENDING_TITLE_TEMPLATE": "Pedido enviado",
+    "PUSH_MEDIA_PENDING_MESSAGE_TEMPLATE": "{title} está aguardando aprovação.",
+    "PUSH_MEDIA_APPROVED_TITLE_TEMPLATE": "Pedido aprovado",
+    "PUSH_MEDIA_APPROVED_MESSAGE_TEMPLATE": "{title} foi aprovado e já entrou na fila de download.",
+    "PUSH_MEDIA_AVAILABLE_TITLE_TEMPLATE": "Já está disponível",
+    "PUSH_MEDIA_AVAILABLE_MESSAGE_TEMPLATE": "{title} já pode ser assistido no {server_name}.",
+    "PUSH_MEDIA_DECLINED_TITLE_TEMPLATE": "Pedido recusado",
+    "PUSH_MEDIA_DECLINED_MESSAGE_TEMPLATE": "{title} não foi aprovado.",
+    "PUSH_MEDIA_FAILED_TITLE_TEMPLATE": "Falha no pedido",
+    "PUSH_MEDIA_FAILED_MESSAGE_TEMPLATE": "Algo deu errado com {title}. Fale com o administrador.",
 }
 
 def get_greeting():
@@ -194,7 +222,17 @@ SEERR_EVENT_TEMPLATES = {
 }
 
 
-def resolve_seerr_template_key(canal, notification_type):
+# 🛡️ **Estes dois eventos NUNCA vão por push**, e é uma decisão, não um
+# esquecimento. A notificação push aparece na tela de bloqueio do celular, à
+# vista de quem estiver por perto, e fica guardada pelo sistema operacional
+# fora do painel. O `credentials` leva a senha nova de uma conta recriada — é o
+# único sítio do painel por onde uma senha viaja — e o `password_reset` leva um
+# link que É a credencial enquanto vive. Ambos continuam a ir pelos canais que
+# a pessoa registou, onde há pelo menos uma conversa a proteger.
+EVENTOS_SEM_PUSH = ('credentials', 'password_reset')
+
+
+def resolve_seerr_template_key(canal, notification_type, parte='MESSAGE'):
     """
     Devolve a chave de configuração do template a usar para um dado canal e tipo
     de evento — por exemplo ('TELEGRAM', 'MEDIA_APPROVED') ->
@@ -202,11 +240,14 @@ def resolve_seerr_template_key(canal, notification_type):
 
     Se o evento não tiver template próprio (ou o administrador o tiver deixado em
     branco), recai no template genérico de pedidos.
+
+    `parte` é 'MESSAGE' em todos os canais menos no push, que tem também um
+    'TITLE' — o texto em negrito que o sistema operacional mostra em primeiro.
     """
     sufixo = SEERR_EVENT_TEMPLATES.get(str(notification_type or "").upper())
     if not sufixo:
-        return f"{canal}_MEDIA_REQUEST_MESSAGE_TEMPLATE"
-    return f"{canal}_{sufixo}_MESSAGE_TEMPLATE"
+        return f"{canal}_MEDIA_REQUEST_{parte}_TEMPLATE"
+    return f"{canal}_{sufixo}_{parte}_TEMPLATE"
 
 
 class NotifierManager:
@@ -800,12 +841,37 @@ class NotifierManager:
             logger.warning(f"Erro ao gerar link de pagamento: {e}")
             return long_url if 'long_url' in locals() else None
 
-    def _resolve_template(self, config, canal, event_type):
-        """Template configurado pelo administrador, com recurso ao padrão do sistema."""
-        chave = f"{canal}_{event_type.upper()}_MESSAGE_TEMPLATE"
+    def _resolve_template(self, config, canal, event_type, sufixo='MESSAGE'):
+        """Template configurado pelo administrador, com recurso ao padrão do sistema.
+
+        `sufixo` existe por causa do push, que tem DUAS partes — o título e o
+        corpo — em vez do texto único dos outros canais.
+        """
+        chave = f"{canal}_{event_type.upper()}_{sufixo}_TEMPLATE"
         return config.get(chave) or DEFAULT_TEMPLATES.get(chave, "")
 
-    def _prepare_and_send(self, event_type, user, user_profile, context, config=None):
+    @staticmethod
+    def _aparelhos_push(event_type, user_profile, config):
+        """Os aparelhos desta pessoa que podem receber esta notificação.
+
+        Perguntar ANTES de montar a mensagem é o que permite ao envio em massa
+        contar como destinatário quem só tem push — e é o que evita contar como
+        falha um envio a quem nunca ligou notificação nenhuma.
+        """
+        if not config.get("PUSH_ENABLED") or event_type in EVENTOS_SEM_PUSH:
+            return []
+        from .. import extensions
+        gestor = extensions.push_manager
+        if not (gestor and gestor.disponivel):
+            return []
+        try:
+            return gestor.aparelhos_de(user_profile.get('media_user_id'))
+        except Exception as e:
+            logger.warning(f"Não foi possível ler os aparelhos subscritos: {e}")
+            return []
+
+    def _prepare_and_send(self, event_type, user, user_profile, context, config=None,
+                          aparelhos_push=None):
         """
         Monta e envia a notificação de um evento por todos os canais ativos.
 
@@ -839,14 +905,23 @@ class NotifierManager:
         # disparavam o webhook, mesmo com o canal ativo e configurado. Agora basta
         # o canal estar ativo; o template decide que dados usar.
         can_notify_webhook = bool(config.get("WEBHOOK_ENABLED") and config.get("WEBHOOK_URL"))
-        
-        if not (can_notify_telegram or can_notify_webhook or can_notify_discord or can_notify_whatsapp): 
+
+        # O push é o único canal cujo destinatário não está no perfil: está na
+        # tabela de aparelhos subscritos. Uma pessoa sem aparelho nenhum não
+        # tem push, mesmo com o canal ligado.
+        if aparelhos_push is None:
+            aparelhos_push = self._aparelhos_push(event_type, user_profile, config)
+        can_notify_push = bool(aparelhos_push)
+
+        if not (can_notify_telegram or can_notify_webhook or can_notify_discord
+                or can_notify_whatsapp or can_notify_push):
             return resultado
 
         templates = {
             canal: self._resolve_template(config, canal, event_type)
-            for canal in ("TELEGRAM", "WEBHOOK", "DISCORD", "WHATSAPP")
+            for canal in ("TELEGRAM", "WEBHOOK", "DISCORD", "WHATSAPP", "PUSH")
         }
+        templates["PUSH_TITLE"] = self._resolve_template(config, "PUSH", event_type, sufixo='TITLE')
         bulk_msg = context.get('message', '')
 
         all_text = " ".join(list(templates.values()) + [bulk_msg])
@@ -934,7 +1009,36 @@ class NotifierManager:
                     f"Nada foi enviado para '{user.get('username')}'."
                 )
 
+        if can_notify_push:
+            titulo = self._format_template(templates["PUSH_TITLE"], placeholders)
+            corpo = self._format_template(templates["PUSH"], placeholders)
+            if titulo and corpo:
+                # Onde a notificação abre ao ser tocada. Nos avisos de cobrança
+                # é o link de pagamento (que é o que a pessoa vai fazer a
+                # seguir); nos restantes é a página da conta dela, que é uma
+                # rota do painel e por isso abre a aba já aberta, se houver.
+                destino = (payment_link if (event_type in ('expiration', 'trial_end')
+                                            and payment_link) else '/account')
+                _entregar('Push', lambda: self._send_push_notification(
+                    aparelhos_push, titulo, corpo, destino, event_type
+                ))
+
         return resultado
+
+    def _send_push_notification(self, aparelhos, titulo, corpo, destino, event_type):
+        """Entrega a notificação push, falhando alto se nenhum aparelho a aceitou.
+
+        Quem chama (o envio em massa) trata a exceção como uma falha de canal e
+        mostra-a na consola: um aparelho que existe na tabela e recusa a entrega
+        é exatamente o que o administrador precisa de ver.
+        """
+        from .. import extensions
+
+        entregues = extensions.push_manager.entregar(
+            aparelhos, titulo, corpo, url=destino, tag=event_type)
+        if not entregues:
+            raise NotificationError(
+                f"Nenhum dos {len(aparelhos)} aparelho(s) subscrito(s) aceitou a notificação.")
 
     def send_expiration_notification(self, user, days_left, user_profile):
         expiration_date_str = user_profile.get('expiration_date')
@@ -977,8 +1081,9 @@ class NotifierManager:
         can_telegram = config.get("TELEGRAM_ENABLED") and (user_profile.get('telegram_id') or user_profile.get('telegram_user'))
         can_whatsapp = config.get("WHATSAPP_ENABLED") and user_profile.get('phone_number')
         can_discord = config.get("DISCORD_ENABLED") and user_profile.get('discord_user_id')
+        aparelhos_push = self._aparelhos_push('media_request', user_profile, config)
 
-        if not (can_telegram or can_whatsapp or can_discord):
+        if not (can_telegram or can_whatsapp or can_discord or aparelhos_push):
             logger.debug(f"[ID: {request_id}] Utilizador sem canais de contacto para notificar o pedido.")
             return
 
@@ -1031,6 +1136,59 @@ class NotifierManager:
                     self._send_discord_notification(payload, request_id, config)
             except Exception as e:
                 logger.error(f"[ID: {request_id}] Notificação de pedido via Discord falhou: {e}")
+
+        if aparelhos_push:
+            try:
+                titulo, corpo = self._textos_de_push_do_pedido(config, dados, placeholders)
+                if titulo and corpo:
+                    from .. import extensions
+                    extensions.push_manager.entregar(
+                        aparelhos_push, titulo, corpo,
+                        url=dados.get("media_url") or '/account',
+                        # A etiqueta inclui o título: dois pedidos diferentes
+                        # são dois avisos, mas o mesmo pedido a mudar de estado
+                        # substitui o anterior em vez de empilhar quatro linhas.
+                        tag=f"pedido:{dados.get('title') or ''}"[:60],
+                    )
+            except Exception as e:
+                logger.error(f"[ID: {request_id}] Notificação de pedido via Push falhou: {e}")
+
+    def _textos_de_push_do_pedido(self, config, dados, placeholders):
+        """O título e o corpo do push de um pedido, conforme o estado dele."""
+        tipo = dados.get("notification_type")
+        textos = []
+        for parte in ('TITLE', 'MESSAGE'):
+            chave = resolve_seerr_template_key("PUSH", tipo, parte=parte)
+            generica = f"PUSH_MEDIA_REQUEST_{parte}_TEMPLATE"
+            modelo = (config.get(chave) or DEFAULT_TEMPLATES.get(chave)
+                      or config.get(generica) or DEFAULT_TEMPLATES.get(generica))
+            textos.append(self._format_template(modelo, placeholders, is_json=False))
+        return textos[0], textos[1]
+
+    def send_media_request_admin_notification(self, dados):
+        """Avisa o ADMINISTRADOR de que entrou um pedido novo.
+
+        É ele quem aprova, e é o único aviso que existe sobre isso: o Seerr
+        manda o webhook e mais nada acontece deste lado. Só os eventos de
+        ENTRADA (pendente e aprovado automaticamente) o incomodam — os
+        seguintes são o estado a andar, e quem quer saber é quem pediu.
+        """
+        from .. import extensions
+
+        if str(dados.get("notification_type") or "").upper() not in (
+                "MEDIA_PENDING", "MEDIA_AUTO_APPROVED"):
+            return 0
+
+        titulo = _("Novo pedido de conteúdo")
+        corpo = _("%(username)s pediu %(title)s.",
+                  username=dados.get("username") or _("Alguém"),
+                  title=dados.get("title") or _("um título"))
+        try:
+            return extensions.push_manager.enviar_ao_administrador(
+                'pedido', titulo, corpo, url=dados.get("media_url") or '/', tag='pedido-novo')
+        except Exception as e:
+            logger.warning(f"Não foi possível avisar o administrador do pedido novo: {e}")
+            return 0
 
     def send_renewal_notification(self, user, new_expiration_date, user_profile):
         # 🛡️ ANTI-DUPLICAÇÃO: Evita enviar a mensagem de Renovação logo após uma Reativação (Janela de 60 Segundos)
@@ -1190,13 +1348,20 @@ class NotifierManager:
             alvos = self._get_bulk_target_users(payload, extensions)
             all_profiles = {p['media_user_id']: p for p in extensions.data_manager.get_all_user_profiles()}
 
-            elegiveis, ignorados = self._split_by_reachability(alvos, all_profiles, config)
+            # 🚀 Uma consulta para o lote inteiro, em vez de uma por pessoa:
+            # o envio em massa pergunta duas vezes por cada uma (na contagem de
+            # elegíveis e no envio), e são milhares num painel grande.
+            aparelhos_por_pessoa = self._aparelhos_por_pessoa(extensions, config)
+
+            elegiveis, ignorados = self._split_by_reachability(
+                alvos, all_profiles, config, aparelhos_por_pessoa)
             total_users = len(elegiveis)
 
             extensions.data_manager.update_task(task_id, {'status': 'running', 'progress_total': total_users})
 
             self._run_bulk_worker(
-                app_obj, extensions, task_id, message, config, elegiveis, all_profiles, ignorados
+                app_obj, extensions, task_id, message, config, elegiveis, all_profiles, ignorados,
+                aparelhos_por_pessoa
             )
             
         except Exception as e:
@@ -1214,7 +1379,7 @@ class NotifierManager:
                 pass
 
     @staticmethod
-    def _split_by_reachability(users, all_profiles, config):
+    def _split_by_reachability(users, all_profiles, config, aparelhos_por_pessoa=None):
         """
         Separa quem tem por onde ser notificado de quem não tem.
 
@@ -1230,6 +1395,11 @@ class NotifierManager:
         telegram_ativo = bool(config.get("TELEGRAM_ENABLED"))
         discord_ativo = bool(config.get("DISCORD_ENABLED") and config.get("DISCORD_WEBHOOK_URL"))
         whatsapp_ativo = bool(config.get("WHATSAPP_ENABLED"))
+        # ⚠️ O push não se vê no perfil: quem tem aparelho subscrito está na
+        # tabela das subscrições. Sem isto, quem só ligou as notificações do
+        # celular era contado como "sem contato" e nunca recebia um aviso em
+        # massa — sem erro nenhum, apenas uma linha a dizer que foi ignorado.
+        aparelhos_por_pessoa = aparelhos_por_pessoa or {}
 
         elegiveis, ignorados = [], []
         for user in users:
@@ -1238,13 +1408,29 @@ class NotifierManager:
                 (telegram_ativo and (profile.get('telegram_id') or profile.get('telegram_user')))
                 or (whatsapp_ativo and profile.get('phone_number'))
                 or (discord_ativo and profile.get('discord_user_id'))
+                or bool(aparelhos_por_pessoa.get(user['id']))
             )
             (elegiveis if tem_contacto else ignorados).append(user)
 
         return elegiveis, ignorados
 
+    @staticmethod
+    def _aparelhos_por_pessoa(extensions, config):
+        """Todos os aparelhos subscritos, agrupados por dono."""
+        gestor = extensions.push_manager
+        if not (config.get("PUSH_ENABLED") and gestor and gestor.disponivel):
+            return {}
+        try:
+            por_pessoa = {}
+            for aparelho in extensions.data_manager.get_all_push_subscriptions():
+                por_pessoa.setdefault(aparelho.get('media_user_id'), []).append(aparelho)
+            return por_pessoa
+        except Exception as e:
+            logger.warning(f"Não foi possível ler as subscrições push do lote: {e}")
+            return {}
+
     def _run_bulk_worker(self, app_obj, extensions, task_id, message, config,
-                         elegiveis, all_profiles, ignorados):
+                         elegiveis, all_profiles, ignorados, aparelhos_por_pessoa=None):
         """Corre o lote em segundo plano, transmitindo o progresso em tempo real."""
         total_users = len(elegiveis)
 
@@ -1298,7 +1484,8 @@ class NotifierManager:
 
                     try:
                         resultado = self._prepare_and_send(
-                            'bulk', user, profile, {'message': message}, config=config
+                            'bulk', user, profile, {'message': message}, config=config,
+                            aparelhos_push=(aparelhos_por_pessoa or {}).get(user['id'], [])
                         )
                     except Exception as user_err:
                         logger.error(f"Erro no envio em massa para {username}: {user_err}", exc_info=True)

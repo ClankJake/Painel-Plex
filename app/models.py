@@ -377,6 +377,44 @@ class PixPayment(db.Model):
                  sqlite_where=db.text('deleted_at IS NOT NULL')),
     )
 
+class PushSubscription(db.Model):
+    """Um APARELHO que aceitou receber notificações do painel.
+
+    Não é uma pessoa: cada navegador, cada celular e cada instalação do painel
+    na tela de início tem a sua própria subscrição, com chaves próprias. A mesma
+    pessoa tem tantas linhas quantos os aparelhos onde ligou as notificações.
+
+    ⚠️ **`media_user_id` a NULL quer dizer ADMINISTRADOR**, exatamente como em
+    `notifications` — é a mesma convenção, de propósito: quem recebe o aviso no
+    sino do painel é quem o deve receber no celular. E resolve o caso do dono,
+    que pode ainda não ter perfil local (só passa a tê-lo no primeiro login
+    depois da versão que o cria), e a quem uma chave estrangeira obrigatória
+    impediria de subscrever.
+    """
+
+    __tablename__ = 'push_subscriptions'
+    id = db.Column(db.Integer, primary_key=True)
+    media_user_id = db.Column(
+        UserId(),
+        db.ForeignKey('user_profiles.media_user_id', ondelete='CASCADE', onupdate='CASCADE'),
+        nullable=True, index=True,
+    )
+    # O endereço que o serviço de push (Google, Mozilla, Apple) deu ao aparelho.
+    # É único: um mesmo navegador que volte a subscrever devolve o MESMO
+    # endereço, e sem isto ficavam linhas duplicadas a entregar a mesma
+    # notificação duas e três vezes ao mesmo aparelho.
+    endpoint = db.Column(db.String(512), nullable=False, unique=True)
+    # As chaves da subscrição, em base64 de URL, tal como o navegador as deu.
+    p256dh = db.Column(db.String(255), nullable=False)
+    auth = db.Column(db.String(64), nullable=False)
+    # Para a pessoa reconhecer o aparelho na lista ("Chrome no Android").
+    device_label = db.Column(db.String(120), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    # Quando foi a última entrega aceite. Serve para a lista de aparelhos dizer
+    # o que ainda está vivo — uma subscrição morta só se descobre ao tentar.
+    last_success_at = db.Column(db.DateTime, nullable=True)
+
+
 class Notification(db.Model):
     __tablename__ = 'notifications'
     id = db.Column(db.Integer, primary_key=True)

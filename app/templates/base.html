@@ -214,6 +214,17 @@
                                 <div id="notification-list" class="py-2 max-h-[60vh] sm:max-h-[400px] overflow-y-auto custom-scrollbar" role="none">
                                     <!-- Javascript Injeta Notificações Aqui -->
                                 </div>
+                                <!-- Notificações no aparelho. Fica escondido até o
+                                     push.js confirmar que este navegador as suporta:
+                                     um botão que não pode funcionar é pior do que
+                                     botão nenhum. -->
+                                <div id="push-row" class="hidden px-5 py-3 border-t border-gray-100 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/80">
+                                    <button id="push-toggle" type="button" class="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                                        <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                                        <span id="push-toggle-text">{{ _('Ativar notificações neste aparelho') }}</span>
+                                    </button>
+                                    <p id="push-hint" class="mt-2 text-xs text-center text-gray-500 dark:text-gray-400"></p>
+                                </div>
                             </div>
                         </div>
                         {% endif %}
@@ -437,11 +448,27 @@
             });
         }
 
-        // Registo do Service Worker (para App PWA Mobile)
+        // Registo do Service Worker (PWA e notificações push).
+        //
+        // ⚠️ É servido da RAIZ ('/service-worker.js'), e não de '/static/js/':
+        // o alcance de um service worker é a pasta de onde ele vem, por isso o
+        // anterior só controlava '/static/js/' — não a 'start_url' do manifesto,
+        // que é '/'. O Android não oferecia instalar o painel, e clicar numa
+        // notificação nunca encontrava a aba já aberta.
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register("{{ url_for('static', filename='js/service-worker.js') }}")
-                    .then(registration => console.log('✅ Service Worker PWA ativado.'))
+                navigator.serviceWorker.register("{{ url_for('serve_sw') }}", { scope: '/' })
+                    .then(() => {
+                        console.log('✅ Service Worker PWA ativado.');
+                        // O registo antigo continua vivo e a servir do cache o
+                        // que estiver debaixo de '/static/js/'. Sem o apagar,
+                        // quem já tinha o painel instalado ficava com os dois.
+                        navigator.serviceWorker.getRegistrations().then(registos => {
+                            registos.forEach(registo => {
+                                if (registo.scope.includes('/static/js/')) registo.unregister();
+                            });
+                        });
+                    })
                     .catch(error => console.log('❌ Falha no Service Worker:', error));
             });
         }
@@ -468,6 +495,26 @@
         data-i18n-confirm-button="{{ _('Sim, Limpar') }}"
         data-i18n-cancel-button="{{ _('Cancelar') }}"
     ></script>
+
+    <!-- Notificações push (navegador e celular). Só é carregado quando há
+         sessão: subscrever um aparelho exige saber de quem ele é. -->
+    {% if current_user.is_authenticated %}
+    <script id="push-script"
+        type="module"
+        src="{{ url_for('static', filename='js/push.js') }}"
+        data-ativo="{{ 'true' if push.ativo else 'false' }}"
+        data-chave-publica="{{ push.chave_publica }}"
+        data-url-subscribe="{{ url_for('notifications_api.subscribe_push_route') }}"
+        data-url-unsubscribe="{{ url_for('notifications_api.unsubscribe_push_route') }}"
+        data-i18n-ativar="{{ _('Ativar notificações neste aparelho') }}"
+        data-i18n-desativar="{{ _('Desativar notificações neste aparelho') }}"
+        data-i18n-ativando="{{ _('Ativando...') }}"
+        data-i18n-ativadas="{{ _('Este aparelho vai avisar sobre pagamentos e pedidos.') }}"
+        data-i18n-bloqueadas="{{ _('As notificações estão bloqueadas nas configurações do navegador.') }}"
+        data-i18n-falhou="{{ _('Não foi possível ativar as notificações. Tente de novo.') }}"
+        data-i18n-instalar="{{ _('No iPhone, adicione o painel à tela de início para receber notificações.') }}"
+    ></script>
+    {% endif %}
 
     <!-- Bloco Extra de Scripts Específicos por Página -->
     {% block scripts %}{% endblock %}
