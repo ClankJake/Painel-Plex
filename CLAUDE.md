@@ -1734,6 +1734,22 @@ pagamento pertencem aí, não no gateway.
 Os webhooks só funcionam com `APP_BASE_URL` preenchido: é a partir dele que as
 URLs de retorno são construídas.
 
+🐛 **O link curto do mesmo destino é REUTILIZADO, nunca recriado.**
+`create_short_link` apagava os links antigos do mesmo destino "para evitar
+duplicações", e com isso matava o link que a pessoa já tinha recebido. Não era
+um caso raro: `garantir_payment_token` MANTÉM o token enquanto for válido (só
+estende a validade), por isso o URL longo é idêntico entre envios e o
+apagamento coincidia sempre — e o aviso de vencimento é diário, com uma trava
+de 23 horas por pessoa. Quem recebia o lembrete de hoje ficava com o de ontem
+morto, e ao rolar a conversa para cima tocava num "link expirado" cujo destino
+continuava válido. Reutilizar cumpre o objetivo original melhor: UMA linha por
+destino, e nenhuma mensagem entregue deixa de funcionar. ⚠️ E ao reutilizar
+repõe-se o `created_at`, porque o `cleanup_job` apaga por essa data
+(`SHORT_LINK_MAX_AGE_DAYS`, 30): sem isso um link reutilizado ao dia 29 morria
+no dia 30, logo a seguir a ter sido enviado. Rodar o código curto não fecharia
+porta nenhuma — por baixo está o mesmo `/pay/<token>`, que é a credencial de
+facto.
+
 🐛 **Uma falha do gateway não pode parecer "ainda não pagou".** A rota que a
 página de pagamento faz polling (`GET /api/payments/status/<txid>`) consulta o
 gateway e, se isso levantar, responde o estado GUARDADO — que é "aguardando
