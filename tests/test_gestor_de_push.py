@@ -46,7 +46,7 @@ def _subscricao(sufixo):
     publica = chave.public_key().public_bytes(
         serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
     return {
-        'endpoint': f'https://push.exemplo.test/aparelho/{sufixo}',
+        'endpoint': f'https://fcm.googleapis.com/wp/{sufixo}',
         'keys': {'p256dh': web_push.b64url(publica),
                  'auth': web_push.b64url(b'0123456789abcdef')},
     }
@@ -89,7 +89,7 @@ class TestRegisto:
 
     def test_uma_subscricao_incompleta_e_recusada(self, gestor):
         with pytest.raises(ValueError):
-            gestor.registar(None, {'endpoint': 'https://push.exemplo.test/x'})
+            gestor.registar(None, {'endpoint': 'https://fcm.googleapis.com/wp/x'})
 
     def test_o_administrador_subscreve_sem_perfil_local(self, gestor, db_session):
         """⚠️ O dono do painel pode ainda não ter perfil — e tem de poder ligar isto."""
@@ -119,7 +119,7 @@ class TestEnvio:
                     PUSH_VAPID_PRIVATE_KEY=par['privada'])
         gestor = PushManager(data_manager=DataManager())
         gestor.data_manager.registar_push_subscription(
-            "7", "https://push.exemplo.test/x", "p", "a")
+            "7", "https://fcm.googleapis.com/wp/x", "p", "a")
 
         assert gestor.enviar("7", "Oi", "corpo") == 0
         assert entregas == []

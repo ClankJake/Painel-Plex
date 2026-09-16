@@ -69,6 +69,60 @@ TEMPO_LIMITE = (5, 10)
 VALIDADE_DO_JWT = 12 * 3600
 
 
+# 🛡️ **O endereço de entrega é escolhido por quem subscreve, e o painel faz-lhe
+# POST a partir de DENTRO da rede.** Sem esta lista, qualquer pessoa com sessão
+# — não é preciso ser administrador — registava um aparelho a apontar para
+# `https://10.0.0.5:8443/` e mandava o painel bater lá de cada vez que houvesse
+# uma notificação, com a rota `/push/test` a servir de gatilho à vontade. É
+# exatamente a falha que a allowlist do proxy de imagens já existia para fechar
+# (`ALLOWED_IMAGE_HOSTS`), e a resposta é a mesma: **o pedido ESCOLHE uma
+# entrada desta lista, nunca define um destino novo.**
+#
+# Aqui a lista é curta por natureza: um endereço de push não é arbitrário, vem
+# do serviço do próprio navegador, e são estes.
+SERVICOS_DE_PUSH = (
+    'fcm.googleapis.com',         # Chrome, Edge, Android
+    'android.googleapis.com',     # Chrome antigo
+    'push.services.mozilla.com',  # Firefox
+    'push.apple.com',             # Safari, iOS e iPadOS
+    'notify.windows.com',         # Windows Notification Service
+)
+
+# ⚠️ **Não vai para o config.json nem para a página de Configurações**, ao
+# contrário de tudo o resto neste painel — e é de propósito. Isto não é uma
+# preferência, é a fronteira que impede um SSRF: pô-la na interface faria de
+# qualquer sessão de administrador tomada uma forma de a alargar. Quem corre um
+# serviço de push próprio (um autopush da Mozilla na sua rede) acrescenta-o
+# aqui, ao lançar o contentor, como já se faz com o `IMAGE_PROXY_ALLOWED_HOSTS`.
+EXTRA_HOSTS_ENV_VAR = 'PUSH_ALLOWED_HOSTS'
+
+
+def hosts_de_push():
+    """Os domínios de onde o painel aceita um endereço de entrega."""
+    extra = os.environ.get(EXTRA_HOSTS_ENV_VAR, '')
+    return SERVICOS_DE_PUSH + tuple(
+        parte.strip() for parte in extra.split(',') if parte.strip()
+    )
+
+
+def endpoint_permitido(endpoint) -> bool:
+    """Diz se este endereço de entrega é de um serviço de push conhecido.
+
+    A comparação é pela FRONTEIRA do rótulo DNS (`match_domain`), nunca por
+    substring: `fcm.googleapis.com.atacante.net` e `naoefcm.googleapis.com`
+    contêm ambos o texto do domínio e não são ele.
+    """
+    from ..utils.url_safety import match_domain
+
+    try:
+        partes = urlsplit((endpoint or '').strip())
+    except ValueError:
+        return False
+    if partes.scheme != 'https':
+        return False
+    return match_domain(partes.hostname, hosts_de_push()) is not None
+
+
 class PushExpirado(Exception):
     """A subscrição já não existe do lado do serviço de push (404 ou 410).
 
@@ -269,6 +323,16 @@ def enviar(subscricao: dict, payload: dict, privada, assunto: str, ttl: int = 86
     endpoint = (subscricao or {}).get('endpoint') or ''
     if not endpoint:
         raise PushRecusado("Subscrição sem endereço de entrega.")
+
+    # 🛡️ A verificação é feita DUAS vezes — à entrada (no schema) e aqui, à
+    # saída. A da entrada dá o erro logo a quem subscreve; esta é a que vale,
+    # porque uma linha pode ter entrado na tabela por outro caminho: um backup
+    # restaurado de antes desta versão, ou um INSERT à mão.
+    if not endpoint_permitido(endpoint):
+        raise PushRecusado(
+            "O endereço de entrega não é de um serviço de push conhecido "
+            f"({urlsplit(endpoint).hostname})."
+        )
 
     corpo = cifrar(
         json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8'),

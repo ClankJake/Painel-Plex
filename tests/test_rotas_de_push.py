@@ -57,7 +57,7 @@ def _corpo(sufixo="a"):
     publica = chave.public_key().public_bytes(
         serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
     return {
-        'endpoint': f'https://push.exemplo.test/aparelho/{sufixo}',
+        'endpoint': f'https://fcm.googleapis.com/wp/{sufixo}',
         'keys': {'p256dh': web_push.b64url(publica),
                  'auth': web_push.b64url(b'0123456789abcdef')},
     }
@@ -164,3 +164,30 @@ class TestTeste:
         resposta = client.post('/api/notifications/push/test')
         assert resposta.get_json() == {'success': True, 'sent': 1,
                                        'message': resposta.get_json()['message']}
+
+
+class TestDestinoDaSubscricao:
+    """🛡️ A rota recusa um endereço que não seja de um serviço de push.
+
+    Regressão do SSRF apanhado na revisão: a subscrição é o único sítio onde
+    alguém sem ser administrador escolhe para onde o painel vai fazer um pedido.
+    """
+
+    @pytest.mark.parametrize("endereco", [
+        "https://127.0.0.1/push",
+        "https://10.0.0.5:8443/api",
+        "https://169.254.169.254/latest/meta-data",
+        "https://fcm.googleapis.com.atacante.net/wp/abc",
+    ])
+    def test_um_destino_interno_e_recusado(self, client, push_ligado, endereco):
+        from app.models import PushSubscription
+
+        _perfil("42")
+        _autenticar(client, "42", "user")
+        corpo = _corpo()
+        corpo['endpoint'] = endereco
+
+        resposta = client.post('/api/notifications/push/subscribe', json=corpo)
+
+        assert resposta.status_code == 400
+        assert PushSubscription.query.count() == 0

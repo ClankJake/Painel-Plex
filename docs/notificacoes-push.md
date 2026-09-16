@@ -202,6 +202,12 @@ usuário — é assim mesmo.
    painel percebe sozinho na próxima tentativa e apaga o registro — basta
    reativar.
 
+**Nos logs: `O endereço de entrega não é de um serviço de push conhecido`**
+O navegador devolveu um endereço fora da lista aceita. Acontece com um serviço
+de push próprio (acrescente o domínio em `PUSH_ALLOWED_HOSTS`) ou com um
+navegador novo cujo serviço o painel ainda não conhece — nesse caso, abra um
+relato com o domínio que aparece na mensagem.
+
 **Um usuário diz que não recebe, mas outros recebem**
 Ele provavelmente nunca ativou no aparelho dele. O push não segue a conta: segue
 o aparelho, e é a pessoa que autoriza.
@@ -238,6 +244,14 @@ reativar.
 - **Rotas da API:** `POST /api/notifications/push/subscribe`,
   `/push/unsubscribe` e `/push/test`. Todas exigem sessão, e **quem é o dono do
   aparelho é o servidor que decide**, pela sessão — nunca o corpo do pedido.
+- **Só se aceita um endereço de serviço de push conhecido** (Google, Mozilla,
+  Apple, Microsoft). O endereço de entrega é escolhido por quem subscreve e o
+  painel faz-lhe POST de dentro da sua rede: sem essa lista, qualquer pessoa com
+  conta podia apontá-lo para um serviço interno e usar o painel para lhe bater.
+  Quem corre um serviço de push próprio acrescenta o domínio na variável de
+  ambiente `PUSH_ALLOWED_HOSTS` (separada por vírgulas), ao lançar o contêiner —
+  ela fica fora da interface de propósito, por ser uma fronteira de segurança e
+  não uma preferência.
 - **Service worker:** servido em `/service-worker.js` (na raiz, para o alcance
   cobrir o painel inteiro). É ele que recebe a notificação com o painel fechado,
   e quem reaproveita a aba já aberta quando você toca no aviso.

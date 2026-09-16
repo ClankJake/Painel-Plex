@@ -277,10 +277,12 @@ class ChavesDaSubscricaoPush(BaseModel):
 class SubscricaoPushSchema(BaseModel):
     """O que o navegador devolve de `pushManager.subscribe()`."""
 
-    # ⚠️ Só HTTPS. O endereço é para onde o painel vai fazer POST às escuras, a
-    # partir do servidor: aceitar 'http://' (ou pior, um esquema qualquer)
-    # transformava esta rota num pedido a qualquer sítio, feito pelo servidor,
-    # a mando de quem tem sessão. A coluna tem 512 caracteres.
+    # 🛡️ O endereço é para onde o painel vai fazer POST às escuras, a partir do
+    # servidor — por isso não basta ser HTTPS: **tem de ser de um serviço de
+    # push conhecido** (`SERVICOS_DE_PUSH`). Só com o esquema verificado, quem
+    # tivesse sessão registava um aparelho a apontar para um endereço INTERNO e
+    # usava o painel para lhe bater de dentro da rede, com a rota `/push/test`
+    # por gatilho. A coluna tem 512 caracteres.
     endpoint: str = Field(..., min_length=12, max_length=512)
     keys: ChavesDaSubscricaoPush
     # Como a pessoa reconhece este aparelho na lista ("Chrome no Android").
@@ -290,10 +292,15 @@ class SubscricaoPushSchema(BaseModel):
     def validar_endpoint(cls, v):
         from urllib.parse import urlsplit
 
+        from ...services.web_push import endpoint_permitido
+
         endereco = (v or '').strip()
         partes = urlsplit(endereco)
         if partes.scheme != 'https' or not partes.netloc:
             raise ValueError("O endereço de entrega tem de ser um URL https.")
+        if not endpoint_permitido(endereco):
+            raise ValueError(
+                "O endereço de entrega não é de um serviço de push conhecido.")
         return endereco
 
 

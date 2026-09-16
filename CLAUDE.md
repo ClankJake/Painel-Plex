@@ -1306,6 +1306,23 @@ da versão que o cria), coisa que uma chave estrangeira obrigatória impediria.
 dono vindo do corpo do pedido deixava qualquer pessoa autenticada receber os
 avisos de pagamento do administrador.
 
+🛡️ **O endereço de entrega tem de ser de um serviço de push CONHECIDO**
+(`SERVICOS_DE_PUSH`, em `web_push.py`). Ele é escolhido por quem subscreve e o
+painel faz-lhe POST de DENTRO da rede: enquanto só se verificava o esquema
+`https`, qualquer pessoa com sessão — sem ser administrador — registava um
+aparelho a apontar para um serviço interno e usava o painel para lhe bater, com
+a rota `/push/test` por gatilho. É o mesmo SSRF que a `ALLOWED_IMAGE_HOSTS` do
+proxy de imagens já existia para fechar, e a resposta é a mesma: o pedido
+ESCOLHE uma entrada da lista, nunca define um destino novo. A comparação é
+`match_domain` (fronteira do rótulo DNS), porque
+`fcm.googleapis.com.atacante.net` contém o domínio sem ser o domínio. ⚠️ A
+verificação está em DOIS sítios — no schema, para dar o erro a quem subscreve,
+e em `web_push.enviar`, que é a que vale: uma linha pode ter entrado na tabela
+por um backup restaurado de antes desta versão. E a lista NÃO vive no
+config.json: pô-la na interface faria de uma sessão de administrador tomada uma
+forma de alargar o SSRF, por isso o acrescento é pela variável de ambiente
+`PUSH_ALLOWED_HOSTS`, como no proxy de imagens.
+
 🛡️ **A palavra-passe e o link de reposição NUNCA vão por push** (`EVENTOS_SEM_PUSH`).
 Não é esquecimento: uma notificação push aparece no ecrã de bloqueio, à vista de
 quem estiver por perto, e fica guardada pelo sistema operativo fora do painel. Os

@@ -156,7 +156,7 @@ def subscricao():
     return {
         'vapid': par,
         'aparelho': {
-            'endpoint': 'https://push.exemplo.test/aparelho/abc',
+            'endpoint': 'https://updates.push.services.mozilla.com/wpush/v2/abc',
             'p256dh': web_push.b64url(publica),
             'auth': web_push.b64url(b'0123456789abcdef'),
         },
@@ -189,3 +189,70 @@ class TestEntrega:
             web_push.enviar(subscricao['aparelho'], {'title': 'Oi'},
                             subscricao['vapid']['privada'], 'mailto:a@b.c',
                             sessao=_SessaoFalsa(403))
+
+
+# --- O destino: de onde o painel aceita um endereço de entrega ---------------
+
+class TestDestinoPermitido:
+    """🛡️ Regressão de um SSRF (CWE-918) apanhado na revisão do PR.
+
+    O endereço de entrega é escolhido por quem subscreve e o painel faz-lhe POST
+    a partir de DENTRO da rede. Enquanto só se verificava o esquema, qualquer
+    pessoa com sessão — sem ser administrador — registava um aparelho a apontar
+    para um serviço interno e usava o painel para lhe bater, com a rota
+    `/push/test` por gatilho.
+    """
+
+    @pytest.mark.parametrize("endereco", [
+        "https://fcm.googleapis.com/wp/abc",
+        "https://fcm.googleapis.com/fcm/send/abc",
+        "https://updates.push.services.mozilla.com/wpush/v2/abc",
+        "https://web.push.apple.com/abc",
+        "https://db5p.notify.windows.com/w/?token=abc",
+    ])
+    def test_aceita_os_servicos_de_push_a_serio(self, endereco):
+        assert web_push.endpoint_permitido(endereco) is True
+
+    @pytest.mark.parametrize("endereco", [
+        "https://127.0.0.1/push",                  # o próprio painel
+        "https://10.0.0.5:8443/api",               # rede interna
+        "https://169.254.169.254/latest/meta-data",  # metadados da nuvem
+        "https://localhost:9200/_cluster/health",
+        "http://fcm.googleapis.com/wp/abc",        # sem TLS
+        "ftp://fcm.googleapis.com/wp/abc",
+        "",
+    ])
+    def test_recusa_um_destino_que_nao_e_de_push(self, endereco):
+        assert web_push.endpoint_permitido(endereco) is False
+
+    @pytest.mark.parametrize("endereco", [
+        "https://fcm.googleapis.com.atacante.net/wp/abc",
+        "https://naoefcm.googleapis.com/wp/abc",
+        "https://push.apple.com.atacante.net/abc",
+    ])
+    def test_a_comparacao_e_pela_fronteira_do_dominio(self, endereco):
+        """Os três CONTÊM o texto do domínio e nenhum deles É o domínio."""
+        assert web_push.endpoint_permitido(endereco) is False
+
+    def test_quem_corre_um_servico_proprio_acrescenta_o_no_ambiente(self, monkeypatch):
+        interno = "https://push.minhaempresa.test/wpush/abc"
+        assert web_push.endpoint_permitido(interno) is False
+
+        monkeypatch.setenv(web_push.EXTRA_HOSTS_ENV_VAR, "push.minhaempresa.test")
+        assert web_push.endpoint_permitido(interno) is True
+
+    def test_a_entrega_recusa_o_que_ja_estiver_gravado(self, subscricao):
+        """A segunda porta: uma linha vinda de um backup antigo não é usável.
+
+        A verificação à entrada dá o erro a quem subscreve, mas não protege uma
+        linha que tenha entrado na tabela por outro caminho.
+        """
+        aparelho = dict(subscricao['aparelho'], endpoint="https://10.0.0.5/push")
+        sessao = _SessaoFalsa(201)
+
+        with pytest.raises(web_push.PushRecusado):
+            web_push.enviar(aparelho, {'title': 'Oi'},
+                            subscricao['vapid']['privada'], 'mailto:a@b.c', sessao=sessao)
+
+        # E o pedido não chegou a sair.
+        assert sessao.pedidos == []

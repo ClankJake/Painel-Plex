@@ -58,7 +58,7 @@ def pessoa_com_aparelho(db_session):
                                payment_token="tok", screen_limit=1))
     db.session.commit()
     extensions.data_manager.registar_push_subscription(
-        "7", "https://push.exemplo.test/aparelho/joana",
+        "7", "https://fcm.googleapis.com/wp/joana",
         "p256dh-de-teste", "auth-de-teste")
     return {'media_user_id': "7", 'username': "joana", 'name': "Joana",
             'screen_limit': 1, 'payment_token': "tok", 'expiration_date': None}
@@ -123,7 +123,7 @@ class TestEnvioEmMassa:
     def test_quem_so_tem_push_conta_como_tendo_contato(self, config_com_push,
                                                       pessoa_com_aparelho):
         """⚠️ Sem isto, a pessoa era ignorada em silêncio — com o canal ligado."""
-        aparelhos = {"7": [{'endpoint': 'https://push.exemplo.test/aparelho/joana'}]}
+        aparelhos = {"7": [{'endpoint': 'https://fcm.googleapis.com/wp/joana'}]}
         elegiveis, ignorados = NotifierManager._split_by_reachability(
             [{'id': "7", 'username': 'joana'}], {"7": pessoa_com_aparelho},
             config_com_push, aparelhos)
@@ -160,7 +160,7 @@ class TestPedidosDeConteudo:
         from app.models import Notification
 
         extensions.push_manager.registar(
-            None, {'endpoint': 'https://push.exemplo.test/aparelho/dono',
+            None, {'endpoint': 'https://web.push.apple.com/dono',
                    'keys': {'p256dh': 'p', 'auth': 'a'}})
 
         resposta = extensions.overseerr_manager.handle_notification_webhook(self._webhook())
@@ -188,7 +188,7 @@ class TestPedidosDeConteudo:
         from app.models import Notification
 
         extensions.push_manager.registar(
-            None, {'endpoint': 'https://push.exemplo.test/aparelho/dono',
+            None, {'endpoint': 'https://web.push.apple.com/dono',
                    'keys': {'p256dh': 'p', 'auth': 'a'}})
 
         extensions.overseerr_manager.handle_notification_webhook(
