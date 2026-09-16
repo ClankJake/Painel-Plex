@@ -13,7 +13,8 @@ from functools import wraps
 from ..extensions import db
 from ..models import (
     Invitation, BlockedUser, UserProfile, PixPayment, Notification, PasswordReset,
-    UnlockedAchievement, ShortLink, Coupon, CouponUsage, Task, StreamTerminationLog
+    UnlockedAchievement, ShortLink, Coupon, CouponUsage, Task, StreamTerminationLog,
+    PushSubscription
 )
 from sqlalchemy import func, String
 from sqlalchemy.exc import IntegrityError
@@ -386,6 +387,57 @@ class DataManager:
             profile.last_notification_sent = datetime.now(timezone.utc).isoformat()
             return True
         return False
+
+    # --- MÉTODOS DE NOTIFICAÇÕES PUSH ---
+    # ⚠️ `media_user_id=None` é o ADMINISTRADOR, a mesma convenção das
+    # notificações do sino. Não é "toda a gente": para isso há
+    # `get_all_push_subscriptions`.
+
+    @db_transaction
+    def registar_push_subscription(self, media_user_id, endpoint, p256dh, auth,
+                                   device_label=None):
+        """Grava (ou atualiza) a subscrição de um aparelho.
+
+        ⚠️ A chave é o ENDEREÇO, não a pessoa. O mesmo navegador devolve sempre
+        o mesmo endereço, e o que muda é de quem ele é agora — a sessão do
+        administrador e a de um usuário comum no mesmo computador partilham-no.
+        Sem esta atualização, as notificações continuavam a ir para o dono
+        anterior.
+        """
+        subscricao = PushSubscription.query.filter_by(endpoint=endpoint).first()
+        if subscricao is None:
+            subscricao = PushSubscription(endpoint=endpoint)
+            db.session.add(subscricao)
+
+        subscricao.media_user_id = media_user_id
+        subscricao.p256dh = p256dh
+        subscricao.auth = auth
+        if device_label:
+            subscricao.device_label = device_label
+        db.session.flush()
+        return self._row_to_dict(subscricao)
+
+    @db_transaction
+    def remover_push_subscription(self, endpoint):
+        """Apaga a subscrição de um aparelho. Devolve se alguma foi apagada."""
+        apagadas = PushSubscription.query.filter_by(endpoint=endpoint).delete(
+            synchronize_session=False)
+        return apagadas > 0
+
+    def get_push_subscriptions(self, media_user_id=None):
+        """Os aparelhos de uma pessoa (ou do administrador, com `None`)."""
+        linhas = PushSubscription.query.filter_by(media_user_id=media_user_id).all()
+        return [self._row_to_dict(linha) for linha in linhas]
+
+    def get_all_push_subscriptions(self):
+        """Todos os aparelhos subscritos, de toda a gente."""
+        return [self._row_to_dict(linha) for linha in PushSubscription.query.all()]
+
+    @db_transaction
+    def marcar_push_entregue(self, endpoint):
+        """Regista que a última entrega a este aparelho foi aceite."""
+        return PushSubscription.query.filter_by(endpoint=endpoint).update(
+            {'last_success_at': datetime.now(timezone.utc)}, synchronize_session=False)
 
     # --- MÉTODOS DE AUDITORIA ---
     @db_transaction

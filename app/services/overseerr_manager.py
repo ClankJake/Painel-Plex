@@ -583,10 +583,11 @@ class OverseerrManager:
         if not perfil and username_seerr:
             perfil = extensions.data_manager.get_user_profile_by_username(username_seerr)
 
-        if not perfil:
-            etiqueta = mask_email(email) if email else username_seerr
-            logger.info(f"Webhook do Seerr: nenhum utilizador local corresponde a {etiqueta}. Ignorado.")
-            return {"success": True, "message": "Utilizador não encontrado no painel."}
+        # ⚠️ O perfil pode NÃO EXISTIR, e o webhook continua a interessar: quem
+        # aprova o pedido é o administrador, e ele quer saber que entrou um
+        # pedido novo mesmo que quem o fez não tenha (ainda) perfil no painel.
+        # Por isso o aviso dele vem ANTES desta desistência, que era onde o
+        # webhook morria em silêncio.
 
         # Monta o URL para o item no Overseerr (o mesmo destino que a interface usa).
         #
@@ -616,7 +617,9 @@ class OverseerrManager:
             "title": data.get('subject') or '',
             "overview": data.get('message') or '',
             "status": media.get('status') or data.get('notification_type') or '',
-            "username": username_seerr or perfil.get('username') or '',
+            # ⚠️ `perfil` pode ser None: o aviso ao administrador é montado a
+            # partir daqui e acontece ANTES de se desistir por falta de perfil.
+            "username": username_seerr or (perfil or {}).get('username') or '',
             "media_url": media_url,
             "image_url": data.get('image') or None,
             "event": data.get('event') or '',
@@ -625,6 +628,13 @@ class OverseerrManager:
             # escolher a mensagem certa para cada situação.
             "notification_type": (data.get('notification_type') or '').upper(),
         }
+
+        self._avisar_administrador_do_pedido(dados)
+
+        if not perfil:
+            etiqueta = mask_email(email) if email else username_seerr
+            logger.info(f"Webhook do Seerr: nenhum utilizador local corresponde a {etiqueta}. Ignorado.")
+            return {"success": True, "message": "Utilizador não encontrado no painel."}
 
         try:
             extensions.notifier_manager.send_media_request_notification(perfil, dados)
@@ -636,6 +646,42 @@ class OverseerrManager:
         except Exception as e:
             logger.error(f"Falha ao reencaminhar a notificação de pedido: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
+
+    @staticmethod
+    def _avisar_administrador_do_pedido(dados):
+        """Regista o pedido novo no sino do painel e manda-o ao celular do dono.
+
+        ⚠️ Nada disto pode derrubar o webhook: o Seerr trata um erro como uma
+        entrega falhada e volta a tentar, o que daria a mesma notificação várias
+        vezes a quem pediu.
+        """
+        from .. import extensions
+
+        if str(dados.get("notification_type") or "").upper() not in (
+                "MEDIA_PENDING", "MEDIA_AUTO_APPROVED"):
+            return
+
+        try:
+            extensions.data_manager.create_notification(
+                message=_("%(username)s pediu %(title)s.",
+                          username=dados.get("username") or _("Alguém"),
+                          title=dados.get("title") or _("um título")),
+                category='info', link=dados.get("media_url") or None,
+            )
+            extensions.db.session.commit()
+            if extensions.socketio:
+                extensions.socketio.emit('new_notification', namespace='/')
+        except Exception as e:
+            logger.warning(f"Não foi possível registar o pedido novo nas notificações: {e}")
+            try:
+                extensions.db.session.rollback()
+            except Exception:
+                pass
+
+        try:
+            extensions.notifier_manager.send_media_request_admin_notification(dados)
+        except Exception as e:
+            logger.warning(f"Não foi possível avisar o administrador do pedido novo: {e}")
 
     def _get_status_info(self, request_status_code: Optional[int], media_availability_code: Optional[int]) -> Dict[str, str]:
         """Calcula o estado final baseando-se na hierarquia do Pedido vs Média."""

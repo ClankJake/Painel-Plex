@@ -57,3 +57,5 @@ link_shortener = None
 pricing_manager = None
 backup_manager = None
 referral_manager = None
+# As notificações push (Web Push) para o celular e o navegador.
+push_manager = None

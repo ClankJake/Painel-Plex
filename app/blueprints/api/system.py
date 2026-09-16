@@ -16,7 +16,7 @@ from flask_babel import gettext as _
 from apscheduler.triggers.cron import CronTrigger
 from tzlocal import get_localzone_name
 
-from ...extensions import media_server, stats_manager, efi_manager, mercado_pago_manager, gates2b_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager , notifier_manager
+from ...extensions import media_server, stats_manager, efi_manager, mercado_pago_manager, gates2b_manager, overseerr_manager, scheduler, data_manager, limiter, stream_manager , notifier_manager, push_manager
 # 🐛 CORREÇÃO: 'backup_manager' NÃO pode ser importado por valor aqui. Ao contrário
 # dos outros gestores, ele é instanciado mais tarde no create_app() (depois deste
 # módulo já ter sido importado), por isso um "from ...extensions import backup_manager"
@@ -327,7 +327,25 @@ def api_settings():
             'STREAM_CHECK_INTERVAL_SECONDS', 'TERMINATION_MSG_BLOCKED_MANUAL', 'TERMINATION_MSG_BLOCKED_EXPIRED',
             'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED', 'TERMINATION_MSG_SCREEN_LIMIT', 'SCREEN_LIMIT_TERMINATION_STRATEGY',
             'FORCE_STREAM_TERMINATION',
-            'BACKUP_ENABLED', 'BACKUP_TIME', 'BACKUP_MAX_COUNT'
+            'BACKUP_ENABLED', 'BACKUP_TIME', 'BACKUP_MAX_COUNT',
+            # ⚠️ As CHAVES VAPID não estão aqui de propósito: não vêm do
+            # formulário, são geradas pelo painel na primeira vez que as
+            # notificações são ligadas. Aceitá-las do navegador deixava
+            # qualquer administrador invalidar, sem saber, todas as
+            # subscrições já feitas.
+            'PUSH_ENABLED', 'PUSH_VAPID_SUBJECT',
+            'PUSH_ADMIN_PAYMENTS', 'PUSH_ADMIN_MEDIA_REQUESTS',
+            'PUSH_EXPIRATION_TITLE_TEMPLATE', 'PUSH_EXPIRATION_MESSAGE_TEMPLATE',
+            'PUSH_RENEWAL_TITLE_TEMPLATE', 'PUSH_RENEWAL_MESSAGE_TEMPLATE',
+            'PUSH_REACTIVATION_TITLE_TEMPLATE', 'PUSH_REACTIVATION_MESSAGE_TEMPLATE',
+            'PUSH_TRIAL_END_TITLE_TEMPLATE', 'PUSH_TRIAL_END_MESSAGE_TEMPLATE',
+            'PUSH_BULK_TITLE_TEMPLATE', 'PUSH_BULK_MESSAGE_TEMPLATE',
+            'PUSH_MEDIA_REQUEST_TITLE_TEMPLATE', 'PUSH_MEDIA_REQUEST_MESSAGE_TEMPLATE',
+            'PUSH_MEDIA_PENDING_TITLE_TEMPLATE', 'PUSH_MEDIA_PENDING_MESSAGE_TEMPLATE',
+            'PUSH_MEDIA_APPROVED_TITLE_TEMPLATE', 'PUSH_MEDIA_APPROVED_MESSAGE_TEMPLATE',
+            'PUSH_MEDIA_AVAILABLE_TITLE_TEMPLATE', 'PUSH_MEDIA_AVAILABLE_MESSAGE_TEMPLATE',
+            'PUSH_MEDIA_DECLINED_TITLE_TEMPLATE', 'PUSH_MEDIA_DECLINED_MESSAGE_TEMPLATE',
+            'PUSH_MEDIA_FAILED_TITLE_TEMPLATE', 'PUSH_MEDIA_FAILED_MESSAGE_TEMPLATE',
         ]
         
         numeric_fields = [
@@ -461,6 +479,16 @@ def api_settings():
             elif hasattr(overseerr_manager, 'reload_config'):
                 overseerr_manager.reload_config()
 
+        # As notificações push: a mudança do interruptor tem de chegar ao
+        # gestor, e ligá-las pela primeira vez é o momento em que o par de
+        # chaves VAPID nasce. Sem isto, a interface mostrava o botão "Ativar
+        # notificações" sem chave nenhuma para dar ao navegador.
+        if _changed('PUSH_ENABLED', 'PUSH_VAPID_SUBJECT',
+                    'PUSH_ADMIN_PAYMENTS', 'PUSH_ADMIN_MEDIA_REQUESTS'):
+            if config_to_update.get('PUSH_ENABLED'):
+                push_manager.garantir_chaves()
+            push_manager.reload_credentials()
+
         # A configuração do webhook na Efí é uma chamada de rede à API deles:
         # só faz sentido quando algo relevante para o webhook mudou.
         if efi_changed and config_to_update.get("EFI_ENABLED"):
@@ -561,7 +589,11 @@ def api_settings():
         'MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_WEBHOOK_SECRET', 'GATES2B_AUTH_TOKEN', 'OVERSEERR_API_KEY',
         # A chave da API de WhatsApp é uma credencial: nunca deve viajar em claro
         # para o navegador, tal como as restantes.
-        'WHATSAPP_API_KEY'
+        'WHATSAPP_API_KEY',
+        # 🛡️ A chave PRIVADA do VAPID assina cada notificação em nome deste
+        # painel. Quem a tiver consegue entregar notificações que os aparelhos
+        # aceitam como sendo daqui.
+        'PUSH_VAPID_PRIVATE_KEY'
     ]
 
     for key in sensitive_keys:

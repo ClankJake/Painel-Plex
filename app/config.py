@@ -103,6 +103,20 @@ def load_or_create_config():
             "DISCORD_CREDENTIALS_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Acesso Restaurado", "description": "Olá **{username}**! 🔑\\n\\nSua conta no **{server_name}** foi criada novamente, por isso a senha mudou.\\n\\nUsuário: `{new_username}`\\nSenha: `{new_password}`\\n\\nTroque a senha assim que puder.", "color": 3447003}]}',
             "DISCORD_PASSWORD_RESET_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Redefinir a senha", "description": "Olá **{username}**! 🔑\\n\\nVocê pediu para redefinir a senha dsua conta no **{server_name}**.\\n\\n[Clique aqui para escolher uma nova]({reset_link})\\n\\nO link vale {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem.", "color": 3447003}]}',
             "DISCORD_BULK_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Aviso do Servidor", "description": "{message}", "color": 3447003}]}',
+            # --- NOTIFICAÇÕES PUSH (Web Push) ---
+            # ⚠️ O par de chaves VAPID é gerado UMA vez, na primeira vez que as
+            # notificações são ligadas, e nunca mais muda: é ele que identifica
+            # este painel perante o serviço de push de cada navegador. Gerar um
+            # par novo invalida, de uma vez, todas as subscrições já feitas.
+            "PUSH_ENABLED": False,
+            "PUSH_VAPID_PUBLIC_KEY": "",
+            "PUSH_VAPID_PRIVATE_KEY": "",
+            # Contato de quem envia, que a norma pede no JWT ("mailto:..." ou um
+            # endereço). Vazio usa a APP_BASE_URL.
+            "PUSH_VAPID_SUBJECT": "",
+            # O que o ADMINISTRADOR quer receber no celular dele.
+            "PUSH_ADMIN_PAYMENTS": True,
+            "PUSH_ADMIN_MEDIA_REQUESTS": True,
             "DAYS_TO_NOTIFY_EXPIRATION": 2,
             "EFI_ENABLED": False,
             "EFI_CLIENT_ID": "",
@@ -284,6 +298,12 @@ def load_or_create_config():
             _set_default("TELEGRAM_CHAT_ID", "")
             _set_default("TELEGRAM_ENABLED", False)
             _set_default("DISCORD_ENABLED", False)
+            _set_default("PUSH_ENABLED", False)
+            _set_default("PUSH_VAPID_PUBLIC_KEY", "")
+            _set_default("PUSH_VAPID_PRIVATE_KEY", "")
+            _set_default("PUSH_VAPID_SUBJECT", "")
+            _set_default("PUSH_ADMIN_PAYMENTS", True)
+            _set_default("PUSH_ADMIN_MEDIA_REQUESTS", True)
             _set_default("DISCORD_WEBHOOK_URL", "")
             _set_default("LAST_NOTIFICATION_CHECK", "1970-01-01T00:00:00")
             _set_default("EFI_ENABLED", False)
@@ -427,6 +447,28 @@ def load_or_create_config():
                 "TELEGRAM_MEDIA_FAILED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("TELEGRAM_MEDIA_FAILED_MESSAGE_TEMPLATE", ""),
                 "WHATSAPP_MEDIA_FAILED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("WHATSAPP_MEDIA_FAILED_MESSAGE_TEMPLATE", ""),
                 "DISCORD_MEDIA_FAILED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("DISCORD_MEDIA_FAILED_MESSAGE_TEMPLATE", ""),
+                "PUSH_EXPIRATION_TITLE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_EXPIRATION_TITLE_TEMPLATE", ""),
+                "PUSH_EXPIRATION_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_EXPIRATION_MESSAGE_TEMPLATE", ""),
+                "PUSH_RENEWAL_TITLE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_RENEWAL_TITLE_TEMPLATE", ""),
+                "PUSH_RENEWAL_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_RENEWAL_MESSAGE_TEMPLATE", ""),
+                "PUSH_REACTIVATION_TITLE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_REACTIVATION_TITLE_TEMPLATE", ""),
+                "PUSH_REACTIVATION_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_REACTIVATION_MESSAGE_TEMPLATE", ""),
+                "PUSH_TRIAL_END_TITLE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_TRIAL_END_TITLE_TEMPLATE", ""),
+                "PUSH_TRIAL_END_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_TRIAL_END_MESSAGE_TEMPLATE", ""),
+                "PUSH_BULK_TITLE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_BULK_TITLE_TEMPLATE", ""),
+                "PUSH_BULK_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_BULK_MESSAGE_TEMPLATE", ""),
+                "PUSH_MEDIA_REQUEST_TITLE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_MEDIA_REQUEST_TITLE_TEMPLATE", ""),
+                "PUSH_MEDIA_REQUEST_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_MEDIA_REQUEST_MESSAGE_TEMPLATE", ""),
+                "PUSH_MEDIA_PENDING_TITLE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_MEDIA_PENDING_TITLE_TEMPLATE", ""),
+                "PUSH_MEDIA_PENDING_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_MEDIA_PENDING_MESSAGE_TEMPLATE", ""),
+                "PUSH_MEDIA_APPROVED_TITLE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_MEDIA_APPROVED_TITLE_TEMPLATE", ""),
+                "PUSH_MEDIA_APPROVED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_MEDIA_APPROVED_MESSAGE_TEMPLATE", ""),
+                "PUSH_MEDIA_AVAILABLE_TITLE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_MEDIA_AVAILABLE_TITLE_TEMPLATE", ""),
+                "PUSH_MEDIA_AVAILABLE_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_MEDIA_AVAILABLE_MESSAGE_TEMPLATE", ""),
+                "PUSH_MEDIA_DECLINED_TITLE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_MEDIA_DECLINED_TITLE_TEMPLATE", ""),
+                "PUSH_MEDIA_DECLINED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_MEDIA_DECLINED_MESSAGE_TEMPLATE", ""),
+                "PUSH_MEDIA_FAILED_TITLE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_MEDIA_FAILED_TITLE_TEMPLATE", ""),
+                "PUSH_MEDIA_FAILED_MESSAGE_TEMPLATE": DEFAULT_TEMPLATES.get("PUSH_MEDIA_FAILED_MESSAGE_TEMPLATE", ""),
                 "TELEGRAM_MEDIA_REQUEST_MESSAGE_TEMPLATE": "🍿 *Novo Conteúdo Solicitado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acesse o pedido:*\n{media_url}",
                 "WHATSAPP_MEDIA_REQUEST_MESSAGE_TEMPLATE": "🍿 *Novo Conteúdo Solicitado*\n\n*{title}*\n\n📝 {overview}\n\n━━━━━━━━━━━━━━━\n👤 *Usuário:* {username}\n📊 *Status:* {status}\n━━━━━━━━━━━━━━━\n\n🚀 *Acesse o pedido:*\n{media_url}",
                 "DISCORD_MEDIA_REQUEST_MESSAGE_TEMPLATE": '{"embeds": [{"title": "🍿 Novo Conteúdo Solicitado", "description": "**{title}**\\n\\n📝 {overview}", "color": 10181046, "fields": [{"name": "👤 Usuário", "value": "{username}", "inline": true}, {"name": "📊 Status", "value": "{status}", "inline": true}], "url": "{media_url}"}]}',

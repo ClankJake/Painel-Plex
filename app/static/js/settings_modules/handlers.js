@@ -135,6 +135,26 @@ async function handleTestWhatsapp() {
     }
 }
 
+/**
+ * Manda uma notificação push de teste para os aparelhos deste administrador.
+ *
+ * ⚠️ Não envia os valores do formulário, ao contrário do teste de WhatsApp: as
+ * notificações push só saem com as chaves já gravadas no config, e testá-las
+ * antes de salvar diria que não há aparelho nenhum mesmo quando há.
+ */
+async function handleTestPush() {
+    const btn = document.getElementById('testPush');
+    setButtonLoading(btn, i18n.testing || 'Testando...');
+    try {
+        const result = await api.testPush();
+        showToast(result.message, result.success ? 'success' : 'error');
+    } catch (error) {
+        showToast(error.message || i18n.unknownError, 'error');
+    } finally {
+        restoreButtonState(btn);
+    }
+}
+
 // --- CHAVE DE API (INTEGRAÇÕES / BOTS) ---
 
 // Guardada apenas em memória enquanto a página está aberta. A chave NÃO vem no
@@ -619,6 +639,7 @@ export function initializeEventListeners() {
 
     // --- WhatsApp ---
     document.getElementById('testWhatsapp')?.addEventListener('click', handleTestWhatsapp);
+    document.getElementById('testPush')?.addEventListener('click', handleTestPush);
     const waProvider = document.getElementById('WHATSAPP_PROVIDER');
     if (waProvider) {
         waProvider.addEventListener('change', syncWhatsappProviderFields);

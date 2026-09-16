@@ -136,7 +136,9 @@ def resultado():
 def test_as_migracoes_correm_ate_ao_fim(resultado):
     """Um `flask db upgrade` que rebenta é, em Docker, um painel que não arranca."""
     assert resultado['erro'] is None, resultado['erro']
-    assert resultado['versao'] == 'c6b3f8d20ea5'
+    # A revisão de topo. Muda sempre que entra uma migração nova — e é isso
+    # que garante que a nova também correu até ao fim, e não só as anteriores.
+    assert resultado['versao'] == 'd2a7f14c9b53'
 
 
 def test_nao_fica_nenhuma_violacao_de_integridade(resultado):

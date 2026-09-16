@@ -78,6 +78,24 @@ def _data_local_csv(created_at_iso, local_tz):
 # PROCESSAMENTO DE PAGAMENTOS EM BACKGROUND
 # ==========================================
 
+def _avisar_administrador(titulo, mensagem, link=None):
+    """Manda ao celular do administrador o que acabou de acontecer no caixa.
+
+    O sino do painel já registava estes avisos, mas só os vê quem tem a página
+    aberta: um pagamento confirmado de madrugada esperava por alguém abrir o
+    painel. Aqui o mesmo texto vai por notificação push.
+
+    ⚠️ **Nunca derruba o processamento do pagamento.** Um erro a avisar seria,
+    sem isto, um pagamento marcado como 'FALHOU' depois de a assinatura já ter
+    sido renovada.
+    """
+    try:
+        extensions.push_manager.enviar_ao_administrador(
+            'pagamento', titulo, mensagem, url=link, tag='pagamento')
+    except Exception as e:
+        logger.warning(f"Não foi possível avisar o administrador por push: {e}")
+
+
 def _run_payment_processing_in_thread(app, txid):
     """Executado numa thread separada para validar pagamentos atómicos e renovar contas."""
     MAX_RETRIES = 5
@@ -130,10 +148,11 @@ def _run_payment_processing_in_thread(app, txid):
                         extensions.data_manager.set_user_profile(media_user_id, profile)
                         
                     logger.info(f"A processar a reativação paga para o utilizador '{profile['username']}' (ID: {media_user_id}).")
+                    aviso_admin = _("O usuário %(username)s reativou a conta. Pagamento de %(value)s confirmado.", username=profile['username'], value=f"R$ {payment['value']:.2f}")
                     extensions.data_manager.create_notification(
-                        message=_("O usuário %(username)s reativou a conta. Pagamento de %(value)s confirmado.", username=profile['username'], value=f"R$ {payment['value']:.2f}"),
-                        category='success', link=url_for('main.users_page')
+                        message=aviso_admin, category='success', link=url_for('main.users_page')
                     )
+                    _avisar_administrador(_("Conta reativada"), aviso_admin, '/users')
                     extensions.data_manager.create_notification(
                         message=_("Sua conta foi reativada com sucesso! Pagamento de %(value)s confirmado.", value=f"R$ {payment['value']:.2f}"),
                         category='success', link=url_for('main.account_page'), media_user_id=media_user_id
@@ -163,16 +182,27 @@ def _run_payment_processing_in_thread(app, txid):
                             f"{limite_anterior} -> {novo_limite} telas. Vencimento inalterado "
                             f"({profile_upgrade.get('expiration_date')})."
                         )
+                        aviso_pessoa = _("O seu plano foi atualizado para %(screens)d tela(s)!", screens=int(novo_limite))
                         extensions.data_manager.create_notification(
-                            message=_("O seu plano foi atualizado para %(screens)d tela(s)!", screens=int(novo_limite)),
-                            category='success', link=url_for('main.account_page'), media_user_id=media_user_id
+                            message=aviso_pessoa, category='success',
+                            link=url_for('main.account_page'), media_user_id=media_user_id
                         )
+                        # O upgrade pró-rata é o único pagamento que não passa
+                        # pelo notificador (não é uma renovação): sem isto, quem
+                        # paga é o único a não receber aviso nenhum.
+                        try:
+                            extensions.push_manager.enviar(
+                                media_user_id, _("Plano atualizado"), aviso_pessoa,
+                                url='/account', tag='plano')
+                        except Exception as e:
+                            logger.warning(f"Não foi possível avisar por push o upgrade de plano: {e}")
+                        aviso_admin = _("%(username)s fez upgrade para %(screens)d tela(s). Pagamento de %(value)s confirmado.",
+                                        username=profile_upgrade.get('username'), screens=int(novo_limite),
+                                        value=f"R$ {payment['value']:.2f}")
                         extensions.data_manager.create_notification(
-                            message=_("%(username)s fez upgrade para %(screens)d tela(s). Pagamento de %(value)s confirmado.",
-                                      username=profile_upgrade.get('username'), screens=int(novo_limite),
-                                      value=f"R$ {payment['value']:.2f}"),
-                            category='success', link=url_for('main.users_page')
+                            message=aviso_admin, category='success', link=url_for('main.users_page')
                         )
+                        _avisar_administrador(_("Upgrade de plano"), aviso_admin, '/users')
                         if extensions.socketio:
                             extensions.socketio.emit('new_notification', namespace='/')
 
@@ -254,10 +284,11 @@ def _run_payment_processing_in_thread(app, txid):
                         logger.error(f"Erro ao processar a recompensa de indicação para o utilizador {media_user_id}: {e}", exc_info=True)
                         
                     if not is_reactivation:
+                        aviso_admin = _("Pagamento de %(username)s (%(value)s) confirmado.", username=profile['username'], value=f"R$ {payment['value']:.2f}")
                         extensions.data_manager.create_notification(
-                            message=_("Pagamento de %(username)s (%(value)s) confirmado.", username=profile['username'], value=f"R$ {payment['value']:.2f}"), 
-                            category='success', link=url_for('main.users_page')
+                            message=aviso_admin, category='success', link=url_for('main.users_page')
                         )
+                        _avisar_administrador(_("Pagamento confirmado"), aviso_admin, '/users')
                         extensions.data_manager.create_notification(
                             message=_("A sua renovação de %(value)s foi confirmada.", value=f"R$ {payment['value']:.2f}"), 
                             category='success', link=url_for('main.account_page'), media_user_id=media_user_id

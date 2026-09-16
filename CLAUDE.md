@@ -1247,9 +1247,15 @@ Pydantic v1, cujo aviso de depreciação está silenciado no `pytest.ini`.
 
 ### Notificações
 
-Os templates (Telegram, Discord, WhatsApp, webhook) vivem no config.json e os
-padrões estão em `DEFAULT_TEMPLATES` (`notifier_manager.py`) e em
+Os templates (Telegram, Discord, WhatsApp, webhook, push) vivem no config.json e
+os padrões estão em `DEFAULT_TEMPLATES` (`notifier_manager.py`) e em
 `load_or_create_config()`. Os dois têm de ser mudados juntos.
+
+⚠️ **O push tem DUAS chaves por evento**, `PUSH_<EVENTO>_TITLE_TEMPLATE` e
+`PUSH_<EVENTO>_MESSAGE_TEMPLATE`, porque o sistema operativo trata as duas
+partes de maneira diferente: o título aparece em negrito e é o que se lê de
+relance, o corpo é cortado ao fim de duas linhas no ecrã de bloqueio.
+Reaproveitar o texto do Telegram dava um aviso ilegível.
 
 ⚠️ **A marca aparecia no meio das frases entregues ao utilizador** — "O seu
 acesso ao Plex está prestes a expirar", "aceite o convite no link abaixo". Num
@@ -1261,6 +1267,83 @@ Configurações mantém o que lá tem: um padrão só vale para quem não escolh
 `{invite_link}` deixou de ser "o link do convite do Plex" e passou a ser "o
 endereço para voltar a aceder" — é o `link` que `restaurar_acesso` devolve, e
 muda por servidor.
+
+#### As notificações push: um quinto canal, com um destinatário diferente
+
+O sino do painel só avisa quem está com ele aberto. A notificação push é o mesmo
+aviso entregue pelo sistema operativo — no Android, no iPhone com o painel
+adicionado ao ecrã inicial, e no navegador do computador. Vive em três ficheiros:
+
+- `app/services/web_push.py` — a **cifra e a entrega**, sem biblioteca nenhuma;
+- `app/services/push_manager.py` — **quem recebe o quê**, e as chaves;
+- `app/static/js/push.js` + `service-worker.js` — o lado do navegador.
+
+⚠️ **Não há aqui uma biblioteca, e é por não haver nenhuma que instale.** A
+`pywebpush` arrasta a `http-ece`, cujo `setup.py` já não compila com o
+setuptools atual (`AttributeError: install_layout`) — uma dependência que não
+instala é um contentor que não arranca. O que falta fazer é pouco e está todo
+especificado (RFC 8188, 8291 e 8292), e o `cryptography` já é dependência
+fixada. 🛡️ Uma cifra própria sem vetor de teste seria um "funciona no meu
+navegador": `tests/test_notificacoes_push.py` reproduz o exemplo da **RFC 8291**
+byte a byte. Se esse teste falhar, nenhuma notificação chega a lado nenhum — e o
+log não diz porquê, porque do lado de cá corre tudo bem.
+
+⚠️ **O par de chaves VAPID é gerado UMA vez e nunca muda.** É ele que identifica
+este painel perante o serviço de push, e fica registado em cada aparelho no
+momento em que ele subscreve: gerar um par novo invalida, de uma vez, TODAS as
+subscrições existentes — toda a gente deixa de receber e ninguém dá por isso,
+porque o serviço responde 403 e mais nada. Por isso `garantir_chaves()` só gera
+quando não há nada utilizável, as chaves NÃO estão em `fields_to_update` (não
+vêm do formulário; nasce no momento em que o interruptor é ligado), e a privada
+está em `sensitive_keys`.
+
+⚠️ **`media_user_id` a NULL é o ADMINISTRADOR** em `push_subscriptions`, a mesma
+convenção de `notifications` — e de propósito: quem recebe o aviso no sino é
+quem o deve receber no telemóvel. É também o que permite ao dono do painel
+subscrever antes de ter perfil local (só passa a tê-lo no primeiro login depois
+da versão que o cria), coisa que uma chave estrangeira obrigatória impediria.
+🛡️ **Quem é o dono do aparelho decide-o o SERVIDOR**, pela sessão: aceitar um
+dono vindo do corpo do pedido deixava qualquer pessoa autenticada receber os
+avisos de pagamento do administrador.
+
+🛡️ **A palavra-passe e o link de reposição NUNCA vão por push** (`EVENTOS_SEM_PUSH`).
+Não é esquecimento: uma notificação push aparece no ecrã de bloqueio, à vista de
+quem estiver por perto, e fica guardada pelo sistema operativo fora do painel. Os
+dois continuam a ir pelos canais que a pessoa registou, onde há pelo menos uma
+conversa a proteger.
+
+⚠️ **O push é o único canal cujo destinatário não está no perfil** — está na
+tabela dos aparelhos. Por isso `_prepare_and_send` recebe `aparelhos_push` e o
+envio em massa carrega-os TODOS de uma vez (`_aparelhos_por_pessoa`): sem entrar
+em `_split_by_reachability`, quem só ligou as notificações do telemóvel era
+contado como "sem contacto" e ignorado em silêncio, com o canal ligado.
+
+🐛 **Uma subscrição morta responde 410 para sempre.** Deixá-la na tabela era um
+erro no log por cada notificação, a cada pagamento, sem nada a fazer sobre ele —
+por isso `PushExpirado` (404/410) APAGA a linha, enquanto uma recusa temporária
+(403, 429, servidor em baixo) a deixa ficar.
+
+⚠️ **O service worker passou a ser servido da RAIZ** (`/service-worker.js`, a
+rota `serve_sw` que já existia e ninguém usava). O alcance de um service worker
+é a pasta de onde ele vem: em `/static/js/` ele não controlava a `start_url` do
+manifesto, o que fazia o Android não oferecer instalar o painel e impedia uma
+notificação clicada de encontrar a aba já aberta. ⚠️ Isso obrigou a mudar a
+estratégia de cache no mesmo passo: a antiga procurava TUDO no cache primeiro, e
+com alcance na raiz passaria a servir páginas e respostas da API guardadas — o
+painel mostraria a lista de utilizadores de ontem. Hoje só se trata do que está
+em `/static/`; o resto segue para a rede sem o service worker se meter.
+
+⚠️ **O navegador exige HTTPS**, e no iPhone exige mais: o Safari só expõe o
+`PushManager` depois de o painel ser adicionado ao ecrã inicial. A ausência do
+botão TEM explicação, e por isso ali ela aparece escrita — noutros navegadores
+sem suporte não aparece nada, porque não há nada a fazer.
+
+O aviso de um pedido novo ao administrador vem ANTES da desistência por "não há
+perfil local" (`_avisar_administrador_do_pedido`): quem aprova é ele, e quer
+saber que entrou um pedido mesmo que quem o fez ainda não tenha perfil no
+painel. Era aí que o webhook morria em silêncio. E só os eventos de ENTRADA
+(`MEDIA_PENDING`, `MEDIA_AUTO_APPROVED`) o incomodam — os seguintes são o estado
+a andar, e quem quer saber é quem pediu.
 
 ### A palavra-passe: uma só, e é a do servidor
 

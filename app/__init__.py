@@ -416,7 +416,7 @@ def create_app() -> Flask:
         DataManager, StatsManager, create_media_server,
         NotifierManager, EfiManager, MercadoPagoManager,
         OverseerrManager, LinkShortener, Gates2bManager, StreamManager,
-        PricingManager, BackupManager, ReferralManager
+        PricingManager, BackupManager, ReferralManager, PushManager
     )
 
     extensions.data_manager = DataManager()
@@ -441,6 +441,7 @@ def create_app() -> Flask:
         data_manager=extensions.data_manager,
         notifier_manager=extensions.notifier_manager
     )
+    extensions.push_manager = PushManager(data_manager=extensions.data_manager)
     
     # O backend do servidor de média é escolhido pela configuração. Hoje só
     # existe o Plex; a fábrica é o único sítio que precisa de saber disso.
@@ -499,9 +500,20 @@ def create_app() -> Flask:
             'estatisticas': estatisticas_disponiveis(),
         }
 
+        # As notificações push só aparecem na interface quando há mesmo como
+        # as entregar: ligadas nas Configurações E com um par de chaves. Sem
+        # isto, o botão "Ativar notificações" pedia permissão ao navegador para
+        # depois falhar a subscrever, que é a pior ordem possível.
+        gestor_push = extensions.push_manager
+        info_push = {
+            'ativo': bool(gestor_push and gestor_push.disponivel),
+            'chave_publica': getattr(gestor_push, 'chave_publica', '') or '',
+        }
+
         return {
             'current_locale': get_locale(),
             'app_title': app.config.get('APP_TITLE', 'Painel Plex'),
+            'push': info_push,
             'cache_buster': int(datetime.now().timestamp()),
             'media_server': info_servidor,
             'endpoint_inicial_do_utilizador': endpoint_inicial_do_utilizador,
