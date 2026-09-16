@@ -17,9 +17,18 @@ Nada na suíte podia ver isso — o pytest não executa JavaScript — e o
 NOMES DE CLASSES e nunca analisa os módulos. Quem passou a ver é o `npm run
 lint`, com a regra `no-undef` e mais nenhuma.
 
+🐛 SEGUNDA REGRESSÃO, e é a que explica a segunda regra: `TypeError:
+ui.showToast is not a function`, quando um pagamento entrava e o socket
+disparava `user_list_updated`. `import * as ui` só traz o que o módulo
+EXPORTA, e `showToast` era uma função que o `ui.js` apenas IMPORTAVA do
+`utils.js`. Para o `no-undef` estava tudo bem — o `ui` existe. E o aviso
+perdido era o menor dos estragos: a exceção matava a linha SEGUINTE, que era a
+que recarregava a lista, por isso o painel aberto não atualizava quando um
+pagamento chegava.
+
 Este ficheiro não corre o ESLint (o job do pytest não tem Node). Prende o
-CONTRATO: que o script existe, que a configuração cobre todo o JavaScript do
-painel, e que o CI o executa. Um guarda que alguém desligue em silêncio deixa
+CONTRATO: que o script existe, que as duas regras estão em "error", que a
+configuração cobre todo o JavaScript do painel, e que o CI o executa. Um guarda que alguém desligue em silêncio deixa
 de ser um guarda, e o sintoma só reaparecia no navegador de quem usa o painel.
 """
 
@@ -58,9 +67,22 @@ def test_a_configuracao_do_eslint_existe_e_impoe_o_no_undef():
     assert CONFIG_ESLINT.is_file(), 'Falta o eslint.config.mjs.'
     texto = CONFIG_ESLINT.read_text(encoding='utf-8')
     assert re.search(r'["\']no-undef["\']\s*:\s*["\']error["\']', texto), (
-        'A regra `no-undef` deixou de estar em "error". É a única regra que '
-        'este projeto pede ao ESLint, e sem ela o passo passa a não verificar '
-        'nada — continuando verde.'
+        'A regra `no-undef` deixou de estar em "error". Sem ela o passo passa '
+        'a não verificar uma referência que não existe — continuando verde.'
+    )
+
+
+def test_a_configuracao_impoe_o_namespace_dos_imports():
+    """A regra que apanha `ui.showToast` quando o `ui.js` não o exporta."""
+    texto = CONFIG_ESLINT.read_text(encoding='utf-8')
+    assert re.search(r'["\']import-x/namespace["\']\s*:\s*\[?\s*["\']error["\']', texto), (
+        'A regra `import-x/namespace` deixou de estar em "error". É ela — e '
+        'não o `no-undef` — que vê um `NS.membro` que o módulo não exporta: '
+        'para o `no-undef` o NS existe e está tudo certo.'
+    )
+    assert 'eslint-plugin-import-x' in _pacote()['devDependencies'], (
+        'O plugin saiu das devDependencies: o `npm ci` do CI não o instala e '
+        'o ESLint morre a carregar a configuração.'
     )
 
 

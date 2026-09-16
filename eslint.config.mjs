@@ -12,6 +12,21 @@
 // tinha mudado de nome quando a filtragem das abas passou para o servidor, o
 // painel carregava sem uma queixa, e o modal simplesmente não abria.
 //
+// 🐛 A segunda regra existe porque a primeira NÃO apanhava o irmão deste erro.
+// `import * as ui` só traz o que o módulo EXPORTA, e `ui.showToast` era uma
+// função que o `ui.js` apenas IMPORTAVA do `utils.js` — para o `no-undef` o
+// `ui` existe e está tudo bem; o `TypeError: ui.showToast is not a function` só
+// aparecia quando um pagamento entrava e o socket disparava o evento. E pior do
+// que o aviso perdido: a exceção matava a linha seguinte, que era a que
+// recarregava a lista. O `import-x/namespace` compara cada `NS.membro` com os
+// exports reais do módulo.
+//
+// ⚠️ `allowComputed` fica LIGADO. O `api[endpoint]` do `handleTestConnection` é
+// uma despachagem dinâmica de propósito, e já trata sozinha o nome desconhecido
+// (`typeof !== 'function'` → erro claro). Marcá-la seria obrigar a calar a regra
+// num sítio onde o código está certo — e um guarda com exceções espalhadas
+// deixa de ser lido.
+//
 // O pytest não chega lá (não executa JavaScript) e o `npm run build` também
 // não (o Tailwind lê os templates à procura de NOMES DE CLASSES, não analisa os
 // módulos). Daí este passo, no job do frontend que já instala o npm.
@@ -20,6 +35,8 @@
 // lista é um erro. Uma biblioteca nova carregada por <script> no template tem
 // de ser acrescentada aqui — que é precisamente o momento em que alguém deve
 // reparar que ela existe.
+
+import importX from "eslint-plugin-import-x";
 
 const NAVEGADOR = [
     // Documento e janela
@@ -62,12 +79,16 @@ export default [
     {
         files: ["app/static/js/**/*.js"],
         ignores: ["app/static/js/service-worker.js"],
+        plugins: { "import-x": importX },
         languageOptions: {
             ecmaVersion: "latest",
             sourceType: "module",
             globals: soLeitura([...NAVEGADOR, ...BIBLIOTECAS]),
         },
-        rules: { "no-undef": "error" },
+        rules: {
+            "no-undef": "error",
+            "import-x/namespace": ["error", { allowComputed: true }],
+        },
     },
     {
         files: ["app/static/js/service-worker.js"],
