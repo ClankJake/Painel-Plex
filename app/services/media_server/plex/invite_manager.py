@@ -420,6 +420,17 @@ class PlexInviteManager(InvitationLifecycle):
                     self.conn.account.updateFriend(user=user_to_invite, server=self.conn.plex, sections=libraries_to_share, allowSync=allow_sync)
                     return {"success": True, "message": _("Acesso do usuário atualizado com sucesso!"), "email": user_to_invite.email, "invite_token": self._get_invite_token(user_to_invite)}
                 except Exception as update_err:
+                    # 🐛 Este erro era APANHADO E DEITADO FORA, e a resposta a seguir
+                    # diz "atualizado com sucesso". O plano B é legítimo — vale a
+                    # pena tentar pelo caminho próprio antes de desistir —, mas sem
+                    # esta linha o `updateFriend` podia estar a falhar sempre (uma
+                    # mudança na API do plex.tv, uma credencial expirada) e nada no
+                    # painel dizia isso: o administrador via sucesso, indefinidamente.
+                    logger.warning(
+                        f"O updateFriend do Plex falhou para '{user_to_invite.username}'; "
+                        f"a aplicar as bibliotecas pelo caminho próprio. Motivo: {update_err}",
+                        exc_info=True,
+                    )
                     self.user_manager.update_user_libraries(user_to_invite.id, library_titles, allow_sync=allow_sync)
                     return {"success": True, "message": _("Acesso do usuário atualizado com sucesso (via Sistema Seguro)!"), "email": user_to_invite.email, "invite_token": "ACCEPTED"}
 

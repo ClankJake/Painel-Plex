@@ -511,8 +511,16 @@ def create_charge_route():
         try:
             if plex_user := extensions.media_server.get_user_by_id(media_user_id):
                 user_email = plex_user.get('email')
-        except:
-            pass
+        # ⚠️ Um `except:` NU aqui era pior do que parece: sob gevent ele apanha
+        # também o `GreenletExit`, que é como um greenlet é morto — engoli-lo faz
+        # o worker deixar de conseguir encerrar aquele pedido. E apanhava
+        # KeyboardInterrupt e SystemExit, que nunca são nossos para tratar.
+        except Exception as e:
+            # O email é opcional para gerar a cobrança, por isso não se desiste.
+            logger.warning(
+                f"Não foi possível obter o email de '{username}' no servidor de "
+                f"mídia; a cobrança segue sem ele: {e}"
+            )
 
     user_info = {
         "media_user_id": media_user_id, "username": username,
@@ -801,7 +809,20 @@ def get_payment_status_route(txid):
             if status_result.get("success") and (st.get("status") == 'Pagamento realizado' or st.get("international_status") == "PAYMENT_RECEIVED"):
                 is_confirmed = True
     except Exception as e:
-        pass
+        # 🐛 Isto era um `pass` mudo, e o silêncio custava caro: quando a consulta
+        # ao gateway falha — rede, credencial expirada, mudança de API — a rota
+        # responde o estado ANTIGO, que é "aguardando pagamento". Quem está parado
+        # no QR code vê exatamente o mesmo que veria se não tivesse pago, e o log
+        # não tinha uma linha a dizer porquê: uma falha sistemática do gateway era
+        # indistinguível de um cliente que ainda não pagou.
+        #
+        # Continua a NÃO derrubar o pedido — a página faz polling e o webhook é o
+        # caminho principal de confirmação. O que muda é ficar rasto.
+        logger.warning(
+            f"Falha ao consultar o estado do pagamento {mask_token(txid)} no gateway "
+            f"{provider}: {e}. A resposta mantém o estado guardado.",
+            exc_info=True,
+        )
 
     if is_confirmed:
         _process_successful_payment(txid)
@@ -1011,7 +1032,8 @@ def get_financial_summary_route():
         year = request.args.get('year', datetime.now().year, type=int)
         month = request.args.get('month', datetime.now().month, type=int)
         renewal_days = request.args.get('renewal_days', 7, type=int)
-    except:
+    # ⚠️ Estreitado de um `except:` nu: sob gevent ele apanhava o GreenletExit.
+    except (ValueError, TypeError):
         year, month, renewal_days = datetime.now().year, datetime.now().month, 7
     return jsonify({
         "success": True, 
@@ -1036,7 +1058,9 @@ def add_manual_payment_route():
         current_time_str = datetime.now(timezone.utc).strftime('%H:%M:%S')
         try:
             payment_datetime_str = datetime.fromisoformat(f"{payment_date}T{current_time_str}+00:00").isoformat()
-        except:
+        # ⚠️ Estreitado de um `except:` nu, como acima. É o que a `fromisoformat`
+        # levanta com uma data que o administrador escreveu mal.
+        except (ValueError, TypeError):
             payment_datetime_str = datetime.now(timezone.utc).isoformat()
 
         payment = extensions.data_manager.add_manual_payment(media_user_id, user['username'], value, desc, payment_datetime_str)
