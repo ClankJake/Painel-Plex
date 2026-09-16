@@ -131,3 +131,64 @@ def test_nenhum_except_nu_no_codigo_da_aplicacao():
         'Se precisa mesmo de tudo, escreva `except Exception:`, que já deixa '
         'passar o GreenletExit, o KeyboardInterrupt e o SystemExit.'
     )
+
+
+# ==========================================================================
+# `datetime.utcnow` — depreciado, e marcado para REMOÇÃO
+# ==========================================================================
+
+def test_nenhum_datetime_utcnow_no_codigo_da_aplicacao():
+    """⚠️ O Python 3.12 — que o CI já corre — diz "deprecated and scheduled for
+    removal". Não é um aviso de estilo: um dia o painel deixa de arrancar.
+
+    Havia doze chamadas: onze eram o `default=` de colunas `DateTime` e uma era
+    o ano no rodapé da página de pagamento público. Todas passaram a
+    `models.agora_utc()`.
+
+    ⚠️ A substituição ÓBVIA — `datetime.now(timezone.utc)` — teria sido pior do
+    que não mexer: as colunas deste esquema são todas SEM FUSO, o SQLite
+    guarda-as como texto, e uma linha escrita com fuso ordenaria e compararia
+    de forma diferente das que já lá estão. É o `replace(tzinfo=None)` que faz
+    do `agora_utc` um substituto exato.
+    """
+    import ast
+    from pathlib import Path
+
+    chamadas = []
+    for ficheiro in sorted(Path('app').rglob('*.py')):
+        try:
+            arvore = ast.parse(ficheiro.read_text(encoding='utf-8'))
+        except SyntaxError:  # pragma: no cover
+            continue
+        for no in ast.walk(arvore):
+            # `datetime.utcnow` conta quer seja chamado, quer passado como
+            # `default=` — é a REFERÊNCIA que interessa.
+            if isinstance(no, ast.Attribute) and no.attr == 'utcnow':
+                chamadas.append(f'{ficheiro.as_posix()}:{no.lineno}')
+
+    assert not chamadas, (
+        'Voltou a haver `datetime.utcnow` em app/:\n  ' + '\n  '.join(chamadas) +
+        '\n\nUse `agora_utc()` de `app/models.py`. Ele devolve o mesmo valor '
+        '(UTC sem fuso) sem a chamada depreciada.'
+    )
+
+
+def test_o_agora_utc_e_um_substituto_exato_do_utcnow():
+    """Se ele passar a devolver um valor COM fuso, as colunas ficam misturadas.
+
+    O sintoma não seria um erro: seriam datas a ordenar e a comparar de forma
+    diferente conforme a linha ter sido escrita antes ou depois da mudança — e
+    é por comparação de data que o `cleanup_job` decide o que apagar.
+    """
+    from datetime import datetime, timezone
+
+    from app.models import agora_utc
+
+    agora = agora_utc()
+    assert agora.tzinfo is None, (
+        'O `agora_utc` passou a devolver um valor COM fuso. As colunas '
+        '`DateTime` deste esquema não o têm.'
+    )
+    # E o valor é mesmo UTC, não a hora local da máquina.
+    diferenca = abs((agora - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds())
+    assert diferenca < 5, f'O valor não está em UTC: {diferenca:.0f}s de diferença.'

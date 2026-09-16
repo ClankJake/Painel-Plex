@@ -9,11 +9,12 @@ from flask import url_for
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..extensions import db
-from ..models import ShortLink
+from ..models import ShortLink, agora_utc
 from ..config import load_or_create_config
 from ..utils.log_sanitizer import mask_code, mask_link
 
 logger = logging.getLogger(__name__)
+
 
 class LinkShortener:
     """Serviço para criar e resolver links curtos com alta resiliência."""
@@ -28,25 +29,45 @@ class LinkShortener:
 
     def create_short_link(self, original_url: str) -> str:
         """
-        Cria um novo link curto para a URL especificada e apaga quaisquer 
-        links curtos antigos que apontassem para o mesmo destino.
+        O link curto deste destino: o que já existe, ou um novo.
         Se falhar, faz fallback automático para a URL original.
+
+        🐛 Isto APAGAVA os links antigos do mesmo destino antes de criar outro,
+        "para evitar duplicações" — e com isso matava o link que a pessoa já
+        tinha recebido. Não era um caso raro: `garantir_payment_token` MANTÉM o
+        token enquanto ele for válido (só estende a validade), por isso o URL
+        longo é idêntico entre envios e o apagamento coincidia sempre. O aviso
+        de vencimento é diário, com uma trava de 23 horas por pessoa: quem
+        recebia o lembrete de hoje ficava com o de ontem morto, e ao rolar a
+        conversa para cima tocava num "link expirado" cujo destino continuava
+        perfeitamente válido — no fluxo do pagamento, que é onde menos se quer
+        atrito.
+
+        Reutilizar resolve a duplicação melhor do que apagar: fica UMA linha
+        por destino (em vez de uma por envio) e todas as mensagens já
+        entregues continuam a funcionar. E não se perde segurança nenhuma ao
+        não rodar o código: por baixo está o mesmo `/pay/<token>`, que é a
+        credencial de facto — trocar o código curto não fecharia porta nenhuma.
         """
         try:
-            # 1. AUTO-LIMPEZA: Apaga em massa (Bulk Delete)
-            # Mais eficiente que iterar, pois é executado numa única query SQL
-            deleted_count = ShortLink.query.filter_by(original_url=original_url).delete(synchronize_session=False)
-            if deleted_count > 0:
-                logger.debug(f"{deleted_count} link(s) antigo(s) apagado(s) para evitar duplicações de '{mask_link(original_url)}'.")
-            
-            # 2. Cria o novo link curto
-            code = self._generate_short_code()
-            new_link = ShortLink(short_code=code, original_url=original_url)
-            db.session.add(new_link)
-            
-            # 3. Commit atómico (apaga e adiciona ao mesmo tempo)
-            db.session.commit()
-            logger.info(f"Novo Link curto '{mask_code(code)}' criado com sucesso para: {mask_link(original_url)}")
+            existente = ShortLink.query.filter_by(original_url=original_url).first()
+
+            if existente:
+                code = existente.short_code
+                # ⚠️ A data é reposta de propósito. O `cleanup_job` apaga por
+                # `created_at`, e sem isto um link reutilizado ao dia 29 morria
+                # no dia 30 — logo a seguir a ter sido enviado. É a mesma regra
+                # que `garantir_payment_token` já segue: o que conta é a data do
+                # ÚLTIMO envio, não a do primeiro.
+                existente.created_at = agora_utc()
+                db.session.commit()
+                logger.info(f"Link curto '{mask_code(code)}' reutilizado para: {mask_link(original_url)}")
+            else:
+                code = self._generate_short_code()
+                db.session.add(ShortLink(short_code=code, original_url=original_url,
+                                         created_at=agora_utc()))
+                db.session.commit()
+                logger.info(f"Novo Link curto '{mask_code(code)}' criado com sucesso para: {mask_link(original_url)}")
             
         except SQLAlchemyError as e:
             db.session.rollback()
