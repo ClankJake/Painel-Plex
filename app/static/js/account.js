@@ -1,4 +1,4 @@
-import { fetchAPI, showToast, createModal, copyToClipboard, lerConfiguracaoDoScript } from './utils.js';
+import { fetchAPI, showToast, createModal, copyToClipboard, lerConfiguracaoDoScript, escapeHTML } from './utils.js';
 
 // ==========================================
 // SEGURANÇA E UTILITÁRIOS
@@ -192,10 +192,6 @@ async function loadReferralCard() {
         // página de conta se a chamada falhar.
         console.warn('Não foi possível carregar o programa de indicações:', error);
     }
-}
-
-function escapeHTML(str) {
-    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 const renderProfileBaseInfo = (data, expiration) => {
@@ -728,7 +724,7 @@ const bindPaymentEvents = (providers) => {
             const result = await fetchAPI(state.urls.validateCouponUrl, 'POST', { code, screens: selectedPlan.value, username: state.currentUser.username });
             
             if (result.success) {
-                statusDiv.innerHTML = `<span class="text-green-600 dark:text-green-400 flex items-center gap-1"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg> ${result.message}</span>`;
+                statusDiv.innerHTML = `<span class="text-green-600 dark:text-green-400 flex items-center gap-1"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg> ${escapeHTML(result.message)}</span>`;
                 state.validatedCouponCode = code;
                 
                 if (result.discounted_price <= 0) {
@@ -743,7 +739,7 @@ const bindPaymentEvents = (providers) => {
                 throw new Error(result.message);
             }
         } catch (error) {
-            statusDiv.innerHTML = `<span class="text-red-500 flex items-center gap-1">❌ ${error.message}</span>`;
+            statusDiv.innerHTML = `<span class="text-red-500 flex items-center gap-1">❌ ${escapeHTML(error.message)}</span>`;
             state.validatedCouponCode = null;
             pixBtn.textContent = state.i18n.generatePixForPrice.replace('{price}', parseFloat(selectedPlan.dataset.price).toFixed(2).replace('.', ','));
         } finally {
@@ -1039,7 +1035,7 @@ const fetchWatchHistory = async (page = 1, search = '') => {
         document.getElementById('hist-next').onclick = () => fetchWatchHistory(data.pagination.current_page + 1, searchInput.value);
 
     } catch (error) {
-        hc.innerHTML = `<p class="text-center text-red-500 py-8">❌ ${error.message}</p>`;
+        hc.innerHTML = `<p class="text-center text-red-500 py-8">❌ ${escapeHTML(error.message)}</p>`;
     }
 };
 

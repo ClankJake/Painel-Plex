@@ -1,4 +1,4 @@
-import { fetchAPI, showToast, createModal } from './utils.js';
+import { fetchAPI, showToast, createModal, escapeHTML } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const scriptTag = document.getElementById('notifications-script');
@@ -106,12 +106,18 @@ document.addEventListener('DOMContentLoaded', () => {
             notificationList.innerHTML = `<p class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 text-center">${i18n.noNotifications}</p>`;
             clearAllButton.disabled = true;
         } else {
+            // 🛡️ A `message` é escrita pelo painel, mas leva lá dentro o NOME de
+            // quem renovou ou pagou ("Renovação manual de %(username)s registrada"), e
+            // esse nome é escolhido por quem cria a conta no servidor de mídia — sem
+            // restrição de caracteres, onde as contas são locais. Como o sino vive no
+            // `base.html`, um nome como `<img src=x onerror=…>` corria em TODAS as
+            // páginas do administrador, sem ele clicar em nada.
             notificationList.innerHTML = notifications.map(n => `
-                <a href="${n.link || '#'}" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 ${!n.is_read ? 'font-bold' : ''}">
+                <a href="${escapeHTML(n.link || '#')}" class="block px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 ${!n.is_read ? 'font-bold' : ''}">
                     <div class="flex items-start gap-3">
                         <div class="flex-shrink-0 pt-1">${getIconForCategory(n.category)}</div>
                         <div>
-                            <p class="break-words">${n.message}</p>
+                            <p class="break-words">${escapeHTML(n.message)}</p>
                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${formatTimeAgo(n.timestamp + 'Z')}</p>
                         </div>
                     </div>

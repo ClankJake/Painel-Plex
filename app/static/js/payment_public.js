@@ -1,5 +1,5 @@
 // app/static/js/payment_public.js
-import { fetchAPI, showToast, createModal, setButtonLoading, restoreButton, buildPinCheckUrl, lerConfiguracaoDoScript } from './utils.js';
+import { fetchAPI, showToast, createModal, setButtonLoading, restoreButton, buildPinCheckUrl, lerConfiguracaoDoScript, escapeHTML } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // --- ELEMENTOS E DADOS GLOBAIS ---
@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const result = await fetchAPI(urls.validateCouponUrl, 'POST', { code, screens: selectedPlan.value, username: baseUsername });
                 
                 if (result.success) {
-                    statusDiv.innerHTML = `<span class="text-green-600 dark:text-green-400 flex items-center gap-1 font-bold"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg> ${result.message}</span>`;
+                    statusDiv.innerHTML = `<span class="text-green-600 dark:text-green-400 flex items-center gap-1 font-bold"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg> ${escapeHTML(result.message)}</span>`;
                     validatedCouponCode = code;
                     
                     // Atualiza o preço na label do rádio ativo visualmente
@@ -178,7 +178,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     throw new Error(result.message);
                 }
             } catch (error) {
-                statusDiv.innerHTML = `<span class="text-red-500 flex items-center gap-1 font-semibold"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg> ${error.message}</span>`;
+                statusDiv.innerHTML = `<span class="text-red-500 flex items-center gap-1 font-semibold"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg> ${escapeHTML(error.message)}</span>`;
                 validatedCouponCode = null;
                 
                 // Reverte preço no cartão
@@ -510,7 +510,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if(paymentOptions.success) {
                 renderPaymentInfo(paymentOptions.prices, paymentOptions.providers);
             } else {
-                paymentSection.innerHTML = `<div class="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-xl text-center border border-yellow-200 dark:border-yellow-700/50"><p class="text-yellow-700 dark:text-yellow-500 font-medium">${paymentOptions.message || i18n.noPlanPrice}</p></div>`;
+                paymentSection.innerHTML = `<div class="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-xl text-center border border-yellow-200 dark:border-yellow-700/50"><p class="text-yellow-700 dark:text-yellow-500 font-medium">${escapeHTML(paymentOptions.message || i18n.noPlanPrice)}</p></div>`;
             }
 
             const thumbUrl = profileData.profile.thumb;

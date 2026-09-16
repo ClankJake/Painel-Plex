@@ -259,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 });
             } else {
-                serverListDiv.innerHTML = `<p class="text-center p-8 text-yellow-600 dark:text-yellow-400">${data.message || i18n.noServersFound}</p>`;
+                serverListDiv.innerHTML = `<p class="text-center p-8 text-yellow-600 dark:text-yellow-400">${escapeHTML(data.message || i18n.noServersFound)}</p>`;
             }
         } catch (error) {
             navigateToStep(1);

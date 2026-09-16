@@ -804,7 +804,7 @@ export async function showUserProfileModal(user) {
         };
 
     } catch (error) {
-        modalBody.innerHTML = `<div class="text-center py-6 text-red-500"><svg class="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p>${i18n.errorLoadingProfile}: ${error.message}</p></div>`;
+        modalBody.innerHTML = `<div class="text-center py-6 text-red-500"><svg class="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p>${i18n.errorLoadingProfile}: ${sanitizeHTML(error.message)}</p></div>`;
     }
 }
 
@@ -925,7 +925,7 @@ export async function showPaymentHistoryModal(user) {
             container.innerHTML = `<p class="text-gray-500 dark:text-gray-400 text-center py-8">${i18n.noPaymentsFound}</p>`;
         }
     } catch (error) {
-        container.innerHTML = `<div class="text-center py-6 text-red-500"><svg class="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p>${error.message}</p></div>`;
+        container.innerHTML = `<div class="text-center py-6 text-red-500"><svg class="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><p>${sanitizeHTML(error.message)}</p></div>`;
     }
 }
 
