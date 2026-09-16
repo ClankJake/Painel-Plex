@@ -149,8 +149,16 @@ class PlexUserManager:
         except Exception as e:
             logger.warning(f"Sincronização falhou para ID {media_user_id}. Usando Cache Local. Motivo: {e}")
             if profile and profile.get('libraries'):
-                try: return {"success": True, "libraries": json.loads(profile['libraries']), "allow_sync": False}
-                except: pass
+                # ⚠️ O `except:` nu que aqui estava apanhava o GreenletExit (é assim
+                # que um greenlet é morto, sob gevent) e o KeyboardInterrupt. O que
+                # se quer apanhar é só um JSON ilegível na cache local.
+                try:
+                    return {"success": True, "libraries": json.loads(profile['libraries']), "allow_sync": False}
+                except (ValueError, TypeError):
+                    logger.warning(
+                        f"A cache local de bibliotecas do ID {media_user_id} está "
+                        f"ilegível; não dá para usar como alternativa."
+                    )
             return {"success": False, "message": _("Falha ao sincronizar com o Plex.")}
 
     # =========================================================================
@@ -367,10 +375,13 @@ class PlexUserManager:
             return {"success": False, "message": str(e)}
 
     def unblock_user(self, media_user_id):
-        user_to_unblock = self.get_user_by_id(media_user_id)
-        username = user_to_unblock['username'] if user_to_unblock else str(media_user_id)
+        # ⚡ Aqui fazia-se um `get_user_by_id()` — uma chamada de rede ao Plex — só
+        # para montar um `username` que nada lia a seguir. Quem regista quem foi
+        # desbloqueado é a auditoria, na rota (`utilizador.desbloquear`), que já
+        # tem o nome. O `block_user` precisa mesmo do dele: vai para a tabela.
         try:
             self.data_manager.remove_blocked_user(media_user_id)
+            logger.info(f"Utilizador {media_user_id} desbloqueado.")
             return {"success": True, "message": _("Usuário desbloqueado.")}
         except Exception as e:
             return {"success": False, "message": str(e)}
