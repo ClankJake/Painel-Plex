@@ -334,9 +334,59 @@ def bot_invites_por_telegram():
 @invites_api_bp.route('/list', methods=['GET'])
 @login_required
 @admin_required
-@limiter.exempt # Adicionado para ignorar o limite de requisições nesta rota (polling do frontend)
+@limiter.exempt
 def list_invites_route():
-    return jsonify(media_server.list_invitations())
+    """Uma PÁGINA de convites, já filtrada pela aba que está aberta.
+
+    ⚡ Isto devolvia a tabela inteira, com o histórico de resgates de cada
+    convite, e a página pedia-a de dez em dez segundos — para contar quantos
+    estavam abertos e para desenhar as duas abas, que filtrava do lado do
+    navegador. Num painel com anos de uso, é uma lista que só cresce a
+    atravessar a rede 360 vezes por hora, e uma que o Python serializa inteira
+    de cada vez.
+
+    Quem faz o polling passa a ser `/summary`, que são dois `COUNT(*)`; esta
+    rota é pedida quando a pessoa abre a aba ou muda de página.
+    """
+    estado = request.args.get('estado')
+    if estado not in ('ativos', 'historico'):
+        estado = None
+
+    try:
+        pagina, por_pagina = data_manager.normalizar_paginacao(
+            request.args.get('pagina', 1), request.args.get('por_pagina', 20)
+        )
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": _("Página inválida.")}), 400
+
+    convites, total = data_manager.get_invitations_page(estado, pagina, por_pagina)
+    ativos, _total_geral = data_manager.contar_convites()
+
+    return jsonify({
+        "success": True,
+        "invites": convites,
+        "pagina": pagina,
+        "por_pagina": por_pagina,
+        "total": total,
+        # Quantas páginas há nesta aba. Calculado aqui porque é a mesma conta
+        # em todo o lado e errá-la dá um botão "seguinte" que não leva a nada.
+        "paginas": max((total + por_pagina - 1) // por_pagina, 1),
+        "ativos": ativos,
+    })
+
+
+@invites_api_bp.route('/summary', methods=['GET'])
+@login_required
+@admin_required
+@limiter.exempt  # é o polling da página de utilizadores
+def invites_summary_route():
+    """Quantos convites estão abertos, e quantos existem ao todo.
+
+    É a pergunta que o polling faz — "já foi usado algum?" — e é toda a razão
+    por que a lista inteira era carregada de dez em dez segundos.
+    """
+    ativos, total = data_manager.contar_convites()
+    return jsonify({"success": True, "ativos": ativos, "total": total})
 
 @invites_api_bp.route('/delete', methods=['POST'])
 @login_required

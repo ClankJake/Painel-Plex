@@ -1432,6 +1432,87 @@ class DataManager:
                        .order_by(Invitation.created_at.desc()).all())
         return [self._row_to_dict(invite, process_json=True) for invite in invitations]
 
+    # ⚠️ **As datas dos convites são comparadas como TEXTO.** `created_at` e
+    # `expires_at` são colunas de texto, e tudo o que o painel lá escreve vem de
+    # `datetime.now(timezone.utc).isoformat()` — sempre UTC, sempre com o mesmo
+    # `+00:00` no fim. Duas datas nesse formato ordenam-se lexicograficamente na
+    # mesma ordem em que ordenam no tempo, e é por isso que isto funciona (é a
+    # mesma comparação que `check_telegram_id_exists_in_invites` já fazia).
+    #
+    # O que pode escapar ao formato é uma data escrita à mão na base de dados ou
+    # vinda de uma importação antiga. O pior que acontece é a linha cair na aba
+    # errada: quem decide mesmo se um convite vale é `convite_expirado`, em
+    # Python, que trata uma data ilegível como expirada.
+    def _convite_esta_ativo(self):
+        """A condição SQL de "ainda dá para usar"."""
+        agora = datetime.now(timezone.utc).isoformat()
+        return db.and_(
+            Invitation.use_count < Invitation.max_uses,
+            db.or_(Invitation.expires_at.is_(None), Invitation.expires_at > agora),
+        )
+
+    def contar_convites(self):
+        """(ativos, total) — o que o polling do painel precisa de saber.
+
+        ⚡ A página perguntava isto trazendo a TABELA INTEIRA de dez em dez
+        segundos, com o histórico de resgates de cada convite, só para contar
+        quantos ainda estavam abertos e avisar quando um tinha sido usado. Dois
+        `COUNT(*)` respondem à mesma pergunta.
+        """
+        vivos = Invitation.query.filter(Invitation.deleted_at.is_(None))
+        return (vivos.filter(self._convite_esta_ativo()).count(), vivos.count())
+
+    # ⚠️ Pedir 100000 por página era pedir a tabela inteira por outro caminho —
+    # exatamente o que a paginação existe para impedir.
+    POR_PAGINA_MAXIMO = 100
+    POR_PAGINA_PADRAO = 20
+
+    @classmethod
+    def normalizar_paginacao(cls, pagina, por_pagina):
+        """(pagina, por_pagina) dentro do que é servido.
+
+        Fica aqui, e não na rota, porque a resposta tem de ECOAR os valores
+        efetivos: devolver os pedidos fazia a interface calcular o número de
+        páginas sobre um tamanho que não foi o usado, e o botão "seguinte"
+        levava a uma página vazia.
+        """
+        try:
+            pagina = int(pagina) if pagina not in (None, '') else 1
+            por_pagina = int(por_pagina) if por_pagina not in (None, '') else cls.POR_PAGINA_PADRAO
+        except (TypeError, ValueError):
+            raise ValueError("paginação inválida")
+
+        # ⚠️ Um valor não positivo é um engano, não um pedido. `por_pagina=0`
+        # cair em "uma linha por página" era pior do que voltar ao padrão: quem
+        # escreve um zero quer o comportamento normal, não vinte vezes mais
+        # pedidos.
+        if pagina < 1:
+            pagina = 1
+        if por_pagina < 1:
+            por_pagina = cls.POR_PAGINA_PADRAO
+
+        return pagina, min(por_pagina, cls.POR_PAGINA_MAXIMO)
+
+    def get_invitations_page(self, estado=None, pagina=1, por_pagina=20):
+        """Uma página de convites, do mais recente para o mais antigo.
+
+        `estado` é 'ativos', 'historico' ou None (todos). Devolve
+        `(linhas, total)`, em que o total é o daquele estado — é o que a
+        interface precisa para saber quantas páginas há.
+        """
+        pagina, por_pagina = self.normalizar_paginacao(pagina, por_pagina)
+
+        consulta = Invitation.query.filter(Invitation.deleted_at.is_(None))
+        if estado == 'ativos':
+            consulta = consulta.filter(self._convite_esta_ativo())
+        elif estado == 'historico':
+            consulta = consulta.filter(db.not_(self._convite_esta_ativo()))
+
+        total = consulta.count()
+        linhas = (consulta.order_by(Invitation.created_at.desc())
+                  .limit(por_pagina).offset((pagina - 1) * por_pagina).all())
+        return [self._row_to_dict(l, process_json=True) for l in linhas], total
+
     def check_telegram_id_exists_in_invites(self, telegram_id):
         if not telegram_id: return False
         now_str = datetime.now(timezone.utc).isoformat()

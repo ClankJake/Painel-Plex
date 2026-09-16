@@ -11,7 +11,13 @@ import { urls } from './config.js';
  */
 
 export const fetchStatus = (force = false) => fetchAPI(`${urls.apiStatus}?force=${force}`);
-export const listInvites = () => fetchAPI(urls.apiInvitesList);
+export const listInvites = (estado, pagina, porPagina = 20) =>
+    fetchAPI(`${urls.apiInvitesList}?estado=${encodeURIComponent(estado)}`
+             + `&pagina=${pagina}&por_pagina=${porPagina}`);
+// ⚡ O polling de dez em dez segundos pergunta só a contagem. Trazia a tabela
+// inteira, com o histórico de resgates de cada convite, para responder a "já
+// foi usado algum?".
+export const inviteSummary = () => fetchAPI(urls.apiInvitesSummary);
 export const deleteInvite = (code) => fetchAPI(urls.apiInvitesDelete, 'POST', { code });
 export const reactivateInvite = (code) => fetchAPI(urls.apiInvitesReactivate, 'POST', { code }); 
 export const createInvite = (payload) => fetchAPI(urls.apiInvitesCreate, 'POST', payload);

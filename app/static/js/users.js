@@ -87,6 +87,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dom.inviteTabActive) {
             dom.inviteTabActive.addEventListener('click', () => ui.handleInviteTabChange('active'));
         }
+        if (dom.invitePrev) {
+            dom.invitePrev.addEventListener('click', () => ui.mudarPaginaDeConvites(-1));
+        }
+        if (dom.inviteNext) {
+            dom.inviteNext.addEventListener('click', () => ui.mudarPaginaDeConvites(1));
+        }
         if (dom.inviteTabHistory) {
             dom.inviteTabHistory.addEventListener('click', () => ui.handleInviteTabChange('history'));
         }
@@ -123,13 +129,16 @@ document.addEventListener('DOMContentLoaded', () => {
      * verificação imediata ao voltar ao separador, e para ao sair da página.
      */
     function startInvitePolling() {
+        // ⚡ `verificarConvites` pergunta dois números; era `loadInvites`, que
+        // trazia a tabela inteira de convites — com o histórico de resgates de
+        // cada um — 360 vezes por hora, para responder a "já foi usado algum?".
         const tick = () => {
-            if (!document.hidden) ui.loadInvites(true);
+            if (!document.hidden) ui.verificarConvites();
         };
         state.setInviteCheckInterval(setInterval(tick, INVITE_POLL_INTERVAL_MS));
 
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) ui.loadInvites(true);
+            if (!document.hidden) ui.verificarConvites();
         });
 
         window.addEventListener('pagehide', () => state.setInviteCheckInterval(null));

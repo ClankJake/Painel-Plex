@@ -88,6 +88,15 @@
             <span class="text-gray-500 dark:text-gray-400 font-medium">{{ _('Carregando convites...') }}</span>
         </div>
     </div>
+
+    <!-- Paginação. Fica escondida quando há uma página só, que é o caso da
+         esmagadora maioria dos painéis — dois botões desligados não ajudam
+         ninguém e só ocupam a linha. -->
+    <div id="invitePagination" class="hidden items-center justify-between pt-3 mt-3 border-t border-gray-200 dark:border-gray-700/60">
+        <button id="invitePrev" class="px-3 py-1 text-sm rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-default transition-colors">{{ _('Anterior') }}</button>
+        <span id="invitePageLabel" class="text-xs text-gray-500 dark:text-gray-400"></span>
+        <button id="inviteNext" class="px-3 py-1 text-sm rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-default transition-colors">{{ _('Próxima') }}</button>
+    </div>
 </div>
 
 <!-- Seção da Grelha de Utilizadores -->
@@ -187,6 +196,7 @@
         data-url-api-status="{{ url_for('users_api.get_status') }}"
         data-url-api-invites-create="{{ url_for('invites_api.create_invite_route') }}"
         data-url-api-invites-list="{{ url_for('invites_api.list_invites_route') }}"
+        data-url-api-invites-summary="{{ url_for('invites_api.invites_summary_route') }}"
         data-url-api-invites-delete="{{ url_for('invites_api.delete_invite_route') }}"
         data-url-api-invites-reactivate="{{ url_for('invites_api.reactivate_invite_route') }}"
         data-url-api-users-update-limit="{{ url_for('users_api.update_limit_route') }}"
@@ -354,6 +364,7 @@
         data-i18n-invite-note="{{ _('Para quem é (opcional)') }}"
         data-i18n-last-claim-at="{{ _('Último resgate em') }}"
         data-i18n-yes="{{ _('Sim') }}"
+        data-i18n-invite-page-label="{{ _('Página {page} de {pages} — {total} convites') }}"
         data-i18n-no="{{ _('Não') }}"
         data-i18n-invite-note-placeholder="{{ _('Ex.: João do grupo do WhatsApp') }}"
         data-i18n-invite-note-hint="{{ _('Só você vê. Serve para saber de quem era o código três meses depois.') }}"

@@ -89,31 +89,60 @@ const toggleTabStyles = (element, isActive) => {
 // ==========================================
 
 /**
- * Carrega todos os convites, atualiza o estado e processa a renderização.
+ * Carrega a página de convites da aba aberta.
+ *
+ * ⚡ Isto trazia a TABELA INTEIRA, com o histórico de resgates de cada convite,
+ * e era pedida de dez em dez segundos — para contar quantos estavam abertos e
+ * para filtrar as duas abas do lado do navegador. Quem faz o polling passa a
+ * ser `verificarConvites()`, que pergunta dois números.
  */
-export async function loadInvites(isPeriodicCheck = false) {
+export async function loadInvites() {
     try {
-        const invitesDict = await api.listInvites();
-        const allInvites = Object.values(invitesDict).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const estado = state.activeInviteTab === 'active' ? 'ativos' : 'historico';
+        const resposta = await api.listInvites(estado, state.invitePage);
 
-        state.setAllInvitesCache(allInvites);
+        state.setAllInvitesCache(resposta.invites || []);
+        state.setInvitePageCount(resposta.paginas || 1);
+        state.setInviteTotal(resposta.total || 0);
+        state.setActiveInviteCount(resposta.ativos || 0);
 
-        const activeInvitesCount = allInvites.filter(inv => {
-            const isExpired = inv.expires_at && new Date(inv.expires_at) < new Date();
-            const isFull = inv.use_count >= inv.max_uses;
-            return !isExpired && !isFull;
-        }).length;
+        // Apagar o último convite de uma página deixava-a vazia com o botão
+        // "anterior" ativo e nada para ver.
+        if (state.invitePage > state.invitePageCount) {
+            state.setInvitePage(state.invitePageCount);
+            return loadInvites();
+        }
 
-        if (isPeriodicCheck && state.activeInviteCount > 0 && activeInvitesCount < state.activeInviteCount) {
-            showToast(i18n.inviteUsedUpdating || 'Um convite foi utilizado! A atualizar...', 'info');
+        renderInvites();
+    } catch (e) {
+        if (dom.inviteListDiv) dom.inviteListDiv.innerHTML = `<p class="text-red-500">${i18n.error}: ${e.message}</p>`;
+    }
+}
+
+/**
+ * O polling: "já foi usado algum convite?".
+ *
+ * Só recarrega a lista quando a resposta MUDA. Antes, cada volta reescrevia a
+ * lista inteira — o que fechava qualquer menu aberto e fazia saltar a posição
+ * de quem estava a percorrê-la.
+ */
+export async function verificarConvites() {
+    try {
+        const { ativos } = await api.inviteSummary();
+
+        if (state.activeInviteCount > 0 && ativos < state.activeInviteCount) {
+            showToast(i18n.inviteUsedUpdating || 'Um convite foi utilizado! Atualizando...', 'info');
             await loadStatus(true);
         }
 
-        state.setActiveInviteCount(activeInvitesCount);
-        renderInvites(); 
-
+        if (ativos !== state.activeInviteCount) {
+            state.setActiveInviteCount(ativos);
+            await loadInvites();
+        }
     } catch (e) {
-        if(dom.inviteListDiv) dom.inviteListDiv.innerHTML = `<p class="text-red-500">${i18n.error}: ${e.message}</p>`;
+        // Um polling que falha é silencioso de propósito: a página continua a
+        // mostrar o que já tinha, e um toast de dez em dez segundos sobre uma
+        // rede intermitente seria pior do que não dizer nada.
     }
 }
 
@@ -122,7 +151,8 @@ export async function loadInvites(isPeriodicCheck = false) {
  */
 export function renderInvites() {
     const currentTab = state.activeInviteTab; // 'active' ou 'history'
-    const allInvites = state.allInvitesCache;
+    // A filtragem é do SERVIDOR: o que chega já é só desta aba e desta página.
+    const filteredInvites = state.allInvitesCache;
 
     // Atualiza visualmente os botões das abas
     toggleTabStyles(dom.inviteTabActive, currentTab === 'active');
@@ -130,19 +160,13 @@ export function renderInvites() {
     if (dom.inviteTabActive) dom.inviteTabActive.setAttribute('aria-selected', String(currentTab === 'active'));
     if (dom.inviteTabHistory) dom.inviteTabHistory.setAttribute('aria-selected', String(currentTab === 'history'));
 
-    // Filtra convites
-    const filteredInvites = allInvites.filter(inv => {
-        const isExpired = inv.expires_at && new Date(inv.expires_at) < new Date();
-        const isFull = inv.use_count >= inv.max_uses;
-        const isActive = !isExpired && !isFull;
-        return currentTab === 'active' ? isActive : !isActive;
-    });
-
     if (!dom.inviteListDiv) return;
 
     dom.inviteListDiv.innerHTML = filteredInvites.length > 0
         ? filteredInvites.map(renderInviteCard).join('')
         : `<p class="text-gray-500 dark:text-gray-400 text-sm text-center py-4">${i18n.noPendingInvites || 'Sem convites para mostrar.'}</p>`;
+
+    renderInvitePagination();
 
     // Delegação direta de eventos nos botões gerados
     dom.inviteListDiv.querySelectorAll('button').forEach(button => {
@@ -158,9 +182,44 @@ export function renderInvites() {
     });
 }
 
+
+/**
+ * Os dois botões e o rótulo. Escondidos quando há uma página só — que é o caso
+ * da esmagadora maioria dos painéis, e onde dois botões desligados não ajudam
+ * ninguém.
+ */
+function renderInvitePagination() {
+    if (!dom.invitePagination) return;
+
+    const umaPaginaSo = state.invitePageCount <= 1;
+    dom.invitePagination.classList.toggle('hidden', umaPaginaSo);
+    dom.invitePagination.classList.toggle('flex', !umaPaginaSo);
+    if (umaPaginaSo) return;
+
+    if (dom.invitePrev) dom.invitePrev.disabled = state.invitePage <= 1;
+    if (dom.inviteNext) dom.inviteNext.disabled = state.invitePage >= state.invitePageCount;
+
+    if (dom.invitePageLabel) {
+        dom.invitePageLabel.textContent = (i18n.invitePageLabel || 'Página {page} de {pages} — {total} convites')
+            .replace('{page}', state.invitePage)
+            .replace('{pages}', state.invitePageCount)
+            .replace('{total}', state.inviteTotal);
+    }
+}
+
+export function mudarPaginaDeConvites(passo) {
+    const destino = state.invitePage + passo;
+    if (destino < 1 || destino > state.invitePageCount) return;
+    state.setInvitePage(destino);
+    loadInvites();
+}
+
 export function handleInviteTabChange(tab) {
     state.setActiveInviteTab(tab);
-    renderInvites();
+    // A aba nova tem outra contagem: ficar na página 7 ao passar para uma aba
+    // com duas dava uma lista vazia.
+    state.setInvitePage(1);
+    loadInvites();
 }
 
 /**

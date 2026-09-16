@@ -1236,3 +1236,115 @@ class TestANotaDoConvite:
                 "SELECT detalhes FROM audit_logs WHERE acao = 'convite.criar'"
             )).scalar()
         assert "Para a Ana" in detalhe
+
+
+class TestAListaPaginada:
+    """
+    ⚡ `/list` devolvia a tabela INTEIRA, com o histórico de resgates de cada
+    convite, e a página pedia-a de dez em dez segundos — para contar quantos
+    estavam abertos e para filtrar as duas abas do lado do navegador.
+    """
+
+    def _semear(self, data_manager, quantos, **extra):
+        for i in range(quantos):
+            data_manager.add_invitation(f"C{i:03d}", detalhes(created_at=iso(-i), **extra))
+
+    def test_a_pagina_tem_o_tamanho_pedido(self, admin, data_manager):
+        self._semear(data_manager, 25)
+
+        dados = admin.get("/api/invites/list?estado=ativos&pagina=1&por_pagina=10").get_json()
+
+        assert len(dados["invites"]) == 10
+        assert dados["total"] == 25
+        assert dados["paginas"] == 3
+
+    def test_a_ultima_pagina_traz_o_resto(self, admin, data_manager):
+        self._semear(data_manager, 25)
+
+        dados = admin.get("/api/invites/list?estado=ativos&pagina=3&por_pagina=10").get_json()
+
+        assert len(dados["invites"]) == 5
+
+    def test_vem_do_mais_recente_para_o_mais_antigo(self, admin, data_manager):
+        self._semear(data_manager, 5)
+
+        dados = admin.get("/api/invites/list?estado=ativos&por_pagina=5").get_json()
+
+        assert [c["code"] for c in dados["invites"]] == ["C000", "C001", "C002", "C003", "C004"]
+
+    def test_a_aba_dos_ativos_nao_traz_os_esgotados(self, admin, data_manager):
+        data_manager.add_invitation("ABERTO", detalhes(max_uses=2))
+        data_manager.add_invitation("GASTO", detalhes(max_uses=1))
+        data_manager.increment_invitation_use("GASTO", "ana")
+
+        ativos = admin.get("/api/invites/list?estado=ativos").get_json()
+        historico = admin.get("/api/invites/list?estado=historico").get_json()
+
+        assert [c["code"] for c in ativos["invites"]] == ["ABERTO"]
+        assert [c["code"] for c in historico["invites"]] == ["GASTO"]
+
+    def test_a_aba_dos_ativos_nao_traz_os_expirados(self, admin, data_manager):
+        data_manager.add_invitation("ABERTO", detalhes(expires_at=iso(5)))
+        data_manager.add_invitation("VENCIDO", detalhes(expires_at=iso(-5)))
+
+        ativos = admin.get("/api/invites/list?estado=ativos").get_json()
+        historico = admin.get("/api/invites/list?estado=historico").get_json()
+
+        assert [c["code"] for c in ativos["invites"]] == ["ABERTO"]
+        assert [c["code"] for c in historico["invites"]] == ["VENCIDO"]
+
+    def test_um_convite_sem_prazo_conta_como_ativo(self, admin, data_manager):
+        data_manager.add_invitation("SEM-PRAZO", detalhes(expires_at=None))
+        dados = admin.get("/api/invites/list?estado=ativos").get_json()
+        assert [c["code"] for c in dados["invites"]] == ["SEM-PRAZO"]
+
+    def test_os_removidos_nao_aparecem_em_aba_nenhuma(self, admin, data_manager):
+        data_manager.add_invitation("REMOVIDO", detalhes())
+        data_manager.delete_invitation("REMOVIDO")
+
+        for aba in ("ativos", "historico"):
+            assert admin.get(f"/api/invites/list?estado={aba}").get_json()["invites"] == []
+
+    def test_uma_pagina_que_nao_e_um_numero_e_um_erro_do_pedido(self, admin, db_session):
+        assert admin.get("/api/invites/list?pagina=abc").status_code == 400
+
+    def test_o_tamanho_da_pagina_tem_teto(self, admin, data_manager):
+        """Pedir 100000 por página era pedir a tabela inteira por outro caminho."""
+        self._semear(data_manager, 5)
+
+        dados = admin.get("/api/invites/list?por_pagina=100000").get_json()
+
+        # ⚠️ A resposta ecoa o valor EFETIVO. Ecoar o pedido fazia a interface
+        # calcular o número de páginas sobre um tamanho que não foi o usado.
+        assert dados["por_pagina"] == 100
+        assert len(dados["invites"]) == 5
+
+    def test_uma_pagina_de_zero_nao_e_uma_pagina(self, admin, data_manager):
+        self._semear(data_manager, 3)
+        dados = admin.get("/api/invites/list?por_pagina=0&pagina=0").get_json()
+        assert dados["por_pagina"] == 20 and dados["pagina"] == 1
+
+
+class TestOResumoDosConvites:
+    """É esta a pergunta que o polling faz: "já foi usado algum?"."""
+
+    def test_conta_os_abertos_e_o_total(self, admin, data_manager):
+        data_manager.add_invitation("ABERTO", detalhes(max_uses=2))
+        data_manager.add_invitation("GASTO", detalhes(max_uses=1))
+        data_manager.increment_invitation_use("GASTO", "ana")
+        data_manager.add_invitation("VENCIDO", detalhes(expires_at=iso(-1)))
+
+        dados = admin.get("/api/invites/summary").get_json()
+
+        assert dados["ativos"] == 1
+        assert dados["total"] == 3
+
+    def test_os_removidos_nao_contam(self, admin, data_manager):
+        data_manager.add_invitation("REMOVIDO", detalhes())
+        data_manager.delete_invitation("REMOVIDO")
+
+        dados = admin.get("/api/invites/summary").get_json()
+        assert dados["ativos"] == 0 and dados["total"] == 0
+
+    def test_e_so_para_administradores(self, client, configurada, db_session):
+        assert client.get("/api/invites/summary").status_code in (302, 401, 403)
