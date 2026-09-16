@@ -169,8 +169,15 @@ class JellyfinAccountManager(InvitationLifecycle):
         # A reserva foi feita sem ID (a conta ainda não existia): agora que
         # existe, regista-se o ID no convite, que é a identidade estável para a
         # verificação de resgates repetidos.
-        self.data_manager.release_invitation_use(code, username, None)
-        self.data_manager.reserve_invitation_use(code, username, user_id)
+        #
+        # 🐛 Isto era um `release` seguido de um `reserve`, e entre os dois a
+        # vaga ficava LIVRE. Com o worker gevent, outro resgate podia ficar com
+        # ela; o `reserve` seguinte devolvia False — que ninguém verificava — e
+        # a conta ficava criada com o ID nunca registado no convite. Sem ele,
+        # nem o resgate duplicado nem o abuso de período de teste voltavam a
+        # reconhecer esta pessoa. Acrescentar o ID não precisa de mexer nas
+        # vagas, por isso deixou de o fazer.
+        self.data_manager.registar_identidade_no_convite(code, username, user_id)
 
         perfil = self._criar_perfil_local(user_id, username, email, invitation)
 

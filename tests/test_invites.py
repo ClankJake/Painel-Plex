@@ -675,3 +675,50 @@ class TestReativarNaoTornaOConviteEterno:
 
         assert resposta.get_json()["success"] is True
         assert data_manager.get_invitation("DATA-MA")["expires_at"] is not None
+
+
+class TestIdentidadeRegistadaNoConvite:
+    """
+    🐛 Onde as contas são LOCAIS, a vaga é reservada antes de a conta existir —
+    e por isso sem ID. Isso era corrigido com um `release` seguido de um
+    `reserve`, e entre os dois a vaga ficava LIVRE: com o worker gevent, outro
+    resgate podia ficar com ela, o `reserve` seguinte devolvia False (que
+    ninguém verificava) e o ID nunca chegava ao convite.
+    """
+
+    def test_o_id_entra_sem_gastar_outra_vaga(self, app_context, data_manager):
+        data_manager.add_invitation("LOCAL", detalhes(max_uses=1))
+        data_manager.reserve_invitation_use("LOCAL", "ana", None)
+
+        assert data_manager.registar_identidade_no_convite("LOCAL", "ana", "guid-da-ana") is True
+
+        convite = data_manager.get_invitation("LOCAL")
+        assert convite["use_count"] == 1, "registar o ID não é gastar outra vaga"
+        assert convite["claimed_by_ids"] == ["guid-da-ana"]
+        assert convite["claimed_by_users"] == ["ana"]
+
+    def test_um_convite_esgotado_continua_a_aceitar_o_id_de_quem_o_gastou(self, app_context, data_manager):
+        """
+        É este o caso que o `release`+`reserve` perdia: com as vagas esgotadas
+        entretanto, o segundo `reserve` falhava e a pessoa ficava sem ID.
+        """
+        data_manager.add_invitation("LOCAL", detalhes(max_uses=1))
+        data_manager.reserve_invitation_use("LOCAL", "ana", None)
+        assert data_manager.reserve_invitation_use("LOCAL", "bruno", None) is False
+
+        assert data_manager.registar_identidade_no_convite("LOCAL", "ana", "guid-da-ana") is True
+        assert data_manager.get_invitation("LOCAL")["claimed_by_ids"] == ["guid-da-ana"]
+
+    def test_repetir_nao_duplica(self, app_context, data_manager):
+        data_manager.add_invitation("LOCAL", detalhes(max_uses=1))
+        data_manager.reserve_invitation_use("LOCAL", "ana", None)
+
+        data_manager.registar_identidade_no_convite("LOCAL", "ana", "guid-da-ana")
+        data_manager.registar_identidade_no_convite("LOCAL", "ana", "guid-da-ana")
+
+        convite = data_manager.get_invitation("LOCAL")
+        assert convite["claimed_by_ids"] == ["guid-da-ana"]
+        assert convite["claimed_by_users"] == ["ana"]
+
+    def test_um_convite_que_nao_existe_diz_que_nao(self, app_context, data_manager):
+        assert data_manager.registar_identidade_no_convite("NADA", "ana", "guid") is False

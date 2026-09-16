@@ -1504,6 +1504,39 @@ class DataManager:
         return True
 
     @db_transaction
+    def registar_identidade_no_convite(self, code, username, media_user_id):
+        """Acrescenta ao convite o ID de quem o resgatou, SEM mexer nas vagas.
+
+        🐛 Onde as contas são LOCAIS, a vaga tem de ser reservada antes de a
+        conta existir — e por isso sem ID. O backend do Jellyfin corrigia isso
+        a seguir com um `release` seguido de um `reserve`, o que abre uma
+        janela em que a vaga fica LIVRE: com o worker gevent, outro resgate
+        podia ficar com ela, e o `reserve` seguinte devolvia False — que ninguém
+        verificava. A conta ficava criada e o ID nunca entrava no convite, e sem
+        ele nem a verificação de resgate duplicado nem a de abuso de período de
+        teste voltavam a reconhecer aquela pessoa.
+
+        Acrescentar o ID não é uma operação sobre vagas: não precisa de as
+        libertar para lhes tocar.
+        """
+        invitation = Invitation.query.get(code)
+        if not invitation:
+            return False
+
+        if username:
+            claimed_users = json.loads(invitation.claimed_by_users or '[]')
+            if username not in claimed_users:
+                claimed_users.append(username)
+                invitation.claimed_by_users = json.dumps(claimed_users)
+
+        if media_user_id is not None:
+            claimed_ids = json.loads(invitation.claimed_by_ids or '[]')
+            if str(media_user_id) not in claimed_ids:
+                claimed_ids.append(str(media_user_id))
+                invitation.claimed_by_ids = json.dumps(claimed_ids)
+        return True
+
+    @db_transaction
     def release_invitation_use(self, code, username, media_user_id=None):
         """
         Devolve a vaga reservada por `reserve_invitation_use`.
