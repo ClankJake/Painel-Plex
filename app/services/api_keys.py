@@ -153,7 +153,25 @@ def verificar(chave, escopo):
 
 
 def _marcar_uso(linha):
-    """Regista que a chave foi usada, sem escrever a cada pedido."""
+    """Regista que a chave foi usada, sem escrever a cada pedido.
+
+    ⚠️ **Escreve pela `db.session`, e isso é seguro por causa de QUANDO corre.**
+    Um `commit()` na sessão partilhada leva consigo o que quer que esteja
+    pendente nela — a armadilha que fez o `audit.registar` escrever por uma
+    ligação própria. Aqui não há nada pendente: isto corre dentro de um
+    decorador, ANTES do corpo da rota, e os dois `before_request` do painel
+    (o do assistente de instalação e o que revalida a sessão) só leem.
+
+    🐛 A ligação própria, que parece a correção óbvia, é PIOR neste sítio, e a
+    diferença é o momento: a auditoria corre DEPOIS de o chamador ter feito
+    commit, isto corre a meio. Com uma escrita pendente na sessão, o SQLite tem
+    o ficheiro trancado e a segunda ligação fica à espera do `busy_timeout`
+    inteiro — trinta segundos de pedido pendurado para gravar uma data. Foi
+    medido, num teste que demorava isso.
+
+    ⚠️ E nunca derruba o pedido: saber quando a chave foi usada é útil, perder
+    o pedido que ela autorizou é pior.
+    """
     agora = _agora()
     if linha.last_used_at and (agora - linha.last_used_at) < INTERVALO_DE_USO:
         return
@@ -161,8 +179,6 @@ def _marcar_uso(linha):
         linha.last_used_at = agora
         db.session.commit()
     except Exception as e:
-        # ⚠️ Nunca derruba o pedido: saber quando a chave foi usada é útil,
-        # perder o pedido que ela autorizou é pior.
         db.session.rollback()
         logger.warning(f"Não foi possível registar o uso da chave de API: {e}")
 

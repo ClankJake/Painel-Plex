@@ -1,5 +1,6 @@
 # app/blueprints/api/system.py
 
+import json
 import logging
 import secrets
 import os
@@ -1483,7 +1484,10 @@ def criar_chave_de_api():
     audit.registar('chave_api.criar', alvo_tipo='chave_api', alvo_id=linha.id, detalhes={
         'nome': linha.nome,
         'prefixo': linha.prefixo,
-        'escopos': api_keys.escopos_validos(dados.get('escopos')),
+        # Os escopos GRAVADOS, não os pedidos: um escopo inventado é descartado
+        # em silêncio, e a auditoria tem de dizer o que a chave pode fazer —
+        # não o que alguém escreveu no pedido.
+        'escopos': json.loads(linha.escopos or '[]'),
     })
 
     return jsonify({

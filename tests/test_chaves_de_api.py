@@ -319,3 +319,50 @@ class TestOSeparadorNaoColideComOAlfabeto:
         # senão nem chega a comparar o resumo.
         assert api_keys._prefixo_de(forjada) == linha.prefixo
         assert api_keys.verificar(forjada, 'convites') is None
+
+
+class TestORegistoDeUso:
+    def test_a_primeira_utilizacao_fica_marcada(self, app_context, db_session):
+        from app.services import api_keys
+
+        linha, chave = criar()
+        assert api_keys.listar()[0]['last_used_at'] is None
+
+        api_keys.verificar(chave, 'convites')
+
+        assert api_keys.listar()[0]['last_used_at'] is not None
+
+    def test_nao_escreve_a_cada_pedido(self, app_context, db_session):
+        """
+        ⚡ Um webhook bate na rota dezenas de vezes por minuto, e o que
+        interessa saber é "esta chave ainda está a ser usada?".
+        """
+        from app.services import api_keys
+
+        _, chave = criar()
+        api_keys.verificar(chave, 'convites')
+        primeira = api_keys.listar()[0]['last_used_at']
+
+        for _ in range(5):
+            api_keys.verificar(chave, 'convites')
+
+        assert api_keys.listar()[0]['last_used_at'] == primeira
+
+    def test_registar_o_uso_nao_espera_por_um_lock(self, app_context, db_session):
+        """
+        🐛 A primeira versão escrevia por uma ligação PRÓPRIA, como o
+        `audit.registar` faz. Parece a correção óbvia — não arrastar o que
+        estiver pendente na sessão — e é pior neste sítio, porque a auditoria
+        corre DEPOIS do commit do chamador e isto corre a meio: com o ficheiro
+        trancado, a segunda ligação espera o `busy_timeout` inteiro. Este teste
+        demorava trinta segundos.
+        """
+        import time
+
+        from app.services import api_keys
+
+        _, chave = criar()
+
+        comeco = time.monotonic()
+        assert api_keys.verificar(chave, 'convites') is not None
+        assert time.monotonic() - comeco < 2, "ficou à espera de um lock do SQLite"
