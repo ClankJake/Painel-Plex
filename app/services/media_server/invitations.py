@@ -222,6 +222,18 @@ class InvitationLifecycle:
         return {"success": False, "message": _("Convite não encontrado.")}
 
     def reactivate_invitation(self, code):
-        if self.data_manager.reset_invitation_usage(code):
-             return {"success": True, "message": _("Convite reativado com sucesso (Contador resetado e validade estendida).")}
-        return {"success": False, "message": _("Convite não encontrado.")}
+        if not self.data_manager.reset_invitation_usage(code):
+            return {"success": False, "message": _("Convite não encontrado.")}
+
+        # A mensagem diz o que aconteceu de facto: um convite que nunca teve
+        # prazo não teve validade nenhuma renovada, e dizer o contrário era o
+        # que escondia o bug de a validade ser APAGADA em vez de estendida.
+        convite = self.data_manager.get_invitation(code) or {}
+        if convite.get('expires_at'):
+            return {"success": True, "message": _(
+                "Convite reativado: o contador voltou a zero e a validade foi "
+                "renovada pelo mesmo prazo que ele tinha originalmente."
+            )}
+        return {"success": True, "message": _(
+            "Convite reativado: o contador voltou a zero. Este convite não tem prazo de validade."
+        )}

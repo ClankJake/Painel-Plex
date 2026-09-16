@@ -633,3 +633,45 @@ class TestBibliotecasNoEndpointDosBots:
         )
         assert resposta.status_code == 400
         assert servidor_falso.criados == []
+
+
+class TestReativarNaoTornaOConviteEterno:
+    def test_um_convite_expirado_ganha_a_mesma_janela(self, admin, data_manager):
+        data_manager.add_invitation("PROMO-24H", detalhes(
+            max_uses=1, created_at=iso(-3), expires_at=iso(-1),
+        ))
+        data_manager.increment_invitation_use("PROMO-24H", "ana")
+
+        resposta = admin.post("/api/invites/reactivate", json={"code": "PROMO-24H"})
+
+        assert resposta.get_json()["success"] is True
+        assert data_manager.get_invitation("PROMO-24H")["expires_at"] is not None
+
+    def test_um_convite_sem_prazo_continua_sem_prazo(self, admin, data_manager):
+        """E a mensagem não pode prometer uma validade que não existe."""
+        data_manager.add_invitation("SEM-PRAZO", detalhes(max_uses=1, expires_at=None))
+        data_manager.increment_invitation_use("SEM-PRAZO", "ana")
+
+        resposta = admin.post("/api/invites/reactivate", json={"code": "SEM-PRAZO"})
+        dados = resposta.get_json()
+
+        assert dados["success"] is True
+        assert data_manager.get_invitation("SEM-PRAZO")["expires_at"] is None
+        assert "não tem prazo" in dados["message"]
+
+    def test_um_convite_ainda_valido_mantem_a_data_que_tinha(self, admin, data_manager):
+        futuro = iso(5)
+        data_manager.add_invitation("AINDA-VALE", detalhes(max_uses=1, expires_at=futuro))
+        data_manager.increment_invitation_use("AINDA-VALE", "ana")
+
+        admin.post("/api/invites/reactivate", json={"code": "AINDA-VALE"})
+
+        assert data_manager.get_invitation("AINDA-VALE")["expires_at"] == futuro
+
+    def test_uma_data_corrompida_nao_rebenta_a_reativacao(self, admin, data_manager):
+        data_manager.add_invitation("DATA-MA", detalhes(max_uses=1, expires_at="nem-uma-data"))
+
+        resposta = admin.post("/api/invites/reactivate", json={"code": "DATA-MA"})
+
+        assert resposta.get_json()["success"] is True
+        assert data_manager.get_invitation("DATA-MA")["expires_at"] is not None

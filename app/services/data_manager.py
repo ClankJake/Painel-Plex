@@ -1531,20 +1531,55 @@ class DataManager:
                 invitation.claimed_by_ids = json.dumps(claimed_ids)
         return True
 
+    # Quando um convite reativado já tinha expirado, ganha outra vez a MESMA
+    # janela que teve à partida. Só quando essa janela não é legível (uma data
+    # corrompida, um convite importado sem `created_at`) é preciso escolher um
+    # número, e uma semana é o menor prazo que serve para o que a reativação é:
+    # dar outra oportunidade a um convite concreto, não abrir um permanente.
+    JANELA_DE_REATIVACAO_EM_FALTA = timedelta(days=7)
+
     @db_transaction
     def reset_invitation_usage(self, code):
+        """Zera o contador de usos e, se já tiver expirado, dá-lhe validade nova.
+
+        🐛 A validade não era estendida — era APAGADA. `expires_at = None`
+        quer dizer "não expira", por isso um convite promocional de 24 horas
+        reativado por engano passava a valer para sempre, e a mensagem dizia
+        "validade estendida" a quem tinha acabado de remover a validade. Agora
+        recebe outra vez a janela que teve à partida, contada de agora.
+        """
         invitation = Invitation.query.get(code)
-        if invitation:
-            invitation.use_count = 0
-            if invitation.expires_at:
-                try:
-                    if datetime.fromisoformat(invitation.expires_at) < datetime.now(timezone.utc):
-                        invitation.expires_at = None
-                except (ValueError, TypeError):
-                     invitation.expires_at = None
-            logger.info(f"Convite '{mask_code(code)}' reativado manualmente (contagem resetada).")
-            return True
-        return False
+        if not invitation:
+            return False
+
+        invitation.use_count = 0
+
+        if invitation.expires_at:
+            agora = datetime.now(timezone.utc)
+            try:
+                expirava_em = datetime.fromisoformat(invitation.expires_at)
+                ja_expirou = expirava_em < agora
+            except (ValueError, TypeError):
+                # A data não é legível: o convite é tratado como expirado, que é
+                # o lado seguro do erro (a mesma decisão de `get_invitation_by_code`).
+                expirava_em, ja_expirou = None, True
+
+            if ja_expirou:
+                invitation.expires_at = (agora + self._janela_original(invitation, expirava_em)).isoformat()
+
+        logger.info(f"Convite '{mask_code(code)}' reativado manualmente (contagem resetada).")
+        return True
+
+    def _janela_original(self, invitation, expirava_em):
+        """Quanto tempo o convite valeu da primeira vez."""
+        if expirava_em is None or not invitation.created_at:
+            return self.JANELA_DE_REATIVACAO_EM_FALTA
+        try:
+            janela = expirava_em - datetime.fromisoformat(invitation.created_at)
+        except (ValueError, TypeError):
+            return self.JANELA_DE_REATIVACAO_EM_FALTA
+        # Uma janela nula ou negativa vem de datas trocadas e não diz nada.
+        return janela if janela > timedelta(0) else self.JANELA_DE_REATIVACAO_EM_FALTA
     
     @db_transaction
     def delete_invitation(self, code):
