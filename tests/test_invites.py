@@ -496,3 +496,21 @@ class TestLimitesNumericos:
         # O que interessa é não levantar: a data tem de ser representável.
         from datetime import datetime as dt
         assert dt.now(timezone.utc) + timedelta(minutes=TETO_DE_MINUTOS)
+
+
+class TestApagarUmConviteQueNaoExiste:
+    """
+    🐛 O retorno do `data_manager` era deitado fora e a resposta era sempre
+    "Convite removido com sucesso" — mesmo para um código que nunca existiu.
+    Quem apagasse pelo código errado ficava convencido de que tinha apagado.
+    """
+
+    def test_apagar_um_codigo_inexistente_diz_que_nao_existe(self, admin, db_session):
+        resposta = admin.post("/api/invites/delete", json={"code": "NUNCA-EXISTIU"})
+        assert resposta.get_json()["success"] is False
+
+    def test_apagar_um_convite_a_serio_continua_a_funcionar(self, admin, data_manager):
+        data_manager.add_invitation("PARA-APAGAR", detalhes())
+        resposta = admin.post("/api/invites/delete", json={"code": "PARA-APAGAR"})
+        assert resposta.get_json()["success"] is True
+        assert data_manager.get_invitation("PARA-APAGAR") is None

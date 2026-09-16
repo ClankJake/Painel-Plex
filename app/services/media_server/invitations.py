@@ -212,8 +212,14 @@ class InvitationLifecycle:
         return self.data_manager.get_all_invitations()
 
     def delete_invitation(self, code):
-        self.data_manager.delete_invitation(code)
-        return {"success": True, "message": _("Convite removido com sucesso.")}
+        # 🐛 O retorno do `data_manager` era deitado fora e a resposta era
+        # sempre "removido com sucesso" — mesmo para um código que nunca
+        # existiu. Um script que apagasse pelo código errado ficava convencido
+        # de que tinha apagado, e o convite que ele queria travar continuava
+        # de pé. É a mesma verificação que `reactivate_invitation` já fazia.
+        if self.data_manager.delete_invitation(code):
+            return {"success": True, "message": _("Convite removido com sucesso.")}
+        return {"success": False, "message": _("Convite não encontrado.")}
 
     def reactivate_invitation(self, code):
         if self.data_manager.reset_invitation_usage(code):
