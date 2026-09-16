@@ -138,7 +138,7 @@ def test_as_migracoes_correm_ate_ao_fim(resultado):
     assert resultado['erro'] is None, resultado['erro']
     # A revisão de topo. Muda sempre que entra uma migração nova — e é isso
     # que garante que a nova também correu até ao fim, e não só as anteriores.
-    assert resultado['versao'] == 'f7d3b9e24a16'
+    assert resultado['versao'] == 'b8e1f45c92d7'
 
 
 def test_nao_fica_nenhuma_violacao_de_integridade(resultado):

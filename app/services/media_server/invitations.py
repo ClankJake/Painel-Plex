@@ -16,6 +16,7 @@ Essa parte fica em `claim_invitation`, em cada backend.
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 
 from flask_babel import gettext as _
 
@@ -53,6 +54,43 @@ def _minutos_seguros(valor):
         )
         return TETO_DE_MINUTOS
     return minutos
+
+
+class Contacto(NamedTuple):
+    """Um canal de notificação que pode ser pré-atribuído a um convite."""
+
+    canal: str            # 'telegram'
+    no_convite: str       # a coluna em `invitations`
+    no_perfil: str        # a coluna em `user_profiles`
+    rotulo: str           # o que a pessoa lê numa mensagem de erro
+
+
+# ⚠️ **Os nomes das colunas DIVERGEM entre o convite e o perfil**, e por razões
+# históricas diferentes em cada canal: `invitations.telegram_id` contra
+# `user_profiles.telegram_user`, `invitations.discord_id` contra
+# `user_profiles.discord_user_id`. Já houve código a ler
+# `profile.get("telegram_id")` — que devolve SEMPRE None, porque essa coluna não
+# existe no perfil — e a parecer funcionar por causa de um `or` à frente.
+#
+# Este mapa é a ponte, e é a razão de ele existir: acrescentar um canal é uma
+# linha aqui, e não a terceira cópia das mesmas quatro verificações espalhadas
+# entre a criação, o resgate do Plex e o resgate do Jellyfin.
+CONTACTOS = (
+    Contacto('telegram', 'telegram_id', 'telegram_user', 'Telegram'),
+    Contacto('discord', 'discord_id', 'discord_user_id', 'Discord'),
+)
+
+
+def normalizar_contacto(valor):
+    """O ID como texto e sem espaços, ou None.
+
+    Um bot manda o ID como NÚMERO e um formulário como texto — sem isto, `123`
+    e `' 123 '` eram identificadores diferentes e escapavam à verificação de
+    duplicados.
+    """
+    if valor is None:
+        return None
+    return str(valor).strip() or None
 
 
 def convite_expirado(expires_at, code=''):
@@ -187,12 +225,12 @@ class InvitationLifecycle:
 
         custom_code = kwargs.get('custom_code')
         max_uses = kwargs.get('max_uses', 1)
-        telegram_id = kwargs.get('telegram_id')
-        # Normaliza logo à entrada: um bot pode enviar o ID como número inteiro e um
-        # formulário como texto com espaços — sem isto, '123' e ' 123 ' seriam
-        # tratados como IDs diferentes e escapariam à validação de duplicados.
-        if telegram_id is not None:
-            telegram_id = str(telegram_id).strip() or None
+
+        # Normalizados logo à entrada, todos pela mesma porta.
+        contactos = {
+            c.no_convite: normalizar_contacto(kwargs.get(c.no_convite))
+            for c in CONTACTOS
+        }
 
         if custom_code:
             # ⚠️ Olha também para os REMOVIDOS. Um convite removido continua na
@@ -219,15 +257,13 @@ class InvitationLifecycle:
         else:
             code = secrets.token_urlsafe(16)
         
-        if telegram_id:
-            existing_user = self.data_manager.get_user_profile_by_telegram(telegram_id)
-            if existing_user:
-                 return {"success": False, "erro": CONFLITO,
-                         "message": _("Este Telegram ID já está vinculado ao usuário '%(username)s'.", username=existing_user['username'])}
-            
-            if self.data_manager.check_telegram_id_exists_in_invites(telegram_id):
-                 return {"success": False, "erro": CONFLITO,
-                         "message": _("Já existe um convite ativo gerado para este Telegram ID.")}
+        # Duas pessoas ligadas ao mesmo chat recebiam as notificações uma da
+        # outra — a de vencimento, com nome e valor, e o link de pagamento, que
+        # é uma credencial portadora. A verificação é a mesma para cada canal.
+        for contacto in CONTACTOS:
+            recusa = self._contacto_ja_tomado(contacto, contactos[contacto.no_convite])
+            if recusa:
+                return recusa
 
         expires_in_minutes = kwargs.get('expires_in_minutes')
         minutos_de_validade = _minutos_seguros(expires_in_minutes)
@@ -247,12 +283,73 @@ class InvitationLifecycle:
             "max_uses": max_uses,
             "use_count": 0,
             "claimed_by_users": [],
-            "telegram_id": telegram_id,
             "note": (kwargs.get('note') or '').strip() or None,
+            **contactos,
         }
 
         self.data_manager.add_invitation(code, invitation_details)
         return {"success": True, "code": code, "message": _("Código de convite criado com sucesso.")}
+
+    def _contacto_ja_tomado(self, contacto, valor):
+        """Uma recusa, se este contacto já for de outra pessoa ou de outro convite.
+
+        Devolve None quando está livre — ou quando não foi pedido nenhum, que é
+        o caso da esmagadora maioria dos convites.
+        """
+        if not valor:
+            return None
+
+        dono = self.data_manager.get_user_profile_by_contacto(contacto.canal, valor)
+        if dono:
+            return {"success": False, "erro": CONFLITO, "message": _(
+                "Este ID do %(canal)s já está vinculado ao usuário '%(username)s'.",
+                canal=contacto.rotulo, username=dono['username'],
+            )}
+
+        if self.data_manager.contacto_em_convite_ativo(contacto.canal, valor):
+            return {"success": False, "erro": CONFLITO, "message": _(
+                "Já existe um convite ativo gerado para este ID do %(canal)s.",
+                canal=contacto.rotulo,
+            )}
+        return None
+
+    def resolver_contactos_do_convite(self, invitation, username):
+        """Os contactos a gravar no perfil de quem acabou de resgatar.
+
+        🐛 **Isto vivia só no backend do Plex e chamava-se
+        `_handle_telegram_linking`.** O do Jellyfin nasceu sem: um convite
+        gerado por um bot para um Telegram ID concreto criava a conta e o perfil
+        ficava SEM o vínculo — a pessoa entrava e nunca mais recebia um aviso de
+        vencimento, porque o painel não sabia por onde lhe falar. É a mesma
+        família de esquecimentos do `agendar_fim_do_teste` e do
+        `resolver_indicacao_pendente`, e a casa é a mesma: aqui, onde um backend
+        novo herda em vez de reescrever.
+
+        🛡️ **Revalida no momento do RESGATE.** Entre a geração do convite e o
+        seu uso pode passar muito tempo, e nesse intervalo o mesmo ID pode ter
+        sido vinculado a outra conta. Nesse caso o registo prossegue — o que se
+        ignora é só o vínculo, para nunca ficarem duas pessoas a apontar para o
+        mesmo chat: as notificações de uma iriam para a outra, e entre elas está
+        o link de pagamento, que é uma credencial portadora.
+        """
+        resolvidos = {}
+        for contacto in CONTACTOS:
+            valor = normalizar_contacto(invitation.get(contacto.no_convite))
+            if not valor:
+                continue
+
+            dono = self.data_manager.get_user_profile_by_contacto(contacto.canal, valor)
+            if dono and dono.get('username') != username:
+                logger.warning(
+                    f"Conflito de ID do {contacto.rotulo}: o convite trazia um ID que "
+                    f"entretanto ficou vinculado a '{dono.get('username')}'. O registo "
+                    f"continua, mas sem esse vínculo."
+                )
+                continue
+
+            resolvidos[contacto.no_perfil] = valor
+            logger.info(f"ID do {contacto.rotulo} vinculado ao utilizador {username}.")
+        return resolvidos
 
     def get_invitation_by_code(self, code):
         invitation = self.data_manager.get_invitation(code)

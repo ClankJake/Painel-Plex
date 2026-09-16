@@ -496,6 +496,7 @@ export async function loadStatus(force = false) {
         state.setAllUsersCache(data.users || []);
         state.setAllLibraries(data.libraries || []);
         state.setTelegramEnabled(data.telegram_enabled);
+        state.setDiscordEnabled(data.discord_enabled);
         
         updateTabCounts();
         renderUserGrid();

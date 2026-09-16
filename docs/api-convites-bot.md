@@ -1,10 +1,11 @@
-# API de Convites para Bots — Vínculo automático de Telegram ID
+# API de Convites para Bots — Vínculo automático de contato
 
-Endpoint dedicado a integrações automatizadas (bots do Telegram, scripts, n8n,
-etc.) que precisam de gerar convites já vinculados a um usuário do Telegram.
+Endpoint dedicado a integrações automatizadas (bots do Telegram e do Discord,
+scripts, n8n, etc.) que precisam de gerar convites já vinculados a uma pessoa.
 
 Quando o convite é resgatado, o perfil do novo usuário é criado **já com o
-Telegram ID associado**, dispensando qualquer vinculação manual posterior.
+contato associado**, dispensando qualquer vinculação manual posterior — é por
+ele que os avisos de vencimento e o link de pagamento chegam.
 
 ---
 
@@ -83,7 +84,8 @@ Content-Type: application/json
 
 | Campo | Tipo | Obrigatório | Padrão | Descrição |
 |---|---|:---:|---|---|
-| `telegram_id` | string \| int | **sim** | — | ID do chat/usuário no Telegram. Aceita número ou texto. |
+| `telegram_id` | string \| int | **um dos dois** | — | ID do chat/usuário no Telegram. Aceita número ou texto. |
+| `discord_id` | string \| int | **um dos dois** | — | ID do usuário no Discord. Aceita número ou texto. |
 | `libraries` | lista de strings | não | *todas* | Bibliotecas a compartilhar, pelo NOME. Se omitido, usa **todas** as do servidor. Um nome que não exista no servidor é recusado com `400`; a diferença entre maiúsculas e minúsculas não importa (`"filmes"` encontra `"Filmes"`). |
 | `screens` | int (0–6) | não | `0` | Limite de telas simultâneos. |
 | `allow_downloads` | bool | não | `false` | Permitir downloads/sync. |
@@ -93,6 +95,10 @@ Content-Type: application/json
 | `custom_code` | string | não | *aleatório* | Código personalizado para o convite. |
 | `max_uses` | int | não | `1` | Número de usos permitidos. |
 | `note` | string | não | — | Para quem é o convite. Só o administrador a vê, no painel; serve para saber de quem era o código três meses depois. Até 200 caracteres. |
+
+> É preciso **um** dos dois, não os dois. Um pedido sem nenhum é recusado com
+> `400`: um convite deste endpoint existe para ficar atribuído a alguém, e um
+> sem contato nenhum seria só um convite normal criado pelo caminho errado.
 
 ### Limites dos valores
 
@@ -115,6 +121,12 @@ curl -X POST https://o-seu-painel/api/invites/bot/create \
         "trial_duration_minutes": 60,
         "expires_in_minutes": 1440
       }'
+
+# Ou, para um bot de Discord:
+curl -X POST https://o-seu-painel/api/invites/bot/create \
+  -H "X-API-Key: SUA_CHAVE" \
+  -H "Content-Type: application/json" \
+  -d '{"discord_id": "987654321098765432", "screens": 2}'
 ```
 
 ### Resposta — sucesso (`201 Created`)
@@ -125,6 +137,7 @@ curl -X POST https://o-seu-painel/api/invites/bot/create \
   "code": "aBcD1234EfGh",
   "invite_url": "https://o-seu-painel/invite/aBcD1234EfGh",
   "telegram_id": "123456789",
+  "discord_id": null,
   "message": "Código de convite criado com sucesso."
 }
 ```
@@ -135,7 +148,7 @@ Basta enviar `invite_url` ao usuário no Telegram.
 
 | Código | Situação |
 |---|---|
-| `400` | Corpo inválido (ex.: `telegram_id` em falta ou vazio), uma biblioteca que não existe no servidor, ou não foi possível determinar as bibliotecas automaticamente. |
+| `400` | Corpo inválido (ex.: sem `telegram_id` nem `discord_id`), uma biblioteca que não existe no servidor, ou não foi possível determinar as bibliotecas automaticamente. |
 | `401` | Chave de API em falta ou incorreta. |
 | `409` | **Conflito de unicidade** — ver abaixo. |
 | `429` | Limite de pedidos excedido (30 por minuto). |
@@ -191,6 +204,7 @@ continua a ser encontrado** — é essa a resposta que se veio buscar.
     "allow_downloads": false,
     "overseerr_access": false,
     "telegram_id": "123456789",
+    "discord_id": null,
     "note": "João do grupo do WhatsApp"
   }
 }
@@ -222,10 +236,11 @@ Limite: 30 pedidos por minuto.
 
 ---
 
-## Os convites de um Telegram ID
+## Os convites de uma pessoa
 
 ```
 GET /api/invites/bot/invites?telegram_id=123456789
+GET /api/invites/bot/invites?discord_id=987654321098765432
 ```
 
 Devolve `invites`, do mais recente para o mais antigo, com a mesma forma da
@@ -247,23 +262,24 @@ Limite: 60 pedidos por minuto.
 
 ## Regras de unicidade
 
-O sistema impede que dois usuárioes fiquem ligados ao mesmo chat do Telegram,
-verificando em **três** momentos:
+O sistema impede que dois usuários fiquem ligados ao mesmo contato — seria uma
+pessoa a receber as notificações da outra, e entre elas está o link de
+pagamento, que funciona para quem o tiver. A verificação acontece em **três**
+momentos, e vale igual para o Telegram e para o Discord:
 
-1. **Ao criar o convite** — recusa (`409`) se o `telegram_id` já estiver vinculado
-   a um usuário existente.
+1. **Ao criar o convite** — recusa (`409`) se o ID já estiver vinculado a um
+   usuário existente.
 2. **Ao criar o convite** — recusa (`409`) se já existir outro convite **ativo e
-   não expirado** para o mesmo `telegram_id`. Convites já usados ou expirados não
-   bloqueiam.
+   não expirado** para o mesmo ID. Convites já usados ou expirados não bloqueiam.
 3. **Ao resgatar o convite** — o ID é revalidado. Se, entretanto, tiver sido
-   vinculado a outra conta, o **registro continua normalmente**, mas o vínculo do
-   Telegram é ignorado e fica um aviso no log. Isto evita que um convite antigo
-   "roube" o chat de outro usuário.
+   vinculado a outra conta, o **registro continua normalmente**, mas esse vínculo
+   é ignorado e fica um aviso no log. Isto evita que um convite antigo "roube" o
+   contato de outro usuário.
 
 ### Normalização
 
-O `telegram_id` é normalizado (convertido para texto e sem espaços) tanto ao
-gravar como ao pesquisar. Assim, `123`, `"123"` e `" 123 "` são tratados como o
+Os IDs são normalizados (convertidos para texto e sem espaços) tanto ao gravar
+como ao pesquisar. Assim, `123`, `"123"` e `" 123 "` são tratados como o
 **mesmo** identificador — o que garante que a verificação de duplicados funciona
 independentemente de como o bot envia o valor.
 
@@ -271,11 +287,19 @@ independentemente de como o bot envia o valor.
 
 ## Nota técnica sobre os nomes dos campos
 
-Existem dois campos com nomes parecidos, em tabelas diferentes:
+Os nomes das colunas **divergem** entre o convite e o perfil:
 
-- `invitations.telegram_id` — o ID pré-atribuído ao convite.
-- `user_profiles.telegram_user` — o ID efetivamente vinculado ao usuário.
+| Canal | No convite | No perfil |
+|---|---|---|
+| Telegram | `invitations.telegram_id` | `user_profiles.telegram_user` |
+| Discord | `invitations.discord_id` | `user_profiles.discord_user_id` |
 
-São normalmente lidos através de `data_manager.get_user_profile_by_telegram()`,
-que já trata a normalização e sabe qual coluna consultar. Evite comparar estes
+É uma divergência histórica, e já custou um bug: havia código a ler
+`profile.get("telegram_id")` — que devolve sempre vazio, porque essa coluna não
+existe no perfil — e a parecer funcionar por causa de um valor alternativo à
+frente.
+
+Quem faz a ponte é o mapa `CONTACTOS`, em
+`app/services/media_server/invitations.py`, e a leitura passa por
+`data_manager.get_user_profile_by_contacto(canal, valor)`. Evite comparar estes
 campos diretamente em código novo.

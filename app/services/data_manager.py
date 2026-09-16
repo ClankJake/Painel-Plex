@@ -662,24 +662,36 @@ class DataManager:
         profile = UserProfile.query.filter(func.lower(UserProfile.username) == username.lower()).first()
         return self._row_to_dict(profile) if profile else None
     
-    def get_user_profile_by_telegram(self, telegram_id):
-        """
-        Localiza o utilizador vinculado a um Telegram ID.
+    def get_user_profile_by_contacto(self, canal, valor):
+        """Localiza o utilizador vinculado a um ID de `canal` ('telegram', 'discord').
 
-        🐛 NOTA: a coluna em 'user_profiles' chama-se 'telegram_user' (é em
-        'invitations' que o campo se chama 'telegram_id'). Vários pontos do código
-        liam 'profile.get("telegram_id")', que devolvia SEMPRE None por essa coluna
-        não existir neste modelo — dando a falsa impressão de funcionar graças aos
-        fallbacks 'or'. A comparação é feita como texto e sem espaços, porque o ID
-        pode chegar como número (de um bot) ou como string (de um formulário).
+        🐛 NOTA: os nomes das colunas DIVERGEM entre o convite e o perfil — em
+        `user_profiles` são `telegram_user` e `discord_user_id`, em
+        `invitations` são `telegram_id` e `discord_id`. Já houve código a ler
+        `profile.get("telegram_id")`, que devolve SEMPRE None por essa coluna
+        não existir no perfil, e a parecer funcionar por causa de um `or` à
+        frente. Quem faz a ponte é o mapa `CONTACTOS`, em
+        `media_server/invitations.py`.
+
+        A comparação é feita como texto e sem espaços, porque o ID pode chegar
+        como número (de um bot) ou como string (de um formulário).
         """
-        if telegram_id is None or str(telegram_id).strip() == "":
+        colunas = {
+            'telegram': UserProfile.telegram_user,
+            'discord': UserProfile.discord_user_id,
+        }
+        coluna = colunas.get(canal)
+        if coluna is None or valor is None or str(valor).strip() == "":
             return None
-        normalized = str(telegram_id).strip()
+
         profile = UserProfile.query.filter(
-            func.trim(func.cast(UserProfile.telegram_user, String)) == normalized
+            func.trim(func.cast(coluna, String)) == str(valor).strip()
         ).first()
         return self._row_to_dict(profile) if profile else None
+
+    def get_user_profile_by_telegram(self, telegram_id):
+        """O nome antigo, que continua a ser chamado de vários sítios."""
+        return self.get_user_profile_by_contacto('telegram', telegram_id)
 
     def get_user_profiles_by_username(self, usernames):
         if not usernames: return {}
@@ -1397,6 +1409,7 @@ class DataManager:
             use_count=details.get('use_count', 0), 
             claimed_by_users=json.dumps(details.get('claimed_by_users', [])),
             telegram_id=details.get('telegram_id'),
+            discord_id=details.get('discord_id'),
             note=details.get('note'),
         )
         db.session.add(invitation)
@@ -1513,17 +1526,33 @@ class DataManager:
                   .limit(por_pagina).offset((pagina - 1) * por_pagina).all())
         return [self._row_to_dict(l, process_json=True) for l in linhas], total
 
-    def check_telegram_id_exists_in_invites(self, telegram_id):
-        if not telegram_id: return False
-        now_str = datetime.now(timezone.utc).isoformat()
-        invitation = Invitation.query.filter(
-            Invitation.telegram_id == telegram_id,
+    def contacto_em_convite_ativo(self, canal, valor):
+        """Já existe um convite por usar com este ID de `canal`?
+
+        Um convite gasto ou expirado não bloqueia: ele já não vai vincular
+        ninguém, e recusar por causa dele impedia o administrador de gerar um
+        convite novo para a mesma pessoa.
+        """
+        colunas = {
+            'telegram': Invitation.telegram_id,
+            'discord': Invitation.discord_id,
+        }
+        coluna = colunas.get(canal)
+        if coluna is None or not valor:
+            return False
+
+        agora = datetime.now(timezone.utc).isoformat()
+        return Invitation.query.filter(
+            coluna == str(valor).strip(),
             Invitation.use_count < Invitation.max_uses,
             Invitation.deleted_at.is_(None),
         ).filter(
-            (Invitation.expires_at == None) | (Invitation.expires_at > now_str)
-        ).first()
-        return invitation is not None
+            (Invitation.expires_at.is_(None)) | (Invitation.expires_at > agora)
+        ).first() is not None
+
+    def check_telegram_id_exists_in_invites(self, telegram_id):
+        """O nome antigo, mantido para não partir quem o chame."""
+        return self.contacto_em_convite_ativo('telegram', telegram_id)
 
     @db_transaction
     def increment_invitation_use(self, code, username, media_user_id=None):

@@ -1410,3 +1410,212 @@ class TestOAvisoDeConviteResgatado:
 
         assert gestor.avisar_administrador['convite'] is False
         assert gestor.avisar_administrador['pagamento'] is True
+
+
+class TestOConviteAceitaTelegramEDiscord:
+    """
+    O painel notifica por Telegram, Discord, WhatsApp e webhook, mas só o
+    Telegram podia ser pré-atribuído a um convite. Quem administra pelo Discord
+    gerava o convite e depois vinculava a conta à mão, à procura de quem acabou
+    de entrar.
+    """
+
+    def _chave(self):
+        from app.config import load_or_create_config
+        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+
+    def test_um_convite_pode_trazer_um_discord_id(self, admin, data_manager, servidor_que_cria_a_serio):
+        admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "DISCORD", "discord_id": "987654321098765432",
+        })
+        assert data_manager.get_invitation("DISCORD")["discord_id"] == "987654321098765432"
+
+    def test_pode_trazer_os_dois(self, admin, data_manager, servidor_que_cria_a_serio):
+        admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "custom_code": "AMBOS",
+            "telegram_id": "111", "discord_id": "222",
+        })
+        convite = data_manager.get_invitation("AMBOS")
+        assert (convite["telegram_id"], convite["discord_id"]) == ("111", "222")
+
+    def test_o_bot_pode_mandar_so_o_discord(self, client, configurada, db_session, servidor_falso):
+        resposta = client.post("/api/invites/bot/create",
+                               json={"discord_id": 987654321098765432},
+                               headers=self._chave())
+        assert resposta.status_code == 201
+
+    def test_o_bot_continua_a_poder_mandar_so_o_telegram(self, client, configurada, db_session, servidor_falso):
+        """Uma folga, não uma quebra: os bots que já existem continuam a valer."""
+        resposta = client.post("/api/invites/bot/create", json={"telegram_id": 123},
+                               headers=self._chave())
+        assert resposta.status_code == 201
+
+    def test_sem_contacto_nenhum_o_bot_e_recusado(self, client, configurada, db_session, servidor_falso):
+        """Um convite deste endpoint existe para ficar atribuído a alguém."""
+        resposta = client.post("/api/invites/bot/create", json={"screens": 1},
+                               headers=self._chave())
+        assert resposta.status_code == 400
+
+    def test_um_contacto_em_branco_conta_como_ausente(self, client, configurada, db_session, servidor_falso):
+        resposta = client.post("/api/invites/bot/create",
+                               json={"telegram_id": "   ", "discord_id": ""},
+                               headers=self._chave())
+        assert resposta.status_code == 400
+
+
+class TestUnicidadeDoContacto:
+    """
+    Duas pessoas ligadas ao mesmo contacto recebiam as notificações uma da
+    outra — a de vencimento, com nome e valor, e o link de pagamento, que é uma
+    credencial portadora.
+    """
+
+    def test_um_discord_ja_vinculado_a_alguem_e_recusado(self, admin, data_manager, servidor_que_cria_a_serio):
+        data_manager.set_user_profile("10", {"username": "ana", "discord_user_id": "999"})
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "discord_id": "999",
+        })
+        dados = resposta.get_json()
+
+        assert dados["success"] is False
+        assert "ana" in dados["message"] and "Discord" in dados["message"]
+
+    def test_um_discord_ja_com_convite_ativo_e_recusado(self, admin, data_manager, servidor_que_cria_a_serio):
+        data_manager.add_invitation("JA-TEM", detalhes(discord_id="999"))
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "discord_id": "999",
+        })
+        assert resposta.get_json()["success"] is False
+
+    def test_um_convite_gasto_nao_bloqueia(self, admin, data_manager, servidor_que_cria_a_serio):
+        data_manager.add_invitation("GASTO", detalhes(discord_id="999", max_uses=1))
+        data_manager.increment_invitation_use("GASTO", "ana")
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "discord_id": "999",
+        })
+        assert resposta.get_json()["success"] is True
+
+    def test_os_canais_nao_se_confundem(self, admin, data_manager, servidor_que_cria_a_serio):
+        """O mesmo número no Telegram de uma pessoa e no Discord de outra é possível."""
+        data_manager.set_user_profile("10", {"username": "ana", "telegram_user": "999"})
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "discord_id": "999",
+        })
+        assert resposta.get_json()["success"] is True
+
+    def test_o_id_com_espacos_e_o_mesmo_id(self, admin, data_manager, servidor_que_cria_a_serio):
+        data_manager.set_user_profile("10", {"username": "ana", "discord_user_id": "999"})
+
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "discord_id": "  999  ",
+        })
+        assert resposta.get_json()["success"] is False
+
+
+class TestABuscaPorContacto:
+    def _chave(self):
+        from app.config import load_or_create_config
+        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+
+    def test_procura_por_discord(self, client, configurada, data_manager):
+        data_manager.add_invitation("DELE", detalhes(discord_id="999"))
+        data_manager.add_invitation("DOUTRO", detalhes(telegram_id="999"))
+
+        dados = client.get("/api/invites/bot/invites?discord_id=999",
+                           headers=self._chave()).get_json()
+
+        assert [c["code"] for c in dados["invites"]] == ["DELE"]
+
+    def test_sem_contacto_nenhum_e_um_erro_do_pedido(self, client, configurada, db_session):
+        resposta = client.get("/api/invites/bot/invites", headers=self._chave())
+        assert resposta.status_code == 400
+        assert resposta.get_json()["erro"] == "invalido"
+
+
+class TestOContactoEVinculadoNoResgate:
+    """
+    🐛 Isto vivia só no backend do Plex (`_handle_telegram_linking`) e o do
+    Jellyfin nasceu sem: um convite gerado por um bot para um contacto concreto
+    criava a conta e o perfil ficava SEM o vínculo — a pessoa entrava e nunca
+    mais recebia um aviso de vencimento, porque o painel não sabia por onde lhe
+    falar. É a mesma família do `agendar_fim_do_teste` e do
+    `resolver_indicacao_pendente`.
+    """
+
+    def test_o_plex_vincula_os_dois_canais(self, app_context, data_manager):
+        gestor = _gestor(data_manager, envio={"success": True})
+        # O duplo de `_setup_local_profile_and_integrations` esconde o que se
+        # quer ver, por isso aqui pergunta-se diretamente ao método partilhado.
+        convite = detalhes(telegram_id="111", discord_id="222")
+
+        assert gestor.resolver_contactos_do_convite(convite, "ana") == {
+            "telegram_user": "111",
+            "discord_user_id": "222",
+        }
+
+    def test_um_convite_sem_contacto_nao_grava_nada(self, app_context, data_manager):
+        gestor = _gestor(data_manager, envio={"success": True})
+        assert gestor.resolver_contactos_do_convite(detalhes(), "ana") == {}
+
+    def test_um_contacto_entretanto_de_outra_pessoa_e_ignorado(self, app_context, data_manager):
+        """
+        🛡️ O registo prossegue — o que se ignora é só o vínculo. Duas pessoas a
+        apontar para o mesmo chat era uma a receber o link de pagamento da
+        outra.
+        """
+        data_manager.set_user_profile("10", {"username": "bruno", "telegram_user": "111"})
+        gestor = _gestor(data_manager, envio={"success": True})
+
+        assert gestor.resolver_contactos_do_convite(detalhes(telegram_id="111"), "ana") == {}
+
+    def test_o_proprio_dono_continua_a_ser_vinculado(self, app_context, data_manager):
+        data_manager.set_user_profile("10", {"username": "ana", "telegram_user": "111"})
+        gestor = _gestor(data_manager, envio={"success": True})
+
+        assert gestor.resolver_contactos_do_convite(detalhes(telegram_id="111"), "ana") == {
+            "telegram_user": "111",
+        }
+
+    def test_o_backend_do_jellyfin_tambem_o_faz(self, app_context, data_manager):
+        """
+        Não basta herdar o método: é preciso CHAMÁ-LO. Era este o buraco — o
+        `_criar_perfil_local` do Jellyfin montava o perfil inteiro e nunca
+        tocava no contacto do convite.
+        """
+        from types import SimpleNamespace
+
+        from app.services.media_server.jellyfin.account_manager import JellyfinAccountManager
+
+        gestor = JellyfinAccountManager(
+            connection=SimpleNamespace(api=SimpleNamespace(base_url='http://jellyfin:8096')),
+            user_manager=None, data_manager=data_manager, backend=None,
+        )
+        gestor._dar_acesso_aos_pedidos = lambda *a, **k: False
+
+        gestor._criar_perfil_local(
+            "guid-da-ana", "ana", "ana@exemplo.test",
+            detalhes(telegram_id="111", discord_id="222"),
+        )
+
+        perfil = data_manager.get_user_profile("guid-da-ana")
+        assert perfil["telegram_user"] == "111"
+        assert perfil["discord_user_id"] == "222"
+
+    def test_o_perfil_criado_pelo_resgate_do_plex_leva_o_contacto(self, app_context, data_manager):
+        """O caminho inteiro, e não só o método partilhado."""
+        gestor = _gestor(data_manager, envio={"success": True})
+        # Repõe o método real, que o `_gestor` substitui por um duplo.
+        from app.services.media_server.plex.invite_manager import PlexInviteManager
+        gestor._setup_local_profile_and_integrations = (
+            lambda *a, **k: PlexInviteManager._setup_local_profile_and_integrations(gestor, *a, **k)
+        )
+        data_manager.add_invitation("COM-DISCORD", detalhes(max_uses=1, discord_id="222"))
+
+        resultado = gestor.claim_invitation("COM-DISCORD", _ContaPlex(10, "ana", "ana@exemplo.test"))
+
+        assert resultado["success"] is True
+        assert data_manager.get_user_profile("10")["discord_user_id"] == "222"

@@ -281,6 +281,16 @@ class JellyfinAccountManager(InvitationLifecycle):
 
     def _criar_perfil_local(self, user_id, username, email, invitation):
         perfil = self.data_manager.get_user_profile(user_id) or {}
+
+        # 🐛 O contacto pré-atribuído ao convite NUNCA era vinculado aqui. Um
+        # convite gerado por um bot para um Telegram ID concreto criava a conta
+        # e o perfil ficava sem o vínculo: a pessoa entrava e nunca mais recebia
+        # um aviso de vencimento, porque o painel não sabia por onde lhe falar.
+        # A mesma família do `agendar_fim_do_teste` e do
+        # `resolver_indicacao_pendente`, que também só existiam no backend do
+        # Plex.
+        perfil.update(self.resolver_contactos_do_convite(invitation, username))
+
         perfil.update({
             'username': username,
             'email': email or perfil.get('email'),

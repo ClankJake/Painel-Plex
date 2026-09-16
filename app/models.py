@@ -163,7 +163,13 @@ class Invitation(db.Model):
     overseerr_access = db.Column(db.Boolean, default=False)
     max_uses = db.Column(db.Integer, nullable=False, default=1)
     use_count = db.Column(db.Integer, nullable=False, default=0)
-    telegram_id = db.Column(db.String, nullable=True)  # Novo campo
+    # O contacto pré-atribuído ao convite. São duas colunas e não uma porque
+    # são dois canais independentes — a mesma pessoa pode ser convidada pelo
+    # Discord e ter o Telegram registado depois. ⚠️ Os nomes DIVERGEM dos do
+    # perfil (`telegram_user`, `discord_user_id`) por razões históricas; quem
+    # faz a ponte é o mapa `CONTACTOS` em `media_server/invitations.py`.
+    telegram_id = db.Column(db.String, nullable=True)
+    discord_id = db.Column(db.String, nullable=True)
     # Para quem é este convite. O painel só sabia responder a isso quando havia
     # Telegram; os outros ficavam a ser um código aleatório e mais nada, e um
     # convite gasto só dizia o nome de quem o usou — não o de quem o devia ter

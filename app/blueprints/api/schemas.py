@@ -77,7 +77,9 @@ class CreateInviteSchema(BaseModel):
     overseerr_access: bool = False
     custom_code: Optional[str] = None
     max_uses: int = Field(1, ge=1, le=MAX_UTILIZACOES)
-    telegram_id: Optional[str] = None # Novo campo opcional
+    # O contacto pré-atribuído. Os dois são opcionais e independentes.
+    telegram_id: Optional[str] = None
+    discord_id: Optional[str] = None
     note: Optional[str] = Field(None, max_length=MAX_NOTA)
 
     @validator('custom_code')
@@ -94,15 +96,23 @@ class CreateInviteBotSchema(BaseModel):
     Esquema do endpoint de integração para bots (POST /api/invites/bot/create).
 
     Diferenças em relação ao esquema usado pelo painel:
-      • 'telegram_id' é OBRIGATÓRIO — é o propósito deste endpoint.
+      • é preciso UM contacto — 'telegram_id' ou 'discord_id' —, que é o
+        propósito deste endpoint: o convite fica pré-atribuído a alguém.
       • 'libraries' é opcional: um bot raramente conhece os nomes das bibliotecas,
         por isso, se não for indicado, o servidor usa todas as disponíveis.
+
+    ⚠️ O 'telegram_id' era OBRIGATÓRIO e passou a ser opcional. É uma folga, não
+    uma quebra: os bots que já existem continuam a mandá-lo e continuam a
+    funcionar. O que mudou é que um bot de Discord deixou de ser obrigado a
+    inventar um Telegram ID para conseguir criar um convite.
     """
-    # 'Union[str, int]' é deliberado: a API de bots do Telegram trata o chat_id como
-    # um INTEIRO, por isso um bot envia naturalmente {"telegram_id": 123456789}.
-    # Se aceitássemos apenas 'str', o Pydantic rejeitaria esses pedidos com 400 e a
-    # integração falharia logo à partida. O validador abaixo converte tudo para texto.
-    telegram_id: Union[str, int] = Field(..., description="ID do chat/utilizador no Telegram.")
+    # 'Union[str, int]' é deliberado: as APIs de bots do Telegram e do Discord
+    # tratam o id como um INTEIRO, por isso um bot envia naturalmente
+    # {"telegram_id": 123456789}. Se aceitássemos apenas 'str', o Pydantic
+    # rejeitaria esses pedidos com 400 e a integração falhava logo à partida.
+    # O validador abaixo converte tudo para texto.
+    telegram_id: Optional[Union[str, int]] = Field(None, description="ID do chat/usuário no Telegram.")
+    discord_id: Optional[Union[str, int]] = Field(None, description="ID do usuário no Discord.")
     libraries: Optional[List[str]] = None
     screens: int = Field(0, ge=0, le=6)
     allow_downloads: bool = False
@@ -121,13 +131,24 @@ class CreateInviteBotSchema(BaseModel):
     def nota_limpa(cls, v):
         return _validar_nota(v)
 
-    @validator('telegram_id')
-    def telegram_id_not_blank(cls, v):
-        # Normaliza aqui também: o bot pode enviar o ID como número, que o Pydantic
-        # converte para string, possivelmente com espaços.
-        v = str(v).strip()
-        if not v:
-            raise ValueError("O telegram_id não pode estar vazio.")
+    @validator('telegram_id', 'discord_id')
+    def contacto_limpo(cls, v):
+        # Normaliza aqui também: o bot pode enviar o ID como número, que o
+        # Pydantic converte para texto, possivelmente com espaços. Um valor em
+        # branco é o mesmo que não o mandar.
+        if v is None:
+            return None
+        return str(v).strip() or None
+
+    @validator('discord_id', always=True)
+    def pelo_menos_um_contacto(cls, v, values):
+        # ⚠️ Corre no ÚLTIMO dos dois campos e com `always=True`, para ver o
+        # telegram_id já validado em `values` e para correr mesmo quando nenhum
+        # dos dois vem no pedido — sem isso, um corpo sem contacto nenhum
+        # passava em silêncio e criava um convite que não fica atribuído a
+        # ninguém, que é precisamente o que este endpoint não faz.
+        if not v and not values.get('telegram_id'):
+            raise ValueError("Informe 'telegram_id' ou 'discord_id'.")
         return v
 
 class RenewSubscriptionSchema(BaseModel):

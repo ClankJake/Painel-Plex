@@ -20,6 +20,7 @@ export let invitePage = 1;
 export let invitePageCount = 1;
 export let inviteTotal = 0;
 export let telegramEnabled = false;
+export let discordEnabled = false;
 
 // ==========================================
 // PREFERÊNCIAS DO UTILIZADOR (PERSISTENTES)
@@ -69,6 +70,7 @@ export function setInvitePage(pagina) { invitePage = Math.max(pagina, 1); }
 export function setInvitePageCount(paginas) { invitePageCount = Math.max(paginas, 1); }
 export function setInviteTotal(total) { inviteTotal = total; }
 export function setTelegramEnabled(enabled) { telegramEnabled = enabled; }
+export function setDiscordEnabled(enabled) { discordEnabled = enabled; }
 
 export function setInviteCheckInterval(intervalId) {
     if (inviteCheckInterval) clearInterval(inviteCheckInterval);

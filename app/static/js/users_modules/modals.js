@@ -59,7 +59,7 @@ export function showConfirmationModal({ title, message, confirmText, confirmClas
 export function showInviteDetailsModal(details) {
     const {
         code, created_at, expires_at, claimed_at, claimed_by_users, use_count, max_uses,
-        libraries, screen_limit, telegram_id, note, trial_duration_minutes,
+        libraries, screen_limit, telegram_id, discord_id, note, trial_duration_minutes,
         allow_downloads, overseerr_access,
     } = details;
     const claimedUsersList = claimed_by_users ? claimed_by_users : [];
@@ -134,6 +134,7 @@ export function showInviteDetailsModal(details) {
                 ${linha(i18n.allowDownloads || 'Downloads', marca(allow_downloads))}
                 ${linha(i18n.overseerrAccess || 'Acesso aos pedidos', marca(overseerr_access))}
                 ${telegram_id ? linha(i18n.preassignedTelegramId || 'ID do Telegram pré-atribuído', `<span class="font-mono">${sanitizeHTML(telegram_id)}</span>`) : ''}
+                ${discord_id ? linha(i18n.preassignedDiscordId || 'ID do Discord pré-atribuído', `<span class="font-mono">${sanitizeHTML(discord_id)}</span>`) : ''}
                 ${linha(i18n.libraries, `<span class="truncate block" title="${libList}">${libList}</span>`, 'col-span-2')}
             </div>
             <div class="pt-2">
@@ -198,11 +199,28 @@ export function showInviteDetailsModal(details) {
 }
 
 export function showCreateInviteModal() {
-    const telegramIdField = state.telegramEnabled ? `
+    // O campo de cada canal só aparece se esse canal estiver ligado: pedir um
+    // Discord ID num painel sem Discord configurado é pedir um dado que nunca
+    // vai ser usado.
+    const campoDeContacto = (id, rotulo, exemplo) => `
         <div>
-            <label for="inviteTelegramId" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${i18n.telegramIdOptional || 'Telegram ID (Opcional)'}</label>
-            <input type="text" id="inviteTelegramId" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" placeholder="Ex: 123456789">
-            <p class="text-xs text-gray-500 mt-1">${i18n.telegramIdHint || 'Se preenchido, a conta ficará logo vinculada a este ID.'}</p>
+            <label for="${id}" class="block mb-1.5 text-sm font-bold text-gray-700 dark:text-gray-300">${rotulo}</label>
+            <input type="text" id="${id}" maxlength="64" class="w-full p-2.5 text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" placeholder="${exemplo}">
+        </div>`;
+
+    const camposDeContacto = [
+        state.telegramEnabled && campoDeContacto(
+            'inviteTelegramId', i18n.telegramIdOptional || 'Telegram ID (opcional)', 'Ex: 123456789'),
+        state.discordEnabled && campoDeContacto(
+            'inviteDiscordId', i18n.discordIdOptional || 'Discord ID (opcional)', 'Ex: 987654321098765432'),
+    ].filter(Boolean);
+
+    const telegramIdField = camposDeContacto.length ? `
+        <div>
+            <div class="grid grid-cols-1 ${camposDeContacto.length > 1 ? 'md:grid-cols-2' : ''} gap-4">
+                ${camposDeContacto.join('')}
+            </div>
+            <p class="text-xs text-gray-500 mt-1">${i18n.contactIdHint || 'Se preenchido, a conta fica vinculada assim que o convite for resgatado — é por aí que os avisos de vencimento chegam.'}</p>
         </div>
     ` : '';
 
@@ -285,8 +303,12 @@ export function showCreateInviteModal() {
         button.disabled = true;
         button.textContent = i18n.generating;
 
-        const telegramInput = modal.querySelector('#inviteTelegramId');
-        const telegramId = telegramInput ? telegramInput.value.trim() || null : null;
+        const valorDoCampo = (id) => {
+            const campo = modal.querySelector(id);
+            return campo ? campo.value.trim() || null : null;
+        };
+        const telegramId = valorDoCampo('#inviteTelegramId');
+        const discordId = valorDoCampo('#inviteDiscordId');
 
         try {
             const result = await api.createInvite({
@@ -299,6 +321,7 @@ export function showCreateInviteModal() {
                 custom_code: modal.querySelector('#inviteCustomCode').value.trim() || null,
                 max_uses: parseInt(modal.querySelector('#inviteMaxUses').value) || 1,
                 telegram_id: telegramId,
+                discord_id: discordId,
                 note: modal.querySelector('#inviteNote').value.trim() || null
             });
 

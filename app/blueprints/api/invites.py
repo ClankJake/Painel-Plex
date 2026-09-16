@@ -14,7 +14,8 @@ from ...utils.log_sanitizer import mask_code
 from ...utils.enderecos import endereco_publico
 from ...services import audit
 from ...services.media_server.invitations import (
-    ESTADO_HTTP, PEDIDO_INVALIDO, convite_esgotado, convite_expirado,
+    CONTACTOS, ESTADO_HTTP, PEDIDO_INVALIDO,
+    convite_esgotado, convite_expirado, normalizar_contacto,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ def _convite_para_a_api(convite):
         'allow_downloads': bool(convite.get('allow_downloads', False)),
         'overseerr_access': bool(convite.get('overseerr_access', False)),
         'telegram_id': convite.get('telegram_id'),
+        'discord_id': convite.get('discord_id'),
         'note': convite.get('note'),
     }
 
@@ -90,6 +92,7 @@ def _para_a_auditoria(pedido, code):
         'acesso_aos_pedidos': bool(pedido.get('overseerr_access', False)),
         'usos': pedido.get('max_uses', 1),
         'telegram_id': pedido.get('telegram_id'),
+        'discord_id': pedido.get('discord_id'),
         'nota': pedido.get('note'),
     }
 
@@ -173,6 +176,7 @@ def create_invite_route(validated_data):
         max_uses=data.get('max_uses', 1),
         telegram_id=data.get('telegram_id'),
         note=data.get('note'),
+        discord_id=data.get('discord_id'),
     )
     if result.get('success'):
         result['invite_url'] = endereco_publico('main.claim_invite_page', code=result['code'])
@@ -232,11 +236,13 @@ def create_invite_for_bot(validated_data):
         max_uses=data.get('max_uses', 1),
         telegram_id=data.get('telegram_id'),
         note=data.get('note'),
+        discord_id=data.get('discord_id'),
     )
 
     if result.get('success'):
         result['invite_url'] = endereco_publico('main.claim_invite_page', code=result['code'])
         result['telegram_id'] = data.get('telegram_id')
+        result['discord_id'] = data.get('discord_id')
         logger.info(f"Convite '{mask_code(result['code'])}' criado via API para o Telegram ID {data.get('telegram_id')}.")
         # Sem sessão, o ator fica vazio e o que identifica quem agiu é o
         # ENDEREÇO — que é a verdade sobre um convite criado por uma máquina.
@@ -304,29 +310,43 @@ def bot_invite_delete(code):
 @invites_api_bp.route('/bot/invites', methods=['GET'])
 @limiter.limit("60 per minute")
 @chave_de_api_necessaria('convites')
-def bot_invites_por_telegram():
-    """Os convites gerados para um Telegram ID, do mais recente para o mais antigo.
+def bot_invites_por_contacto():
+    """Os convites gerados para uma pessoa, do mais recente para o mais antigo.
+
+    Aceita `telegram_id` ou `discord_id` — os mesmos dois canais que a criação.
 
     É a pergunta que um bot faz antes de gerar outro: a criação recusa-se
-    (409) quando já existe um convite ATIVO para aquele ID, e sem esta rota o
-    bot só descobria isso ao levar com o erro — sem saber qual é o link que já
-    tinha mandado, nem se a pessoa já o usou.
+    (409) quando já existe um convite ATIVO para aquele contacto, e sem esta
+    rota o bot só descobria isso ao levar com o erro — sem saber qual é o link
+    que já tinha mandado, nem se a pessoa já o usou.
     """
-    telegram_id = (request.args.get('telegram_id') or '').strip()
-    if not telegram_id:
+    procurados = {
+        contacto.no_convite: (request.args.get(contacto.no_convite) or '').strip()
+        for contacto in CONTACTOS
+    }
+    pedidos = {campo: valor for campo, valor in procurados.items() if valor}
+
+    if not pedidos:
         return jsonify({
-            "success": False,
-            "message": _("Informe o 'telegram_id' na consulta."),
+            "success": False, "erro": PEDIDO_INVALIDO,
+            "message": _("Informe 'telegram_id' ou 'discord_id' na consulta."),
         }), 400
+
+    def corresponde(convite):
+        # A mesma normalização da criação: um bot manda o ID como número e um
+        # formulário como texto, e '123' tem de encontrar ' 123 '. Basta UM dos
+        # contactos bater — pedir os dois devolveria vazio para o caso normal,
+        # em que o convite só tem um.
+        return any(
+            normalizar_contacto(convite.get(campo)) == valor
+            for campo, valor in pedidos.items()
+        )
 
     convites = [
         _convite_para_a_api(convite)
-        for convite in media_server.list_invitations()
-        # A mesma normalização da criação: um bot manda o ID como número e um
-        # formulário como texto, e '123' tem de encontrar ' 123 '.
-        if str(convite.get('telegram_id') or '').strip() == telegram_id
+        for convite in media_server.list_invitations() if corresponde(convite)
     ]
-    return jsonify({"success": True, "telegram_id": telegram_id, "invites": convites})
+    return jsonify({"success": True, **pedidos, "invites": convites})
 
 
 @invites_api_bp.route('/list', methods=['GET'])

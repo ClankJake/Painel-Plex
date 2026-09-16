@@ -147,7 +147,7 @@ class PlexInviteManager(InvitationLifecycle):
                     "message": _("Já utilizou um período de teste anteriormente. Para continuar usando o serviço, contrate um plano.")
                 }
         
-        telegram_id_from_invite = self._handle_telegram_linking(invitation, username)
+        contactos_do_convite = self.resolver_contactos_do_convite(invitation, username)
 
         # 🛡️ RESERVA A VAGA ANTES DE FALAR COM O PLEX.
         # A validação acima (get_invitation_by_code) é só uma leitura, e a partir
@@ -201,7 +201,7 @@ class PlexInviteManager(InvitationLifecycle):
              self.data_manager.create_notification(message=_("'%(username)s' resgatou um convite.", username=username), category='success')
 
         user_data_response = self._setup_local_profile_and_integrations(
-            account, invitation, telegram_id_from_invite
+            account, invitation, contactos_do_convite
         )
 
         return {
@@ -244,30 +244,7 @@ class PlexInviteManager(InvitationLifecycle):
             logger.error(f"Erro ao verificar histórico de testes do utilizador {username}: {e}")
             return False
 
-    def _handle_telegram_linking(self, invitation, username):
-        telegram_id = invitation.get('telegram_id')
-        if telegram_id is None or str(telegram_id).strip() == "":
-            return None
-
-        # Normaliza para comparar de forma fiável com o que está guardado.
-        telegram_id = str(telegram_id).strip()
-
-        # 🛡️ Revalidação no momento do RESGATE: entre a geração do convite e o seu
-        # uso pode ter passado bastante tempo, e nesse intervalo o mesmo Telegram ID
-        # pode ter sido vinculado a outra conta. Neste caso, o registo prossegue
-        # normalmente — apenas o vínculo do Telegram é ignorado, para nunca deixar
-        # dois utilizadores a apontar para o mesmo chat.
-        existing_user = self.data_manager.get_user_profile_by_telegram(telegram_id)
-        if existing_user and existing_user['username'] != username:
-            logger.warning(
-                f"Conflito de Telegram ID: o convite tinha o ID {telegram_id}, mas este já está "
-                f"vinculado a '{existing_user['username']}'. O registo continua, mas sem o vínculo do Telegram."
-            )
-            return None
-
-        return telegram_id
-
-    def _setup_local_profile_and_integrations(self, plex_account, invitation, telegram_id):
+    def _setup_local_profile_and_integrations(self, plex_account, invitation, contactos):
         from app.config import load_or_create_config
         
         profile_data = {
@@ -278,9 +255,9 @@ class PlexInviteManager(InvitationLifecycle):
             'libraries': json.dumps(invitation.get('libraries', []))
         }
         
-        if telegram_id:
-            profile_data['telegram_user'] = telegram_id
-            logger.info(f"Telegram ID {telegram_id} vinculado ao utilizador {plex_account.username}.")
+        # Já vêm resolvidos e revalidados por `resolver_contactos_do_convite`,
+        # com as chaves do PERFIL (`telegram_user`, `discord_user_id`).
+        profile_data.update(contactos)
 
         # 🎁 INDIQUE E GANHE: se o utilizador chegou através de um link de indicação
         # (/r/CODIGO), o código ficou guardado na sessão. É neste momento — quando o
