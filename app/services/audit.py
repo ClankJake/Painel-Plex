@@ -76,7 +76,7 @@ def _e_sensivel(chave):
 
 
 def _valor_e_sensivel(valor):
-    """Um valor que é um segredo por si só, independentemente do nome da chave.
+    r"""Um valor que é um segredo por si só, independentemente do nome da chave.
 
     ⚠️ É o segundo travão, sobre o VALOR: um URL com credenciais embutidas
     (`https://utilizador:senha@host/…`) é um segredo chame-se a chave como se
