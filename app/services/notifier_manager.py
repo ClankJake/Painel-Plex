@@ -1190,6 +1190,38 @@ class NotifierManager:
             logger.warning(f"Não foi possível avisar o administrador do pedido novo: {e}")
             return 0
 
+    def send_invite_claimed_admin_notification(self, username, code, note=None):
+        """Avisa o ADMINISTRADOR de que alguém acabou de entrar por um convite.
+
+        Até aqui, o único sinal era uma linha no sino do painel — que só avisa
+        quem está com ele aberto. Quem gera convites e fecha o portátil ficava
+        a saber no dia seguinte, e quem os gera por um bot não ficava a saber de
+        todo: o link era mandado e o ciclo acabava ali.
+
+        A `note` do convite vem no corpo porque é ela que diz PARA QUEM o
+        convite era — e é isso que torna o aviso útil: "a ana resgatou o
+        convite do João do grupo do WhatsApp" é uma informação; "alguém
+        resgatou um convite" não é.
+
+        Uma falha aqui nunca derruba o resgate: a pessoa já tem acesso, e o
+        aviso é sobre isso ter acontecido.
+        """
+        from .. import extensions
+
+        titulo = _("Convite resgatado")
+        if note:
+            corpo = _("%(username)s entrou pelo convite de %(note)s.",
+                      username=username, note=note)
+        else:
+            corpo = _("%(username)s entrou por um convite.", username=username)
+
+        try:
+            return extensions.push_manager.enviar_ao_administrador(
+                'convite', titulo, corpo, url='/users', tag=f'convite-{code}')
+        except Exception as e:
+            logger.warning(f"Não foi possível avisar o administrador do convite resgatado: {e}")
+            return 0
+
     def send_renewal_notification(self, user, new_expiration_date, user_profile):
         # 🛡️ ANTI-DUPLICAÇÃO: Evita enviar a mensagem de Renovação logo após uma Reativação (Janela de 60 Segundos)
         # 🐛 NOTA: usar 'or 0' em vez de confiar no default do .get(). A coluna

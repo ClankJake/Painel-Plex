@@ -139,6 +139,7 @@ export const fieldMap = {
     'PUSH_ENABLED': { type: 'checkbox', default: false },
     'PUSH_VAPID_SUBJECT': { type: 'text', default: '' },
     'PUSH_ADMIN_PAYMENTS': { type: 'checkbox', default: true },
+    'PUSH_ADMIN_INVITES': { type: 'checkbox', default: true },
     'PUSH_ADMIN_MEDIA_REQUESTS': { type: 'checkbox', default: true },
     'PUSH_EXPIRATION_TITLE_TEMPLATE': { type: 'text', default: '' },
     'PUSH_EXPIRATION_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },

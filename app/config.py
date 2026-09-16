@@ -117,6 +117,7 @@ def load_or_create_config():
             # O que o ADMINISTRADOR quer receber no celular dele.
             "PUSH_ADMIN_PAYMENTS": True,
             "PUSH_ADMIN_MEDIA_REQUESTS": True,
+            "PUSH_ADMIN_INVITES": True,
             "DAYS_TO_NOTIFY_EXPIRATION": 2,
             "EFI_ENABLED": False,
             "EFI_CLIENT_ID": "",
@@ -308,6 +309,7 @@ def load_or_create_config():
             _set_default("PUSH_VAPID_SUBJECT", "")
             _set_default("PUSH_ADMIN_PAYMENTS", True)
             _set_default("PUSH_ADMIN_MEDIA_REQUESTS", True)
+            _set_default("PUSH_ADMIN_INVITES", True)
             _set_default("DISCORD_WEBHOOK_URL", "")
             _set_default("LAST_NOTIFICATION_CHECK", "1970-01-01T00:00:00")
             _set_default("EFI_ENABLED", False)

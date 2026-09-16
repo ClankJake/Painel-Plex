@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 from flask_babel import gettext as _
 from flask_login import login_required
 
-from ...extensions import media_server, limiter, data_manager
+from ...extensions import media_server, limiter, data_manager, notifier_manager
 from ..auth import admin_required
 from .decorators import validate_json, chave_de_api_necessaria
 from .schemas import CreateInviteSchema, CreateInviteBotSchema
@@ -459,6 +459,20 @@ def _registar_resgate(code, resultado, username):
         'codigo': code,
         'usuario': username,
     })
+
+    # O sino do painel só avisa quem está com ele aberto. Quem gera convites e
+    # fecha o portátil ficava a saber no dia seguinte, e quem os gera por um bot
+    # não ficava a saber de todo — o link era mandado e o ciclo acabava ali.
+    #
+    # A nota do convite vai no aviso porque é ela que diz PARA QUEM ele era, e
+    # é isso que o torna útil. Uma falha aqui nunca derruba o resgate: a pessoa
+    # já tem acesso, e o aviso é sobre isso ter acontecido.
+    try:
+        convite = data_manager.get_invitation(code) or {}
+        notifier_manager.send_invite_claimed_admin_notification(
+            username, code, convite.get('note'))
+    except Exception as e:
+        logger.warning(f"Não foi possível avisar o administrador do convite resgatado: {e}")
 
 
 @invites_api_bp.route('/claim', methods=['POST'])

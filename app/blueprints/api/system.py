@@ -335,7 +335,7 @@ def api_settings():
             # qualquer administrador invalidar, sem saber, todas as
             # subscrições já feitas.
             'PUSH_ENABLED', 'PUSH_VAPID_SUBJECT',
-            'PUSH_ADMIN_PAYMENTS', 'PUSH_ADMIN_MEDIA_REQUESTS',
+            'PUSH_ADMIN_PAYMENTS', 'PUSH_ADMIN_MEDIA_REQUESTS', 'PUSH_ADMIN_INVITES',
             'PUSH_EXPIRATION_TITLE_TEMPLATE', 'PUSH_EXPIRATION_MESSAGE_TEMPLATE',
             'PUSH_RENEWAL_TITLE_TEMPLATE', 'PUSH_RENEWAL_MESSAGE_TEMPLATE',
             'PUSH_REACTIVATION_TITLE_TEMPLATE', 'PUSH_REACTIVATION_MESSAGE_TEMPLATE',
@@ -485,7 +485,8 @@ def api_settings():
         # chaves VAPID nasce. Sem isto, a interface mostrava o botão "Ativar
         # notificações" sem chave nenhuma para dar ao navegador.
         if _changed('PUSH_ENABLED', 'PUSH_VAPID_SUBJECT',
-                    'PUSH_ADMIN_PAYMENTS', 'PUSH_ADMIN_MEDIA_REQUESTS'):
+                    'PUSH_ADMIN_PAYMENTS', 'PUSH_ADMIN_MEDIA_REQUESTS',
+                    'PUSH_ADMIN_INVITES'):
             if config_to_update.get('PUSH_ENABLED'):
                 push_manager.garantir_chaves()
             push_manager.reload_credentials()

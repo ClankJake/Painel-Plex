@@ -1348,3 +1348,65 @@ class TestOResumoDosConvites:
 
     def test_e_so_para_administradores(self, client, configurada, db_session):
         assert client.get("/api/invites/summary").status_code in (302, 401, 403)
+
+
+class TestOAvisoDeConviteResgatado:
+    """
+    O sino do painel só avisa quem está com ele aberto. Quem gera convites e
+    fecha o portátil ficava a saber no dia seguinte, e quem os gera por um bot
+    não ficava a saber de todo: o link era mandado e o ciclo acabava ali.
+    """
+
+    def _espiar(self, monkeypatch):
+        from app.blueprints.api import invites as rotas
+
+        avisos = []
+        monkeypatch.setattr(rotas.notifier_manager,
+                            'send_invite_claimed_admin_notification',
+                            lambda *a, **k: avisos.append((a, k)))
+        return avisos
+
+    def test_um_resgate_avisa_o_administrador(self, app_context, data_manager, monkeypatch):
+        from app.blueprints.api import invites as rotas
+
+        avisos = self._espiar(monkeypatch)
+        data_manager.add_invitation("PROMO", detalhes(note="João do grupo"))
+
+        rotas._registar_resgate("PROMO", {"success": True}, "ana")
+
+        assert len(avisos) == 1
+        # A nota diz PARA QUEM o convite era, e é isso que torna o aviso útil.
+        assert avisos[0][0] == ("ana", "PROMO", "João do grupo")
+
+    def test_um_resgate_falhado_nao_avisa_ninguem(self, app_context, data_manager, monkeypatch):
+        from app.blueprints.api import invites as rotas
+
+        avisos = self._espiar(monkeypatch)
+        data_manager.add_invitation("PROMO", detalhes())
+
+        rotas._registar_resgate("PROMO", {"success": False, "message": "expirou"}, "ana")
+
+        assert avisos == []
+
+    def test_uma_falha_a_avisar_nao_derruba_o_resgate(self, app_context, data_manager, monkeypatch):
+        """A pessoa já tem acesso; o aviso é sobre isso ter acontecido."""
+        from app.blueprints.api import invites as rotas
+
+        def rebenta(*a, **k):
+            raise RuntimeError("sem rede")
+
+        monkeypatch.setattr(rotas.notifier_manager,
+                            'send_invite_claimed_admin_notification', rebenta)
+        data_manager.add_invitation("PROMO", detalhes())
+
+        rotas._registar_resgate("PROMO", {"success": True}, "ana")  # não levanta
+
+    def test_o_administrador_pode_desligar_so_este_aviso(self, app_context, config_file):
+        from app.services.push_manager import PushManager
+
+        config_file(IS_CONFIGURED=True, PUSH_ADMIN_INVITES=False, PUSH_ADMIN_PAYMENTS=True)
+        gestor = PushManager()
+        gestor.reload_credentials()
+
+        assert gestor.avisar_administrador['convite'] is False
+        assert gestor.avisar_administrador['pagamento'] is True
