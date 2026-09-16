@@ -862,3 +862,29 @@ class TestAuditoriaDosConvites:
         rotas._registar_resgate("CODIGO", {"success": False, "message": "expirou"}, "ana")
 
         assert registados == []
+
+
+class TestAuditoriaDeUmConviteJaExpirado:
+    """
+    ⚠️ Um convite expirado ou esgotado é o que mais se apaga, e
+    `get_invitation_by_code` recusa-se a devolvê-lo (é a porta do resgate, não
+    a de leitura). A auditoria tem de ler a linha CRUA, ou ficava vazia
+    precisamente no caso comum.
+    """
+
+    def test_o_que_ele_era_fica_registrado_mesmo_expirado(self, admin, data_manager):
+        from app.extensions import db
+        from sqlalchemy import text
+
+        data_manager.add_invitation("VENCIDO", detalhes(max_uses=2, expires_at=iso(-5)))
+        data_manager.increment_invitation_use("VENCIDO", "ana")
+
+        admin.post("/api/invites/delete", json={"code": "VENCIDO"})
+
+        with db.engine.begin() as ligacao:
+            detalhe = ligacao.execute(text(
+                "SELECT detalhes FROM audit_logs WHERE acao = 'convite.apagar'"
+            )).scalar()
+
+        assert '"usos": "1/2"' in detalhe
+        assert 'ana' in detalhe

@@ -8,7 +8,7 @@ from plexapi.myplex import MyPlexAccount
 from flask_babel import gettext as _
 from flask_login import login_required
 
-from ...extensions import media_server, limiter
+from ...extensions import media_server, limiter, data_manager
 from ..auth import admin_required
 from .decorators import validate_json, chave_de_api_necessaria
 from .schemas import CreateInviteSchema, CreateInviteBotSchema, validar_email
@@ -212,7 +212,12 @@ def delete_invite_route():
 
     # A auditoria fica com o que o convite ERA: depois de apagado não há a quem
     # perguntar, e "apagou um convite" sem dizer qual não responde a nada.
-    convite = media_server.get_invitation_by_code(code)[0] or {}
+    #
+    # ⚠️ A leitura é a CRUA (`data_manager.get_invitation`) e não a
+    # `get_invitation_by_code`, que recusa um convite expirado ou esgotado
+    # devolvendo `None` — e esses são precisamente os que mais se apagam. Com a
+    # outra porta, a linha da auditoria ficava vazia justamente no caso comum.
+    convite = data_manager.get_invitation(code) or {}
     resultado = media_server.delete_invitation(code)
     if resultado.get('success'):
         audit.registar('convite.apagar', alvo_tipo='convite', alvo_id=code, detalhes={
