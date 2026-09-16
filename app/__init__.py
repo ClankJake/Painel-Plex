@@ -442,6 +442,16 @@ def create_app() -> Flask:
         notifier_manager=extensions.notifier_manager
     )
     extensions.push_manager = PushManager(data_manager=extensions.data_manager)
+    # ⚠️ Um par de chaves VAPID em falta (ou desemparelhado por uma edição à mão
+    # do config.json) faz o serviço de push responder 403 a cada envio e mais
+    # nada — o painel ficava a "enviar" notificações que nunca saíam. Reparar no
+    # arranque não custa nada: `garantir_chaves` não toca num par que já esteja
+    # bom, e por isso NUNCA invalida as subscrições existentes.
+    if app_config.get('PUSH_ENABLED'):
+        try:
+            extensions.push_manager.garantir_chaves()
+        except Exception as e:
+            logger.warning(f"Não foi possível preparar as chaves das notificações push: {e}")
     
     # O backend do servidor de média é escolhido pela configuração. Hoje só
     # existe o Plex; a fábrica é o único sítio que precisa de saber disso.
