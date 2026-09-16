@@ -440,3 +440,59 @@ class TestAcessoAosPedidosNoResgate:
         gestor = _gestor(data_manager, envio={"success": True})
 
         assert gestor._dar_acesso_aos_pedidos(_ContaPlex(10, "ana", "ana@exemplo.pt")) is False
+
+
+class TestLimitesNumericos:
+    """
+    🐛 Os campos de tempo tinham `ge=0` e mais nada, e `create_invitation`
+    soma-os a `datetime.now()`. Um número grande o suficiente levantava
+    `OverflowError: date value out of range` — um 500 com traceback numa rota
+    que tinha acabado de validar a entrada.
+
+    O `trial_duration_minutes` era o pior dos dois: a CRIAÇÃO passava e só o
+    RESGATE rebentava, na cara de quem estava a entrar.
+    """
+
+    @pytest.mark.parametrize("campo", ["expires_in_minutes", "trial_duration_minutes"])
+    def test_um_tempo_impossivel_e_recusado_e_nao_rebenta(self, admin, db_session, campo):
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], campo: 10 ** 12,
+        })
+        assert resposta.status_code == 400
+
+    def test_um_numero_de_usos_absurdo_e_recusado(self, admin, db_session):
+        """Mil milhões de vagas é um convite público e eterno criado por engano."""
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "max_uses": 10 ** 9,
+        })
+        assert resposta.status_code == 400
+
+    def test_os_valores_normais_continuam_a_passar(self, admin, db_session):
+        resposta = admin.post("/api/invites/create", json={
+            "libraries": ["Filmes"], "expires_in_minutes": 1440,
+            "trial_duration_minutes": 60, "max_uses": 5,
+        })
+        assert resposta.status_code != 400
+
+    def test_um_convite_ja_gravado_com_um_tempo_impossivel_nao_rebenta(self, app_context, data_manager):
+        """
+        O esquema defende a ENTRADA; isto defende o que já está na base de
+        dados. Um convite criado antes deste limite existir continua lá com o
+        valor absurdo, e quem o resgatasse levava com o `OverflowError`.
+        """
+        from app.services.media_server.invitations import _minutos_seguros, TETO_DE_MINUTOS
+
+        assert _minutos_seguros(10 ** 12) == TETO_DE_MINUTOS
+        assert _minutos_seguros(10 ** 20) == TETO_DE_MINUTOS
+        assert _minutos_seguros(60) == 60
+        assert _minutos_seguros(0) == 0
+        assert _minutos_seguros(None) == 0
+        assert _minutos_seguros("nem um número") == 0
+
+    def test_o_teto_continua_a_dar_uma_data_valida(self, app_context, data_manager):
+        from app.services.media_server.invitations import TETO_DE_MINUTOS
+
+        data_manager.add_invitation("TETO", detalhes())
+        # O que interessa é não levantar: a data tem de ser representável.
+        from datetime import datetime as dt
+        assert dt.now(timezone.utc) + timedelta(minutes=TETO_DE_MINUTOS)

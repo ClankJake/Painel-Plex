@@ -26,6 +26,26 @@ CUSTOM_CODE_RE = re.compile(r'^[A-Za-z0-9_-]{4,64}$')
 # recusar um domínio exótico.
 EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]{2,}$')
 
+# ⚠️ Os campos de tempo de um convite tinham `ge=0` e mais nada, e isso não
+# chegava: `create_invitation` soma-os a `datetime.now()`, e o `timedelta` de
+# Python não aguenta qualquer número.
+#
+#     >>> datetime.now(timezone.utc) + timedelta(minutes=10**12)
+#     OverflowError: date value out of range
+#
+# O sintoma era um 500 com traceback — na rota de administração e na dos bots.
+# Pior: com `trial_duration_minutes`, a criação passava e a conta só rebentava
+# no RESGATE, dentro de `agendar_fim_do_teste`, na cara de quem estava a
+# entrar. Cinco anos é muito mais do que qualquer convite legítimo precisa e
+# está a uma distância confortável do limite do `date`.
+MAX_MINUTOS = 5 * 365 * 24 * 60
+
+# Um convite é para um grupo de pessoas, não para o mundo. Sem teto, um engano
+# de digitação no formulário criava um convite com mil milhões de vagas — que é
+# o mesmo que um convite público e eterno, sem que nada no painel o diga. O
+# `screens` sempre teve um limite; este não tinha nenhum.
+MAX_UTILIZACOES = 1000
+
 # Só dígitos, entre 8 e 15 — o máximo do E.164. O que a pessoa escreve com
 # parênteses, espaços e traços é limpo primeiro: o formato natural de escrever
 # um número não pode ser um erro de validação.
@@ -83,11 +103,11 @@ class CreateInviteSchema(BaseModel):
     libraries: List[str] = Field(..., min_items=1, description="Pelo menos uma biblioteca deve ser selecionada.")
     screens: int = Field(0, ge=0, le=6)
     allow_downloads: bool = False
-    expires_in_minutes: Optional[int] = Field(None, ge=0)
-    trial_duration_minutes: int = Field(0, ge=0)
+    expires_in_minutes: Optional[int] = Field(None, ge=0, le=MAX_MINUTOS)
+    trial_duration_minutes: int = Field(0, ge=0, le=MAX_MINUTOS)
     overseerr_access: bool = False
     custom_code: Optional[str] = None
-    max_uses: int = Field(1, ge=1)
+    max_uses: int = Field(1, ge=1, le=MAX_UTILIZACOES)
     telegram_id: Optional[str] = None # Novo campo opcional
 
     @validator('custom_code')
@@ -112,11 +132,11 @@ class CreateInviteBotSchema(BaseModel):
     libraries: Optional[List[str]] = None
     screens: int = Field(0, ge=0, le=6)
     allow_downloads: bool = False
-    expires_in_minutes: Optional[int] = Field(None, ge=0)
-    trial_duration_minutes: int = Field(0, ge=0)
+    expires_in_minutes: Optional[int] = Field(None, ge=0, le=MAX_MINUTOS)
+    trial_duration_minutes: int = Field(0, ge=0, le=MAX_MINUTOS)
     overseerr_access: bool = False
     custom_code: Optional[str] = None
-    max_uses: int = Field(1, ge=1)
+    max_uses: int = Field(1, ge=1, le=MAX_UTILIZACOES)
 
     @validator('custom_code')
     def custom_code_valido(cls, v):

@@ -24,6 +24,36 @@ from ...utils.log_sanitizer import mask_code
 
 logger = logging.getLogger(__name__)
 
+# ⚠️ O mesmo teto que os esquemas impõem à ENTRADA (`MAX_MINUTOS`), repetido
+# aqui de propósito. Os esquemas defendem as rotas; isto defende o que JÁ ESTÁ
+# gravado — um convite criado antes deste limite existir continua na base de
+# dados com o valor absurdo, e é no RESGATE que ele seria somado a `now()`:
+#
+#     >>> datetime.now(timezone.utc) + timedelta(minutes=10**12)
+#     OverflowError: date value out of range
+#
+# Ali o 500 já não é do administrador a criar o convite, é de quem o está a
+# resgatar. Cortar pelo teto é o lado seguro do erro: o convite vale o máximo
+# que o painel sabe representar, em vez de não valer nada.
+TETO_DE_MINUTOS = 5 * 365 * 24 * 60
+
+
+def _minutos_seguros(valor):
+    """O valor em minutos, cortado pelo que uma data consegue representar."""
+    try:
+        minutos = int(valor)
+    except (TypeError, ValueError):
+        return 0
+    if minutos <= 0:
+        return 0
+    if minutos > TETO_DE_MINUTOS:
+        logger.warning(
+            f"Um convite pedia {minutos} minutos, acima do máximo que o painel "
+            f"representa. Foi usado o teto de {TETO_DE_MINUTOS}."
+        )
+        return TETO_DE_MINUTOS
+    return minutos
+
 
 class InvitationLifecycle:
     """Métodos de convite partilhados por todos os backends.
@@ -51,7 +81,7 @@ class InvitationLifecycle:
         from ...extensions import scheduler
         from ...scheduler import end_trial_job
 
-        fim_utc = datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
+        fim_utc = datetime.now(timezone.utc) + timedelta(minutes=_minutos_seguros(duration_minutes))
         quando = fim_utc.astimezone(scheduler.timezone).replace(tzinfo=None)
         id_da_tarefa = f"trial_end_{media_user_id}_{secrets.token_hex(4)}"
 
@@ -130,7 +160,11 @@ class InvitationLifecycle:
                  return {"success": False, "message": _("Já existe um convite ativo gerado para este Telegram ID.")}
 
         expires_in_minutes = kwargs.get('expires_in_minutes')
-        expires_at = (datetime.now(timezone.utc) + timedelta(minutes=int(expires_in_minutes))).isoformat() if expires_in_minutes else None
+        minutos_de_validade = _minutos_seguros(expires_in_minutes)
+        expires_at = (
+            (datetime.now(timezone.utc) + timedelta(minutes=minutos_de_validade)).isoformat()
+            if minutos_de_validade else None
+        )
         
         invitation_details = {
             "libraries": kwargs.get('library_titles', []),
