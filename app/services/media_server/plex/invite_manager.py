@@ -12,7 +12,7 @@ from plexapi.exceptions import BadRequest, NotFound
 from flask_babel import gettext as _
 from flask import url_for
 from ....utils.log_sanitizer import mask_email, mask_code
-from ..invitations import InvitationLifecycle
+from ..invitations import CREDENCIAIS, PEDIDO_INVALIDO, InvitationLifecycle, recusa
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,36 @@ class PlexInviteManager(InvitationLifecycle):
         self.plex_manager = plex_manager
         self.overseerr_manager = overseerr_manager
         self.notifier_manager = notifier_manager
+
+    # Os limites do que se aceita antes de tocar na rede. Os mesmos do login:
+    # é aqui que o pedido para.
+    MAX_TOKEN = 512
+
+    def conta_a_partir_de_credenciais(self, credenciais):
+        """No Plex a conta JÁ EXISTE: o que chega é um token do plex.tv.
+
+        🛡️ A mensagem devolvida é FIXA e nunca o texto da exceção. Esta rota é
+        pública, e `str(e)` num caminho público entrega a quem pede aquilo que
+        o servidor sabe sobre a falha — aqui seria o endereço a que o painel
+        tentou chegar e o que a plex.tv respondeu.
+        """
+        token = (credenciais.get('plex_token') or '').strip()
+        if not token:
+            return None, recusa(PEDIDO_INVALIDO, _("Token do Plex não fornecido."))
+
+        # Um token com megabytes era lido para memória e enviado à plex.tv por
+        # quem nem precisa de ter sessão.
+        if len(token) > self.MAX_TOKEN:
+            logger.warning("Resgate de convite recusado: token acima do tamanho aceite.")
+            return None, recusa(PEDIDO_INVALIDO, _("Os dados informados são longos demais."))
+
+        try:
+            conta = MyPlexAccount(token=token)
+            logger.info(f"Token do novo utilizador '{conta.username}' validado com sucesso.")
+            return conta, None
+        except Exception as e:
+            logger.error(f"Falha ao validar o token do Plex do novo utilizador: {e}", exc_info=True)
+            return None, recusa(CREDENCIAIS, _("Token do Plex inválido."))
 
     def claim_invitation(self, code, account):
         """

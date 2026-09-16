@@ -1,29 +1,27 @@
 # app/blueprints/api/invites.py
 
 import logging
-from types import SimpleNamespace
 
 from flask import Blueprint, jsonify, request
-from plexapi.myplex import MyPlexAccount
 from flask_babel import gettext as _
 from flask_login import login_required
 
 from ...extensions import media_server, limiter, data_manager
 from ..auth import admin_required
 from .decorators import validate_json, chave_de_api_necessaria
-from .schemas import CreateInviteSchema, CreateInviteBotSchema, validar_email
+from .schemas import CreateInviteSchema, CreateInviteBotSchema
 from ...utils.log_sanitizer import mask_code
 from ...utils.enderecos import endereco_publico
 from ...services import audit
 from ...services.media_server.invitations import (
-    CONFLITO, convite_esgotado, convite_expirado,
+    ESTADO_HTTP, PEDIDO_INVALIDO, convite_esgotado, convite_expirado,
 )
 
 logger = logging.getLogger(__name__)
 invites_api_bp = Blueprint('invites_api', __name__)
 
 def _estado_http(resultado):
-    """O código HTTP de uma criação recusada.
+    """O código HTTP de uma recusa, a partir do motivo que ela traz.
 
     ⚠️ O endpoint dos bots respondia 409 a TUDO o que falhasse — inclusive a
     "informe pelo menos uma biblioteca", que é um erro do PEDIDO. Do outro lado
@@ -31,7 +29,7 @@ def _estado_http(resultado):
     (409: o estado é que não deixa) ou se o pedido estava simplesmente errado
     (400: tentar de novo dá o mesmo).
     """
-    return 409 if resultado.get('erro') == CONFLITO else 400
+    return ESTADO_HTTP.get(resultado.get('erro'), 400)
 
 
 def _convite_para_a_api(convite):
@@ -443,13 +441,6 @@ def get_invite_details_route(code):
     if not invitation: return jsonify({"success": False, "message": message}), 404
     return jsonify({"success": True, "details": {"expires_at": invitation.get("expires_at")}})
 
-# Os mesmos limites da rota de login: é o ponto onde o pedido para, antes de
-# haver viagem ao servidor de média.
-MAX_UTILIZADOR = 128
-MAX_PALAVRA_PASSE = 256
-MAX_EMAIL = 254
-
-
 def _registar_resgate(code, resultado, username):
     """Deixa na auditoria que um convite foi resgatado — e por quem.
 
@@ -474,70 +465,33 @@ def _registar_resgate(code, resultado, username):
 @limiter.limit("10 per minute")
 def claim_invite_route():
     """
-    🔒 Rota PÚBLICA e a mais cara de todas: cada chamada valida um token junto da
-    plex.tv e, se o convite for válido, concede acesso ao servidor. Sem limite,
-    servia para testar códigos e tokens à vontade.
+    🔒 Rota PÚBLICA e a mais cara de todas: valida credenciais junto do servidor
+    de média e, se o convite for válido, concede acesso. Sem limite, servia para
+    testar códigos e tokens à vontade.
+
+    ⚠️ **O que é uma "conta" aqui muda com o servidor, e esta rota já não
+    sabe qual é.** No Plex a conta JÁ EXISTE e chega um token do plex.tv; num
+    servidor de contas locais a conta ainda não existe e chegam as credenciais
+    que a pessoa acabou de escolher. Isto estava escrito aqui, e para o fazer a
+    rota importava `plexapi.myplex.MyPlexAccount` — um blueprint a saber que o
+    servidor é o Plex, que é exatamente o que a fachada existe para impedir (e
+    num painel Jellyfin esse import era carregado para nada).
+
+    Hoje é `conta_a_partir_de_credenciais`, do contrato, que interpreta o que
+    vem no corpo; aqui fica o que é mesmo da rota: o limite de pedidos, o
+    código do convite e a auditoria.
     """
     data = request.get_json(silent=True) or {}
 
-    # Num servidor de contas locais (Jellyfin), resgatar um convite é CRIAR a
-    # conta: em vez de um token de uma conta que já existe, chegam as
-    # credenciais que a pessoa acabou de escolher. Ver
-    # `JellyfinAccountManager.claim_invitation`.
-    if media_server.capabilities.cria_contas:
-        username = (data.get('username') or '').strip()
-        password = data.get('password') or ''
-        email = (data.get('email') or '').strip()
+    conta, erro = media_server.conta_a_partir_de_credenciais(data)
+    if conta is None:
+        # ⚠️ 400 e 401 não são a mesma coisa: uma senha curta demais é um pedido
+        # MAL FEITO, não uma falha a provar quem se é. Responder 401 a tudo
+        # fazia o cliente concluir que as credenciais estavam erradas quando o
+        # problema era o formato do corpo. Quem decide é o motivo que a recusa
+        # traz.
+        return jsonify(erro), _estado_http(erro)
 
-        if not username or not password:
-            return jsonify({"success": False, "message": _("Informe um nome de usuário e uma senha.")}), 400
-
-        if len(password) < 6:
-            return jsonify({"success": False, "message": _("A senha precisa ter pelo menos 6 caracteres.")}), 400
-
-        # 🛡️ Esta rota é PÚBLICA e o que aqui chega vai direto para o servidor de
-        # média (criar a conta) e para a base de dados (o perfil). Sem um limite
-        # ao tamanho, um nome ou uma palavra-passe de megabytes era lido para
-        # memória, enviado ao servidor e gravado — por quem nem precisa de ter
-        # sessão. Os limites acompanham os do login (`auth.py`).
-        if len(username) > MAX_UTILIZADOR or len(password) > MAX_PALAVRA_PASSE or len(email) > MAX_EMAIL:
-            logger.warning("Resgate de convite recusado: campos acima do tamanho aceite.")
-            return jsonify({"success": False, "message": _("Os dados informados são longos demais.")}), 400
-
-        # ⚠️ O email é OPCIONAL aqui (nas contas locais ninguém é obrigado a
-        # dar um), mas quando vem tem de ter forma: é por ele que o Seerr
-        # encontra a pessoa e que os avisos chegam. Um erro de escrita não dava
-        # erro nenhum — dava uma aba "Meus Pedidos" vazia para sempre.
-        #
-        # 🛡️ A mensagem é FIXA e não o texto da exceção. Esta rota é PÚBLICA, e
-        # devolver `str(e)` num caminho público é entregar a quem pede aquilo
-        # que o servidor sabe sobre a falha — aqui seria inofensivo (a mensagem
-        # é escrita por nós, logo ali em `validar_email`), mas o padrão não é:
-        # basta alguém pôr outra coisa a levantar dentro deste `try` para
-        # passar a sair daqui o que essa outra coisa quiser dizer. Foi o que o
-        # CodeQL marcou, e tem razão sobre a forma.
-        try:
-            email = validar_email(email) or ''
-        except ValueError:
-            return jsonify({
-                "success": False,
-                "message": _("Informe um e-mail válido, como nome@exemplo.com."),
-            }), 400
-
-        registo = SimpleNamespace(username=username, password=password, email=email)
-        resultado = media_server.claim_invitation(data.get('code'), registo)
-        _registar_resgate(data.get('code'), resultado, username)
-        return jsonify(resultado)
-
-    try:
-        plex_token = data.get('plex_token')
-        if not plex_token:
-            return jsonify({"success": False, "message": _("Token do Plex não fornecido.")}), 400
-        new_user_account = MyPlexAccount(token=plex_token)
-        logger.info(f"Token do novo utilizador '{new_user_account.username}' validado com sucesso.")
-        resultado = media_server.claim_invitation(data.get('code'), new_user_account)
-        _registar_resgate(data.get('code'), resultado, new_user_account.username)
-        return jsonify(resultado)
-    except Exception as e:
-        logger.error(f"Falha ao validar o token do Plex do novo utilizador: {e}", exc_info=True)
-        return jsonify({"success": False, "message": _("Token do Plex inválido.")}), 401
+    resultado = media_server.claim_invitation(data.get('code'), conta)
+    _registar_resgate(data.get('code'), resultado, getattr(conta, 'username', ''))
+    return jsonify(resultado)

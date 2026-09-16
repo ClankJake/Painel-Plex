@@ -8,8 +8,12 @@ seguinte a faltar-lhe uma peça sem ninguém dar por isso.
 
 import dataclasses
 import logging
+import re
+from pathlib import Path
 
 import pytest
+
+RAIZ = Path(__file__).resolve().parent.parent
 
 from app.services.media_server import (
     DEFAULT_MEDIA_SERVER_TYPE,
@@ -174,7 +178,8 @@ class TestAsAssinaturasNaoDivergem:
             if nome != 'self' and p.kind is not inspect.Parameter.VAR_KEYWORD
         ]
 
-    @pytest.mark.parametrize('metodo', ['send_invite', 'create_account', 'claim_invitation'])
+    @pytest.mark.parametrize('metodo', ['send_invite', 'create_account', 'claim_invitation',
+                                       'conta_a_partir_de_credenciais'])
     def test_o_provisionamento_fala_a_mesma_lingua(self, metodo):
         from app.services.media_server.jellyfin.account_manager import JellyfinAccountManager
         from app.services.media_server.plex.invite_manager import PlexInviteManager
@@ -325,3 +330,68 @@ class TestLigacaoNaAplicacao:
 
     def test_a_configuracao_declara_o_tipo_de_servidor(self, app):
         assert app.config.get('MEDIA_SERVER_TYPE') == 'plex'
+
+
+class TestONomeDoServidorNaoSaiDaPasta:
+    """**A fachada é a fronteira**, e um blueprint é do lado de fora dela.
+
+    🐛 `app/blueprints/api/invites.py` importava `plexapi.myplex.MyPlexAccount`
+    para transformar um token do plex.tv numa conta. Duas coisas erradas: uma
+    rota a saber que o servidor é o Plex, e um painel Jellyfin a carregar a
+    biblioteca do Plex para nada. Hoje é `conta_a_partir_de_credenciais`, do
+    contrato, que sabe o que é uma "conta" em cada servidor.
+    """
+
+    # ⚠️ Os que ainda faltam, NOMEADOS de propósito. Esta lista existe para
+    # encolher e nunca para crescer: um ficheiro novo que importe `plexapi`
+    # falha este teste, e tirar um daqui é o trabalho que falta fazer.
+    #
+    #   • `auth.py` — o fluxo de PIN do plex.tv, que é a metade do login que
+    #     MUDA por servidor. Sair daqui é acrescentar ao contrato um passo de
+    #     autenticação por PIN, coisa que o Jellyfin não tem.
+    #   • `system.py` — o assistente de instalação valida a ligação ao Plex
+    #     antes de haver backend construído a quem perguntar.
+    CONHECIDOS = {'app/blueprints/auth.py', 'app/blueprints/api/system.py'}
+
+    def _importa_plexapi(self, texto):
+        # O `import`, não a palavra: os comentários deste repositório falam de
+        # `plexapi` precisamente para explicar porque é que ele não deve estar
+        # aqui, e um teste que os apanhasse punha quem escreve a contorná-lo.
+        return re.search(r'^\s*(?:from|import)\s+plexapi\b', texto, re.M) is not None
+
+    @pytest.mark.parametrize('ficheiro', sorted(
+        str(c.relative_to(RAIZ))
+        for c in (RAIZ / 'app/blueprints').rglob('*.py')
+    ))
+    def test_nenhum_blueprint_novo_importa_a_biblioteca_do_plex(self, ficheiro):
+        if ficheiro in self.CONHECIDOS:
+            pytest.skip("já era assim antes desta rede; ver CONHECIDOS")
+
+        texto = (RAIZ / ficheiro).read_text(encoding='utf-8')
+        assert not self._importa_plexapi(texto), (
+            f"{ficheiro} importa a biblioteca do Plex: acrescente um método ao "
+            f"contrato em vez de a trazer para fora de media_server/plex/."
+        )
+
+    def test_a_lista_dos_que_faltam_esta_certa(self):
+        """Um nome que lá fique depois de o problema estar resolvido é ruído.
+
+        E um que saia da lista sem o problema estar resolvido tira a rede ao
+        ficheiro sem ninguém dar por isso.
+        """
+        reais = {
+            str(c.relative_to(RAIZ))
+            for c in (RAIZ / 'app/blueprints').rglob('*.py')
+            if self._importa_plexapi(c.read_text(encoding='utf-8'))
+        }
+        assert reais == self.CONHECIDOS, (
+            f"a lista dos blueprints que ainda importam plexapi está errada: "
+            f"faltam {sorted(reais - self.CONHECIDOS)}, sobram {sorted(self.CONHECIDOS - reais)}"
+        )
+
+    def test_os_dois_backends_sabem_construir_uma_conta(self):
+        from app.services.media_server.jellyfin.backend import JellyfinManager
+        from app.services.media_server.plex.backend import PlexManager
+
+        for classe in (JellyfinManager, PlexManager):
+            assert hasattr(classe, 'conta_a_partir_de_credenciais'), classe.__name__

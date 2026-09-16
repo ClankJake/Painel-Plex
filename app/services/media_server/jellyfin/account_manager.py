@@ -25,6 +25,7 @@ de `InvitationLifecycle`.
 import json
 import logging
 import secrets
+from types import SimpleNamespace
 from typing import Any, Dict
 
 from flask import url_for
@@ -34,10 +35,63 @@ from ....config import load_or_create_config
 from ....utils.identity import normalize_user_id
 from ....utils.log_formatting import describe
 from ....utils.log_sanitizer import mask_code
-from ..invitations import InvitationLifecycle
+from ....utils.validacao import validar_email
+from ..invitations import PEDIDO_INVALIDO, InvitationLifecycle, recusa
 from .api_client import JellyfinApiError
 
 logger = logging.getLogger(__name__)
+
+# Os mesmos limites do login: é aqui que o pedido para, antes de haver viagem ao
+# servidor de média. 🛡️ Esta entrada é PÚBLICA e o que aqui chega vai direto
+# para o servidor (criar a conta) e para a base de dados (o perfil): sem um
+# limite ao tamanho, um nome ou uma senha de megabytes era lido para memória,
+# enviado ao servidor e gravado por quem nem precisa de ter sessão.
+MAX_UTILIZADOR = 128
+MAX_PALAVRA_PASSE = 256
+MAX_EMAIL = 254
+MIN_PALAVRA_PASSE = 6
+
+
+def conta_a_partir_de_credenciais(credenciais):
+    """Aqui a conta ainda NÃO EXISTE: o que chega é o que a pessoa escolheu.
+
+    ⚠️ É uma função de MÓDULO e não um método porque não precisa de nada do
+    manager — não fala com o servidor, só lê o corpo do pedido. Assim os duplos
+    de backend dos testes chamam-na tal e qual, em vez de cada um ter a sua
+    cópia das regras: foi precisamente o que aconteceu quando estes limites
+    passaram da rota para o backend e os duplos continuaram a responder como
+    dantes, deixando de testar o que a aplicação faz.
+    """
+    username = (credenciais.get('username') or '').strip()
+    password = credenciais.get('password') or ''
+    email = (credenciais.get('email') or '').strip()
+
+    if not username or not password:
+        return None, recusa(PEDIDO_INVALIDO, _("Informe um nome de usuário e uma senha."))
+
+    if len(password) < MIN_PALAVRA_PASSE:
+        return None, recusa(PEDIDO_INVALIDO, _("A senha precisa ter pelo menos 6 caracteres."))
+
+    if len(username) > MAX_UTILIZADOR or len(password) > MAX_PALAVRA_PASSE or len(email) > MAX_EMAIL:
+        logger.warning("Resgate de convite recusado: campos acima do tamanho aceite.")
+        return None, recusa(PEDIDO_INVALIDO, _("Os dados informados são longos demais."))
+
+    # ⚠️ O email é OPCIONAL aqui (nas contas locais ninguém é obrigado a dar um),
+    # mas quando vem tem de ter forma: é por ele que o Seerr encontra a pessoa e
+    # que os avisos chegam. Um erro de escrita não dava erro nenhum — dava uma
+    # aba "Meus Pedidos" vazia para sempre.
+    #
+    # 🛡️ A mensagem é FIXA e não o texto da exceção. Aqui seria inofensivo (quem
+    # a escreve somos nós, em `validar_email`), mas o padrão não é: basta alguém
+    # pôr outra coisa a levantar dentro deste `try` para passar a sair daqui o
+    # que essa outra coisa quiser dizer.
+    try:
+        email = validar_email(email) or ''
+    except ValueError:
+        return None, recusa(PEDIDO_INVALIDO, _("Informe um e-mail válido, como nome@exemplo.com."))
+
+    return SimpleNamespace(username=username, password=password, email=email), None
+
 
 
 class JellyfinAccountManager(InvitationLifecycle):
@@ -115,6 +169,9 @@ class JellyfinAccountManager(InvitationLifecycle):
     # =========================================================================
     # RESGATE DE CONVITE
     # =========================================================================
+
+    def conta_a_partir_de_credenciais(self, credenciais):
+        return conta_a_partir_de_credenciais(credenciais)
 
     def claim_invitation(self, code, account) -> Dict[str, Any]:
         """Resgata um convite criando a conta no servidor.

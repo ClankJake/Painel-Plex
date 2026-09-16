@@ -16,6 +16,21 @@ pytestmark = pytest.mark.integration
 GUID = "38c3a1f0e4b24d7f9c1a0b5e6d7f8a90"
 
 
+def valida_credenciais_como_um_servidor_local(credenciais):
+    """A validação REAL de credenciais de conta local, para os duplos de backend.
+
+    ⚠️ Um duplo com a sua PRÓPRIA cópia das regras deixa de testar o que a
+    aplicação faz. Foi o que aconteceu quando os limites de tamanho e o mínimo
+    da senha passaram da rota para o backend: os duplos continuaram a responder
+    como dantes e os testes que os guardavam passaram a não guardar nada.
+    """
+    from app.services.media_server.jellyfin.account_manager import (
+        conta_a_partir_de_credenciais,
+    )
+
+    return conta_a_partir_de_credenciais(credenciais)
+
+
 class BackendFalso:
     """Um servidor de contas locais que aceita um único par de credenciais."""
 
@@ -46,6 +61,10 @@ class BackendFalso:
 
     def get_all_users(self, force_refresh=False):
         return list(self._utilizadores)
+
+    def conta_a_partir_de_credenciais(self, credenciais):
+        return valida_credenciais_como_um_servidor_local(credenciais)
+
 
 
 @pytest.fixture()

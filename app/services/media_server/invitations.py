@@ -90,6 +90,18 @@ def convite_esgotado(invitation):
 # estava simplesmente errado.
 CONFLITO = 'conflito'          # já existe: o pedido é válido, o estado é que não deixa
 PEDIDO_INVALIDO = 'invalido'   # falta alguma coisa, ou está mal
+CREDENCIAIS = 'credenciais'    # o que falhou foi provar quem é
+
+# O código HTTP de cada motivo, num sítio só. ⚠️ Uma senha curta demais é um
+# pedido MAL FEITO e não uma falha de autenticação: responder 401 a tudo o que
+# saísse da validação de credenciais fazia o cliente concluir que o token
+# estava errado quando o problema era o formato do corpo.
+ESTADO_HTTP = {CONFLITO: 409, PEDIDO_INVALIDO: 400, CREDENCIAIS: 401}
+
+
+def recusa(motivo, mensagem):
+    """Uma recusa pronta a ir para o `jsonify`."""
+    return {"success": False, "erro": motivo, "message": mensagem}
 
 
 class InvitationLifecycle:

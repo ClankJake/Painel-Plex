@@ -731,6 +731,9 @@ class JellyfinManager:
     def claim_invitation(self, code, account):
         return self.invites.claim_invitation(code, account)
 
+    def conta_a_partir_de_credenciais(self, credenciais):
+        return self.invites.conta_a_partir_de_credenciais(credenciais)
+
     def list_invitations(self):
         return self.invites.list_invitations()
 

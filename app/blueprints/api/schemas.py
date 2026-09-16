@@ -6,6 +6,14 @@ from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Literal, Union
 from datetime import datetime
 
+# ⚠️ Estas vivem em `utils` porque o backend do servidor de média também
+# precisa delas (num servidor de contas locais, o resgate de um convite é
+# quem cria a conta) e uma camada de baixo não pode importar de
+# `app/blueprints/`. Continuam a ser exportadas daqui com os mesmos nomes.
+from ...utils.validacao import (  # noqa: F401  (reexportados)
+    EMAIL_RE, TELEFONE_MAX, TELEFONE_MIN, validar_email, validar_telefone,
+)
+
 # Um código personalizado vira a chave primária do convite E um segmento do URL
 # público (/invite/<code>). Antes era aceite tal e qual, sem qualquer limite:
 #   • um código de 1 ou 2 caracteres é adivinhável à força bruta;
@@ -14,17 +22,6 @@ from datetime import datetime
 # O alfabeto é o mesmo do `secrets.token_urlsafe`, usado nos códigos automáticos,
 # por isso nenhum convite gerado pelo painel deixa de ser válido.
 CUSTOM_CODE_RE = re.compile(r'^[A-Za-z0-9_-]{4,64}$')
-
-# ⚠️ O email e o telefone eram `Optional[str]` e mais nada: aceitavam qualquer
-# coisa. Nenhum dos dois é usado para autenticar, por isso o sintoma nunca era
-# um erro — era uma notificação que não chegava e uma pessoa que o Seerr não
-# encontrava, meses depois, sem ninguém ligar as duas pontas.
-#
-# A expressão do email é PROPOSITADAMENTE larga (algo@algo.algo, sem espaços):
-# validar emails a sério com uma expressão regular é um problema conhecido por
-# não ter solução, e o que aqui interessa é apanhar o erro de escrita, não
-# recusar um domínio exótico.
-EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]{2,}$')
 
 # ⚠️ Os campos de tempo de um convite tinham `ge=0` e mais nada, e isso não
 # chegava: `create_invitation` soma-os a `datetime.now()`, e o `timedelta` de
@@ -48,44 +45,6 @@ MAX_UTILIZACOES = 1000
 
 # A nota é para caber num cartão da lista, não para guardar um texto.
 MAX_NOTA = 200
-
-# Só dígitos, entre 8 e 15 — o máximo do E.164. O que a pessoa escreve com
-# parênteses, espaços e traços é limpo primeiro: o formato natural de escrever
-# um número não pode ser um erro de validação.
-TELEFONE_MIN, TELEFONE_MAX = 8, 15
-
-
-def validar_email(v):
-    """Aceita vazio (o email é opcional em todo o painel) ou algo com forma."""
-    if v is None:
-        return None
-    limpo = str(v).strip().lower()
-    if not limpo:
-        return None
-    if not EMAIL_RE.match(limpo):
-        raise ValueError("Informe um e-mail válido, como nome@exemplo.com.")
-    return limpo
-
-
-def validar_telefone(v):
-    """Devolve o número só com dígitos, que é o formato que o envio precisa.
-
-    🐛 O destinatário do WhatsApp é `{phone_number}@s.whatsapp.net`: um número
-    guardado como '(11) 99999-9999' produzia um identificador inválido e a
-    mensagem não chegava — sem erro nenhum, porque o painel só sabe que
-    entregou o pedido.
-    """
-    if v is None:
-        return None
-    so_digitos = re.sub(r'\D', '', str(v))
-    if not so_digitos:
-        return None
-    if not (TELEFONE_MIN <= len(so_digitos) <= TELEFONE_MAX):
-        raise ValueError(
-            f"O telefone deve ter entre {TELEFONE_MIN} e {TELEFONE_MAX} dígitos, "
-            "incluindo o código do país (ex.: 5511999999999)."
-        )
-    return so_digitos
 
 
 def _validar_nota(v):

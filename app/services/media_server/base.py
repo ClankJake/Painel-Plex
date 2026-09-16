@@ -145,6 +145,25 @@ class AccountProvisioning(Protocol):
 
     def claim_invitation(self, code: str, account: Any) -> Dict[str, Any]: ...
 
+    def conta_a_partir_de_credenciais(self, credenciais: Dict[str, Any]) -> Tuple[Optional[Any], Optional[str]]:
+        """A conta que vai resgatar o convite, a partir do que o formulário enviou.
+
+        ⚠️ **É aqui que os dois mundos divergem, e é só aqui.** No Plex a conta
+        JÁ EXISTE e o que chega é um token do plex.tv, que tem de ser validado
+        contra a plex.tv; num servidor de contas locais a conta ainda não
+        existe e o que chega são as credenciais que a pessoa acabou de
+        escolher.
+
+        Isto estava na rota `/api/invites/claim`, que para o fazer importava
+        `plexapi.myplex.MyPlexAccount` — um blueprint a saber que o servidor é
+        o Plex, exatamente o que a fachada existe para impedir. Num painel
+        Jellyfin, esse import continuava a ser carregado para nada.
+
+        Devolve `(conta, None)` ou `(None, mensagem)`. A mensagem é para a
+        pessoa ler: nunca o texto de uma exceção, porque esta rota é PÚBLICA.
+        """
+        ...
+
     def list_invitations(self) -> List[Dict[str, Any]]: ...
 
     def delete_invitation(self, code: str) -> Any: ...
