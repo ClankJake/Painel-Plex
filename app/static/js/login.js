@@ -3,28 +3,13 @@
  * Lógica para a página de login, incluindo o fluxo de autenticação com Plex.
  */
 
-import { buildPinCheckUrl } from './utils.js';
+import { buildPinCheckUrl, lerConfiguracaoDoScript } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- ELEMENTOS E DADOS GLOBAIS ---
     const loginButton = document.getElementById('login-button');
     const loginButtonText = document.getElementById('login-button-text');
-    const scriptTag = document.getElementById('login-script');
-    
-    const urls = {};
-    const i18n = {};
-
-    if (scriptTag) {
-        for (const key in scriptTag.dataset) {
-            if (key.startsWith('urls')) {
-                const urlKey = key.charAt(4).toLowerCase() + key.slice(5);
-                urls[urlKey] = scriptTag.dataset[key];
-            } else if (key.startsWith('i18n')) {
-                const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
-                i18n[i18nKey] = scriptTag.dataset[key];
-            }
-        }
-    }
+    const { urls, i18n } = lerConfiguracaoDoScript('login-script');
     
     let pinCheckInterval = null;
     let authWindow = null;

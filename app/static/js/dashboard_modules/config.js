@@ -1,3 +1,4 @@
+import { lerConfiguracaoDoScript } from '../utils.js';
 // Armazena referências do DOM, estado e dados de configuração (URLs, i18n)
 
 // Estado e Configuração
@@ -44,18 +45,9 @@ export const dom = {
  * lendo os dados do script tag e obtendo elementos do DOM.
  */
 export function initConfig() {
-    const scriptTag = document.getElementById('dashboard-script');
-    if (scriptTag) {
-        for (const key in scriptTag.dataset) {
-            if (key.startsWith('i18n')) {
-                const i18nKey = key.charAt(4).toLowerCase() + key.slice(5).replace(/-(\w)/g, (_, letter) => letter.toUpperCase());
-                state.i18n[i18nKey] = scriptTag.dataset[key];
-            } else {
-                const urlKey = key.replace(/-(\w)/g, (match, letter) => letter.toUpperCase());
-                state.urls[urlKey] = scriptTag.dataset[key];
-            }
-        }
-    }
+    const configuracao = lerConfiguracaoDoScript('dashboard-script');
+    Object.assign(state.i18n, configuracao.i18n);
+    Object.assign(state.urls, configuracao.urls);
 
     // Preenche as referências do DOM
     dom.loadingIndicator = document.getElementById('loadingIndicator');

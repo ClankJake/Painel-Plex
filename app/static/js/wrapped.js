@@ -4,7 +4,7 @@
 // Stories), com auto-avanço, navegação por clique/teclado/gestos e um cartão
 // final partilhável gerado em canvas (download PNG, sem depender de nada externo).
 
-import { fetchAPI, showToast } from './utils.js';
+import { fetchAPI, showToast, lerConfiguracaoDoScript } from './utils.js';
 
 const scriptTag = document.getElementById('wrapped-script');
 const i18n = {};
@@ -12,16 +12,12 @@ let wrappedUrl = '';
 let currentYear = new Date().getFullYear();
 let shareTextTemplate = '';
 
-if (scriptTag) {
-    for (const key in scriptTag.dataset) {
-        if (key.startsWith('i18n')) {
-            const k = key.charAt(4).toLowerCase() + key.slice(5).replace(/-(\w)/g, (_, l) => l.toUpperCase());
-            i18n[k] = scriptTag.dataset[key];
-        }
-    }
-    wrappedUrl = scriptTag.dataset.wrappedUrl || '';
-    currentYear = parseInt(scriptTag.dataset.currentYear, 10) || currentYear;
-    shareTextTemplate = scriptTag.dataset.shareTextTemplate || '';
+{
+    const cfg = lerConfiguracaoDoScript('wrapped-script');
+    Object.assign(i18n, cfg.i18n);
+    wrappedUrl = cfg.dataset.wrappedUrl || '';
+    currentYear = parseInt(cfg.dataset.currentYear, 10) || currentYear;
+    shareTextTemplate = cfg.dataset.shareTextTemplate || '';
 }
 
 const SLIDE_DURATION_MS = 6000;

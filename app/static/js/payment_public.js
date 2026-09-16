@@ -1,5 +1,5 @@
 // app/static/js/payment_public.js
-import { fetchAPI, showToast, createModal, setButtonLoading, restoreButton, buildPinCheckUrl } from './utils.js';
+import { fetchAPI, showToast, createModal, setButtonLoading, restoreButton, buildPinCheckUrl, lerConfiguracaoDoScript } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // --- ELEMENTOS E DADOS GLOBAIS ---
@@ -11,25 +11,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const pixDisplay = document.getElementById('pix-display');
     const successDisplay = document.getElementById('success-display');
     const userInfoHeader = document.getElementById('user-info-header');
-    const scriptTag = document.getElementById('payment-public-script');
-
-    const urls = {};
-    const i18n = {};
-    if (scriptTag) {
-        for (const key in scriptTag.dataset) {
-            if (key.startsWith('i18n')) {
-                const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
-                i18n[i18nKey] = scriptTag.dataset[key];
-            } else if (key.startsWith('urls')) { 
-                const subKey = key.substring(4);
-                const urlKey = subKey.charAt(0).toLowerCase() + subKey.slice(1).replace(/-(\w)/g, (match, letter) => letter.toUpperCase());
-                urls[urlKey] = scriptTag.dataset[key];
-            } else {
-                const urlKey = key.replace(/-(\w)/g, (match, letter) => letter.toUpperCase());
-                urls[urlKey] = scriptTag.dataset[key];
-            }
-        }
-    }
+    const { urls, i18n } = lerConfiguracaoDoScript('payment-public-script');
 
     let pollingIntervalId = null;
     const token = urls.token;

@@ -7,19 +7,9 @@
  * existir fica simplesmente sem quem o ligue.
  */
 
-import { chaveEmCamelCase } from './utils.js';
+import { lerConfiguracaoDoScript } from './utils.js';
 
-const scriptTag = document.getElementById('password-script');
-
-const urls = {};
-const i18n = {};
-for (const key in scriptTag.dataset) {
-    if (key.startsWith('urls')) {
-        urls[chaveEmCamelCase(key, 4)] = scriptTag.dataset[key];
-    } else if (key.startsWith('i18n')) {
-        i18n[chaveEmCamelCase(key, 4)] = scriptTag.dataset[key];
-    }
-}
+const { urls, i18n } = lerConfiguracaoDoScript('password-script');
 
 /** Um texto do dicionário, nunca `undefined` na cara de quem está a ler. */
 function texto(chave, alternativa = '') {

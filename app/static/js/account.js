@@ -1,4 +1,4 @@
-import { fetchAPI, showToast, createModal, copyToClipboard } from './utils.js';
+import { fetchAPI, showToast, createModal, copyToClipboard, lerConfiguracaoDoScript } from './utils.js';
 
 // ==========================================
 // SEGURANÇA E UTILITÁRIOS
@@ -54,18 +54,9 @@ const initializeConfigAndDOM = () => {
     });
 
     // Extração de URLs e Traduções injetados pelo backend no script tag
-    const scriptTag = document.getElementById('account-script');
-    if (scriptTag && scriptTag.dataset) {
-        for (const [key, value] of Object.entries(scriptTag.dataset)) {
-            if (key.startsWith('i18n')) {
-                const i18nKey = key.charAt(4).toLowerCase() + key.slice(5);
-                state.i18n[i18nKey] = value;
-            } else {
-                const urlKey = key.replace(/-(\w)/g, (_, letter) => letter.toUpperCase());
-                state.urls[urlKey] = value;
-            }
-        }
-    }
+    const configuracao = lerConfiguracaoDoScript('account-script');
+    Object.assign(state.i18n, configuracao.i18n);
+    Object.assign(state.urls, configuracao.urls);
 };
 
 // ==========================================

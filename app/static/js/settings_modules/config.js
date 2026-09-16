@@ -4,10 +4,9 @@
  * do script tag no HTML para serem usados em toda a aplicação da página de configurações.
  */
 
-const scriptTag = document.getElementById('settings-script');
+import { lerConfiguracaoDoScript } from '../utils.js';
 
-export const urls = {};
-export const i18n = {};
+export const { urls, i18n } = lerConfiguracaoDoScript('settings-script');
 export const fieldMap = {
     'APP_TITLE': { type: 'text', default: 'Painel Plex' },
     'APP_BASE_URL': { type: 'text', default: 'http://127.0.0.1:5000' },
@@ -199,15 +198,3 @@ export const fieldMap = {
     'TERMINATION_MSG_SCREEN_LIMIT': { type: 'textarea', default: '' },
 };
 
-if (scriptTag) {
-    for (const key in scriptTag.dataset) {
-        if (key.startsWith('urls')) {
-            const subKey = key.substring(4);
-            const urlKey = subKey.charAt(0).toLowerCase() + subKey.slice(1).replace(/-(\w)/g, (match, letter) => letter.toUpperCase());
-            urls[urlKey] = scriptTag.dataset[key];
-        } else if (key.startsWith('i18n')) {
-            const i18nKey = key.charAt(4).toLowerCase() + key.slice(5).replace(/-(\w)/g, (match, letter) => letter.toUpperCase());
-            i18n[i18nKey] = scriptTag.dataset[key];
-        }
-    }
-}

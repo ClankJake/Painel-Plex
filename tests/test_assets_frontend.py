@@ -148,11 +148,12 @@ def test_nenhum_data_attribute_termina_em_traco_e_numero():
     prefixo e pede `stepLocal1`, recebia `undefined`. Era isso que a pessoa
     lia, escrito por extenso, nas instruções de um servidor de contas locais.
 
-    ⚠️ Os leitores não são todos iguais: alguns ficheiros já convertem os
-    traços que sobram (`chaveEmCamelCase`) e outros ainda cortam só o prefixo.
-    Enquanto isso for verdade, a regra segura é uma só: **nunca termine um
-    `data-*` com traço e número**. Escreva o número por extenso
-    (`-one`, `-two`) ou junte-o à palavra (`step1-text`).
+    ⚠️ Desde que os leitores passaram a ser UM só (`lerConfiguracaoDoScript`,
+    que usa o `chaveEmCamelCase`), os traços que sobram são comidos em todas as
+    páginas — antes havia doze leitores e nem todos o faziam. Este teste fica
+    como segunda linha de defesa, e porque a regra continua a ser a mais simples
+    de seguir: **nunca termine um `data-*` com traço e número**. Escreva o
+    número por extenso (`-one`, `-two`) ou junte-o à palavra (`step1-text`).
     """
     infratores = []
     for template in sorted(TEMPLATES.rglob('*.html')):
@@ -163,4 +164,53 @@ def test_nenhum_data_attribute_termina_em_traco_e_numero():
     assert infratores == [], (
         "Estes atributos chegam ao dataset com o traço intacto e o JavaScript "
         "não os encontra:\n  " + "\n  ".join(infratores)
+    )
+
+
+# Um leitor do `dataset` escrito à mão: `for (const k in x.dataset)` ou
+# `Object.entries(x.dataset)`. É o que o carregador único substituiu.
+LEITOR_A_MAO = re.compile(r'(?:for\s*\([^)]*\bin\s+\w+\.dataset\b|Object\.entries\(\s*\w+\.dataset\s*\))')
+
+JS = RAIZ / 'app' / 'static' / 'js'
+CARREGADOR = JS / 'utils.js'
+
+
+def test_so_o_utils_le_o_dataset_do_script():
+    """⚠️ Havia DOZE leitores do `dataset`, e não concordavam entre si.
+
+    Cinco regras diferentes para decidir o nome da chave: `data-url-x` numa
+    página, `data-urls-x` noutra, `data-x-url` numa terceira, e a de
+    estatísticas a cortar o SUFIXO `Url` em vez de um prefixo. Nenhuma estava
+    errada — mas quem trabalhasse em duas páginas tinha de se lembrar de qual
+    era qual, e uma chave que não resolve não dá erro nenhum: dá um `fetch`
+    para `undefined`, ou um texto em branco.
+
+    Hoje é um só, `lerConfiguracaoDoScript` no `utils.js`, e aceita os prefixos
+    todos que já existiam nos templates — nenhum `data-*` teve de ser
+    renomeado. Este teste existe para o décimo-terceiro não nascer: a seguir a
+    um copiar-colar de outra página, um leitor novo passaria despercebido.
+    """
+    infratores = []
+    for ficheiro in sorted(JS.rglob('*.js')):
+        if ficheiro == CARREGADOR:
+            continue
+        for numero, linha in enumerate(ficheiro.read_text(encoding='utf-8').splitlines(), 1):
+            if LEITOR_A_MAO.search(linha):
+                infratores.append(f'{ficheiro.relative_to(RAIZ).as_posix()}:{numero}')
+
+    assert infratores == [], (
+        'Estes ficheiros voltaram a ler o `dataset` à mão:\n  '
+        + '\n  '.join(infratores)
+        + '\n\nUse `lerConfiguracaoDoScript(\'<id>-script\')` do utils.js. Ele '
+          'devolve {i18n, urls, config, dataset} e já trata dos traços que o '
+          'browser deixa para trás.'
+    )
+
+
+def test_o_carregador_unico_existe_e_e_exportado():
+    """Se ele desaparecer, o teste acima passa a permitir tudo em silêncio."""
+    texto = CARREGADOR.read_text(encoding='utf-8')
+    assert 'export function lerConfiguracaoDoScript' in texto, (
+        'O carregador único saiu do utils.js. Sem ele, o guarda que impede '
+        'leitores à mão deixa de ter alternativa a oferecer.'
     )

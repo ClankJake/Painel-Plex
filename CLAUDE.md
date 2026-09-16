@@ -1749,6 +1749,23 @@ em vez de deixar um espaço em branco. Há um teste que falha se algum módulo
 voltar a chamar `toLocale*String` sozinho para uma data
 (`tests/test_aba_de_auditoria.py`).
 
+📌 **A configuração da página lê-se num sítio só**: `lerConfiguracaoDoScript()`,
+em `utils.js`. Ele recebe o id do `<script>` e devolve `{i18n, urls, config,
+dataset}`.
+
+⚠️ Isto estava escrito à mão em **doze** ficheiros, com **cinco** regras
+diferentes para decidir o nome da chave: `data-url-x` numa página,
+`data-urls-x` noutra, `data-x-url` numa terceira, e a de estatísticas a cortar
+o SUFIXO `Url` em vez de um prefixo. Nenhuma estava errada — mas quem
+trabalhasse em duas páginas tinha de se lembrar de qual era qual, e uma chave
+que não resolve **não dá erro nenhum**: dá um `fetch` para `undefined`, ou um
+texto em branco. O carregador único aceita os prefixos todos que já existiam
+(`i18n`, `config`, `urls`, `url`, e a chave inteira para o resto), por isso
+nenhum `data-*` teve de ser renomeado. ⚠️ A ordem dos ramos importa: `urls` é
+testado ANTES de `url`, senão `data-urls-foo` ficava com um 's' a mais no nome.
+Há um teste que recusa um leitor novo escrito à mão
+(`test_so_o_utils_le_o_dataset_do_script`).
+
 ⚠️ **NUNCA termine um atributo `data-*` com traço e número.** O browser só come
 o '-' quando o que vem a seguir é uma LETRA MINÚSCULA: `data-i18n-step-local-1`
 chega ao `dataset` como `i18nStepLocal-1`, com o traço intacto, e o JavaScript

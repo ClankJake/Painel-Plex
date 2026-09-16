@@ -393,3 +393,60 @@ export function chaveEmCamelCase(chaveDoDataset, prefixo) {
     return chaveDoDataset.charAt(prefixo).toLowerCase()
         + chaveDoDataset.slice(prefixo + 1).replace(/-(\w)/g, (_, letra) => letra.toUpperCase());
 }
+
+
+/**
+ * Lê a configuração que o backend injeta no `<script>` de uma página.
+ *
+ * ⚠️ Isto estava escrito à mão em DOZE ficheiros, e as cópias não concordavam:
+ * cinco regras diferentes para decidir o nome da chave. `data-url-x` numa
+ * página, `data-urls-x` noutra, `data-x-url` numa terceira, e a de estatísticas
+ * a cortar o sufixo `Url` em vez de um prefixo. Nenhuma estava errada — mas
+ * quem trabalhasse em duas páginas tinha de se lembrar de qual era qual, e uma
+ * chave que não resolve não dá erro: dá um `fetch` para `undefined`.
+ *
+ * Aqui a regra é UMA, e aceita os prefixos que já existiam nos templates, para
+ * nenhum `data-*` ter de ser renomeado:
+ *
+ *   data-i18n-foo-bar   → i18n.fooBar
+ *   data-config-foo     → config.foo      (a página de convite)
+ *   data-urls-foo       → urls.foo
+ *   data-url-foo        → urls.foo
+ *   data-foo-url        → urls.fooUrl     (qualquer outra chave, tal e qual)
+ *
+ * ⚠️ A ordem importa: `urls` é testado ANTES de `url`, senão `data-urls-foo`
+ * entrava pelo ramo errado e ficava com um 's' a mais no nome.
+ *
+ * O `dataset` cru vai de volta porque há páginas que leem campos avulsos
+ * (`currentUser`, `wrappedUrl`) que não são nem texto nem endereço.
+ *
+ * @param {string} idDoScript o id do `<script>` (ex.: 'users-script')
+ * @returns {{i18n: Object, urls: Object, config: Object, dataset: Object}}
+ */
+export function lerConfiguracaoDoScript(idDoScript) {
+    const i18n = {};
+    const urls = {};
+    const config = {};
+
+    const tag = document.getElementById(idDoScript);
+    // Uma página sem a tag não é um erro a levantar aqui: os dicionários ficam
+    // vazios e cada consumidor já trata a chave em falta à sua maneira.
+    if (!tag) return { i18n, urls, config, dataset: {} };
+
+    for (const chave in tag.dataset) {
+        const valor = tag.dataset[chave];
+        if (chave.startsWith('i18n') && chave.length > 4) {
+            i18n[chaveEmCamelCase(chave, 4)] = valor;
+        } else if (chave.startsWith('config') && chave.length > 6) {
+            config[chaveEmCamelCase(chave, 6)] = valor;
+        } else if (chave.startsWith('urls') && chave.length > 4) {
+            urls[chaveEmCamelCase(chave, 4)] = valor;
+        } else if (chave.startsWith('url') && chave.length > 3) {
+            urls[chaveEmCamelCase(chave, 3)] = valor;
+        } else {
+            urls[chave] = valor;
+        }
+    }
+
+    return { i18n, urls, config, dataset: tag.dataset };
+}
