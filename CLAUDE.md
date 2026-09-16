@@ -963,6 +963,13 @@ regras que o módulo existe para guardar:
   chave como se chamar; e o `_serializavel` repete a verificação, mais
   grosseira, para o caso de alguém chamar `registar` com um dicionário que não
   passou pela `diferenca`.
+  🐛 **A regra do VALOR usa o `urlsplit`, nunca uma expressão regular.** A
+  primeira versão era um `[^/@\s]+:[^/@\s]+@` cujos quantificadores se
+  sobrepõem — o `:` pertence à própria classe —, o que dá retrocesso
+  quadrático: **4,65 segundos** com 40 KB de entrada, contra 0,0002 do
+  `urlsplit`. E por ali passam os `detalhes` de qualquer ação, onde entram
+  nomes escolhidos por quem cria a conta no servidor de mídia — bastava alguém
+  chamar-se assim para segurar o worker, e o painel corre com UM de propósito.
   🐛 **A regra do nome sozinha já falhou uma vez**: os cinco pedaços iniciais
   deixavam passar em claro o `DISCORD_WEBHOOK_URL` (o token do canal está
   DENTRO do caminho), o `WEBHOOK_URL` (pode trazer `user:senha@`) e o
