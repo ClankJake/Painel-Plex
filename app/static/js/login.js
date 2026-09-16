@@ -3,7 +3,7 @@
  * Lógica para a página de login, incluindo o fluxo de autenticação com Plex.
  */
 
-import { buildPinCheckUrl, lerConfiguracaoDoScript } from './utils.js';
+import { buildPinCheckUrl, lerConfiguracaoDoScript, escapeHTML } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- ELEMENTOS E DADOS GLOBAIS ---
@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
             info: 'bg-blue-500/80 text-white'
         };
         const alertClass = colors[category] || colors.info;
-        container.innerHTML = `<div class="p-3 my-2 text-sm rounded-lg text-center font-medium ${alertClass}" role="alert">${message}</div>`;
+        container.innerHTML = `<div class="p-3 my-2 text-sm rounded-lg text-center font-medium ${alertClass}" role="alert">${escapeHTML(message)}</div>`;
     }
 
     function startPolling(pin_id, client_id) {

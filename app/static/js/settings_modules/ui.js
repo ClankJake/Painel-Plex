@@ -8,7 +8,7 @@ import * as dom from './dom.js';
 import * as api from './api.js';
 import { i18n, fieldMap } from './config.js';
 import { settingsData } from './handlers.js';
-import { showToast } from '../utils.js';
+import { showToast, escapeHTML } from '../utils.js';
 import { renderLevelEditor, renderResetMonthsGrid } from './gamification.js';
 import { loadOnlineMediaSources } from './online_media.js';
 import { carregar as carregarAuditoria } from './audit.js';
@@ -222,10 +222,10 @@ async function fetchLogs() {
                 dom.logDisplay.scrollTop = dom.logDisplay.scrollHeight;
             }
         } else {
-            dom.logDisplay.innerHTML = `<span class="text-red-400">${i18n.errorLoadingLogs || 'Erro'}: ${data.message}</span>`;
+            dom.logDisplay.innerHTML = `<span class="text-red-400">${i18n.errorLoadingLogs || 'Erro'}: ${escapeHTML(data.message)}</span>`;
         }
     } catch (e) {
-        dom.logDisplay.innerHTML = `<span class="text-red-400">${i18n.connectionError || 'Falha de Conexão'}: ${e.message}</span>`;
+        dom.logDisplay.innerHTML = `<span class="text-red-400">${i18n.connectionError || 'Falha de Conexão'}: ${escapeHTML(e.message)}</span>`;
     }
 }
 

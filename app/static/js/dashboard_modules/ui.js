@@ -203,7 +203,7 @@ export function renderSystemHealth(health) {
         const status = SYSTEM_STATUS_MAP[value.status] || SYSTEM_STATUS_MAP['OFFLINE'];
         
         return `
-            <div class="flex items-center p-3 bg-gray-100 dark:bg-gray-900/50 rounded-lg" title="${value.message}">
+            <div class="flex items-center p-3 bg-gray-100 dark:bg-gray-900/50 rounded-lg" title="${escapeHtml(value.message)}">
                 <div class="flex-shrink-0 w-8 h-8 rounded-full ${status.color} flex items-center justify-center text-white">
                     ${status.icon}
                 </div>
@@ -604,8 +604,8 @@ export function openUserSelectionModal() {
         }
         userList.innerHTML = users.map(user => `
             <label class="flex items-center p-2 rounded cursor-pointer gap-2 hover:bg-gray-200 dark:hover:bg-gray-700">
-                <input type="checkbox" value="${user.id}" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500" ${tempSelectedIds.has(user.id) ? 'checked' : ''}>
-                <span class="text-sm text-gray-700 dark:text-gray-300">${user.username}</span>
+                <input type="checkbox" value="${escapeHtml(user.id)}" class="h-4 w-4 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500" ${tempSelectedIds.has(user.id) ? 'checked' : ''}>
+                <span class="text-sm text-gray-700 dark:text-gray-300">${escapeHtml(user.username)}</span>
             </label>
         `).join('');
         updateModalCount();
@@ -649,7 +649,7 @@ export function openUserSelectionModal() {
             updateModalCount();
         });
         
-    }).catch(err => userList && (userList.innerHTML = `<p class="text-red-400 text-sm p-2">${err.message}</p>`));
+    }).catch(err => userList && (userList.innerHTML = `<p class="text-red-400 text-sm p-2">${escapeHtml(err.message)}</p>`));
 
     userList?.addEventListener('change', (e) => {
         if (e.target.type === 'checkbox') {

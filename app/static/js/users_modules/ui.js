@@ -115,7 +115,7 @@ export async function loadInvites() {
 
         renderInvites();
     } catch (e) {
-        if (dom.inviteListDiv) dom.inviteListDiv.innerHTML = `<p class="text-red-500">${i18n.error}: ${e.message}</p>`;
+        if (dom.inviteListDiv) dom.inviteListDiv.innerHTML = `<p class="text-red-500">${i18n.error}: ${escapeHTML(e.message)}</p>`;
     }
 }
 
@@ -503,7 +503,7 @@ export async function loadStatus(force = false) {
         await loadInvites(); 
     } catch (e) {
         if (dom.userGrid) {
-            dom.userGrid.innerHTML = `<p class="text-red-500 text-center font-semibold col-span-full py-10">${i18n.loadingUsersFailed} <br><span class="text-sm font-normal">${e.message}</span></p>`;
+            dom.userGrid.innerHTML = `<p class="text-red-500 text-center font-semibold col-span-full py-10">${i18n.loadingUsersFailed} <br><span class="text-sm font-normal">${escapeHTML(e.message)}</span></p>`;
         }
     } finally {
         if (dom.refreshButton) {

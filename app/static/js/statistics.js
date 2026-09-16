@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ${createStatCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>', i18n.totalTimeWatched, formatDuration(totalDuration), 'bg-blue-500 text-white')}
             ${createStatCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>', i18n.totalPlays, totalPlays.toLocaleString(), 'bg-green-500 text-white')}
             ${createStatCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>', i18n.activeUsers, activeUsers, 'bg-purple-500 text-white')}
-            ${createStatCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>', i18n.periodChampion, stats.length > 0 ? stats[0].username : 'N/A', 'bg-yellow-500 text-white')}
+            ${createStatCard('<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>', i18n.periodChampion, stats.length > 0 ? escapeHTML(stats[0].username) : 'N/A', 'bg-yellow-500 text-white')}
         `;
     };
 
@@ -318,11 +318,11 @@ document.addEventListener('DOMContentLoaded', () => {
         ].filter(item => item.user && item.user.username);
     
         dom.podiumContainer.innerHTML = podiumData.map(item => `
-            <div class="flex flex-col items-center transition-transform duration-300 ease-in-out hover:scale-105 w-1/3 max-w-[220px] cursor-pointer ${item.order}" data-username="${item.user.original_username}" data-plex-user-id="${item.user.user_id}">
-                <img src="${item.user.thumb || 'https://placehold.co/80x80/1F2937/E5E7EB?text=?'}" onerror="this.onerror=null;this.src='https://placehold.co/80x80/1F2937/E5E7EB?text=U'" class="w-20 h-20 object-cover rounded-full border-4 border-white dark:border-gray-800 -mb-10 z-10" alt="Avatar">
+            <div class="flex flex-col items-center transition-transform duration-300 ease-in-out hover:scale-105 w-1/3 max-w-[220px] cursor-pointer ${item.order}" data-username="${escapeHTML(item.user.original_username)}" data-plex-user-id="${escapeHTML(item.user.user_id)}">
+                <img src="${escapeHTML(item.user.thumb || 'https://placehold.co/80x80/1F2937/E5E7EB?text=?')}" onerror="this.onerror=null;this.src='https://placehold.co/80x80/1F2937/E5E7EB?text=U'" class="w-20 h-20 object-cover rounded-full border-4 border-white dark:border-gray-800 -mb-10 z-10" alt="Avatar">
                 <div class="w-full rounded-t-lg flex flex-col justify-end items-center p-2 pb-4 text-white shadow-lg" style="height: ${item.height}; background: ${item.gradient};">
                     <div class="pt-10 text-center">
-                        <p class="font-bold text-lg truncate">${item.medal} ${item.user.username}</p>
+                        <p class="font-bold text-lg truncate">${item.medal} ${escapeHTML(item.user.username)}</p>
                         ${adminBadge(item.user, 'mt-1')}
                         <p class="text-sm font-semibold">${formatDuration(item.user.total_duration)}</p>
                     </div>
@@ -352,8 +352,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 dark:text-gray-400">${rank}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     <div class="flex items-center">
-                        <img src="${user.thumb || 'https://placehold.co/40x40/1F2937/E5E7EB?text=?'}" onerror="this.onerror=null;this.src='https://placehold.co/40x40/1F2937/E5E7EB?text=U'" class="w-10 h-10 object-cover rounded-full mr-4" alt="Avatar">
-                        <span class="font-semibold">${user.username}</span>
+                        <img src="${escapeHTML(user.thumb || 'https://placehold.co/40x40/1F2937/E5E7EB?text=?')}" onerror="this.onerror=null;this.src='https://placehold.co/40x40/1F2937/E5E7EB?text=U'" class="w-10 h-10 object-cover rounded-full mr-4" alt="Avatar">
+                        <span class="font-semibold">${escapeHTML(user.username)}</span>
                         ${adminBadge(user, 'ml-2')}
                     </div>
                 </td>
@@ -481,7 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Renderização de Conquistas
             let achievementsHtmlForContainer = '';
             if (details.achievements && details.achievements.length > 0) {
-                const achievementsTitle = isOwnerViewing ? i18n.myAchievements : i18n.userAchievements.replace('{username}', `<strong>${username}</strong>`);
+                const achievementsTitle = isOwnerViewing ? i18n.myAchievements : i18n.userAchievements.replace('{username}', `<strong>${escapeHTML(username)}</strong>`);
                 achievementsHtmlForContainer = `
                     <div class="pt-6 border-t border-gray-200 dark:border-gray-700">
                         <h4 class="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">${achievementsTitle}</h4>
@@ -501,7 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let levelHtmlForContainer = '';
             if (details.level_info) {
                 const lvl = details.level_info;
-                const levelTitle = isOwnerViewing ? (i18n.myLevel || 'O Meu Nível') : (i18n.userLevel || 'Nível de {username}').replace('{username}', `<strong>${username}</strong>`);
+                const levelTitle = isOwnerViewing ? (i18n.myLevel || 'O Meu Nível') : (i18n.userLevel || 'Nível de {username}').replace('{username}', `<strong>${escapeHTML(username)}</strong>`);
                 const nextLevelText = lvl.is_max_level
                     ? (i18n.maxLevelReached || 'Nível máximo atingido! 🎉')
                     : (i18n.xpToNextLevel || '{xp} XP para o próximo nível').replace('{xp}', lvl.xp_for_next_level.toLocaleString());
@@ -597,7 +597,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
         } catch (error) {
-            containerElement.innerHTML = `<p class="text-center text-red-500 dark:text-red-400">${i18n.userAnalysisError} ${error.message}</p>`;
+            containerElement.innerHTML = `<p class="text-center text-red-500 dark:text-red-400">${i18n.userAnalysisError} ${escapeHTML(error.message)}</p>`;
         }
     };
 
@@ -627,7 +627,7 @@ document.addEventListener('DOMContentLoaded', () => {
             modalBody.innerHTML = `
                 <div class="relative">
                     <button id="modalCloseBtn" class="absolute top-4 right-4 text-gray-400 hover:text-white text-4xl leading-none z-10">&times;</button>
-                    <h3 class="text-2xl font-bold text-yellow-400 mb-4">${i18n.analysisOf} ${username}</h3>
+                    <h3 class="text-2xl font-bold text-yellow-400 mb-4">${i18n.analysisOf} ${escapeHTML(username)}</h3>
                 </div>`;
             modalBody.appendChild(analysisContainer);
             dom.userDetailsModal.querySelector('#modalCloseBtn').onclick = closeModal;
@@ -705,7 +705,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const isCurrentUser = user.original_username === currentUser.username;
                             const isPrivate = user.is_private && !isCurrentUser && !currentUser.is_admin;
                             
-                            const clickableAttrs = isPrivate ? '' : `data-username="${user.original_username}" data-plex-user-id="${user.user_id}"`;
+                            const clickableAttrs = isPrivate ? '' : `data-username="${escapeHTML(user.original_username)}" data-plex-user-id="${escapeHTML(user.user_id)}"`;
                             const cursorClass = isPrivate ? 'cursor-default' : 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50';
                             const highlightClass = isCurrentUser ? 'bg-yellow-100 dark:bg-yellow-500/20 ring-2 ring-yellow-500' : cursorClass;
                             const levelBadge = (user.level_info && !isPrivate)
@@ -716,8 +716,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="flex items-center justify-between p-3 rounded-lg ${highlightClass}" ${clickableAttrs}>
                                 <div class="flex items-center gap-3">
                                     <span class="font-bold w-8 text-gray-500 dark:text-gray-400 text-lg">${index + 1}</span>
-                                    <img src="${user.thumb || 'https://placehold.co/40x40/1F2937/E5E7EB?text=?'}" onerror="this.onerror=null;this.src='https://placehold.co/40x40/1F2937/E5E7EB?text=U'" class="w-10 h-10 object-cover rounded-full" alt="Avatar">
-                                    <span class="font-semibold flex items-center gap-1.5">${levelBadge} ${user.username} ${isCurrentUser ? `(${i18n.you})` : ''}</span>
+                                    <img src="${escapeHTML(user.thumb || 'https://placehold.co/40x40/1F2937/E5E7EB?text=?')}" onerror="this.onerror=null;this.src='https://placehold.co/40x40/1F2937/E5E7EB?text=U'" class="w-10 h-10 object-cover rounded-full" alt="Avatar">
+                                    <span class="font-semibold flex items-center gap-1.5">${levelBadge} ${escapeHTML(user.username)} ${isCurrentUser ? `(${i18n.you})` : ''}</span>
                                 </div>
                                 <span class="font-mono text-sm">${formatDuration(user.total_duration)}</span>
                             </div>`;

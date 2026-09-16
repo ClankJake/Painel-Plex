@@ -1786,6 +1786,33 @@ grandes quebram em `*_modules/` com a mesma divisão (`api`, `config`, `dom`,
 `sanitizeHTML` escapam também aspas, porque o resultado é interpolado dentro de
 atributos.
 
+🛡️ **E tem de ser CHAMADO — o `username` é escolhido por quem entra.** Onde as
+contas são locais, `conta_a_partir_de_credenciais` valida só o comprimento e o
+formato do email: quem resgata um convite escolhe o nome que quiser, incluindo
+`<img src=x onerror=…>`. Esse nome era interpolado cru em `innerHTML` em 29
+sítios, e o pior deles é o **sino de notificações** — o painel escreve lá
+"Renovação manual de %(username)s registrada", o sino vive no `base.html` e
+portanto em TODAS as páginas, e o código corria na sessão do administrador sem
+ele clicar em nada. Os outros eram o pódio e a tabela de `/statistics` (a casa
+de quem não é administrador), o modal de envio em massa, e os `${error.message}`
+espalhados pelos tratadores de erro, porque as mensagens do servidor também
+levam nomes lá dentro.
+
+⚠️ **O `thumb` e os `data-username` contam.** São interpolados DENTRO de
+atributos, onde uma aspa fecha o atributo e abre outro — é por isso que o
+`escapeHTML` escapa `"` e `'`. E escapar ao escrever o `data-*` não obriga a
+escapar duas vezes ao lê-lo: o browser devolve o valor já decodificado no
+`dataset`, e quem o volta a pôr em HTML escapa-o outra vez.
+
+⚠️ **A exceção é o `message` dos modais de confirmação**
+(`showConfirmationModal`): ali ele é um fragmento de HTML por contrato — quem
+chama já faz `sanitizeHTML(user.username)` e acrescenta o `<strong>` à volta.
+Escapá-lo lá dentro partia o negrito e escapava o nome duas vezes.
+
+`tests/test_escape_de_nomes_no_javascript.py` percorre o `app/static/js` e
+recusa uma interpolação de `.username`, `.original_username`, `.thumb` ou
+`.message` numa linha com marcação sem um `escapeHTML` à volta.
+
 📌 **As datas formatam-se num sítio só**: `formatarDataHora()` e
 `formatarData()`, em `utils.js`. Havia TRÊS cópias de `formatDateTime` — uma em
 `dashboard_modules`, duas em `users_modules` — e elas não concordavam: a do
