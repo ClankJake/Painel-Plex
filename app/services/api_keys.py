@@ -114,13 +114,15 @@ def _resumo(chave):
     `secrets`. Contra isso não há força bruta que um hash lento trave, porque
     não há espaço de palpites para encarecer.
 
-    E um KDF lento aqui seria pior do que o problema que resolve. Este resumo é
-    calculado a CADA pedido autenticado, incluindo em
-    `/api/system/webhook/overseerr`, que é `@limiter.exempt` — e o painel corre
-    com UM worker gevent de propósito, onde trabalho de CPU não cede a vez a
-    ninguém. Qualquer pessoa na rede podia mandar chaves inválidas a esse
-    endpoint e consumir o worker inteiro: uma negação de serviço sem
-    autenticação, trocada por uma força bruta que já era impossível.
+    E um KDF lento sairia caro onde não compra nada. Este resumo é calculado a
+    cada pedido cujo PREFIXO encontre uma chave viva — `verificar` sai antes
+    disso quando o prefixo não existe, por isso não é qualquer pessoa que o
+    consegue disparar. Mas o prefixo não é segredo (está à vista no painel e
+    dentro da própria chave), e um deles chega para forçar o trabalho em
+    `/api/system/webhook/overseerr`, que é `@limiter.exempt`. O painel corre com
+    UM worker gevent de propósito, onde trabalho de CPU não cede a vez a
+    ninguém: cada hash lento ali é o painel inteiro parado, e a conta é a mesma
+    para os pedidos legítimos.
     """
     return hmac.new(_pepper(), chave.encode('utf-8'), hashlib.sha256).hexdigest()
 

@@ -296,12 +296,13 @@ resumos que não consegue verificar.
 sobre dados sensíveis" e, para uma palavra-passe escolhida por uma pessoa,
 teria razão. Aqui o que se resume é `pnl_<prefixo>_<token_urlsafe(32)>` — 256
 bits do `secrets` —, e contra isso não há força bruta que um hash lento trave,
-porque não há espaço de palpites para encarecer. Pior: este resumo é calculado
-a CADA pedido autenticado, incluindo em `/api/system/webhook/overseerr`, que é
-`@limiter.exempt`, e o painel corre com UM worker gevent, onde trabalho de CPU
-não cede a vez a ninguém. Um bcrypt ali dava a qualquer pessoa na rede uma forma
-de consumir o worker inteiro com chaves inválidas: uma negação de serviço sem
-autenticação, trocada por uma força bruta que já era impossível.
+porque não há espaço de palpites para encarecer. E sairia caro onde não compra
+nada: o resumo é calculado a cada pedido cujo PREFIXO encontre uma chave viva
+(`verificar` sai antes disso quando não encontra), e o prefixo não é segredo —
+está à vista no painel e dentro da própria chave. Um deles chega para forçar o
+trabalho em `/api/system/webhook/overseerr`, que é `@limiter.exempt`, e o painel
+corre com UM worker gevent, onde trabalho de CPU não cede a vez a ninguém: cada
+hash lento ali é o painel inteiro parado.
 
 ⚡ `last_used_at` não é escrito a cada pedido (um webhook bate dezenas de vezes
 por minuto). 🐛 E é escrito pela `db.session`, **não** por uma ligação própria:
