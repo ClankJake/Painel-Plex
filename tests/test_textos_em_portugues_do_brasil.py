@@ -75,12 +75,52 @@ MARCAS = [
     (r'\bcontrolo\b', 'controle'),
     (r'\bdescarreg\w+', 'baixar / download'),
     (r'\bbases? de dados\b', 'banco de dados'),
+    # ⚠️ O "cupão" entrou por TODO o lado — a página financeira, as respostas
+    # da API e as notificações de renovação que chegam a quem paga — porque
+    # nunca esteve nesta lista. É a palavra mais repetida do painel a seguir a
+    # "usuário".
+    (r'\b[Cc]up(ão|ões)\b', 'cupom / cupons'),
+    # O artigo antes de "certeza" é europeu: no Brasil é "Tem certeza".
+    (r'\bTem a certeza\b', 'Tem certeza'),
+    # ⚠️ Só o RÓTULO, pela MAIÚSCULA no início — a mesma técnica do "A guardar".
+    # O verbo "guardar" no meio de uma frase ("o Plex guarda os filmes", "o
+    # painel guarda apenas um resumo") é português do Brasil correto e não pode
+    # ser apanhado aqui.
+    (r'^(Guardar|Gravar)\b', 'Salvar'),
+    # A vogal fechada: em pt-PT bónus/eletrónico/anónimo, no Brasil com ô.
+    (r'\b\w*(ónimo|ónico|ómico|ónus|ónia)\w*\b', 'ô (bônus, eletrônico, anônimo)'),
+    (r'\bem falta\b', 'ausente / faltando'),
+    (r'\bao fim de\b', 'após / depois de'),
+    (r'\bconsoante\b', 'conforme / de acordo com'),
+    # "ligação" no Brasil é uma chamada telefónica; uma conexão de rede é
+    # "conexão", que é como o resto do painel lhe chama (a aba "Conexões").
+    (r'\bligaç(ão|ões)\b', 'conexão / conexões'),
+    # Quem dirige um filme: em pt-PT "realizador", no Brasil "diretor". Aparece
+    # nas conquistas, que vão por notificação.
+    (r'\brealizador(es)?\b', 'diretor / diretores'),
 ]
 
 LITERAL = re.compile(r"_\(\s*(['\"])(.*?)\1", re.S)
 # A alternativa de uma chave de tradução em falta: `i18n.algumaCoisa || 'texto'`.
 ALTERNATIVA_JS = re.compile(r"i18n\.[A-Za-z0-9_]+\s*\|\|\s*(['\"])(.*?)\1", re.S)
 MODELO = re.compile(r'^\s*"[A-Z_]+_MESSAGE_TEMPLATE":\s*(.*)$', re.M)
+
+# ⚠️ **Nem toda a mensagem visível passa por `_()`.** As rotas de cupões
+# respondiam com `"message": "Cupão apagado com sucesso."` em texto cru — o
+# painel mostra isso num toast, e a varredura nunca lá chegou porque só olhava
+# para dentro do `_()`. O mesmo vale para o `raise ValueError(...)` de um
+# validador do Pydantic, cuja mensagem sai no corpo do 400 e aparece por baixo
+# do campo. As duas são texto para uma pessoa ler.
+MENSAGEM_PY = re.compile(r'"message":\s*(["\'])(.*?)\1', re.S)
+ERRO_PY = re.compile(r'raise ValueError\(\s*(["\'])(.*?)\1', re.S)
+
+# ⚠️ **E o JavaScript também escreve texto à mão.** A alternativa do `i18n.x ||`
+# era a única coisa que se lia, mas o `financial.js` tinha "Nenhum cupão ativo
+# ou criado." e `title="Apagar Cupão"` escritos dentro da própria marcação.
+# Procura-se o que é TEXTO — entre `>` e `<`, ou dentro de um `title=`/`alt=` —,
+# e não toda a string do ficheiro: um nome de classe do Tailwind não é uma frase.
+TEXTO_EM_MARCACAO_JS = re.compile(r'>([^<>{}`$\n]{4,}?)<')
+ATRIBUTO_DE_TEXTO_JS = re.compile(r'\b(?:title|alt|placeholder)\s*[=:]\s*["\']([^"\'\n]{4,})["\']')
 
 
 def _textos_visiveis():
@@ -92,7 +132,8 @@ def _textos_visiveis():
             conteudo = caminho.read_text(encoding='utf-8')
             nome = caminho.relative_to(RAIZ).as_posix()
 
-            for padrao, grupo in ((LITERAL, 2), (MODELO, 1)):
+            for padrao, grupo in ((LITERAL, 2), (MODELO, 1),
+                                  (MENSAGEM_PY, 2), (ERRO_PY, 2)):
                 for achado in padrao.finditer(conteudo):
                     linha = conteudo.count('\n', 0, achado.start()) + 1
                     yield nome, linha, achado.group(grupo)
@@ -101,9 +142,12 @@ def _textos_visiveis():
         for caminho in sorted((RAIZ / pasta).rglob('*.js')):
             conteudo = caminho.read_text(encoding='utf-8')
             nome = caminho.relative_to(RAIZ).as_posix()
-            for achado in ALTERNATIVA_JS.finditer(conteudo):
-                linha = conteudo.count('\n', 0, achado.start()) + 1
-                yield nome, linha, achado.group(2)
+            for padrao, grupo in ((ALTERNATIVA_JS, 2),
+                                  (TEXTO_EM_MARCACAO_JS, 1),
+                                  (ATRIBUTO_DE_TEXTO_JS, 1)):
+                for achado in padrao.finditer(conteudo):
+                    linha = conteudo.count('\n', 0, achado.start()) + 1
+                    yield nome, linha, achado.group(grupo)
 
 
 @pytest.mark.parametrize('marca, sugestao', MARCAS)

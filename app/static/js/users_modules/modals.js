@@ -541,7 +541,7 @@ export async function showLibraryManagementModal(user = null) {
 
         modalFooter.className = "flex flex-col sm:flex-row justify-end gap-3 w-full";
         modalFooter.innerHTML = `
-            <button id="saveLibraryBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30 w-full sm:w-auto transition-transform transform hover:-translate-y-0.5">${i18n.saveChanges || 'Guardar Alterações'}</button>
+            <button id="saveLibraryBtn" class="btn bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30 w-full sm:w-auto transition-transform transform hover:-translate-y-0.5">${i18n.saveChanges || 'Salvar Alterações'}</button>
             <button id="libMgmtCancel" class="${btnCancelClass}">${i18n.cancel}</button>
         `;
 
@@ -582,7 +582,7 @@ export async function showLibraryManagementModal(user = null) {
             } catch (err) {
                 showToast(err.message, 'error');
                 saveButton.disabled = false;
-                saveButton.textContent = i18n.saveChanges || 'Guardar Alterações';
+                saveButton.textContent = i18n.saveChanges || 'Salvar Alterações';
             }
         };
 

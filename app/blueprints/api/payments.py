@@ -657,7 +657,7 @@ def create_charge_route():
                     extensions.data_manager.set_user_profile(media_user_id, profile)
                     
                 extensions.data_manager.create_notification(
-                    message=_("O usuário %(username)s reativou a conta com um cupão de 100%%.", username=username),
+                    message=_("O usuário %(username)s reativou a conta com um cupom de 100%%.", username=username),
                     category='success', link=url_for('main.users_page')
                 )
                 extensions.data_manager.create_notification(
@@ -666,11 +666,11 @@ def create_charge_route():
                 )
             else:
                 extensions.data_manager.create_notification(
-                    message=_("Renovação de %(username)s (Cupão 100%%) confirmada.", username=username),
+                    message=_("Renovação de %(username)s (Cupom 100%%) confirmada.", username=username),
                     category='success', link=url_for('main.users_page')
                 )
                 extensions.data_manager.create_notification(
-                    message=_("A sua renovação com cupão foi confirmada com sucesso."),
+                    message=_("A sua renovação com cupom foi confirmada com sucesso."),
                     category='success', link=url_for('main.account_page'), media_user_id=media_user_id
                 )
 
@@ -710,7 +710,7 @@ def create_charge_route():
 
             extensions.data_manager.add_manual_payment(
                 media_user_id=media_user_id, username=username, value=0.00,
-                description=f"Renovação Cupão 100% ({coupon_code})",
+                description=f"Renovação Cupom 100% ({coupon_code})",
                 payment_date_str=datetime.now(timezone.utc).isoformat()
             )
             extensions.db.session.commit()

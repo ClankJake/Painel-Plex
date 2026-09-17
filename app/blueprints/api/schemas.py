@@ -229,17 +229,17 @@ class CreateCouponSchema(BaseModel):
     def validate_code(cls, v):
         codigo = (v or '').strip().upper()
         if not codigo:
-            raise ValueError("O código do cupão não pode estar vazio.")
+            raise ValueError("O código do cupom não pode estar vazio.")
         # Um código com espaços ou ';' seria impossível de escrever no formulário
         # de pagamento e sujaria o relatório CSV.
         if any(c.isspace() for c in codigo) or ';' in codigo:
-            raise ValueError("O código do cupão não pode conter espaços nem ';'.")
+            raise ValueError("O código do cupom não pode conter espaços nem ';'.")
         return codigo
 
     @validator('value')
     def validate_value(cls, v, values):
         if values.get('discount_type') == 'percentage' and v > 100:
-            raise ValueError("Um desconto em percentagem não pode ser superior a 100.")
+            raise ValueError("Um desconto em porcentagem não pode ser superior a 100.")
         return round(float(v), 2)
 
     @validator('expires_at')

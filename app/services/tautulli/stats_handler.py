@@ -383,9 +383,9 @@ class StatsHandler:
                 "title": _("Fã do Realizador"), 
                 "icon": "🎥", 
                 "levels": { 
-                    "bronze": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3), "description": _("Bronze: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3))}, 
-                    "silver": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5), "description": _("Prata: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5))}, 
-                    "gold": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7), "description": _("Ouro: Assista a %(goal)d filmes do seu realizador favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7))} 
+                    "bronze": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3), "description": _("Bronze: Assista a %(goal)d filmes do seu diretor favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3))}, 
+                    "silver": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5), "description": _("Prata: Assista a %(goal)d filmes do seu diretor favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_SILVER", 5))}, 
+                    "gold": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7), "description": _("Ouro: Assista a %(goal)d filmes do seu diretor favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_GOLD", 7))} 
                 }, 
                 "check": lambda s: s.get("favorite_director_count", 0) 
             },

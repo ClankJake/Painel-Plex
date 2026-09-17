@@ -320,7 +320,7 @@ const renderPaymentHistory = (payments) => {
                     ${payments.map(p => {
                         const isOk = p.status === 'CONCLUIDA';
                         const badgeClass = isOk ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300';
-                        const couponHtml = p.coupon_code ? `<span class="ml-2 px-2 py-0.5 text-[10px] uppercase font-bold rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800" title="Cupão: ${p.coupon_code}">🏷️ ${p.coupon_code}</span>` : '';
+                        const couponHtml = p.coupon_code ? `<span class="ml-2 px-2 py-0.5 text-[10px] uppercase font-bold rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800" title="Cupom: ${p.coupon_code}">🏷️ ${p.coupon_code}</span>` : '';
                         
                         return `
                             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">

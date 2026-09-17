@@ -41,7 +41,7 @@ class PlexSubscriptionManager:
 
         profile = self.data_manager.get_user_profile(media_user_id)
         if not profile:
-            raise ValueError("Perfil de utilizador não encontrado.")
+            raise ValueError("Perfil de usuário não encontrado.")
 
         local_tz = get_localzone()
         now = datetime.now(local_tz)
@@ -77,7 +77,7 @@ class PlexSubscriptionManager:
         """
         profile = self.data_manager.get_user_profile(media_user_id)
         if not profile:
-            raise ValueError("Perfil de utilizador não encontrado.")
+            raise ValueError("Perfil de usuário não encontrado.")
 
         # Deteção automática de reativação caso a flag não venha explícita do sistema de pagamentos.
         #

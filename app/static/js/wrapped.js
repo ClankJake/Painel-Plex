@@ -177,7 +177,7 @@ function buildSlides(w, year) {
         <p class="text-white/80 max-w-md wrapped-animate-3">${esc(p.description || '')}</p>
         <div class="flex flex-col sm:flex-row gap-3 mt-10 wrapped-animate-3">
             <button id="wrapped-share-img-btn" class="btn bg-white text-gray-900 hover:bg-white/90 font-bold px-6 py-3">
-                📸 ${esc(i18n.saveImage || 'Guardar Imagem')}
+                📸 ${esc(i18n.saveImage || 'Salvar Imagem')}
             </button>
             <button id="wrapped-share-btn" class="btn bg-white/20 hover:bg-white/30 text-white border border-white/40 px-6 py-3">
                 🔗 ${esc(i18n.share || 'Compartilhar')}

@@ -30,6 +30,33 @@ infinitivo, que é o que define a forma, e a família do "registo" é apanhada
 pelo 'r' que a distingue de "registro" (`regist(?!r)`), o que inclui as formas
 que ninguém se lembraria de listar.
 
+⚠️ **E o maior buraco era uma palavra que nunca esteve na lista: "cupão".**
+Estava em 22 sítios visíveis — a página financeira inteira, as respostas da API
+e as notificações de renovação que chegam a quem paga. Entraram com ela mais
+oito marcas: "Tem a certeza" (o artigo é europeu), o RÓTULO "Guardar/Gravar"
+(pela maiúscula inicial, como o "A guardar" — o verbo "guardar" no meio de uma
+frase é brasileiro correto), a vogal fechada (`bónus`→`bônus`), "em falta",
+"ao fim de", "consoante", "ligação" (no Brasil é uma chamada; a rede tem
+"conexão") e "realizador" (→ "diretor", que aparece nas conquistas).
+
+⚠️ **Três coisas visíveis que a varredura não via, e agora vê**: uma mensagem
+de API que não passa por `_()` (`"message": "Cupão apagado com sucesso."`, que
+o painel mostra num toast), a mensagem de um `raise ValueError` de validador
+(sai no corpo do 400, por baixo do campo) e o texto escrito À MÃO dentro da
+marcação do JavaScript — `<p>Nenhum cupão ativo ou criado.</p>` e
+`title="Apagar Cupão"`. Do JS lê-se o que é TEXTO (entre `>` e `<`, ou num
+`title`/`alt`/`placeholder`) e não toda a string do ficheiro: um nome de classe
+do Tailwind não é uma frase.
+
+🐛 **E uma dessas palavras estava presa a uma comparação.** A descrição de uma
+renovação por cupom de 100% é gravada em TEXTO FIXO (`payments.py`), fica na
+base de dados e nunca é reescrita; o `financial.js` decidia o rótulo do plano
+com `descricao.includes('cupão')`. Corrigir a palavra no servidor fazia a
+verificação deixar de reconhecer as renovações NOVAS, e corrigi-la só no JS
+fazia-a deixar de reconhecer as ANTIGAS. Ela aceita agora as duas grafias
+(`/cup(om|ão)|coupon/i`), que é o que um histórico com anos de uso tem lá
+dentro.
+
 ## Comandos
 
 ```bash

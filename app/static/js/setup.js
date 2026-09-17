@@ -496,7 +496,7 @@ document.addEventListener('DOMContentLoaded', () => {
             : setupData.plex_url && setupData.plex_token && setupData.admin_user;
 
         if (!completo) {
-            showToast(i18n.missingSetupData || 'Conclua a ligação ao servidor antes de finalizar.', 'error');
+            showToast(i18n.missingSetupData || 'Conclua a conexão com o servidor antes de finalizar.', 'error');
             navigateToStep(1);
             return;
         }

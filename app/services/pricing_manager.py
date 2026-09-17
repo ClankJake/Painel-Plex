@@ -58,7 +58,7 @@ class PricingManager:
             coupon = validation_result
             result["discounted_price"] = self._apply_discount(original_price, coupon)
             result["coupon_applied"] = True
-            result["message"] = _("Cupão aplicado com sucesso!")
+            result["message"] = _("Cupom aplicado com sucesso!")
 
         # 2. Crédito de indicações (aplicado DEPOIS do cupão, sobre o valor já com desconto)
         if apply_referral_credit and media_user_id:
@@ -295,20 +295,20 @@ class PricingManager:
         Retorna um tuplo (bool, cupão_ou_mensagem_erro).
         """
         if media_user_id and self.data_manager.has_user_used_coupon(media_user_id, coupon_code):
-            return False, _("Você já usou este cupão.")
+            return False, _("Você já usou este cupom.")
 
         coupon = self.data_manager.get_coupon_by_code(coupon_code)
         if not coupon:
-            return False, _("Cupão inválido ou não encontrado.")
+            return False, _("Cupom inválido ou não encontrado.")
             
         if not coupon.get('is_active'):
-            return False, _("Este cupão não está mais ativo.")
+            return False, _("Este cupom não está mais ativo.")
 
         # 🛡️ O registo do uso só acontece quando o pagamento é confirmado. Sem
         # olhar também para as cobranças ABERTAS, a mesma pessoa gerava duas
         # cobranças com o mesmo cupão e pagava as duas com desconto.
         if media_user_id and self._tem_cobranca_aberta_com_cupao(media_user_id, coupon_code):
-            return False, _("Já existe um pagamento pendente com este cupão. Conclua-o ou aguarde que expire.")
+            return False, _("Já existe um pagamento pendente com este cupom. Conclua-o ou aguarde que expire.")
 
         # Um tipo de desconto desconhecido não pode ser tratado como válido: antes,
         # '_apply_discount' não encontrava ramo nenhum, devolvia o preço cheio e o
@@ -318,7 +318,7 @@ class PricingManager:
                 f"Cupão '{coupon.get('code')}' tem um tipo de desconto inválido "
                 f"('{coupon.get('discount_type')}') e foi recusado."
             )
-            return False, _("Cupão inválido ou não encontrado.")
+            return False, _("Cupom inválido ou não encontrado.")
 
         # Um valor não positivo nunca desconta nada — e, em percentagem negativa,
         # chegava a AUMENTAR o preço a pagar.
@@ -327,7 +327,7 @@ class PricingManager:
                 raise ValueError
         except (TypeError, ValueError):
             logger.error(f"Cupão '{coupon.get('code')}' tem um valor inválido ({coupon.get('value')}) e foi recusado.")
-            return False, _("Cupão inválido ou não encontrado.")
+            return False, _("Cupom inválido ou não encontrado.")
 
         # CORREÇÃO: Utilizar timezone.utc para comparar corretamente com a data ISO guardada na BD
         expires_at_str = coupon.get('expires_at')
@@ -344,7 +344,7 @@ class PricingManager:
                     expires_at_dt = expires_at_dt.replace(tzinfo=timezone.utc)
                     
                 if datetime.now(timezone.utc) > expires_at_dt:
-                    return False, _("Este cupão expirou.")
+                    return False, _("Este cupom expirou.")
             except (ValueError, TypeError):
                 logger.warning(f"Erro ao analisar a data de expiração do cupão '{coupon_code}'.")
 

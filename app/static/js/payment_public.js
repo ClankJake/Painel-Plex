@@ -82,7 +82,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         paymentSection.innerHTML = `
             ${optionsHtml}
             
-            <!-- Secção de Cupão Premium -->
+            <!-- Seção de Cupom Premium -->
             <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700/50">
                 <label for="couponCodeInput" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider">Código Promocional</label>
                 <div class="flex gap-2">

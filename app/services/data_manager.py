@@ -1091,7 +1091,7 @@ class DataManager:
         """
         media_user_id = normalize_user_id(media_user_id)
         if not media_user_id:
-            raise ValueError("Um pedido de reposição precisa de um utilizador.")
+            raise ValueError("Um pedido de redefinição precisa de um usuário.")
 
         PasswordReset.query.filter_by(media_user_id=media_user_id, used_at=None).delete()
 
