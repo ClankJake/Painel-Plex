@@ -1,7 +1,6 @@
 # app/blueprints/api/decorators.py
 
 import logging
-import secrets
 from functools import wraps
 from flask import jsonify, request
 from flask_babel import gettext as _
@@ -76,18 +75,19 @@ def chave_de_api_necessaria(escopo):
     bot foi comprometido derrubava também o Seerr, e a chave do bot podia
     aceitar webhooks em nome do painel.
 
-    ⚠️ **A chave antiga (`INTERNAL_TRIGGER_KEY`) continua a valer, para todos
-    os escopos.** Invalidá-la seria cortar, de uma vez e sem aviso, todas as
-    integrações que já existem lá fora — onde este repositório não chega. Ela
-    deixou de ser a única; não deixou de ser.
+    ⚠️ **E já não há nenhuma que valha para tudo.** A `INTERNAL_TRIGGER_KEY`
+    foi removida do config.json, com as rotas e o cartão que a mostravam: uma
+    chave sem o escopo desta rota é recusada como qualquer outra chave
+    inválida, e é a tabela `api_keys` a única coisa que este decorador
+    consulta.
 
     ⚠️ Isto existia duas vezes, copiado, e as duas cópias já tinham divergido:
     uma aceitava o `Authorization` sem o prefixo `Bearer` e a outra não. A
     interface do Seerr chama "Authorization" ao campo onde se escreve a chave e
     mais nada, por isso as duas formas passam.
 
-    A comparação é `secrets.compare_digest` para não revelar a chave através do
-    tempo de resposta.
+    Quem compara é o `api_keys.verificar`, com `secrets.compare_digest`, para o
+    tempo de resposta não revelar a chave.
     """
     def decorator(f):
         @wraps(f)
@@ -124,13 +124,7 @@ def _chave_do_pedido():
 
 
 def _autorizada(fornecida, escopo):
-    from ...config import load_or_create_config
     from ...services import api_keys
-
-    # A chave do config, que serve todos os escopos enquanto existir.
-    antiga = str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')
-    if antiga and secrets.compare_digest(fornecida, antiga):
-        return True
 
     try:
         return api_keys.verificar(fornecida, escopo) is not None

@@ -638,8 +638,10 @@ class TestBibliotecasNoEndpointDosBots:
     """
 
     def _chave(self):
-        from app.config import load_or_create_config
-        return str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')
+        from app.services import api_keys
+
+        _, chave = api_keys.criar("Bot de teste", ["convites"])
+        return chave
 
     def test_sem_bibliotecas_usa_todas_as_do_servidor(self, client, configurada, db_session, servidor_falso):
         resposta = client.post(
@@ -757,9 +759,11 @@ class TestChaveDeApi:
     mesmo cliente levava 401 num deles sem perceber porquê.
     """
 
-    def _chave(self):
-        from app.config import load_or_create_config
-        return str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')
+    def _chave(self, *escopos):
+        from app.services import api_keys
+
+        _, chave = api_keys.criar("Bot de teste", list(escopos) or ["convites"])
+        return chave
 
     def _criar(self, client, headers):
         return client.post("/api/invites/bot/create", json={"telegram_id": 1}, headers=headers)
@@ -786,13 +790,14 @@ class TestChaveDeApi:
         assert self._criar(client, {"Authorization": self._chave()}).status_code == 201
 
     def test_o_webhook_do_overseerr_usa_a_mesma_porta(self, client, configurada, db_session):
+        """A mesma FORMA de cabeçalho; o escopo é que muda de rota para rota."""
         recusado = client.post("/api/system/webhook/overseerr", json={"notification_type": "TEST"})
         assert recusado.status_code == 401
 
         aceite = client.post(
             "/api/system/webhook/overseerr",
             json={"notification_type": "TEST"},
-            headers={"Authorization": self._chave()},
+            headers={"Authorization": self._chave("webhooks")},
         )
         assert aceite.status_code == 200
 
@@ -848,12 +853,13 @@ class TestAuditoriaDosConvites:
         assert len(self._linhas('convite.reativar')) == 1
 
     def test_um_convite_criado_por_um_bot_nao_inventa_um_ator(self, client, configurada, db_session, servidor_falso):
-        from app.config import load_or_create_config
+        from app.services import api_keys
 
+        _, chave = api_keys.criar("Bot de teste", ["convites"])
         client.post(
             "/api/invites/bot/create",
             json={"telegram_id": 42},
-            headers={"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY'))},
+            headers={"X-API-Key": chave},
         )
 
         linhas = self._linhas('convite.criar')
@@ -924,8 +930,10 @@ class TestAApiDeBotsSabeResponderSobreUmConvite:
     """
 
     def _chave(self):
-        from app.config import load_or_create_config
-        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+        from app.services import api_keys
+
+        _, chave = api_keys.criar("Bot de teste", ["convites"])
+        return {"X-API-Key": chave}
 
     def test_um_convite_por_usar_diz_que_esta_ativo(self, client, configurada, data_manager):
         data_manager.add_invitation("ABERTO", detalhes(max_uses=2))
@@ -1003,8 +1011,10 @@ class TestAApiDeBotsSabeResponderSobreUmConvite:
 
 class TestOsConvitesDeUmTelegramId:
     def _chave(self):
-        from app.config import load_or_create_config
-        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+        from app.services import api_keys
+
+        _, chave = api_keys.criar("Bot de teste", ["convites"])
+        return {"X-API-Key": chave}
 
     def test_so_os_daquela_pessoa(self, client, configurada, data_manager):
         data_manager.add_invitation("DELE", detalhes(telegram_id="123"))
@@ -1045,8 +1055,10 @@ class TestOsCodigosHttpDaCriacao:
     """
 
     def _chave(self):
-        from app.config import load_or_create_config
-        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+        from app.services import api_keys
+
+        _, chave = api_keys.criar("Bot de teste", ["convites"])
+        return {"X-API-Key": chave}
 
     def test_um_codigo_ja_em_uso_e_409(self, client, configurada, data_manager, servidor_que_cria_a_serio):
         data_manager.add_invitation("REPETIDO", detalhes())
@@ -1215,12 +1227,12 @@ class TestANotaDoConvite:
         assert resposta.status_code == 400
 
     def test_a_nota_chega_ao_bot(self, client, configurada, data_manager):
-        from app.config import load_or_create_config
+        from app.services import api_keys
 
+        _, chave = api_keys.criar("Bot de teste", ["convites"])
         data_manager.add_invitation("COM-NOTA", detalhes(note="Para a Ana"))
-        dados = client.get("/api/invites/bot/invite/COM-NOTA", headers={
-            "X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')
-        }).get_json()
+        dados = client.get("/api/invites/bot/invite/COM-NOTA",
+                           headers={"X-API-Key": chave}).get_json()
 
         assert dados["invite"]["note"] == "Para a Ana"
 
@@ -1421,8 +1433,10 @@ class TestOConviteAceitaTelegramEDiscord:
     """
 
     def _chave(self):
-        from app.config import load_or_create_config
-        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+        from app.services import api_keys
+
+        _, chave = api_keys.criar("Bot de teste", ["convites"])
+        return {"X-API-Key": chave}
 
     def test_um_convite_pode_trazer_um_discord_id(self, admin, data_manager, servidor_que_cria_a_serio):
         admin.post("/api/invites/create", json={
@@ -1518,8 +1532,10 @@ class TestUnicidadeDoContacto:
 
 class TestABuscaPorContacto:
     def _chave(self):
-        from app.config import load_or_create_config
-        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
+        from app.services import api_keys
+
+        _, chave = api_keys.criar("Bot de teste", ["convites"])
+        return {"X-API-Key": chave}
 
     def test_procura_por_discord(self, client, configurada, data_manager):
         data_manager.add_invitation("DELE", detalhes(discord_id="999"))

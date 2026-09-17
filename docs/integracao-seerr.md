@@ -52,10 +52,22 @@ de conta.
 Esta é a parte que avisa o usuário, no canal pessoal dele, quando o pedido
 muda de estado — com a capa do filme/série incluída.
 
-### 3.1. Obter a chave de API do painel
+### 3.1. Criar a chave de API do painel
 
-No Painel Plex, vá a **Configurações → Geral → Chave de API (Integrações)** e
-copie a chave (use o botão do olho para a revelar).
+No Painel Plex, vá a **Configurações → Geral → Chaves por integração**. Dê um
+nome à chave (por exemplo, "Seerr"), marque **apenas** a permissão
+**Webhooks** e clique em **Criar Chave**. Copie-a da caixa verde que aparece.
+
+> 🛡️ **A chave é mostrada uma única vez.** O painel guarda só um resumo dela e
+> não a consegue mostrar de novo — se a perder, revogue essa e crie outra.
+
+Marcar só **Webhooks** é o ponto de ter uma chave por integração: assim esta
+chave não pode criar convites no seu servidor, e revogá-la um dia não derruba
+os seus bots.
+
+> ⚠️ Se você já tinha o webhook a funcionar com a antiga **Chave de API
+> (Integrações)** — uma só, que servia para tudo —, ela foi removida. Crie uma
+> chave com a permissão **Webhooks** e substitua-a no campo do passo 3.2.
 
 ### 3.2. Configurar o webhook no Seerr
 
@@ -181,8 +193,12 @@ atualizar, verifique se algum proxy reverso à frente do painel está a bloquear
 esse caminho.
 
 **Erro 401 no webhook**
-O *Authorization Header* configurado no Seerr não corresponde à Chave de API do
-painel. Copie-a novamente em Configurações → Geral.
+O *Authorization Header* configurado no Seerr não corresponde a nenhuma chave
+válida do painel, ou a chave que ele usa não tem a permissão **Webhooks**.
+Confirme na lista em Configurações → Geral → Chaves por integração: uma chave
+revogada aparece marcada como tal, e a coluna do último uso diz se ela está
+mesmo a ser usada. Como a chave não pode ser mostrada de novo, o caminho é
+criar outra com a permissão **Webhooks** e colá-la no Seerr.
 
 **O teste do webhook passa, mas o usuário não recebe nada**
 1. O e-mail no Seerr tem de ser igual ao da conta Plex.

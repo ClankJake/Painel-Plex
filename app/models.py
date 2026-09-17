@@ -523,7 +523,8 @@ class ApiKey(db.Model):
     partilhada pelo endpoint de convites para bots e pelo webhook do Seerr.
     Isso tem duas consequências que só se notam no pior dia: regenerá-la porque
     um bot foi comprometido derrubava também o Seerr, e a chave do bot de
-    Telegram do vizinho podia aceitar webhooks em nome do painel.
+    Telegram do vizinho podia aceitar webhooks em nome do painel. Essa chave
+    foi removida: estas são as únicas que o painel reconhece.
 
     🛡️ **Guarda-se o RESUMO, não a chave** — a mesma decisão de
     `PasswordReset`. O que fica na base de dados (e dentro do ZIP de backup,
