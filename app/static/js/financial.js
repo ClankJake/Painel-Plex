@@ -1,4 +1,4 @@
-import { fetchAPI, showToast, createModal, lerConfiguracaoDoScript } from './utils.js';
+import { fetchAPI, showToast, createModal, lerConfiguracaoDoScript, escapeHTML } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
@@ -35,12 +35,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. FUNÇÕES DE UTILIDADE
     // ==========================================
     
-    const sanitizeHTML = (str) => {
-        if (str == null || str === '') return '';
-        const temp = document.createElement('div');
-        temp.textContent = str;
-        return temp.innerHTML;
-    };
+    // 🐛 Esta era uma CÓPIA local que passava por `textContent`, e por isso
+    // NÃO escapava aspas — e o resultado dela é interpolado DENTRO de
+    // atributos: `title="Cupom Utilizado: ${safeCoupon}"` e
+    // `data-code="${safeCode}"`. Um código de cupão com `"` (a criação só
+    // recusa espaços e ';') fechava o atributo ali: o botão de apagar ficava
+    // com o código truncado — apagava o cupão errado ou nenhum — e o resto do
+    // texto passava a ser marcação. É exatamente o que já tinha acontecido com
+    // os títulos das bibliotecas no `users_modules/ui.js`.
+    //
+    // 📌 Delega no `utils.js`, que escapa `& < > " '`. Uma segunda
+    // implementação diverge da primeira e ninguém dá por isso.
+    const sanitizeHTML = (str) => escapeHTML(str);
 
     const formatCurrency = (value) => {
         return (Number(value) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

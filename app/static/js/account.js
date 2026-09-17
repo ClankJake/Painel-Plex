@@ -4,15 +4,10 @@ import { fetchAPI, showToast, createModal, copyToClipboard, lerConfiguracaoDoScr
 // SEGURANÇA E UTILITÁRIOS
 // ==========================================
 
-/**
- * Sanitiza entradas do utilizador para prevenir XSS (Cross-Site Scripting).
- */
-const sanitizeHTML = (str) => {
-    if (!str) return '';
-    const temp = document.createElement('div');
-    temp.textContent = str;
-    return temp.innerHTML;
-};
+// 🐛 Havia aqui uma CÓPIA local do `sanitizeHTML`, e ela divergia da do
+// `utils.js`: esta passava por `textContent`, que não escapa aspas. A mesma
+// armadilha das três cópias do `formatDateTime`. Quem escapa é o `escapeHTML`
+// partilhado, no momento de ESCREVER HTML — nunca à entrada (ver abaixo).
 
 // ==========================================
 // CONFIGURAÇÃO, ESTADO E CACHE DOM
@@ -716,7 +711,11 @@ const bindPaymentEvents = (providers) => {
 
     // Validar Cupão
     applyCouponBtn?.addEventListener('click', async () => {
-        const code = sanitizeHTML(couponInput.value.trim().toUpperCase());
+        // ⚠️ Sem `sanitizeHTML`: o código vai para uma comparação
+        // (`func.upper(Coupon.code) == ...`), não para HTML. Um cupão
+        // "PROMO&VERAO" — que a criação aceita — era enviado como
+        // "PROMO&AMP;VERAO" e devolvia "cupom inválido" a quem o escreveu certo.
+        const code = couponInput.value.trim().toUpperCase();
         const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
         if (!code || !selectedPlan || !state.currentUser) return;
 
@@ -998,10 +997,23 @@ const initContactForm = (details) => {
                 nacional = nacional.slice(ddi.length);
             }
 
+            // 🐛 Estes três campos iam para o servidor escapados em HTML
+            // (`sanitizeHTML`), e escapar À ENTRADA grava a entidade: quem se
+            // chama "Ana & Bia" ficava com `Ana &amp; Bia` na base de dados, e
+            // com mais um `amp;` a cada gravação. Esse `name` é o `{name}` dos
+            // modelos de notificação, por isso o que chegava ao WhatsApp de
+            // quem paga era literalmente "Ana &amp; Bia".
+            //
+            // ⚠️ Não se perde defesa nenhuma: o painel escapa quando ESCREVE
+            // HTML (`escapeHTML`, que o `test_escape_de_nomes_no_javascript.py`
+            // obriga) e o Jinja escapa sozinho. Nenhum destes três campos chega
+            // a `innerHTML` em lado nenhum — só a `.value` de um `<input>`. A
+            // prova de que o escape era acidental é a página de utilizadores,
+            // que sempre gravou os MESMOS campos em cru.
             const payload = {
-                name: sanitizeHTML(document.getElementById('profileName').value),
-                telegram_user: sanitizeHTML(document.getElementById('profileTelegram').value),
-                discord_user_id: sanitizeHTML(document.getElementById('profileDiscord').value),
+                name: document.getElementById('profileName').value.trim(),
+                telegram_user: document.getElementById('profileTelegram').value.trim(),
+                discord_user_id: document.getElementById('profileDiscord').value.trim(),
                 phone_number: nacional ? `${ddi}${nacional}` : '',
             };
             const result = await fetchAPI(state.urls.updateAccountProfileUrl, 'POST', payload);
@@ -1103,13 +1115,13 @@ const fetchWatchHistory = async (page = 1, search = '') => {
                                     <div class="flex items-center">
                                         <img src="${item.poster_url}" class="w-10 h-14 object-cover rounded shadow-sm mr-4" alt="Poster" onerror="this.src='https://placehold.co/80x120/1F2937/E5E7EB?text=NO+ART'">
                                         <div>
-                                            <div class="text-sm font-bold text-gray-900 dark:text-white">${sanitizeHTML(item.title)}</div>
-                                            <div class="text-xs text-gray-500 dark:text-gray-400">${sanitizeHTML(item.subtitle)}</div>
+                                            <div class="text-sm font-bold text-gray-900 dark:text-white">${escapeHTML(item.title)}</div>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400">${escapeHTML(item.subtitle)}</div>
                                         </div>
                                     </div>
                                 </td>
                                 <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${item.date}</td>
-                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${sanitizeHTML(item.player)}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${escapeHTML(item.player)}</td>
                                 <td class="px-4 py-3 whitespace-nowrap text-sm font-mono font-medium ${item.percent_complete === 100 ? 'text-green-500' : 'text-yellow-600'}">${item.percent_complete}%</td>
                             </tr>
                         `).join('')}
@@ -1230,7 +1242,10 @@ const initGlobalEventListeners = () => {
         searchInput.addEventListener('input', (e) => {
             clearTimeout(state.historySearchTimeout);
             state.historySearchTimeout = setTimeout(() => {
-                fetchWatchHistory(1, sanitizeHTML(e.target.value));
+                // ⚠️ O termo vai num `encodeURIComponent` da query string.
+                // Escapá-lo aqui fazia uma busca por "Tom & Jerry" pedir
+                // "Tom &amp; Jerry" ao servidor, que não devolvia nada.
+                fetchWatchHistory(1, e.target.value);
             }, 500);
         });
     }
