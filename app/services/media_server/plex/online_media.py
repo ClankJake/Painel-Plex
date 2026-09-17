@@ -21,6 +21,19 @@ objeto JSON plano —
 — enquanto o plexapi exige XML com elementos `<optOut>` como filhos diretos da
 raiz. O resultado era uma lista vazia sem erro nenhum, ou seja, a funcionalidade
 a não fazer nada em silêncio.
+
+🐛 **A Plex só devolve as preferências que foram MESMO alteradas.** Uma conta
+acabada de criar — ou uma que nunca abriu estas definições — responde `{}`, e
+essa é a conta de quase toda a gente que acaba de aceitar um convite. A leitura
+era usada como PORTÃO da escrita (`if source is None: continue`), por isso a
+funcionalidade saltava em silêncio exatamente o caso para que existe: quem tem
+as fontes por desligar é precisamente quem nunca lhes tocou. Ficavam dois
+WARNING por cada convite resgatado — um a dizer que a conta não devolveu nada,
+outro a dar as chaves por "inexistentes" — e a TV ao Vivo continuava lá.
+
+Hoje a leitura serve só para SALTAR o que já está em `opt_out`. Uma chave que a
+conta não lista é tentada na mesma: ausente quer dizer "no valor padrão", que é
+o que se quer desligar. Não saber não é saber que não existe.
 """
 
 import json
@@ -178,6 +191,35 @@ def parse_opt_outs(body):
     return list(unique.values())
 
 
+def resposta_sem_preferencias(body):
+    """
+    Diz se um corpo SEM fontes é uma resposta legítima e vazia.
+
+    Serve só para escolher o tom do log: a Plex guarda apenas as preferências
+    que foram alteradas, por isso `{}` (ou `<optOuts/>`) é o estado NORMAL de
+    quem nunca lhes tocou — e gritar sobre isso em cada convite resgatado
+    afogava o aviso que interessa, o da resposta que mudou de forma.
+    """
+    body = (body or "").strip()
+    if not body:
+        return False
+
+    if body[0] in "[{":
+        try:
+            data = json.loads(body)
+        except ValueError:
+            return False
+        return isinstance(data, (dict, list)) and not data
+
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        return False
+    # Uma raiz sem filhos é uma lista vazia; com filhos e sem `key` nenhum, é
+    # uma forma que o leitor não entende — e essa tem de dar nas vistas.
+    return len(list(root)) == 0
+
+
 class PlexOnlineMediaManager:
     """
     Lê e aplica as preferências de Fontes de Mídia Online.
@@ -223,15 +265,23 @@ class PlexOnlineMediaManager:
 
         sources = parse_opt_outs(response.text)
         if not sources:
-            # Sem isto, uma mudança de forma da resposta seria indistinguível de
-            # uma conta genuinamente sem fontes. O corpo cru é o que permite
-            # perceber o que a Plex passou a devolver — e o nome da conta diz se
-            # o problema é do administrador ou de quem está a aceitar o convite.
             username = getattr(account, "username", None) or "?"
-            logger.warning(
-                f"A Plex não devolveu nenhuma fonte de mídia online para '{username}'. "
-                f"Resposta crua (até 500 caracteres): {response.text[:500]!r}"
-            )
+            if resposta_sem_preferencias(response.text):
+                # Caso normal, e o mais comum de todos no aceite de um convite:
+                # a conta ainda não tem nada gravado. Não impede desativar nada.
+                logger.debug(
+                    f"A conta de '{username}' ainda não tem preferências de mídia online "
+                    f"gravadas na Plex — todas as fontes estão no valor padrão."
+                )
+            else:
+                # Aqui sim: o corpo não é reconhecível. Sem isto, uma mudança de
+                # forma da resposta passaria por uma conta sem fontes. O corpo
+                # cru é o que permite perceber o que a Plex passou a devolver.
+                logger.warning(
+                    f"A Plex devolveu uma resposta de fontes de mídia online que o painel "
+                    f"não sabe ler, para '{username}'. "
+                    f"Resposta crua (até 500 caracteres): {response.text[:500]!r}"
+                )
         return sources
 
     def _disable_source(self, account, key):
@@ -259,6 +309,12 @@ class PlexOnlineMediaManager:
         `account_read` é False quando a conta não respondeu ou não devolveu nada:
         nesse caso a lista mostrada é apenas o catálogo conhecido e pode não
         corresponder à realidade — a interface tem de o dizer ao admin.
+
+        🐛 O que a conta devolve são as preferências JÁ ALTERADAS, não o catálogo
+        do que existe: um admin que só tenha mexido no `scrobbling` recebe uma
+        chave. Enquanto a lista era só essa, as restantes nove sumiam da página e
+        ele não tinha como marcar a TV ao Vivo. Por isso o catálogo conhecido
+        entra sempre, e a conta acrescenta-lhe o que a Plex tenha de novo.
         """
         config = load_or_create_config()
         selected = sanitize_source_keys(config.get("ONLINE_MEDIA_SOURCES_TO_DISABLE"))
@@ -270,9 +326,12 @@ class PlexOnlineMediaManager:
             except Exception as e:
                 logger.warning(f"Não foi possível listar as fontes de mídia online do Plex: {e}")
 
-        # Sem resposta da conta não sabemos o que existe: nada é marcado como
-        # indisponível, para não acusar falsamente uma chave perfeitamente boa.
-        keys = list(account_keys) if account_keys else list(KNOWN_SOURCE_KEYS)
+        # O catálogo conhecido é a base — a conta não lista o que nunca foi
+        # alterado —, e o que a conta devolver de novo junta-se-lhe.
+        keys = list(KNOWN_SOURCE_KEYS)
+        for key in account_keys:
+            if key not in keys:
+                keys.append(key)
 
         # Uma fonte já escolhida pelo admin nunca desaparece da lista, mesmo que
         # a Plex deixe de a devolver — caso contrário sumia da interface e o
@@ -290,7 +349,11 @@ class PlexOnlineMediaManager:
                     "key": key,
                     "label": source_label(key),
                     "selected": key in selected,
-                    "available": (key in account_keys) if account_keys else True,
+                    # Só se marca como indisponível o que NADA corrobora: nem a
+                    # conta, nem o catálogo conhecido. Não estar na resposta da
+                    # conta não quer dizer que não exista — quer dizer que
+                    # ninguém lhe tocou.
+                    "available": key in account_keys or key in KNOWN_SOURCE_KEYS,
                 }
                 for key in keys
             ],
@@ -338,11 +401,12 @@ class PlexOnlineMediaManager:
         by_key = {s["key"]: s for s in sources}
         disabled, already, failed = [], [], []
 
+        # 🐛 A leitura NÃO é um portão para a escrita: ela só diz o que já está
+        # desligado, para não repetir o pedido. Uma chave que a conta não lista
+        # está no valor padrão — ativa —, que é exatamente o que se quer mudar.
         for key in wanted:
             source = by_key.get(key)
-            if source is None:
-                continue
-            if source.get("value") == OPT_OUT:
+            if source is not None and source.get("value") == OPT_OUT:
                 already.append(key)
                 continue
             try:
@@ -353,13 +417,16 @@ class PlexOnlineMediaManager:
                 logger.warning(f"Falha ao desativar '{key}' para '{username}': {e}")
 
         missing = [k for k in wanted if k not in by_key]
-        if missing:
-            # Uma chave configurada que a conta não reconhece não desativa nada.
+        # Uma chave que a conta não listou E que a Plex recusou é a assinatura de
+        # uma fonte renomeada — o único caso em que há mesmo algo a rever. Uma
+        # chave não listada que a Plex aceitou existia; não há nada a dizer.
+        renomeadas = [k for k in missing if k in failed]
+        if renomeadas:
             # O que a conta devolveu vai junto: é a única forma de o admin saber
             # qual é o nome novo da fonte que quer desligar.
             logger.warning(
-                f"Fontes de mídia online configuradas mas inexistentes na conta de "
-                f"'{username}': {missing}. A conta devolveu: {sorted(by_key) or 'nada'}. "
+                f"A Plex não reconheceu estas fontes de mídia online na conta de "
+                f"'{username}': {renomeadas}. A conta devolveu: {sorted(by_key) or 'nada'}. "
                 f"Reveja a seleção em Configurações > Conexões."
             )
 
@@ -377,5 +444,7 @@ class PlexOnlineMediaManager:
             "disabled": disabled,
             "already_disabled": already,
             "failed": failed,
+            # `missing` são as pedidas que a conta não listou. São tentadas na
+            # mesma — ficam aqui só para quem chama poder distinguir os casos.
             "missing": missing,
         }
