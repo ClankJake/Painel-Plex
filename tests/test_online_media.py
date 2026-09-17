@@ -7,6 +7,7 @@ from app.services.media_server.plex import online_media
 from app.services.media_server.plex.online_media import (
     PlexOnlineMediaManager,
     parse_opt_outs,
+    resposta_sem_preferencias,
     sanitize_source_keys,
 )
 
@@ -165,6 +166,29 @@ class TestLeituraDaResposta:
         assert parse_opt_outs(body) == [{"key": "x", "value": "opt_in"}]
 
 
+class TestRespostaSemPreferencias:
+    """Distinguir "a conta não tem nada gravado" de "não sei ler isto"."""
+
+    def test_json_vazio_e_uma_conta_sem_preferencias(self):
+        # O caso real: uma conta acabada de criar responde exatamente isto.
+        assert resposta_sem_preferencias("{}") is True
+        assert resposta_sem_preferencias("[]") is True
+        assert resposta_sem_preferencias("  {}  ") is True
+
+    def test_xml_sem_filhos_e_uma_conta_sem_preferencias(self):
+        assert resposta_sem_preferencias("<optOuts/>") is True
+
+    def test_corpo_ilegivel_nao_conta_como_vazio(self):
+        assert resposta_sem_preferencias("") is False
+        assert resposta_sem_preferencias("isto não é nem XML nem JSON") is False
+        assert resposta_sem_preferencias("{isto tampouco}") is False
+
+    def test_forma_desconhecida_com_conteudo_nao_conta_como_vazio(self):
+        # XML válido, com filhos, mas sem uma única chave: a resposta mudou de
+        # forma e é disso que o painel tem mesmo de se queixar.
+        assert resposta_sem_preferencias("<optOuts><algo assim='1'/></optOuts>") is False
+
+
 class TestPedidoHttp:
     def test_usa_o_uuid_e_o_token_da_conta(self):
         sessao = FakeSession(FakeResponse(XML_SOURCES))
@@ -219,10 +243,9 @@ class TestCatalogo:
 
         assert catalogo["account_read"] is True
         # As conhecidas vêm primeiro, na ordem do catálogo; as novas ficam no fim.
-        assert [i["key"] for i in catalogo["sources"]] == [
-            "tv.plex.provider.vod",
-            "tv.plex.provider.novidade",
-        ]
+        chaves = [i["key"] for i in catalogo["sources"]]
+        assert chaves[: len(online_media.KNOWN_SOURCE_KEYS)] == online_media.KNOWN_SOURCE_KEYS
+        assert chaves[-1] == "tv.plex.provider.novidade"
 
     def test_uma_fonte_ja_escolhida_nunca_desaparece_da_lista(self, app_context, config_file):
         config_file(ONLINE_MEDIA_SOURCES_TO_DISABLE=["tv.plex.provider.antiga"])
@@ -233,6 +256,23 @@ class TestCatalogo:
         assert catalogo["tv.plex.provider.antiga"]["selected"] is True
         assert catalogo["tv.plex.provider.antiga"]["available"] is False
         assert catalogo["tv.plex.provider.vod"]["available"] is True
+
+    def test_o_catalogo_conhecido_sobrevive_a_uma_conta_quase_virgem(
+        self, app_context, config_file
+    ):
+        # 🐛 A conta só devolve o que já foi alterado. Enquanto a lista era essa
+        # resposta, um admin que só tivesse mexido no scrobbling perdia da
+        # página as nove fontes que ainda não tinha tocado — a TV ao Vivo entre
+        # elas — e ficava sem forma de as marcar.
+        config_file(ONLINE_MEDIA_SOURCES_TO_DISABLE=[])
+        gestor = manager_with(
+            FakeSession(FakeResponse('{"scrobbling": "opt_in"}')), FakeAccount()
+        )
+
+        catalogo = {i["key"]: i for i in gestor.get_catalog()["sources"]}
+
+        assert "tv.plex.provider.epg" in catalogo
+        assert catalogo["tv.plex.provider.epg"]["available"] is True
 
     def test_conta_que_nao_devolve_nada_e_sinalizada(self, app_context, config_file):
         # O caso real observado em produção: a Plex responde 200 mas sem fontes.
@@ -324,15 +364,57 @@ class TestAplicacaoNoAceite:
             "tv.plex.provider.vod",
         ]
 
-    def test_chave_inexistente_na_conta_e_reportada(self, config_file):
+    def test_conta_sem_preferencias_gravadas_e_desativada_na_mesma(self, config_file):
+        # 🐛 O bug que isto fecha: a Plex só devolve o que já foi alterado, por
+        # isso quem acaba de criar a conta responde `{}` — e era precisamente
+        # essa pessoa que ficava com a TV ao Vivo ligada, em silêncio.
+        self._config(config_file, ["tv.plex.provider.vod", "tv.plex.provider.epg"])
+        sessao = FakeSession(FakeResponse("{}"))
+
+        resultado = manager_with(sessao).apply_to_account(FakeAccount())
+
+        assert resultado["success"] is True
+        assert resultado["disabled"] == ["tv.plex.provider.vod", "tv.plex.provider.epg"]
+        assert [p["params"]["key"] for p in sessao.posts] == [
+            "tv.plex.provider.vod",
+            "tv.plex.provider.epg",
+        ]
+
+    def test_chave_ausente_da_listagem_e_tentada_na_mesma(self, config_file):
+        # A conta listou outras fontes, mas não esta: não ter sido alterada não
+        # é o mesmo que não existir, por isso o pedido é feito à mesma.
         self._config(config_file, ["tv.plex.provider.renomeada"])
         sessao = FakeSession(FakeResponse(XML_SOURCES))
 
         resultado = manager_with(sessao).apply_to_account(FakeAccount())
 
         assert resultado["missing"] == ["tv.plex.provider.renomeada"]
+        assert resultado["disabled"] == ["tv.plex.provider.renomeada"]
+        assert [p["params"]["key"] for p in sessao.posts] == ["tv.plex.provider.renomeada"]
+
+    def test_chave_ausente_que_a_plex_recusa_fica_em_falha(self, config_file):
+        # A assinatura de uma fonte renomeada: não está na conta E é recusada.
+        self._config(config_file, ["tv.plex.provider.renomeada"])
+        sessao = FakeSession(
+            FakeResponse(XML_SOURCES), post_fails=["tv.plex.provider.renomeada"]
+        )
+
+        resultado = manager_with(sessao).apply_to_account(FakeAccount())
+
+        assert resultado["success"] is False
+        assert resultado["missing"] == ["tv.plex.provider.renomeada"]
+        assert resultado["failed"] == ["tv.plex.provider.renomeada"]
         assert resultado["disabled"] == []
-        assert sessao.posts == []
+
+    def test_a_leitura_so_evita_repetir_o_que_ja_esta_desligado(self, config_file):
+        # O único papel que a leitura mantém: poupar o pedido já feito.
+        self._config(config_file, ["tv.plex.provider.music", "tv.plex.provider.vod"])
+        sessao = FakeSession(FakeResponse(XML_SOURCES))
+
+        resultado = manager_with(sessao).apply_to_account(FakeAccount())
+
+        assert resultado["already_disabled"] == ["tv.plex.provider.music"]
+        assert resultado["disabled"] == ["tv.plex.provider.vod"]
 
     def test_erro_de_leitura_devolve_falha_sem_levantar_excecao(self, config_file, app_context):
         self._config(config_file, ["tv.plex.provider.vod"])
