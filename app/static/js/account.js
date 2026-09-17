@@ -22,6 +22,7 @@ const state = {
     currentUser: null,
     urls: {},
     i18n: {},
+    config: {},
     pollingIntervalId: null,
     validatedCouponCode: null,
     historySearchTimeout: null,
@@ -57,6 +58,7 @@ const initializeConfigAndDOM = () => {
     const configuracao = lerConfiguracaoDoScript('account-script');
     Object.assign(state.i18n, configuracao.i18n);
     Object.assign(state.urls, configuracao.urls);
+    Object.assign(state.config, configuracao.config);
 };
 
 // ==========================================
@@ -868,36 +870,112 @@ const startPaymentPolling = (txid) => {
 // FORMULÁRIO DE CONTACTOS
 // ==========================================
 
+// O painel guarda o telefone **só com dígitos** (`_normalizar_telefone`, em
+// `models.py`, e `validar_telefone`, nos schemas): o que está na base de dados
+// é `5521999999999`, sem o `+` e sem separadores.
+//
+// 🐛 REGRESSÃO REAL: esta caixa comparava o número guardado com o código do
+// país TAL COMO ele aparece na lista — `'5521999999999'.startsWith('+55')` —,
+// que é sempre falso porque o `+` nunca chega a ser gravado. Nenhum país
+// correspondia, e o ramo de recurso punha o número INTEIRO dentro do campo
+// nacional: quem abria a "Minha Conta" via `5521999999999` ao lado de uma
+// caixa a dizer "Brasil (+55)", com o DDI duas vezes à vista.
+//
+// E não ficava pela aparência: gravar outra vez juntava o `+55` da caixa ao
+// que estava no campo e escrevia `555521999999999` no perfil — 15 dígitos,
+// portanto dentro do limite do `validar_telefone`, aceite sem uma queixa. O
+// destinatário do WhatsApp é `{phone_number}@s.whatsapp.net`, por isso a
+// pessoa deixava de receber qualquer aviso de vencimento, e o painel
+// continuava a dizer que tinha enviado.
+const soDigitos = (valor) => String(valor ?? '').replace(/\D/g, '');
+
+// ⚠️ Nem todo o número guardado TEM código de país: o campo do administrador
+// (na página de utilizadores) é uma caixa de texto solta, e o `normalize_phone`
+// do `notifier_manager` só acrescenta o DDI no momento do ENVIO — não reescreve
+// o perfil. Por isso `11999999999` está lá tal e qual, e cortar-lhe os
+// primeiros dígitos por parecerem um código de país ("+1") daria um número
+// truncado com a bandeira errada.
+//
+// A saída é a mesma heurística conservadora do backend, e de propósito: um
+// número com o formato NACIONAL esperado não leva DDI nenhum à frente. Para o
+// Brasil (55) são 10 dígitos (fixo com DDD) ou 11 (telemóvel, sempre com o 9 na
+// terceira posição), com o DDD entre 11 e 99.
+const temFormatoNacional = (digitos, ddiPadrao) => {
+    if (!ddiPadrao) return false;
+    if (digitos.length !== 10 && digitos.length !== 11) return false;
+    const ddd = Number(digitos.slice(0, 2));
+    if (!(ddd >= 11 && ddd <= 99)) return false;
+    if (ddiPadrao === '55' && digitos.length === 11 && digitos[2] !== '9') return false;
+    return true;
+};
+
+/**
+ * Separa o número guardado em (código do país, parte nacional), para os dois
+ * campos que a pessoa vê. Devolve sempre os dois — a caixa nunca fica por
+ * escolher.
+ */
+const separarCodigoDoPais = (numeroGuardado, codigosConhecidos, ddiPadrao) => {
+    const digitos = soDigitos(numeroGuardado);
+    if (!digitos) return { codigo: ddiPadrao, numero: '' };
+
+    if (temFormatoNacional(digitos, ddiPadrao)) {
+        return { codigo: ddiPadrao, numero: digitos };
+    }
+
+    // ⚠️ Do prefixo MAIS LONGO para o mais curto: `+351` tem de ser testado
+    // antes de `+35` (que não existe na lista, mas `+1` e `+44` fazem o mesmo
+    // género de estrago se a ordem for a da lista).
+    const candidatos = codigosConhecidos.slice().sort((a, b) => b.length - a.length);
+    for (const ddi of candidatos) {
+        if (digitos.startsWith(ddi) && digitos.length > ddi.length) {
+            return { codigo: ddi, numero: digitos.slice(ddi.length) };
+        }
+    }
+
+    // Não reconhecido: fica inteiro no campo, com o DDI padrão à frente. É o
+    // comportamento menos destrutivo — não se corta o que não se percebeu.
+    return { codigo: ddiPadrao, numero: digitos };
+};
+
 const initContactForm = (details) => {
     if (!document.getElementById('contact-details-form')) return;
 
     const countries = [
-        { name: 'Brasil', code: '+55' }, { name: 'Portugal', code: '+351' },
-        { name: 'Angola', code: '+244' }, { name: 'Moçambique', code: '+258' },
-        { name: 'Cabo Verde', code: '+238' }, { name: 'EUA/Canadá', code: '+1' },
-        { name: 'Reino Unido', code: '+44' }, { name: 'Espanha', code: '+34' },
-        { name: 'França', code: '+33' }, { name: 'Alemanha', code: '+49' }
+        { name: 'Brasil', code: '55' }, { name: 'Portugal', code: '351' },
+        { name: 'Angola', code: '244' }, { name: 'Moçambique', code: '258' },
+        { name: 'Cabo Verde', code: '238' }, { name: 'EUA/Canadá', code: '1' },
+        { name: 'Reino Unido', code: '44' }, { name: 'Espanha', code: '34' },
+        { name: 'França', code: '33' }, { name: 'Alemanha', code: '49' }
     ];
 
+    // O padrão é o das Configurações de WhatsApp (`WHATSAPP_DEFAULT_COUNTRY_CODE`),
+    // que é o mesmo que o envio usa — duas respostas diferentes para "de que país
+    // é este número" no mesmo painel seria pedir outro bug como este.
+    const ddiPadrao = soDigitos(state.config.defaultCountryCode) || '55';
+
+    // ⚠️ E se ele não estiver na lista curta acima, entra: sem isto o
+    // `select.value = ...` não encontra a opção, FALHA EM SILÊNCIO e a caixa
+    // fica no primeiro país — o número gravado ganhava o DDI de outro.
+    if (!countries.some(c => c.code === ddiPadrao)) {
+        countries.unshift({ name: `+${ddiPadrao}`, code: ddiPadrao });
+    }
+
     const select = document.getElementById('countryCode');
-    select.innerHTML = countries.map(c => `<option value="${c.code}">${c.name} (${c.code})</option>`).join('');
+    select.innerHTML = countries.map(
+        c => `<option value="${c.code}">${escapeHTML(c.name)} (+${c.code})</option>`
+    ).join('');
+
+    const phoneInput = document.getElementById('profilePhone');
+    const codigosConhecidos = countries.map(c => c.code);
 
     if (details) {
         document.getElementById('profileName').value = details.name || '';
         document.getElementById('profileTelegram').value = details.telegram_user || '';
         document.getElementById('profileDiscord').value = details.discord_user_id || '';
-        
-        const fullPhone = details.phone_number || '';
-        const phoneInput = document.getElementById('profilePhone');
-        
-        const match = countries.slice().sort((a, b) => b.code.length - a.code.length).find(c => fullPhone.startsWith(c.code));
-        if (match) {
-            select.value = match.code;
-            phoneInput.value = fullPhone.substring(match.code.length);
-        } else {
-            phoneInput.value = fullPhone.replace(/\D/g, '');
-            select.value = '+55'; // Default fallback
-        }
+
+        const separado = separarCodigoDoPais(details.phone_number, codigosConhecidos, ddiPadrao);
+        select.value = separado.codigo;
+        phoneInput.value = separado.numero;
     }
 
     document.getElementById('saveContactDetails').addEventListener('click', async (e) => {
@@ -907,15 +985,31 @@ const initContactForm = (details) => {
         btn.textContent = state.i18n.saving;
 
         try {
-            const phone = document.getElementById('profilePhone').value.replace(/\D/g, '');
+            const ddi = soDigitos(select.value) || ddiPadrao;
+            let nacional = soDigitos(phoneInput.value);
+
+            // 🐛 Escrever o número já com o DDI não pode dar o DDI a dobrar.
+            // Era isto que acontecia a quem gravasse a conta com o campo como
+            // esta página o mostrava antes da correção — e o resultado passava
+            // no limite de 15 dígitos, portanto sem erro nenhum a avisar.
+            // ⚠️ `temFormatoNacional` é o travão: um telemóvel de Santa Maria
+            // (`55999999999`) começa por "55" e NÃO é um DDI a mais.
+            if (ddi && nacional.startsWith(ddi) && !temFormatoNacional(nacional, ddi)) {
+                nacional = nacional.slice(ddi.length);
+            }
+
             const payload = {
                 name: sanitizeHTML(document.getElementById('profileName').value),
                 telegram_user: sanitizeHTML(document.getElementById('profileTelegram').value),
                 discord_user_id: sanitizeHTML(document.getElementById('profileDiscord').value),
-                phone_number: phone ? `${document.getElementById('countryCode').value}${phone}` : '',
+                phone_number: nacional ? `${ddi}${nacional}` : '',
             };
             const result = await fetchAPI(state.urls.updateAccountProfileUrl, 'POST', payload);
             showToast(result.message, result.success ? 'success' : 'error');
+            // O campo passa a mostrar o que ficou GRAVADO: se o DDI a dobrar foi
+            // desfeito acima, a caixa tem de o refletir, ou a gravação seguinte
+            // parte outra vez do texto antigo.
+            phoneInput.value = nacional;
         } catch (error) {
             showToast(error.message, 'error');
         } finally {
