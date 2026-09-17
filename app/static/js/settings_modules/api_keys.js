@@ -20,6 +20,17 @@ function lista() {
     return document.getElementById('apiKeysList');
 }
 
+/**
+ * 🐛 A caixa da chave nova tem um contentor SÓ DELA, e não é um pormenor de
+ * arrumação: `carregarChavesDeApi()` reescreve o `innerHTML` do `#apiKeysList`,
+ * e a criação recarrega a lista logo a seguir a mostrar a chave. Enquanto a
+ * caixa era acrescentada lá dentro, a recarga apagava-a — a chave aparecia e
+ * desaparecia no mesmo instante, e ela só é mostrada UMA vez.
+ */
+function caixaDaChaveNova() {
+    return document.getElementById('chaveDeApiNova');
+}
+
 function cartao(chave) {
     const revogada = Boolean(chave.revoked_at);
 
@@ -103,19 +114,26 @@ async function criar() {
         const resposta = await fetchAPI(urls.apiKeys, 'POST', { nome, escopos });
         if (campoNome) campoNome.value = '';
 
-        // 🛡️ A ÚNICA vez que a chave existe fora de quem a copiar. Fica no
-        // ecrã até o administrador sair da página, de propósito: um toast que
-        // desaparece ao fim de três segundos perdia-a para sempre.
-        mostrarAChaveNova(resposta.key);
+        // A lista é recarregada PRIMEIRO: ela reescreve o contentor dela e nada
+        // do que corra a seguir pode ser apagado por essa reescrita.
         await carregarChavesDeApi();
+
+        // 🛡️ A ÚNICA vez que a chave existe fora de quem a copiar. Fica no
+        // ecrã até alguém a fechar, de propósito: um toast que desaparece ao
+        // fim de três segundos perdia-a para sempre.
+        mostrarAChaveNova(resposta.key);
     } catch (erro) {
         showToast(erro.message, 'error');
     }
 }
 
 function mostrarAChaveNova(chave) {
-    const alvo = lista();
+    const alvo = caixaDaChaveNova();
     if (!alvo) return;
+
+    // Só a última criada fica à vista — criar outra substitui a caixa em vez
+    // de empilhar chaves antigas que ninguém mais vai copiar.
+    alvo.innerHTML = '';
 
     const caixa = document.createElement('div');
     caixa.className = 'p-3 rounded-lg border border-green-300 bg-green-50 dark:bg-green-900/20 dark:border-green-800/60 space-y-2';
@@ -123,8 +141,9 @@ function mostrarAChaveNova(chave) {
         <p class="text-xs font-semibold text-green-800 dark:text-green-400">${escapeHTML(i18n.apiKeyCreated || 'Copie a chave agora — ela não volta a ser mostrada:')}</p>
         <div class="flex gap-2">
             <input type="text" readonly class="flex-1 min-w-0 p-2 text-xs font-mono rounded border border-green-300 bg-white dark:bg-gray-900 dark:border-green-800 dark:text-white">
-            <button type="button" class="btn bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 text-xs font-semibold flex-shrink-0"></button>
-        </div>`;
+            <button type="button" data-copiar class="btn bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 text-xs font-semibold flex-shrink-0"></button>
+        </div>
+        <button type="button" data-fechar class="text-xs text-green-800/70 hover:text-green-900 dark:text-green-400/70 dark:hover:text-green-300 underline"></button>`;
 
     // ⚠️ O valor entra pela PROPRIEDADE e não pelo HTML: a chave é gerada pelo
     // servidor, mas interpolá-la num atributo é a mesma armadilha de sempre e
@@ -132,15 +151,21 @@ function mostrarAChaveNova(chave) {
     const campo = caixa.querySelector('input');
     campo.value = chave;
 
-    const botao = caixa.querySelector('button');
-    botao.textContent = i18n.copy || 'Copiar';
+    const botao = caixa.querySelector('[data-copiar]');
+    botao.textContent = i18n.apiKeyCopy || 'Copiar';
     botao.onclick = async () => {
         const certo = await copyToClipboard(chave);
         showToast(certo ? (i18n.apiKeyCopied || 'Chave copiada!') : (i18n.errorGeneric || 'Erro'),
                   certo ? 'success' : 'error');
     };
 
-    alvo.prepend(caixa);
+    // Fechar é uma decisão de quem copiou, nunca do painel: enquanto ninguém
+    // clicar aqui, a caixa fica onde está.
+    const fechar = caixa.querySelector('[data-fechar]');
+    fechar.textContent = i18n.apiKeyDismiss || 'Já copiei, pode fechar';
+    fechar.onclick = () => { alvo.innerHTML = ''; };
+
+    alvo.appendChild(caixa);
     campo.select();
 }
 
