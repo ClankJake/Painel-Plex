@@ -40,7 +40,15 @@ class TestCriacaoInicial:
         config = config_module.load_or_create_config()
 
         assert len(config["SECRET_KEY"]) >= 32
-        assert len(config["INTERNAL_TRIGGER_KEY"]) >= 32
+
+    def test_nao_nasce_com_a_chave_unica_das_integracoes(self, config_env):
+        """
+        A `INTERNAL_TRIGGER_KEY` valia para todos os escopos e era a mesma para
+        todas as integrações. Foi substituída pelas chaves por integração, que
+        têm nome, permissões e revogação individual — e uma instalação nova não
+        tem razão nenhuma para nascer com a antiga.
+        """
+        assert "INTERNAL_TRIGGER_KEY" not in config_module.load_or_create_config()
 
     def test_cada_instalacao_recebe_uma_chave_diferente(self, config_env, tmp_path, monkeypatch):
         primeira = config_module.load_or_create_config()["SECRET_KEY"]

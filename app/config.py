@@ -35,7 +35,6 @@ def load_or_create_config():
             "IS_CONFIGURED": False,
             # Se a variável de ambiente existir, usa-a; senão, gera uma nova chave segura.
             "SECRET_KEY": secret_key_from_env or secrets.token_hex(16),
-            "INTERNAL_TRIGGER_KEY": secrets.token_hex(32),
             "APP_TITLE": "Painel Plex",
             "APP_BASE_URL": "",
             "LOG_LEVEL": "INFO",
@@ -272,13 +271,33 @@ def load_or_create_config():
                     config[key] = value
                     config_was_modified = True
 
+            def _remover_obsoleta(key):
+                """Apaga do config.json uma chave que o painel deixou de usar.
+
+                🛡️ Para uma CREDENCIAL isto não é arrumação. Enquanto a
+                `INTERNAL_TRIGGER_KEY` lá ficasse, era um segredo que já não
+                abre porta nenhuma a ocupar um ficheiro que vai inteiro dentro
+                do ZIP de backup — e que a página das Configurações tem de se
+                lembrar de não deixar descer para o navegador. O que não existe
+                não precisa de ser protegido.
+                """
+                nonlocal config_was_modified
+                if key in config:
+                    del config[key]
+                    config_was_modified = True
+
+            # A chave única das integrações. Foi substituída pelas chaves por
+            # integração (`app/services/api_keys.py`), que têm nome, permissões
+            # e revogação individual; esta valia para tudo e não havia forma de
+            # saber quem a estava a usar.
+            _remover_obsoleta("INTERNAL_TRIGGER_KEY")
+
             _set_default("ADMIN_USER_ID", "")
             # Instalações anteriores à camada de servidores de média não têm esta
             # chave: todas elas são, por definição, instalações Plex.
             _set_default("MEDIA_SERVER_TYPE", "plex")
             _set_default("JELLYFIN_URL", "")
             _set_default("JELLYFIN_API_KEY", "")
-            _set_default("INTERNAL_TRIGGER_KEY", secrets.token_hex(32))
             _set_default("APP_BASE_URL", "")
             _set_default("LOG_LEVEL", "INFO")
             _set_default("LOG_FILE", os.path.join(CONFIG_DIR, "app.log"))

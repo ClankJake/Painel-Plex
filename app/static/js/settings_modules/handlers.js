@@ -11,7 +11,7 @@ import { initGamificationSubtabs, addLevelRow, collectLevelsFromEditor, collectR
 import { collectOnlineMediaSources } from './online_media.js';
 import { initAuditListeners } from './audit.js';
 import { initApiKeys } from './api_keys.js';
-import { showToast, fetchAPI, setButtonLoading, restoreButton as restoreButtonState, escapeHTML, copyToClipboard } from '../utils.js';
+import { showToast, fetchAPI, setButtonLoading, restoreButton as restoreButtonState, escapeHTML } from '../utils.js';
 import { aguardarReinicio } from '../reinicio.js';
 
 let pinCheckInterval = null;
@@ -151,75 +151,6 @@ async function handleTestPush() {
         showToast(result.message, result.success ? 'success' : 'error');
     } catch (error) {
         showToast(error.message || i18n.unknownError, 'error');
-    } finally {
-        restoreButtonState(btn);
-    }
-}
-
-// --- CHAVE DE API (INTEGRAÇÕES / BOTS) ---
-
-// Guardada apenas em memória enquanto a página está aberta. A chave NÃO vem no
-// payload geral de configurações (é removida no servidor por segurança), por isso
-// é pedida numa rota própria só quando o administrador precisa dela.
-let cachedApiKey = null;
-const API_KEY_MASK = '••••••••••••••••••••••••';
-
-async function fetchApiKey() {
-    if (cachedApiKey) return cachedApiKey;
-    const result = await fetchAPI(urls.apiKey);
-    cachedApiKey = result.api_key;
-    return cachedApiKey;
-}
-
-async function handleToggleApiKey() {
-    const field = document.getElementById('api-key-field');
-    if (!field) return;
-
-    // Alterna entre a máscara e o valor real, buscando-o só na primeira vez.
-    if (field.type === 'password') {
-        try {
-            field.value = await fetchApiKey();
-            field.type = 'text';
-        } catch (error) {
-            showToast(`${i18n.errorGeneric || 'Erro'}: ${error.message}`, 'error');
-        }
-    } else {
-        field.type = 'password';
-        field.value = API_KEY_MASK;
-    }
-}
-
-async function handleCopyApiKey() {
-    try {
-        const key = await fetchApiKey();
-        const ok = await copyToClipboard(key);
-        showToast(ok ? (i18n.apiKeyCopied || 'Chave copiada!') : (i18n.errorGeneric || 'Erro'), ok ? 'success' : 'error');
-    } catch (error) {
-        showToast(`${i18n.errorGeneric || 'Erro'}: ${error.message}`, 'error');
-    }
-}
-
-async function handleRegenerateApiKey() {
-    // ⚠️ Ação destrutiva para integrações: pede confirmação explícita.
-    if (!confirm(i18n.confirmRegenerateKey || 'Gerar uma nova chave invalida a atual. Continuar?')) return;
-
-    const btn = document.getElementById('regenerate-api-key');
-    setButtonLoading(btn, i18n.generating || 'Gerando...');
-
-    try {
-        const result = await fetchAPI(urls.apiKeyRegenerate, 'POST');
-        cachedApiKey = result.api_key;
-
-        // Mostra logo a chave nova: o administrador precisa dela imediatamente
-        // para atualizar os bots que acabaram de deixar de funcionar.
-        const field = document.getElementById('api-key-field');
-        if (field) {
-            field.value = result.api_key;
-            field.type = 'text';
-        }
-        showToast(result.message || 'OK', 'success');
-    } catch (error) {
-        showToast(`${i18n.errorGeneric || 'Erro'}: ${error.message}`, 'error');
     } finally {
         restoreButtonState(btn);
     }
@@ -647,12 +578,9 @@ export function initializeEventListeners() {
         syncWhatsappProviderFields();
     }
 
-    // --- Chave de API ---
-    document.getElementById('toggle-api-key')?.addEventListener('click', handleToggleApiKey);
-    document.getElementById('copy-api-key')?.addEventListener('click', handleCopyApiKey);
-    document.getElementById('regenerate-api-key')?.addEventListener('click', handleRegenerateApiKey);
-    // As chaves por integração: listadas no arranque, porque o cartão está
-    // visível na aba Geral e uma lista vazia não diz se ainda não carregou.
+    // --- Chaves de API ---
+    // Listadas no arranque, porque o cartão está visível na aba Geral e uma
+    // lista vazia não diz se ainda não carregou.
     initApiKeys();
 
     // --- Auditoria ---

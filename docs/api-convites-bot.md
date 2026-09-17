@@ -24,52 +24,46 @@ ou, em alternativa:
 Authorization: Bearer SUA_CHAVE
 ```
 
-### Uma chave por integração (recomendado)
+### Criar uma chave
 
-Em **Configurações → Geral → Chaves por integração**, crie uma chave com um
-nome e as permissões que ela precisa:
+Em **Configurações → Geral → Chaves por integração**, dê um nome à chave e
+marque as permissões que ela precisa:
 
 | Permissão | O que abre |
 |---|---|
 | `convites` | Criar, consultar e revogar convites (as rotas deste documento). |
 | `webhooks` | Receber o webhook do Overseerr/Jellyseerr. |
 
-Assim, um bot de Telegram não pode aceitar webhooks em nome do painel, e
-revogar a chave de um bot comprometido não derruba as outras integrações.
+Clique em **Criar Chave**. Ela aparece numa caixa verde, com um botão de
+copiar; a caixa fica no ecrã até você a fechar.
 
 > 🛡️ **A chave é mostrada uma única vez, ao ser criada.** O painel guarda
 > apenas um resumo dela e não a consegue mostrar de novo — se a perder, revogue
 > essa e crie outra.
 
-### A chave única (o modo antigo)
+Uma chave por integração significa que um bot de Telegram não pode aceitar
+webhooks em nome do painel, e que revogar a chave de um bot comprometido não
+derruba as outras integrações. Cada linha da lista mostra o nome, as permissões
+e quando a chave foi usada pela última vez — que é como se descobre qual delas
+já ninguém usa.
 
-Continua a funcionar, e serve para tudo. É a que aparece em **Configurações →
-Geral → Chave de API (Integrações)**.
+### Revogar uma chave
 
-### Onde encontrar a chave
+Na mesma lista, o botão **Revogar** desliga a chave imediatamente: a integração
+que a usa passa a receber `401`. A linha fica na lista, marcada como revogada —
+"esta chave foi revogada em março" é uma resposta, "esta chave nunca existiu"
+não é.
 
-No painel, vá a **Configurações → Geral → Chave de API (Integrações)**:
+> ⚠️ **A chave única acabou.** Até à versão anterior existia também uma
+> **Chave de API (Integrações)** — uma só, que servia para tudo. Ela foi
+> removida: valia para todos os escopos, era a mesma para todas as integrações,
+> e regenerá-la porque um bot tinha sido comprometido derrubava também o Seerr.
+> Se os seus bots ainda a usam, crie uma chave com a permissão `convites` e
+> troque-a; se o Seerr a usa, crie outra com `webhooks`.
 
-1. Clique no ícone do **olho** para revelar a chave
-2. Use o botão **Copiar**
-
-A chave é gerada automaticamente na primeira execução. Se a sua instalação for
-antiga e ainda não tiver uma, ela é criada na primeira vez que abrir essa página.
-
-> Por segurança, a chave **não é enviada** no carregamento normal das
-> configurações — só é obtida quando você clica em mostrar ou copiar.
-
-### Gerar uma chave nova
-
-No mesmo cartão existe o botão **Gerar Nova Chave**.
-
-> ⚠️ **Isto invalida a chave anterior imediatamente.** Todos os bots e
-> integrações que a usam deixam de funcionar até serem atualizados com a nova.
-> A chave nova aparece já visível na página, para você a copiar de imediato.
-
-Trate esta chave como uma senha: quem a tiver pode criar convites no seu
-servidor. A comparação usa `secrets.compare_digest`, para não revelar informação
-através do tempo de resposta.
+Trate cada chave como uma senha: quem tiver uma com a permissão `convites` pode
+criar convites no seu servidor. A comparação usa `secrets.compare_digest`, para
+não revelar informação através do tempo de resposta.
 
 ---
 

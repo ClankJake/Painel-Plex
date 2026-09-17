@@ -302,7 +302,24 @@ aconteceu quando os limites de tamanho passaram da rota para o backend.
 🛡️ Havia **UMA chave para tudo** (`INTERNAL_TRIGGER_KEY`, no config.json),
 partilhada pelo endpoint de convites e pelo webhook do Seerr. Regenerá-la
 porque um bot foi comprometido derrubava também o Seerr, e a chave dada ao bot
-podia aceitar webhooks em nome do painel.
+podia aceitar webhooks em nome do painel. **Foi removida**, com as duas rotas
+(`/api/system/api-key`, `.../regenerate`) e o cartão "Chave de API
+(Integrações)" que a mostrava: dois modelos de chave lado a lado só adiavam a
+escolha, e o cartão antigo era o que estava mais à vista.
+
+⚠️ **E a remoção é dos DOIS lados.** Tirar o cartão e deixar a verificação de
+pé seria o pior dos mundos — uma credencial que continua a abrir a porta e que
+o painel já não mostra, não regenera nem revoga. O `_remover_obsoleta` do
+`load_or_create_config` apaga-a também do config.json de quem já a tinha: um
+segredo que não abre porta nenhuma não fica a ocupar um ficheiro que vai
+inteiro dentro do ZIP de backup. Quem a tivesse nos bots cria uma chave com o
+escopo que aquela integração usa — é a única migração que isto pede, e está
+dita nas duas páginas de documentação (`docs/api-convites-bot.md`,
+`docs/integracao-seerr.md`).
+
+⚠️ O rótulo de `chave_api.regenerar` FICA no `audit.js` mesmo sem ninguém
+gravar essa ação: a auditoria não se apaga, e um painel com meses de uso tem
+essas linhas na tabela. Sem rótulo, elas passariam a mostrar a chave crua.
 
 `app/services/api_keys.py` dá-lhes nome, escopo (`ESCOPOS_DE_API`, em
 `dominios.py`) e revogação individual. Quatro coisas que o módulo guarda:
@@ -313,10 +330,9 @@ podia aceitar webhooks em nome do painel.
   mesma razão não entra na auditoria: fica o nome, o prefixo e as permissões;
 - 🛡️ **uma chave sem o escopo é recusada como se não existisse.** Dizer
   "existe mas não pode" confirmava a quem tenta que acertou na chave;
-- ⚠️ **a chave antiga continua a valer, para todos os escopos.** Invalidá-la
-  seria cortar, de uma vez e sem aviso, todas as integrações que já existem lá
-  fora. Deixou de ser a única; não deixou de ser. E uma chave revogada FICA na
-  tabela: "revogada em março" é diferente de "nunca existiu";
+- ⚠️ **uma chave revogada FICA na tabela**: "revogada em março" é diferente de
+  "nunca existiu", e é a primeira que responde a quem vai perceber, meses
+  depois, o que deixou de funcionar;
 - 🐛 **o prefixo não pode sair do `token_urlsafe`**, cujo alfabeto inclui o
   `_` — o separador da chave. Um prefixo como `-v_wYCdF` partia a chave em
   quatro pedaços e a leitura ficava com `-v` no lugar do prefixo: a chave era

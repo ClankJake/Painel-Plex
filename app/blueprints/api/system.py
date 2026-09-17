@@ -2,7 +2,6 @@
 
 import json
 import logging
-import secrets
 import os
 import signal
 import threading
@@ -583,7 +582,7 @@ def api_settings():
     config_to_send = load_or_create_config()
 
     sensitive_keys = [
-        'SECRET_KEY', 'PLEX_TOKEN', 'INTERNAL_TRIGGER_KEY',
+        'SECRET_KEY', 'PLEX_TOKEN',
         'TELEGRAM_BOT_TOKEN', 'TAUTULLI_API_KEY', 'EFI_CLIENT_SECRET',
         # 🛡️ A chave da API do Jellyfin é uma credencial de administrador do
         # servidor de média — dá acesso a tudo lá dentro. Era a única que
@@ -613,7 +612,6 @@ def api_settings():
                 config_to_send[key] = { "is_set": False, "length": 0 }
 
     config_to_send.pop('SECRET_KEY', None)
-    config_to_send.pop('INTERNAL_TRIGGER_KEY', None)
 
     # 🪜 Editor de níveis: se o administrador ainda não personalizou nada, a chave
     # 'XP_LEVEL_TABLE' está vazia (o que significa "usar a tabela padrão do código").
@@ -1246,10 +1244,6 @@ def bulk_notify():
 # BACKUP E RESTAURO
 # ==========================================
 
-# ==========================================
-# CHAVE DE API (INTEGRAÇÕES / BOTS)
-# ==========================================
-
 @system_api_bp.route('/test-gates2b', methods=['POST'])
 @login_required
 @admin_required
@@ -1375,76 +1369,15 @@ def sync_profiles_route():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-@system_api_bp.route('/api-key', methods=['GET'])
-@login_required
-@admin_required
-def get_api_key():
-    """
-    Devolve a chave de API usada pelas integrações externas (ex: o endpoint de
-    convites para bots).
-
-    🔒 Esta chave é deliberadamente REMOVIDA do payload geral de configurações
-    (ver api_settings), para não circular a cada carregamento da página. Fica
-    disponível apenas aqui, numa rota própria, exigindo sessão de administrador —
-    assim só é transmitida quando o administrador a pede explicitamente.
-
-    Se ainda não existir, é gerada agora (instalações antigas podem não a ter).
-    """
-    try:
-        config = load_or_create_config()
-        key = str(config.get('INTERNAL_TRIGGER_KEY') or '')
-
-        if not key:
-            key = secrets.token_hex(32)
-            config['INTERNAL_TRIGGER_KEY'] = key
-            save_app_config(config)
-            logger.info("Chave de API gerada por não existir na configuração.")
-
-        return jsonify({"success": True, "api_key": key})
-    except Exception as e:
-        logger.error(f"Erro ao obter a chave de API: {e}", exc_info=True)
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@system_api_bp.route('/api-key/regenerate', methods=['POST'])
-@login_required
-@admin_required
-def regenerate_api_key():
-    """
-    Gera uma chave de API nova, invalidando imediatamente a anterior.
-
-    ⚠️ Operação destrutiva para integrações: qualquer bot ou script que use a chave
-    antiga deixa de funcionar até ser atualizado. A confirmação é pedida na interface.
-    """
-    try:
-        config = load_or_create_config()
-        new_key = secrets.token_hex(32)
-        config['INTERNAL_TRIGGER_KEY'] = new_key
-        # A chave nova NÃO entra na auditoria: fica só o facto de ter sido
-        # trocada, que é o que interessa saber depois.
-        audit.registar('chave_api.regenerar', alvo_tipo='config',
-                       alvo_id='INTERNAL_TRIGGER_KEY')
-        save_app_config(config)
-
-        logger.warning(f"⚠️ Chave de API regenerada por '{current_user.username}'. As integrações que usavam a chave anterior deixaram de funcionar.")
-        return jsonify({
-            "success": True,
-            "api_key": new_key,
-            "message": _("Nova chave gerada. Atualize os seus bots e integrações com a nova chave.")
-        })
-    except Exception as e:
-        logger.error(f"Erro ao regenerar a chave de API: {e}", exc_info=True)
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
 # ==========================================
 # CHAVES DE API COM ESCOPO
 # ==========================================
 #
-# ⚠️ A `INTERNAL_TRIGGER_KEY` acima continua a valer, para todos os escopos:
-# invalidá-la seria cortar, de uma vez e sem aviso, todas as integrações que já
-# existem lá fora. Estas rotas são o caminho novo — uma chave por integração,
-# com nome, com permissões e revogável sem tocar nas outras.
+# ⚠️ Estas são as ÚNICAS chaves do painel. Houve uma `INTERNAL_TRIGGER_KEY` no
+# config.json que valia para todos os escopos e era a mesma para toda a gente:
+# regenerá-la porque um bot foi comprometido derrubava também o Seerr, e não
+# havia forma de saber qual das integrações a estava a usar. Foi removida, com
+# as rotas e o cartão que a mostravam.
 
 @system_api_bp.route('/api-keys', methods=['GET'])
 @login_required

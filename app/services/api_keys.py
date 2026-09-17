@@ -11,6 +11,9 @@ Seerr. Duas consequências que só se notam no pior dia:
 * a chave dada a um bot de Telegram podia aceitar webhooks em nome do painel, e
   a chave dada ao Seerr podia criar convites com acesso ao servidor.
 
+Ela foi removida — do config.json, das rotas e do cartão que a mostrava. Estas
+são as únicas chaves que o painel reconhece.
+
 🛡️ **O que fica gravado é o RESUMO da chave, não a chave.** É a mesma decisão
 de `PasswordReset`: quem lesse a base de dados — ou um ZIP de backup, que é só
 um ficheiro — ficava com uma porta aberta por cada integração ligada. Por isso

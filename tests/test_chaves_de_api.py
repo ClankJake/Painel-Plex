@@ -8,6 +8,8 @@ o Seerr, e a chave dada a um bot de Telegram podia aceitar webhooks em nome do
 painel.
 """
 
+import secrets
+
 import pytest
 
 pytestmark = pytest.mark.integration
@@ -231,30 +233,58 @@ class TestAsRotasProtegidas:
         assert resposta.status_code == 401
 
 
-class TestAChaveAntigaContinuaAValer:
+class TestAChaveAntigaDeixouDeValer:
+    """A `INTERNAL_TRIGGER_KEY` foi removida, e com ela o cartão que a mostrava.
+
+    Ela valia para TODOS os escopos e era a mesma para todas as integrações:
+    regenerá-la porque um bot foi comprometido derrubava também o Seerr, e a
+    chave dada ao bot aceitava webhooks em nome do painel. Ter dois modelos de
+    chave ao lado um do outro só adiava a escolha.
+
+    🛡️ E a remoção tem de ser dos DOIS lados. Tirar o cartão e deixar a
+    verificação de pé seria o pior dos mundos: uma credencial que continua a
+    abrir a porta e que o painel já não mostra, não regenera nem revoga.
     """
-    ⚠️ Invalidá-la seria cortar, de uma vez e sem aviso, todas as integrações
-    que já existem lá fora — onde este repositório não chega. Ela deixou de ser
-    a única; não deixou de ser.
-    """
 
-    def _antiga(self):
-        from app.config import load_or_create_config
+    def test_uma_chave_no_formato_antigo_e_recusada_nos_webhooks(
+            self, client, configurada, db_session):
+        # 64 hexadecimais: o formato que o `token_hex(32)` da antiga tinha.
+        resposta = client.post(
+            "/api/system/webhook/overseerr",
+            json={"notification_type": "TEST"},
+            headers={"X-API-Key": secrets.token_hex(32)})
+        assert resposta.status_code == 401
 
-        return {"X-API-Key": str(load_or_create_config().get('INTERNAL_TRIGGER_KEY') or '')}
-
-    def test_serve_para_os_webhooks(self, client, configurada, db_session):
-        resposta = client.post("/api/system/webhook/overseerr",
-                               json={"notification_type": "TEST"}, headers=self._antiga())
-        assert resposta.status_code == 200
-
-    def test_serve_para_os_convites(self, client, configurada, data_manager):
+    def test_uma_chave_no_formato_antigo_e_recusada_nos_convites(
+            self, client, configurada, data_manager):
         data_manager.add_invitation("QUALQUER", {
             "libraries": ["Filmes"], "screen_limit": 0, "allow_downloads": False,
             "created_at": "2026-01-01T00:00:00+00:00", "expires_at": None, "max_uses": 1,
         })
-        resposta = client.get("/api/invites/bot/invite/QUALQUER", headers=self._antiga())
-        assert resposta.status_code == 200
+        resposta = client.get("/api/invites/bot/invite/QUALQUER",
+                              headers={"X-API-Key": secrets.token_hex(32)})
+        assert resposta.status_code == 401
+
+    def test_a_chave_sai_do_config_de_uma_instalacao_antiga(self, config_file):
+        """
+        🛡️ Um segredo que já não abre porta nenhuma não fica a ocupar o
+        config.json — que vai inteiro dentro do ZIP de backup, e que a página
+        das Configurações teria de se lembrar de não deixar descer para o
+        navegador.
+        """
+        from app.config import load_or_create_config
+
+        config_file(INTERNAL_TRIGGER_KEY="a" * 64)
+        assert "INTERNAL_TRIGGER_KEY" not in load_or_create_config()
+
+    def test_as_rotas_que_a_serviam_desapareceram(self, app):
+        """O cartão ia buscá-la a `/api/system/api-key` e regenerava-a noutra."""
+        caminhos = {str(r.rule) for r in app.url_map.iter_rules()}
+
+        assert '/api/system/api-key' not in caminhos
+        assert '/api/system/api-key/regenerate' not in caminhos
+        # A lista nova continua onde estava.
+        assert '/api/system/api-keys' in caminhos
 
 
 class TestAsRotasDeAdministracao:

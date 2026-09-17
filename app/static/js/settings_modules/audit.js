@@ -37,6 +37,10 @@ const ROTULOS = {
     'definicoes.gravar': 'acaoDefinicoesGravar',
     'log.limpar': 'acaoLogLimpar',
     'backup.restaurar': 'acaoBackupRestaurar',
+    // ⚠️ Esta ação já NÃO é gravada: a chave única das integrações foi
+    // removida, e com ela o botão de a regenerar. O rótulo fica porque a
+    // auditoria não se apaga — um painel com meses de uso tem estas linhas na
+    // tabela, e sem rótulo elas passavam a mostrar a chave crua.
     'chave_api.regenerar': 'acaoChaveApiRegenerar',
     'chave_api.criar': 'acaoChaveApiCriar',
     'chave_api.revogar': 'acaoChaveApiRevogar',
