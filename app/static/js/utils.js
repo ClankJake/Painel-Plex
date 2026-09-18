@@ -336,6 +336,50 @@ export function formatarData(valor, { ausente = '' } = {}) {
  * É uma declaração de função (e não uma const) de propósito: o hoisting permite
  * que `sanitizeHTML`, definida no topo deste ficheiro, a utilize.
  */
+/**
+ * Acrescenta o DESLOCAMENTO do navegador a uma data-hora local.
+ * `'2026-09-05T23:59'` → `'2026-09-05T23:59:00-03:00'`.
+ *
+ * 🐛 **Sem ele, quem lia a data era o fuso do SERVIDOR.** O formulário de
+ * vencimento manda a hora de parede que a pessoa escolheu, e o
+ * `datetime.fromisoformat` do painel devolvia uma data INGÉNUA: o
+ * `astimezone(utc)` que vinha a seguir assume o fuso do sistema. Num contentor
+ * sem `TZ` definido — que é o padrão do Docker — isso é UTC, e um
+ * administrador no Brasil que escolhesse 23:59 ficava com um vencimento às
+ * 20:59 dele.
+ *
+ * E não parava aí: ao reabrir, o campo mostrava as 20:59 (o `new Date` lê o
+ * `+00:00` e converte para o fuso de quem olha), por isso gravar outra vez sem
+ * tocar em nada escrevia 17:59. **Três horas por gravação, sempre no mesmo
+ * sentido.** Com o deslocamento à frente o instante é inequívoco, e deixa de
+ * depender de o `TZ` do contentor coincidir com o de quem está a clicar.
+ *
+ * ⚠️ O deslocamento é o que estava em vigor NAQUELA data, não o de hoje — é
+ * por isso que se pergunta ao `Date` construído com ela, e não ao `new Date()`
+ * de agora: onde há horário de verão, os dois não são o mesmo.
+ */
+export function comDeslocamentoLocal(dataHoraLocal) {
+    if (!dataHoraLocal) return dataHoraLocal;
+
+    // Sem 'Z' e sem deslocamento, o navegador lê-a como hora LOCAL — que é
+    // exatamente o que ela é: o que a pessoa escolheu no relógio dela.
+    const momento = new Date(dataHoraLocal);
+    if (Number.isNaN(momento.getTime())) return dataHoraLocal;
+
+    // ⚠️ `getTimezoneOffset()` devolve os minutos a SOMAR para chegar a UTC:
+    // no Brasil (UTC-3) são +180. O sinal que se escreve é o contrário.
+    const minutos = -momento.getTimezoneOffset();
+    const sinal = minutos < 0 ? '-' : '+';
+    const absoluto = Math.abs(minutos);
+    const horas = String(Math.floor(absoluto / 60)).padStart(2, '0');
+    const resto = String(absoluto % 60).padStart(2, '0');
+
+    // `YYYY-MM-DDTHH:MM` são 16 caracteres e não trazem segundos.
+    const segundos = dataHoraLocal.length === 16 ? ':00' : '';
+    return `${dataHoraLocal}${segundos}${sinal}${horas}:${resto}`;
+}
+
+
 export function escapeHTML(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'

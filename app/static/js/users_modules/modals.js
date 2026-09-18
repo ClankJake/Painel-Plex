@@ -1,4 +1,4 @@
-import { createModal, showToast, sanitizeHTML, copyToClipboard, formatarDataHora } from '../utils.js';
+import { createModal, showToast, sanitizeHTML, copyToClipboard, formatarDataHora, comDeslocamentoLocal } from '../utils.js';
 import { i18n } from './config.js';
 import * as state from './state.js';
 import * as api from './api.js';
@@ -717,7 +717,14 @@ export async function showUserProfileModal(user) {
             saveButton.disabled = true;
             const dateValue = modal.querySelector('#profileExpiration').value;
             const timeValue = expirationTimeInput.value || '00:00';
-            const localDateTimeString = dateValue ? `${dateValue}T${timeValue}` : null;
+            // 🐛 A data vai com o DESLOCAMENTO de quem está a escolhê-la.
+            // Sem ele o servidor lia a hora de parede no fuso DELE — num
+            // contentor sem `TZ` isso é UTC — e um administrador no Brasil que
+            // escolhesse 23:59 gravava 20:59, via 20:59 ao reabrir e gravava
+            // 17:59 à segunda vez. Três horas por gravação.
+            const localDateTimeString = dateValue
+                ? comDeslocamentoLocal(`${dateValue}T${timeValue}`)
+                : null;
             
             const profileData = {
                 name: modal.querySelector('#profileName').value.trim(),

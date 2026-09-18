@@ -23,6 +23,7 @@ from ...extensions import limiter
 from ...services.password_reset import servidor_repoe_palavras_passe
 from ...services import audit
 from ...utils.identity import normalize_user_id, same_user
+from ...services.data_manager import get_app_timezone
 from ..auth import MAX_PALAVRA_PASSE, MIN_PALAVRA_PASSE
 
 logger = logging.getLogger(__name__)
@@ -997,6 +998,62 @@ def _sync_plex_and_local_profiles(all_plex_users_list, admin_username):
 
     return all_users_to_return
 
+def _momento_do_vencimento(local_datetime_str, config):
+    """O instante que o administrador escolheu, lido no fuso DELE.
+
+    🐛 **O fuso de quem escolhe não é o do servidor.** O formulário manda a
+    hora de parede (`2026-09-05T23:59`) e isto fazia
+    `datetime.fromisoformat(...)`, que devolve uma data INGÉNUA: o
+    `astimezone(timezone.utc)` que vinha a seguir assume o fuso do SISTEMA.
+    Num contentor sem `TZ` definido — o padrão do Docker — isso é UTC, e um
+    administrador no Brasil que escolhesse as 23:59 ficava com o vencimento
+    às 20:59 dele.
+
+    E deslizava a cada gravação, sempre no mesmo sentido: ao reabrir, o modal
+    faz `new Date(expiration_date)` e mostra as 20:59 (o navegador lê o
+    `+00:00` e converte para o fuso de quem olha); gravar outra vez sem tocar
+    em nada escrevia as 17:59. Medido, com o servidor em UTC e o painel aberto
+    no Brasil:
+
+        volta 1: guardado 23:59Z  ->  o campo mostra 20:59
+        volta 2: guardado 20:59Z  ->  o campo mostra 17:59
+        volta 3: guardado 17:59Z  ->  o campo mostra 14:59
+
+    Hoje o navegador manda o deslocamento (`comDeslocamentoLocal`, em
+    `utils.js`) e o instante é inequívoco — deixa de depender de o `TZ` do
+    contentor coincidir com o de quem está a clicar.
+
+    ⚠️ **Uma data SEM deslocamento continua a ser aceite**, e continua a ser
+    lida no fuso do painel: é o que chega de um navegador com o JavaScript
+    antigo em cache, e recusá-la trocaria um erro de três horas por um erro
+    a gravar.
+    """
+    fuso_do_painel = get_app_timezone()
+    escolhido = datetime.fromisoformat(local_datetime_str)
+
+    if escolhido.tzinfo is None:
+        # ⚠️ `pytz` não se usa com `tzinfo=`: ali ele dá o deslocamento da
+        # ÉPOCA (LMT), que em São Paulo são -03:06. `localize` é a porta.
+        escolhido = fuso_do_painel.localize(escolhido)
+
+    if config.get("UNIVERSAL_EXPIRATION_ENABLED"):
+        try:
+            hora, minuto = (int(p) for p in config.get("UNIVERSAL_EXPIRATION_TIME", "23:59").split(':'))
+        except (ValueError, IndexError):
+            pass
+        else:
+            # ⚠️ A hora universal é do PAINEL, não de quem está a clicar: é a
+            # mesma que os `CronTrigger` do agendador usam, e a definição é
+            # "bloquear toda a gente às 23:59" — uma hora só, não uma por
+            # administrador. O DIA continua a ser o escolhido, que é a única
+            # coisa que o formulário deixa escolher quando isto está ligado
+            # (o campo da hora aparece desativado).
+            escolhido = fuso_do_painel.localize(
+                datetime(escolhido.year, escolhido.month, escolhido.day, hora, minuto))
+
+    return escolhido
+
+
 def _update_manual_expiration_job(media_user_id, username, profile_to_update, local_datetime_str):
     from ...extensions import scheduler
     from ...scheduler import end_subscription_job
@@ -1015,22 +1072,21 @@ def _update_manual_expiration_job(media_user_id, username, profile_to_update, lo
             try: scheduler.remove_job(old_job_id)
             except JobLookupError: pass
     else:
-        naive_dt = datetime.fromisoformat(local_datetime_str)
-        config = load_or_create_config()
-        if config.get("UNIVERSAL_EXPIRATION_ENABLED"):
-            try:
-                time_parts = list(map(int, config.get("UNIVERSAL_EXPIRATION_TIME", "23:59").split(':')))
-                naive_dt = naive_dt.replace(hour=time_parts[0], minute=time_parts[1], second=0, microsecond=0)
-            except (ValueError, IndexError): pass
+        escolhido = _momento_do_vencimento(local_datetime_str, load_or_create_config())
+        instante_utc = escolhido.astimezone(timezone.utc)
 
         if old_job_id := profile_to_update.pop('expiration_job_id', None):
             try: scheduler.remove_job(old_job_id)
             except JobLookupError: pass
 
         new_job_id = f"sub_end_{media_user_id}_{secrets.token_hex(4)}"
-        scheduler.add_job(id=new_job_id, func=end_subscription_job, args=[media_user_id], trigger='date', run_date=naive_dt, misfire_grace_time=3600)
+        # O agendador recebe uma data INGÉNUA no fuso dele, como o
+        # `extend_trial_route` já fazia: a conversão acontece aqui, uma vez,
+        # a partir de um instante que já não é ambíguo.
+        run_date = instante_utc.astimezone(scheduler.timezone).replace(tzinfo=None)
+        scheduler.add_job(id=new_job_id, func=end_subscription_job, args=[media_user_id], trigger='date', run_date=run_date, misfire_grace_time=3600)
 
-        profile_to_update['expiration_date'] = naive_dt.astimezone(timezone.utc).isoformat()
+        profile_to_update['expiration_date'] = instante_utc.isoformat()
         profile_to_update['expiration_job_id'] = new_job_id
 
         # 🐛 CORREÇÃO: ao definir a data de vencimento MANUALMENTE, é preciso mover
@@ -1040,7 +1096,12 @@ def _update_manual_expiration_job(media_user_id, username, profile_to_update, lo
         # 26/10 em vez de 05/10, porque o billing_day ainda era 26.
         # Uma data definida à mão pelo administrador é uma decisão explícita e deve
         # passar a ser a nova referência.
-        profile_to_update['billing_day'] = naive_dt.day
+        #
+        # ⚠️ O dia é o que a PESSOA escolheu, não o que dá no fuso do painel.
+        # Um vencimento a 05/09 às 23:59 no Brasil é 06/09 às 02:59 em UTC:
+        # ancorar a faturação no 6 mudava o dia da cobrança de toda a gente que
+        # escolhesse uma hora depois das 21:00.
+        profile_to_update['billing_day'] = escolhido.day
 
 def _enforce_user_status_by_date(media_user_id, username, profile_to_update):
     is_blocked = extensions.data_manager.get_blocked_user(media_user_id) is not None

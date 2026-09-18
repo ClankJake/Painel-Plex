@@ -188,10 +188,22 @@ class UpdateProfileSchema(BaseModel):
     
     @validator('expiration_datetime_local')
     def validate_expiration_datetime(cls, v):
+        """Aceita `YYYY-MM-DDTHH:MM`, com ou sem deslocamento.
+
+        ⚠️ **Com deslocamento é a forma boa** (`2026-09-05T23:59:00-03:00`): é
+        ela que diz QUE INSTANTE a pessoa escolheu. Sem ele o painel tem de
+        adivinhar o fuso, e adivinhava o do servidor — num contentor sem `TZ`
+        isso é UTC, e um vencimento marcado para as 23:59 no Brasil ficava três
+        horas mais cedo, a deslizar outras três a cada gravação (ver
+        `_momento_do_vencimento`, em `api/users.py`).
+
+        A forma sem deslocamento CONTINUA a ser aceite, e é lida no fuso do
+        painel: é o que chega de um navegador com o JavaScript antigo em cache,
+        e recusá-la trocaria um erro de três horas por um erro a gravar.
+        """
         if v is None:
             return v
         try:
-            # Tenta analisar o formato esperado (YYYY-MM-DDTHH:MM)
             datetime.fromisoformat(v)
             return v
         except (ValueError, TypeError):

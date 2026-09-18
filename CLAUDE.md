@@ -1850,6 +1850,53 @@ ou de um `fromisoformat()`, onde o que se queria apanhar cabia em
 `(ValueError, TypeError)`. `tests/test_erros_engolidos.py` percorre o `app/` e
 recusa que volte a haver um.
 
+#### A data de vencimento: o fuso é de quem escolhe
+
+🐛 **A hora de parede não diz que instante é.** O formulário de vencimento
+mandava `2026-09-05T23:59` e o painel fazia `datetime.fromisoformat(...)`, que
+devolve uma data INGÉNUA — e o `astimezone(timezone.utc)` a seguir assume o
+fuso do SISTEMA. Num contentor sem `TZ` definido, que é o padrão do Docker,
+isso é UTC: um administrador no Brasil que marcasse as 23:59 ficava com o
+vencimento às 20:59 dele.
+
+E deslizava a CADA gravação, sempre no mesmo sentido, porque o modal reabre com
+`new Date(expiration_date)` e mostra a hora já convertida para o fuso de quem
+olha:
+
+    volta 1: guardado 23:59Z  ->  o campo mostra 20:59
+    volta 2: guardado 20:59Z  ->  o campo mostra 17:59
+    volta 3: guardado 17:59Z  ->  o campo mostra 14:59
+
+⚠️ Não era incondicional, e é por isso que sobreviveu tanto tempo: com
+`TZ=America/Sao_Paulo` no contentor o servidor e o navegador concordavam. O
+painel ASSUMIA isso (`get_app_timezone` diz "lê o fuso forçado no
+docker-compose") sem nada o obrigar, e a falha era muda.
+
+Hoje o navegador manda o DESLOCAMENTO (`comDeslocamentoLocal`, em `utils.js`) e
+`_momento_do_vencimento` (`api/users.py`) lê um instante inequívoco. Quatro
+coisas que isso obriga:
+
+- ⚠️ **uma data SEM deslocamento continua a ser aceite**, e lida no fuso do
+  painel — é o que chega de um navegador com o JavaScript antigo em cache, e
+  recusá-la trocava um erro de três horas por um erro a gravar;
+- ⚠️ **o deslocamento é o daquela DATA, não o de hoje**: onde há horário de
+  verão os dois não são o mesmo, por isso pergunta-se ao `Date` construído com
+  ela e nunca ao `new Date()` de agora;
+- ⚠️ **a hora universal é do PAINEL, o dia é de quem escolheu.**
+  `UNIVERSAL_EXPIRATION_TIME` é a mesma hora para toda a gente (é a que os
+  `CronTrigger` usam), e quando está ligada o campo da hora aparece desativado
+  — a pessoa só escolhe o DIA;
+- ⚠️ **o `billing_day` é o dia da PESSOA.** 05/09 às 23:59 no Brasil é 06/09 em
+  UTC: ancorar a faturação no 6 mudava o dia da cobrança de toda a gente que
+  marcasse uma hora depois das 21:00.
+
+⚠️ E o teste que guarda isto não pode importar o blueprint no topo do módulo:
+`app/blueprints/auth.py` captura `media_server` e `data_manager` **por valor**,
+e um import na RECOLHA do pytest acontece antes de a fixture `app` correr o
+`create_app()` — o `auth.py` fica com `data_manager = None` para o resto do
+processo, e quem rebenta são os testes do LOGIN, que não têm nada a ver com
+isto. A fixture `app` é de âmbito *session* e não volta a importá-lo.
+
 ### Tarefas de fundo
 
 `app/scheduler.py` com APScheduler (`BackgroundScheduler`, jobstore SQLAlchemy
