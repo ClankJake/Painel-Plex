@@ -63,7 +63,7 @@ class JellyfinConnectionManager:
             # 401/403 é quase sempre uma chave de API revogada ou mal colada:
             # vale a pena dizê-lo em vez de devolver o erro cru.
             if e.status_code in (401, 403):
-                return False, _("O Jellyfin recusou a chave de API. Gere uma nova em Painel de Controlo → Chaves de API.")
+                return False, _("O Jellyfin recusou a chave de API. Gere uma nova em Painel de Controle → Chaves de API.")
             return False, str(e)
 
         except Exception as e:

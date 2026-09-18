@@ -103,7 +103,7 @@ function buildSlides(w, year) {
     const tops = [
         w.top_movie ? { icon: '🍿', label: i18n.movieTitle || 'Filme mais assistido', value: w.top_movie } : null,
         w.top_show ? { icon: '📺', label: i18n.showTitle || 'Série mais maratonada', value: w.top_show } : null,
-        w.top_director ? { icon: '🎥', label: i18n.directorTitle || 'Realizador mais visto', value: w.top_director } : null,
+        w.top_director ? { icon: '🎥', label: i18n.directorTitle || 'Diretor mais visto', value: w.top_director } : null,
     ].filter(Boolean);
 
     if (tops.length) {

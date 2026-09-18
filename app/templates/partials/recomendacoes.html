@@ -1,0 +1,28 @@
+{#
+  A secção "Feito a Pensar em Si", partilhada pelas DUAS visões da /statistics.
+
+  ⚠️ Está num partial e não copiada porque as recomendações são de QUEM ESTÁ A
+  VER, e o administrador também assiste — a rota devolve sempre as do próprio.
+  Duas cópias da mesma marcação divergiam ao primeiro ajuste, e o
+  `statistics.js` procura estes ids pelo nome.
+
+  ⚠️ `{% include %}` e não `{% import %}`: um macro importado NÃO vê o contexto
+  do template, e aqui é preciso — os textos passam todos por `_()`.
+#}
+<!-- Secção Recomendações: "Porque assistiu X, pode gostar de Y" -->
+<section id="recommendations-section" class="hidden bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50" aria-labelledby="recommendations-heading">
+    <div class="flex items-start justify-between gap-4 mb-2">
+        <div>
+            <h3 id="recommendations-heading" class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <span class="text-purple-500" aria-hidden="true">🎯</span> {{ _('Feito Pensando em Você') }}
+            </h3>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                {{ _('Cruzamos o seu histórico com o de quem assiste coisas parecidas para encontrar o próximo título.') }}
+            </p>
+        </div>
+    </div>
+    <div id="recommendations-container" class="space-y-8 mt-6">
+        <!-- Faixas injetadas via JS -->
+    </div>
+</section>
+

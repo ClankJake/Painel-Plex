@@ -678,7 +678,7 @@ const setupPaymentSection = (prices, providers, canDowngrade) => {
         <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
             <label for="couponCodeInput" class="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Código de Desconto</label>
             <div class="flex gap-2 mt-2">
-                <input type="text" id="couponCodeInput" class="w-full p-3 text-sm font-mono uppercase tracking-wider rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" placeholder="INSERIR CUPÃO">
+                <input type="text" id="couponCodeInput" class="w-full p-3 text-sm font-mono uppercase tracking-wider rounded-lg border bg-white border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" placeholder="INSERIR CUPOM">
                 <button id="applyCouponBtn" class="btn bg-gray-800 hover:bg-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 text-white px-6 font-semibold" disabled>Aplicar</button>
             </div>
             <div id="coupon-status" class="text-xs font-medium mt-2 min-h-[20px]"></div>

@@ -205,7 +205,7 @@ def test_connection(url: str, api_key: str) -> Dict[str, Any]:
         }
     except JellyfinApiError as e:
         if e.status_code in (401, 403):
-            return {"success": False, "message": _("O Jellyfin recusou a chave de API. Gere uma nova em Painel de Controlo → Chaves de API.")}
+            return {"success": False, "message": _("O Jellyfin recusou a chave de API. Gere uma nova em Painel de Controle → Chaves de API.")}
         return {"success": False, "message": str(e)}
     except Exception as e:
         return {"success": False, "message": _("Não foi possível contactar o Jellyfin: %(erro)s", erro=describe(e))}

@@ -453,3 +453,186 @@ class TestRecomendacoesPorGenero:
         items = handler.recommend(handler.build_index(), "1")["sections"][0]["items"]
 
         assert items[0]["media_type"] == "movie"
+
+
+class TestMetadadosEmLote:
+    """⚡ Quarenta perguntas ao servidor para receber quarenta vezes o mesmo bloco.
+
+    O `get_metadata` do Plex e do Jellyfin já pedia um BLOCO e deitava fora
+    tudo menos uma linha; as recomendações chamavam-no uma vez por título, e
+    quem abrisse a página com a cache fria esperava pela soma de todas as idas
+    ao servidor. `get_metadata_batch` é o caminho para quem o souber dar.
+    """
+
+    class ApiEmLote(FakeApiClient):
+        def __init__(self, history=None, metadata=None, resposta_em_lote=...):
+            super().__init__(history=history, metadata=metadata)
+            self.chamadas_em_lote = []
+            self._resposta_em_lote = resposta_em_lote
+
+        def get_metadata_batch(self, rating_keys):
+            self.chamadas_em_lote.append(list(rating_keys))
+            if self._resposta_em_lote is not ...:
+                return self._resposta_em_lote
+            return {str(chave): self.metadata.get(str(chave), {}) for chave in rating_keys}
+
+    def _handler(self, api):
+        return RecommendationsHandler(api, data_manager=FakeDataManager())
+
+    def test_uma_pergunta_so_para_varios_titulos(self, app_context, configurar):
+        configurar(RECOMMENDATIONS_GENRE_LOOKUP_LIMIT=10)
+        api = self.ApiEmLote(
+            history=[filme(1, "10", "Duna"), filme(1, "20", "Arrival")],
+            metadata={"10": {"genres": ["Ficção"]}, "20": {"genres": ["Drama"]}},
+        )
+        catalog = self._handler(api).build_index()["catalog"]
+
+        assert len(api.chamadas_em_lote) == 1
+        assert sorted(api.chamadas_em_lote[0]) == ["10", "20"]
+        # E ninguém foi perguntado item a item.
+        assert api.chamadas_metadata == []
+        assert catalog["movie:10"]["genres"] == ["Ficção"]
+        assert catalog["movie:20"]["genres"] == ["Drama"]
+
+    def test_o_limite_continua_a_valer_em_lote(self, app_context, configurar):
+        configurar(RECOMMENDATIONS_GENRE_LOOKUP_LIMIT=1)
+        api = self.ApiEmLote(history=[filme(1, "10", "Duna"), filme(1, "20", "Arrival")])
+
+        self._handler(api).build_index()
+
+        assert len(api.chamadas_em_lote[0]) == 1
+
+    def test_none_quer_dizer_pergunta_um_a_um(self, app_context, configurar):
+        """⚠️ É o que devolve o despachante do Plex quando a fonte é o Tautulli.
+
+        Um dicionário vazio diria "o servidor não conhece nenhum destes
+        títulos" e as recomendações ficavam caladamente sem géneros.
+        """
+        configurar(RECOMMENDATIONS_GENRE_LOOKUP_LIMIT=10)
+        api = self.ApiEmLote(
+            history=[filme(1, "10", "Duna")],
+            metadata={"10": {"genres": ["Drama"]}},
+            resposta_em_lote=None,
+        )
+
+        catalog = self._handler(api).build_index()["catalog"]
+
+        assert api.chamadas_metadata == ["10"]
+        assert catalog["movie:10"]["genres"] == ["Drama"]
+
+    def test_lote_vazio_nao_insiste_um_a_um(self, app_context, configurar):
+        """Vazio é uma resposta: o servidor não conhece nenhum deles."""
+        configurar(RECOMMENDATIONS_GENRE_LOOKUP_LIMIT=10)
+        api = self.ApiEmLote(history=[filme(1, "10", "Duna")], resposta_em_lote={})
+
+        assert self._handler(api).build_index()["catalog"]["movie:10"]["genres"] == []
+        assert api.chamadas_metadata == []
+
+    def test_falha_no_lote_nao_quebra_o_indice_nem_repete_o_pedido(self, app_context, configurar):
+        """A fonte está partida: pedir item a item seria trocar uma falha por quarenta."""
+        configurar(RECOMMENDATIONS_GENRE_LOOKUP_LIMIT=10)
+        api = self.ApiEmLote(history=[filme(1, "10", "Duna")])
+        api.get_metadata_batch = lambda chaves: (_ for _ in ()).throw(RuntimeError("boom"))
+
+        assert self._handler(api).build_index()["catalog"]["movie:10"]["genres"] == []
+        assert api.chamadas_metadata == []
+
+    def test_duas_obras_com_a_mesma_chave_do_servidor(self, app_context, configurar):
+        """⚠️ Um dicionário por `rating_key` deitava uma delas fora em silêncio."""
+        configurar(RECOMMENDATIONS_GENRE_LOOKUP_LIMIT=10)
+        api = self.ApiEmLote(
+            history=[filme(1, "10", "Duna"), episodio(1, "10", "Duna: A Série")],
+            metadata={"10": {"genres": ["Ficção"]}},
+        )
+
+        catalog = self._handler(api).build_index()["catalog"]
+
+        assert catalog["movie:10"]["genres"] == ["Ficção"]
+        assert catalog["show:10"]["genres"] == ["Ficção"]
+
+
+class TestIndiceDeGeneros:
+    """⚡ O plano B percorria o catálogo inteiro por cada semente."""
+
+    def _index(self, history, configurar, **config):
+        config.setdefault("RECOMMENDATIONS_GENRE_LOOKUP_LIMIT", 0)
+        configurar(**config)
+        handler = RecommendationsHandler(FakeApiClient(history=history), data_manager=FakeDataManager())
+        return handler, handler.build_index()
+
+    def test_o_indice_invertido_e_construido(self, app_context, configurar):
+        duna = filme(1, "10", "Duna")
+        duna["genres"] = ["Ficção", "Aventura"]
+        arrival = filme(1, "20", "Arrival")
+        arrival["genres"] = ["Ficção"]
+
+        _handler, index = self._index([duna, arrival], configurar)
+
+        assert sorted(index["genre_index"]["Ficção"]) == ["movie:10", "movie:20"]
+        assert index["genre_index"]["Aventura"] == ["movie:10"]
+
+    def test_um_indice_antigo_sem_o_campo_continua_a_servir(self, app_context, configurar):
+        """⚠️ O que está na cache foi construído pela versão anterior.
+
+        Sem o `genre_index` volta-se ao catálogo inteiro: mais lento, mesmo
+        resultado — e meia hora depois já não acontece.
+        """
+        duna = filme(1, "10", "Duna")
+        duna["genres"] = ["Ficção", "Aventura"]
+        arrival = filme(2, "20", "Arrival")
+        arrival["genres"] = ["Ficção", "Aventura"]
+
+        handler, index = self._index([duna, arrival], configurar)
+        com_indice = handler.recommend(index, "1")
+
+        del index["genre_index"]
+        sem_indice = handler.recommend(index, "1")
+
+        assert com_indice == sem_indice
+        assert [item["title"] for item in com_indice["sections"][0]["items"]] == ["Arrival"]
+
+
+class TestCapasPreguicosas:
+    """⚡ Eram montadas para TODAS as obras do servidor, para mostrar dezenas."""
+
+    def _index(self, history, configurar, **config):
+        config.setdefault("RECOMMENDATIONS_GENRE_LOOKUP_LIMIT", 0)
+        configurar(**config)
+        handler = RecommendationsHandler(FakeApiClient(history=history), data_manager=FakeDataManager())
+        return handler, handler.build_index()
+
+    @staticmethod
+    def _historico():
+        """Duna é a semente de quem é o 1; quem a viu também viu Arrival."""
+        return [
+            filme(1, "10", "Duna"),
+            filme(2, "10", "Duna"), filme(2, "20", "Arrival"),
+            filme(3, "10", "Duna"), filme(3, "20", "Arrival"),
+        ]
+
+    def test_o_catalogo_guarda_o_thumb_cru(self, app_context, configurar):
+        _handler, index = self._index([filme(1, "10", "Duna")], configurar)
+
+        assert index["catalog"]["movie:10"]["thumb"] == "/library/metadata/10/thumb"
+        assert "poster_url" not in index["catalog"]["movie:10"]
+
+    def test_o_que_e_mostrado_leva_a_capa(self, app_context, configurar):
+        handler, index = self._index(self._historico(), configurar)
+
+        seccao = handler.recommend(index, "1")["sections"][0]
+
+        assert "/image/?source=" in seccao["seed"]["poster_url"]
+        assert "/image/?source=" in seccao["items"][0]["poster_url"]
+
+    def test_um_indice_antigo_nao_perde_as_capas(self, app_context, configurar):
+        """⚠️ Lá é o `poster_url` que existe, e o `thumb` que já foi consumido."""
+        handler, index = self._index(self._historico(), configurar)
+
+        for item in index["catalog"].values():
+            item["poster_url"] = f"/image/?source=antigo-{item['key']}"
+            item.pop("thumb", None)
+
+        seccao = handler.recommend(index, "1")["sections"][0]
+
+        assert seccao["seed"]["poster_url"] == "/image/?source=antigo-movie:10"
+        assert seccao["items"][0]["poster_url"] == "/image/?source=antigo-movie:20"

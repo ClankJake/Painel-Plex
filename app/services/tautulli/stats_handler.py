@@ -380,7 +380,7 @@ class StatsHandler:
                 "check": lambda s: len(s.get("unique_decades", [])) 
             },
             "director_fan": {
-                "title": _("Fã do Realizador"), 
+                "title": _("Fã do Diretor"), 
                 "icon": "🎥", 
                 "levels": { 
                     "bronze": {"goal": config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3), "description": _("Bronze: Assista a %(goal)d filmes do seu diretor favorito.", goal=config.get("ACHIEVEMENT_DIRECTOR_FAN_BRONZE", 3))}, 

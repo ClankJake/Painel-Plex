@@ -1082,7 +1082,7 @@ def add_manual_payment_route():
         
     try:
         user = extensions.media_server.get_user_by_id(media_user_id)
-        if not user: return jsonify({"success": False, "message": "Utilizador não encontrado."}), 404
+        if not user: return jsonify({"success": False, "message": "Usuário não encontrado."}), 404
         
         current_time_str = datetime.now(timezone.utc).strftime('%H:%M:%S')
         try:

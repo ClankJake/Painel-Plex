@@ -114,7 +114,7 @@ class ReferralManager:
             logger.warning(
                 f"[Referral] Indicação circular bloqueada entre os IDs {new_user_id} e {referrer_id}."
             )
-            return {"success": False, "message": _("Não é possível indicar quem já o indicou a si.")}
+            return {"success": False, "message": _("Não é possível indicar quem já indicou você.")}
 
         profile = self.data_manager.get_user_profile(new_user_id)
         if not profile:

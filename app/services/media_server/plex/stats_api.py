@@ -344,6 +344,24 @@ class PlexStatsApi:
             'year': item.get('ano'),
         }
 
+    def get_metadata_batch(self, rating_keys: List[Any]) -> Dict[str, Dict[str, Any]]:
+        """Os mesmos metadados, de vários itens e numa ida só ao servidor.
+
+        ⚡ `_detalhes` sempre soube pedir um bloco inteiro — era o `get_metadata`
+        que lhe entregava uma chave de cada vez e deitava fora o resto. As
+        recomendações pediam os géneros de quarenta títulos e isso eram quarenta
+        `/library/metadata/<k>`, com quem abriu a página à espera da soma de
+        todas. Agora são os blocos de `BLOCO_DE_METADADOS` que já existiam.
+        """
+        if not self.is_configured:
+            return {}
+
+        detalhes = self._detalhes([str(chave) for chave in rating_keys if chave])
+        return {
+            chave: {'genres': item.get('generos', []), 'year': item.get('ano')}
+            for chave, item in detalhes.items()
+        }
+
 
 class FonteDeEstatisticasDoPlex:
     """O Tautulli quando está configurado; o próprio Plex quando não está.
@@ -407,6 +425,17 @@ class FonteDeEstatisticasDoPlex:
 
     def get_metadata(self, rating_key):
         return self._fonte.get_metadata(rating_key)
+
+    def get_metadata_batch(self, rating_keys):
+        """Os metadados de vários itens de uma vez, quando a fonte ativa souber.
+
+        ⚠️ O Tautulli não sabe — o `cmd=get_metadata` dele é mesmo por item — e
+        por isso a resposta é `None`, que quem chama lê como "pergunta um a um".
+        Um dicionário vazio seria dizer que o servidor não conhece nenhum
+        daqueles títulos, e as recomendações ficavam caladamente sem géneros.
+        """
+        em_lote = getattr(self._fonte, 'get_metadata_batch', None)
+        return em_lote(rating_keys) if callable(em_lote) else None
 
     def image_payload(self, thumb, width: int = 300, height: int = 450):
         return self._fonte.image_payload(thumb, width, height)

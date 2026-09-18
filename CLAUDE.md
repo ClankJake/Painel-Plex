@@ -57,6 +57,27 @@ fazia-a deixar de reconhecer as ANTIGAS. Ela aceita agora as duas grafias
 (`/cup(om|ão)|coupon/i`), que é o que um histórico com anos de uso tem lá
 dentro.
 
+🐛 **E a varredura corria toda sem `re.I`, o que escondia dezoito textos.** Ela
+era assim por causa de TRÊS marcas em que a maiúscula é o que as distingue de
+português do Brasil correto — o rótulo "A guardar...", o botão "Guardar", e o
+particípio "aceite" ("Aceite o seu convite" é o IMPERATIVO e está certo). O
+preço era todo o resto: "Utilizador não encontrado", "Painel de Controlo",
+"Limite de Utilizações", "Otimização da Base de Dados", "Fã do Realizador",
+"Subscrição incompleta" e o "INSERIR CUPÃO" de dois botões — e o `[Cc]up` do
+cupão era o remendo que se tinha posto sobre este buraco, uma marca de cada vez.
+Hoje a maiúscula é uma propriedade DA MARCA (`SENSIVEIS`) e não da varredura.
+⚠️ E o `está a <verbo>` só valia para os verbos em `-ar`: "está a correr" e
+"está a decorrer" passavam, pela mesma razão que o rótulo já tinha corrigido.
+
+⚠️ **E nem tudo o que soa europeu é europeu.** "o seu nome", "a sua conta" são
+português do Brasil correto e ficam como estão — há trinta e cinco no painel.
+O que saiu foi o que é mesmo de lá: "Si" como tratamento (→ "Você"), "gerir"
+(→ "gerenciar"), "definições" de um programa (→ "configurações"), "de momento"
+(→ "no momento"), "Expira a:" (a regência; → "Expira em:") e a ênclise com
+presente ("grava-se" → "é salvo"). ⚠️ E "Subscrição" de web push não virou
+"assinatura": essa palavra, neste painel, é o plano que se paga — o termo
+brasileiro aqui é "inscrição".
+
 ## Comandos
 
 ```bash
@@ -71,6 +92,10 @@ pytest tests/test_invites.py::test_nome  # um teste
 pytest -k proration                      # por expressão
 pytest -m integration                    # só os que criam a app Flask + BD
 pytest --cov=app --cov-report=term-missing   # o que o CI executa
+
+# A /statistics a correr mesmo, num Chromium (salta sem Playwright/browser/dist)
+pip install playwright && python -m playwright install chromium
+npm run build && pytest tests/test_estatisticas_no_navegador.py
 
 # Frontend — nada em app/static/dist/ está versionado, é preciso gerar
 npm run build          # CSS + bibliotecas (socket.io, chart.js) — é o que falta
@@ -1053,6 +1078,138 @@ nunca chegava a correr. Isso atingia também um painel sem preços configurados,
 que responde 404. Um teste percorre agora todas as rotas que a página chama,
 com uma sessão de administrador, porque corrigi-las uma a uma foi precisamente
 o que não chegou à primeira vez.
+
+#### As recomendações: o cartão carrega sozinho, e o índice não é feito no pedido
+
+⚡ **A página inteira esperava pelo motor de recomendações.** As três chamadas
+iniciais da `/statistics` corriam no mesmo `Promise.all` — e um `Promise.all`
+só resolve com a MAIS LENTA. As estatísticas já tinham chegado e ninguém as
+via: o `statsContainer` ficava escondido, com o spinner à frente, até o motor
+responder. E ele lê o histórico do servidor INTEIRO. Recomendações e novidades
+são informação a mais, não a espinha da página: cada uma tem agora a sua função
+(`carregarRecomendacoes`, `carregarNovidades`, `carregarAnalisePessoal`), pede o
+que é seu e aparece quando chegar. ⚠️ Enquanto não chega há um esqueleto, e a
+secção é mostrada JÁ: escondê-la até à resposta fazia o resto da página saltar
+para baixo quando ela entrasse. ⚠️ E uma falha delas esconde a secção e mais nada — nunca o
+`errorContainer`, que diria a quem está a ler as suas estatísticas que a página
+falhou quando ela está inteira. ⚠️ O filtro de dias já NÃO as volta a pedir:
+elas usam a janela longa do administrador e ignoram-no, por isso cada mudança
+de período pagava a chamada mais cara do painel para receber a mesma resposta.
+
+⚠️ **O cartão é do dono do servidor TAMBÉM, e o que o escondia era o
+template.** A rota sempre soube responder-lhe — ela devolve as recomendações de
+QUEM PEDE, e o administrador tem histórico como toda a gente (é o
+`ids_do_painel()` que junta as reproduções dele ao id do painel). Mas a secção
+vivia dentro do `{% else %}` da visão do utilizador comum, por isso os ids que
+o `statistics.js` procura nem existiam na página dele. A marcação está agora em
+`partials/recomendacoes.html`, incluída pelas DUAS visões: duas cópias
+divergiam ao primeiro ajuste, e dois `id="recommendations-section"` na mesma
+página fariam o `getElementById` escolher um deles. ⚠️ `{% include %}` e não
+`{% import %}` — um macro importado não vê o contexto, e os textos passam todos
+por `_()`. As "Novidades" e a análise pessoal continuam só na visão do
+utilizador comum: o administrador tem o pódio e o ranking completo no lugar
+delas.
+
+⚠️ **A análise pessoal era a SEGUNDA a segurar a página** — o pódio e o ranking
+já tinham chegado no pedido das estatísticas e ficavam à espera de um pedido que
+não é deles. Saiu do `mainFetch` pelo mesmo caminho.
+
+⚠️ **E soltar um pedido do fluxo principal ABRE UMA CORRIDA.** Mexer no filtro
+depressa (30 → 90 → 30) deixa dois em voo, e o mais LENTO pode chegar em
+ÚLTIMO: a página ficava com os números de um período que já não é o escolhido,
+sem erro nenhum e sem nada que o denunciasse. Cada carregamento tira a sua vez
+(`ultimoPedido`) e só escreve se ainda for o mais recente a ter sido pedido.
+⚠️ A análise pessoal é montada num elemento SOLTO e só trocada no fim — como o
+modal já fazia —, que é o que permite descartar uma resposta tardia sem deixar
+a página meio escrita: até lá o que se vê é o esqueleto, e não uma análise a
+ser montada por partes.
+
+🐛 **Havia UM espaço para os gráficos e UM para os observadores, e o modal
+desenha a MESMA análise que a página** (`renderUserAnalysis` serve os dois).
+Duas consequências, as duas silenciosas: abrir a análise de outra pessoa
+destruía os gráficos da análise da PÁGINA — `state.charts.activity` e
+`.contentType` eram os mesmos objetos — e fechar o modal rematava, deixando os
+dois canvas em branco até alguém mexer no filtro de dias; e o `closeModal`
+desligava TODOS os `ResizeObserver` registados, incluindo os das "Novidades" e
+os de cada faixa de recomendações, cujas setas deixavam de se atualizar ao
+redimensionar. Num painel onde o ranking é clicável para quem não é
+administrador, bastava espreitar a análise de outra pessoa.
+
+Cada sítio é agora dono do que lá está (`novoContexto` / `destruirContexto`, um
+por destino: o gráfico do administrador, as novidades, as recomendações, a
+análise pessoal e o modal), e `destruirContexto` leva só isso. ⚠️ Cada um
+limpa o SEU antes de se redesenhar — sem isso, cada mudança de filtro prendia
+mais um observador a uma fila que já não está na página — e uma análise
+descartada pelo guarda da corrida é destruída em vez de ficar com gráficos
+vivos sobre um elemento que ninguém vai ver. E o `themeChanged` passou a
+alcançar os gráficos do modal, que antes ficavam com as cores do tema anterior.
+
+📌 **E três destas coisas só se veem num NAVEGADOR**
+(`tests/test_estatisticas_no_navegador.py`): se um gráfico do Chart.js continua
+vivo, se um `ResizeObserver` foi desligado, e quanto tempo a página demora mesmo
+a aparecer. Ele carrega a `/statistics` real num Chromium — o JavaScript é o do
+repositório e o template é o renderizado pelo Jinja; o que é falso são só as
+respostas HTTP, e a das recomendações demora três segundos de propósito, que é o
+número que dá sentido à pergunta "a página esperou por elas?". ⚠️ Ele SALTA onde
+não houver Playwright, Chromium ou `app/static/dist/`, e `PAINEL_EXIGE_NAVEGADOR=1`
+transforma o salto numa falha — a mesma regra do `PAINEL_EXIGE_DIST`. ⚠️ E as
+"novidades" do teste são TRÊS de propósito: a verificação das setas precisa que o
+conteúdo caiba numa janela larga e transborde numa estreita, e com capas a mais a
+seta fica ativa em qualquer largura e o teste passa sem provar nada.
+
+⚡ **E o índice deixou de ser construído dentro de um pedido.** Era um
+`@cache.memoize` de 30 minutos, o que quer dizer sem tranca nenhuma: à hora a
+que ele expirava, toda a gente com a página aberta reconstruía-o ao mesmo
+tempo, cada um com a sua leitura do histórico completo, num painel que corre
+com UM worker de propósito. São três coisas, e andam juntas:
+
+- **o `recommendations_warmup_job`** reconstrói-o de 25 em 25 minutos (menos do
+  que os 30 que ele dura, ou ficava sempre uma janela em que quem abre a página
+  é o primeiro a pedi-lo). Aqui não há ninguém à espera;
+- **uma construção de cada vez** (`_construir_indice`), com um `threading.Lock`
+  que o `monkey.patch_all()` do `run.py` torna cooperativo;
+- ⚡ **quem chega a meio leva a CÓPIA ANTERIOR.** Esperar seria correto e seria
+  péssimo: a alternativa a recomendações de há meia hora é uma página parada. A
+  cópia é guardada 24 horas precisamente para existir nesse momento. ⚠️ A
+  tarefa de aquecimento pede-a com `permitir_copia_anterior=False`: ela existe
+  para CONSTRUIR, e aceitar a cópia fazia-a devolver o que já lá estava e
+  deixar a cache expirar na mesma. ⚠️ E a invalidação apaga a cópia TAMBÉM —
+  ela foi construída com os parâmetros antigos, e deixá-la ficar depois de o
+  administrador os mudar era exatamente o bug que
+  `invalidate_recommendations_cache` existe para não haver. Sem `@memoize` não
+  há `delete_memoized` que encontre as chaves, por isso elas são registadas à
+  medida que são escritas.
+
+⚡ **Os metadados eram quarenta idas ao servidor para trazer quarenta vezes o
+mesmo bloco.** O `get_metadata` do Plex e do Jellyfin já pedia um BLOCO inteiro
+(`/library/metadata/k1,k2,...`, `GET /Items?ids=`) e deitava fora tudo menos
+uma linha — e as recomendações chamavam-no uma vez por título. `get_metadata_batch`
+é o caminho para a fonte que o souber dar: **1658 ms → 64 ms** num servidor de
+1500 títulos. ⚠️ Ele é OPCIONAL de propósito, e o despachante do Plex devolve
+`None` quando quem está ativo é o Tautulli, cujo `cmd=get_metadata` é mesmo por
+item: aí os pedidos vão em paralelo (`gevent.pool`, oito de cada vez), que sob
+o worker gevent são **1600 ms → 207 ms**. ⚠️ **`None` e um dicionário vazio
+querem dizer coisas diferentes**: `None` é "não sei responder em lote" e
+segue-se para os pedidos um a um; vazio é "o servidor não conhece nenhum
+destes", e insistir seria repetir a pergunta quarenta vezes para ouvir o mesmo.
+E uma EXCEÇÃO no lote não cai para o caminho individual — a fonte está partida,
+não lenta, e seria trocar uma falha por quarenta.
+
+⚡ **O plano B percorria o catálogo INTEIRO por cada semente** — com quatro
+faixas, dezasseis sementes candidatas e alguns milhares de obras, era o mesmo
+trabalho repetido dezasseis vezes, por utilizador. O `genre_index` (invertido,
+construído uma vez com o índice) dá de uma vez só os candidatos que partilham
+um género com a semente: **4× mais rápido** num servidor onde o plano B é mesmo
+usado, que é o caso para que ele existe. ⚠️ Um índice que ainda esteja na cache
+da versão anterior não o tem, e aí volta-se ao catálogo inteiro: mais lento,
+mesmo resultado, e meia hora depois já não acontece.
+
+⚡ **E as capas eram montadas para TODAS as obras do servidor** — milhares de
+`url_for` e de base64 na construção, para mostrar umas dezenas, e tudo isso a
+engordar o que vai para a cache em disco. O catálogo guarda o `thumb` cru e
+quem monta o URL é `_poster`, já no que vai ser mostrado. ⚠️ Ele aceita o
+`poster_url` como alternativa pela mesma razão do `genre_index`: sem isso, as
+capas desapareciam durante os trinta minutos que faltassem à cache antiga.
 
 #### O Plex sem Tautulli
 
