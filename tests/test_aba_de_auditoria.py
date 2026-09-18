@@ -297,6 +297,7 @@ class TestAFormatacaoDeDataEUmaSo:
         'app/static/js/users_modules/modals.js',
         'app/static/js/users_modules/ui.js',
         'app/static/js/settings_modules/audit.js',
+        'app/static/js/settings_modules/about.js',
     ]
 
     def test_so_o_utils_formata_datas(self):

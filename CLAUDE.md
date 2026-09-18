@@ -1413,6 +1413,55 @@ mas guarda o nível de log no `LOG_LEVEL`, por isso escondê-lo lá tirava a ún
 forma de o mudar. Um teste confirma que nenhuma aba marcada assim contém um id
 que esteja no `fieldMap`.
 
+#### A aba "Sobre": a versão, o fuso, e a última release
+
+⚠️ **O painel não sabia dizer que versão era.** As entregas saem por releases do
+GitHub (`v22.3`, `v22.2`, ...) e nada no código o registava: quem reportava um
+problema tinha de adivinhar pela data da imagem. A fonte da verdade é
+`app/versao.py` (`VERSAO`), atualizada À MÃO ao publicar — e o `package.json`
+diz a mesma coisa, com um teste a compará-los (`tests/test_aba_sobre.py`): duas
+versões que divergem são piores do que nenhuma, porque uma delas mente.
+
+⚠️ **A comparação é NUMÉRICA, e é a razão de haver um módulo para isto.**
+`'22.10' < '22.3'` em ordem alfabética, por isso o painel diria "está
+atualizado" no dia em que saísse a 22.10. `comparar()` lê os pedaços como
+números, come o `v` da etiqueta e completa com zeros (`22.3` == `22.3.0`). E
+quem decide é o SERVIDOR: repetir a regra no JavaScript era ter duas ideias de
+qual versão é a nova.
+
+⚠️ **E o FUSO estava no mesmo escuro.** Ele já custou um bug de três horas em
+cada data de vencimento (ver `_momento_do_vencimento`), e descobrir que o
+contentor corria em UTC exigia entrar nele. A aba mostra o fuso do painel ao
+lado do do navegador, diz se veio da variável `TZ` ou foi detectado do sistema,
+e avisa quando os dois não batem certo — as tarefas datadas correm no do painel.
+
+São **duas rotas** e não uma, de propósito: `GET /api/system/about` não fala com
+ninguém de fora e é o que abre a aba (num painel sem rede de saída ela continua
+útil); `GET /api/system/latest-release` é que vai ao GitHub. Quatro decisões em
+`app/services/atualizacoes.py`:
+
+- 🛡️ **o endereço é uma CONSTANTE do código** (`versao.REPOSITORIO`), nunca uma
+  definição do config.json: o painel faz este pedido de DENTRO da rede onde
+  corre, e um endereço editável fazia de uma sessão de administrador tomada uma
+  forma de o apontar a um serviço interno — o mesmo SSRF que a lista de serviços
+  de push e a `ALLOWED_IMAGE_HOSTS` já existem para fechar;
+- ⚠️ **não conseguir verificar responde 200**, com `disponivel: false`. Há
+  painéis sem rede de saída, e "não sei" é diferente de "está atualizado" — a
+  aba tem três estados e não dois. Um 500 aqui pintava de vermelho a página por
+  causa de uma informação que é um extra;
+- ⚠️ **a falha NÃO fica em cache** (o sucesso fica seis horas). Guardar um "não
+  sei" deixava o painel a dizer que não consegue verificar muito depois de a
+  rede ter voltado: é a mesma regra da deteção dos plugins do Jellyfin;
+- 🛡️ **o `html_url` da release é confirmado, não copiado**. Ele vem de fora e
+  acaba num `href` na página de um administrador: o que não for
+  `https://github.com/...` é trocado pela página de releases, e tudo o que se
+  escreve com ele passa por `escapeHTML`.
+
+A aba marca-se `data-somente-leitura` (não há nada para salvar) e é carregada ao
+ABRIR, como a Auditoria — mas, ao contrário dela, **não** se recarrega a cada
+abertura: a versão instalada não muda sozinha, e o botão "Verificar
+atualizações" (que salta a cache com `?forcar=1`) está ali para quem insistir.
+
 #### O `payment_token` é uma credencial portadora, e agora expira
 
 🛡️ Quem tiver o link `/pay/<token>` vê o nome e o vencimento de quem lá está e

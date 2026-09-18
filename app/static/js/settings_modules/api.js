@@ -21,6 +21,12 @@ export const getAuditLogs = ({ limit, offset, action } = {}) => {
     const consulta = parametros.toString();
     return fetchAPI(consulta ? `${urls.auditLogs}?${consulta}` : urls.auditLogs);
 };
+// A aba "Sobre": a versão e o fuso vêm de uma rota que não fala com ninguém de
+// fora (abre sempre); a release é um pedido ao GitHub e vai à parte, porque
+// pode não haver rede de saída.
+export const getAbout = () => fetchAPI(urls.about);
+export const getLatestRelease = (forcar = false) =>
+    fetchAPI(forcar ? `${urls.latestRelease}?forcar=1` : urls.latestRelease);
 export const testTautulli = (payload) => fetchAPI(urls.testTautulli, 'POST', payload);
 export const testJellyfin = (payload) => fetchAPI(urls.testJellyfin, 'POST', payload);
 export const testOverseerr = (payload) => fetchAPI(urls.testOverseerr, 'POST', payload);

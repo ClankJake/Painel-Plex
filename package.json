@@ -1,6 +1,6 @@
 {
   "name": "painel-plex",
-  "version": "1.0.0",
+  "version": "22.3",
   "description": "Frontend dependencies for Painel de Gestão Plex",
   "main": "index.js",
   "scripts": {

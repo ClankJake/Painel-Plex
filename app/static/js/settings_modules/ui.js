@@ -12,6 +12,7 @@ import { showToast, escapeHTML } from '../utils.js';
 import { renderLevelEditor, renderResetMonthsGrid } from './gamification.js';
 import { loadOnlineMediaSources } from './online_media.js';
 import { carregar as carregarAuditoria } from './audit.js';
+import { carregarSobre } from './about.js';
 
 let logIntervalId = null;
 let lastLogContent = ""; // Evita re-renderizações desnecessárias e pulos no scroll
@@ -330,6 +331,15 @@ function handleTabChange(clickedButton, navElement, contentContainer, contentSel
     // dos logs, o que aqui entra não muda enquanto se está a olhar.
     if (tabId === 'auditoria' && !isSubtab) {
         carregarAuditoria(true);
+    }
+
+    // A aba "Sobre" segue a mesma regra, por duas razões: um dos pedidos dela
+    // sai para a internet (a release no GitHub), e o que ela mostra não muda
+    // enquanto a página está aberta. Ao contrário da auditoria, não se
+    // recarrega a cada abertura — a versão instalada não muda sozinha, e o
+    // botão "Verificar atualizações" está ali para quem quiser insistir.
+    if (tabId === 'sobre' && !isSubtab) {
+        carregarSobre();
     }
 
     if (!isSubtab) sincronizarBarraDeGravacao(contentElement);
