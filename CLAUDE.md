@@ -1649,6 +1649,19 @@ Configurações mantém o que lá tem: um padrão só vale para quem não escolh
 endereço para voltar a aceder" — é o `link` que `restaurar_acesso` devolve, e
 muda por servidor.
 
+🔔 **Estender o período de teste avisa quem está em teste** (o evento
+`trial_extended`, com texto nos cinco canais). Era a única mudança de acesso que
+o painel fazia em silêncio: o administrador estendia, o `end_trial_job` era
+remarcado, e do outro lado a pessoa continuava a contar com a data antiga — o
+único aviso que alguma vez lhe chegava sobre o teste era o do FIM, que é a má
+notícia. ⚠️ **A hora faz parte da data aqui**, ao contrário do vencimento de uma
+assinatura: um teste estende-se por horas ou minutos, e "vai até 20/09/2026"
+sobre uma extensão de duas horas não diz a quem lê quando é que fica sem acesso.
+⚠️ E avisar **nunca derruba a extensão** — quando isto corre, o teste já está
+estendido e a tarefa já foi remarcada —, mas a resposta da rota diz ao
+administrador se o aviso saiu (`notificado`, e a mensagem do toast), porque um
+aviso que não saiu não pode parecer que saiu.
+
 #### As notificações push: um quinto canal, com um destinatário diferente
 
 O sino do painel só avisa quem está com ele aberto. A notificação push é o mesmo

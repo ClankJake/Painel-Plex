@@ -526,7 +526,32 @@ def extend_trial_route(user, validated_data):
             extensions.media_server.unblock_user(media_user_id)
 
         logger.info(f"Admin '{current_user.username}' estendeu/iniciou o período de teste de '{username}' por {extend_minutes} minutos.")
-        return jsonify({"success": True, "message": _("Período de teste estendido/definido. Fim a %(date)s.", date=naive_run_date.strftime('%d/%m/%Y %H:%M'))})
+
+        # 🔔 Do outro lado, isto era uma mudança silenciosa: a pessoa continuava
+        # a contar com a data antiga, e o único aviso que o painel lhe mandava
+        # sobre o teste era o do FIM. Avisar aqui é a metade que faltava.
+        #
+        # ⚠️ E nunca derruba a rota: o teste já está estendido e a tarefa já foi
+        # remarcada quando isto corre. Um canal fora do ar não pode fazer o
+        # administrador pensar que a extensão falhou — e, por isso mesmo, a
+        # mensagem dele diz se o aviso saiu ou não.
+        entrega = {'sent': [], 'failed': []}
+        try:
+            entrega = extensions.notifier_manager.send_trial_extended_notification(
+                user, profile, new_trial_end_utc) or entrega
+        except Exception as e:
+            logger.warning(f"Não foi possível avisar '{username}' da extensão do teste: {e}")
+            entrega = {'sent': [], 'failed': [('', str(e))]}
+
+        fim = naive_run_date.strftime('%d/%m/%Y %H:%M')
+        if entrega['sent']:
+            mensagem = _("Período de teste estendido/definido. Fim a %(date)s. O usuário foi avisado.", date=fim)
+        elif entrega['failed']:
+            mensagem = _("Período de teste estendido/definido. Fim a %(date)s. Não foi possível avisar o usuário.", date=fim)
+        else:
+            mensagem = _("Período de teste estendido/definido. Fim a %(date)s. O usuário não tem contato para ser avisado.", date=fim)
+
+        return jsonify({"success": True, "message": mensagem, "notificado": bool(entrega['sent'])})
     except Exception as e:
         logger.error(f"Erro ao estender teste para '{username}': {e}", exc_info=True)
         return jsonify({"success": False, "message": _("Ocorreu um erro interno ao estender o teste.")}), 500
