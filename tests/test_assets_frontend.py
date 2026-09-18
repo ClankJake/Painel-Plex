@@ -216,6 +216,17 @@ def test_o_carregador_unico_existe_e_e_exportado():
     )
 
 
+# ⚠️ **A procura é uma EXPRESSÃO REGULAR e não um `'...' in texto`**, e a razão
+# é de fora: o CodeQL lê um nome de domínio dentro de um `in` como uma
+# verificação de endereço mal feita ("Incomplete URL substring sanitization",
+# gravidade alta) e reprovava a análise deste PR por causa deste guarda. Aqui
+# não se valida endereço nenhum — procura-se uma menção dentro do TEXTO de um
+# template —, mas uma análise vermelha que não é um problema ensina a ignorar
+# as que são. Os pontos vão escapados, senão o aviso trocava de nome
+# ("Incomplete regular expression for hostnames").
+CDN_DO_TAILWIND = re.compile(r'cdn\.tailwindcss\.com')
+
+
 def test_nenhum_template_carrega_o_tailwind_por_CDN():
     """⚠️ **O CSS vem do BUILD, e de mais lado nenhum.**
 
@@ -238,8 +249,8 @@ def test_nenhum_template_carrega_o_tailwind_por_CDN():
     com_cdn = [
         template.relative_to(RAIZ).as_posix()
         for template in sorted(TEMPLATES.rglob('*.html'))
-        if 'cdn.tailwindcss.com' in re.sub(
-            r'\{#.*?#\}', '', template.read_text(encoding='utf-8'), flags=re.S)
+        if CDN_DO_TAILWIND.search(re.sub(
+            r'\{#.*?#\}', '', template.read_text(encoding='utf-8'), flags=re.S))
     ]
 
     assert com_cdn == [], (
