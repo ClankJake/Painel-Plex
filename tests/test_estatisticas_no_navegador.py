@@ -37,6 +37,8 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 DIST = RAIZ / "app" / "static" / "dist"
+# A única pasta de onde o servidor do teste serve o que vem no pedido.
+ESTATICOS = RAIZ / "app" / "static"
 
 # Quanto tempo as recomendações demoram a responder, neste teste. É o número
 # que dá sentido à pergunta "a página esperou por elas?".
@@ -52,6 +54,26 @@ window.ResizeObserver = class extends Real {
     disconnect() { this.__desligado = true; return super.disconnect(); }
 };
 """
+
+
+def _dentro_de(pasta, alvo):
+    """`alvo` se ele estiver mesmo DENTRO de `pasta`; `None` se escapar.
+
+    🛡️ **O caminho vem do PEDIDO, e juntá-lo à raiz é uma travessia de
+    diretórios**: um `GET /static/../../../../etc/hostname` saía da pasta e o
+    servidor devolvia o ficheiro, com 200. Isto vive só dentro de um pytest,
+    ligado ao localhost e numa porta efémera — mas o padrão é o mesmo que
+    estaria errado em produção, e um teste que existe para provar que o painel
+    está bem não é sítio para o deixar escrito.
+
+    ⚠️ Compara-se depois de `resolve()`: é ele que come os `..`, e sem isso a
+    verificação olharia para um caminho que ainda não é o que vai ser aberto.
+    """
+    try:
+        resolvido = alvo.resolve()
+    except OSError:  # pragma: no cover - caminho impossível de resolver
+        return None
+    return resolvido if resolvido.is_relative_to(pasta.resolve()) else None
 
 
 def _saltar_ou_falhar(motivo):
@@ -124,7 +146,7 @@ def _construir_servidor(pagina_html):
                 return
 
             if caminho.startswith("/static/"):
-                ficheiro = RAIZ / "app" / caminho.lstrip("/")
+                ficheiro = _dentro_de(ESTATICOS, RAIZ / "app" / caminho.lstrip("/"))
             elif caminho == "/service-worker.js":
                 # O painel serve-o da RAIZ, e é daí que vem o alcance dele.
                 ficheiro = RAIZ / "app" / "static" / "js" / "service-worker.js"
@@ -134,7 +156,7 @@ def _construir_servidor(pagina_html):
                 self.send_error(404)
                 return
 
-            if not ficheiro.is_file():
+            if ficheiro is None or not ficheiro.is_file():
                 self.send_error(404)
                 return
 
@@ -323,6 +345,33 @@ class TestOModalNaoApagaAPagina:
             f"a seta ficou presa (estreito: desativada={estreito}, "
             f"largo: desativada={largo}): o observador dela já não corre."
         )
+
+
+class TestOServidorDoTesteNaoSaiDaPasta:
+    """🛡️ Um `GET /static/../../../../etc/hostname` devolvia o ficheiro, com 200.
+
+    Isto vive só dentro de um pytest, ligado ao localhost e numa porta
+    efémera — mas o padrão é o mesmo que estaria errado em produção, e um
+    teste que existe para provar que o painel está bem não é sítio para o
+    deixar escrito. Foi o CodeQL a apanhá-lo no PR.
+
+    ⚠️ Não precisa de navegador: é sobre o servidor, não sobre a página.
+    """
+
+    @pytest.mark.parametrize("caminho", [
+        "/static/../../../../../../etc/hostname",
+        "/static/../config/config.json",
+        "/static/js/../../../run.py",
+    ])
+    def test_recusa_o_que_esta_fora(self, caminho):
+        assert _dentro_de(ESTATICOS, RAIZ / "app" / caminho.lstrip("/")) is None
+
+    def test_e_continua_a_servir_o_que_esta_dentro(self):
+        """Um guarda que recusa tudo passaria neste ficheiro sem servir nada."""
+        dentro = _dentro_de(ESTATICOS, RAIZ / "app" / "static/js/statistics.js")
+
+        assert dentro is not None
+        assert dentro.is_file()
 
 
 def test_sem_erros_de_javascript(pagina):
