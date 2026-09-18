@@ -164,6 +164,27 @@ async function loadReferralCard() {
             }
         }
 
+        // 🎁 **A recompensa espera por quem ainda não pagou, e isso diz-se.**
+        // A indicação conta e fica registada — o que espera é a entrega, até a
+        // própria pessoa virar assinante. Sem este aviso, o cartão mostrava
+        // "Confirmado" ao lado de um saldo que nunca crescia, e não havia onde
+        // perceber porquê. ⚠️ Usa-se o `textContent`: o texto é do painel, mas
+        // o `{count}` vem da resposta e um dia outro campo virá com ele.
+        const aviso = document.getElementById('referral-hold-notice');
+        const avisoTexto = document.getElementById('referral-hold-text');
+        if (aviso && avisoTexto) {
+            if (data.pode_receber === false) {
+                const retidas = Number(data.retidas || 0);
+                avisoTexto.textContent = retidas > 0
+                    ? (state.i18n.referralHoldWaiting || 'Você já tem {count} recompensa(s) conquistada(s) esperando. Ela é liberada assim que você fizer o seu primeiro pagamento.')
+                        .replace('{count}', retidas)
+                    : (state.i18n.referralHold || 'Suas indicações já contam. A recompensa é liberada assim que você fizer o seu primeiro pagamento.');
+                aviso.classList.remove('hidden');
+            } else {
+                aviso.classList.add('hidden');
+            }
+        }
+
         document.getElementById('referral-total').textContent = data.total_referred || 0;
         document.getElementById('referral-confirmed').textContent = data.total_confirmed || 0;
 

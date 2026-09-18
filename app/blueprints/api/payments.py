@@ -96,6 +96,31 @@ def _avisar_administrador(titulo, mensagem, link=None):
         logger.warning(f"Não foi possível avisar o administrador por push: {e}")
 
 
+def _libertar_indicacoes_retidas(media_user_id):
+    """Entrega a quem acabou de pagar as recompensas de indicação que ficaram retidas.
+
+    🎁 **O mesmo pagamento tem dois papéis, e este é o segundo.** Logo acima,
+    quem paga é o INDICADO e quem recebe é outra pessoa. Aqui quem paga é o
+    INDICADOR: o que se procura é o que ele já ganhou enquanto ainda não podia
+    receber, porque só entrega a quem já é assinante (ver
+    `reward_referrer_on_payment`).
+
+    ⚠️ **Corre DEPOIS de o pagamento ficar 'CONCLUIDA' e de o commit passar.**
+    A condição de entrega é `user_has_completed_payment`, que lê a tabela: feito
+    antes, este pagamento ainda não estava lá e a recompensa ficava retida
+    exatamente pela razão que ele acabou de resolver — até à renovação seguinte.
+
+    ⚠️ E nunca derruba o pagamento, como tudo o resto neste módulo.
+    """
+    try:
+        extensions.referral_manager.liberar_recompensas_retidas(media_user_id)
+    except Exception as e:
+        logger.error(
+            f"Erro ao libertar as recompensas de indicação retidas do utilizador {media_user_id}: {e}",
+            exc_info=True
+        )
+
+
 def _run_payment_processing_in_thread(app, txid):
     """Executado numa thread separada para validar pagamentos atómicos e renovar contas."""
     MAX_RETRIES = 5
@@ -207,6 +232,7 @@ def _run_payment_processing_in_thread(app, txid):
                             extensions.socketio.emit('new_notification', namespace='/')
 
                     extensions.data_manager.update_pix_payment_status(txid, 'CONCLUIDA')
+                    _libertar_indicacoes_retidas(media_user_id)
                     logger.info(f"Processamento do upgrade pro-rata para TXID {mask_token(txid)} concluído.")
                     return
 
@@ -311,6 +337,9 @@ def _run_payment_processing_in_thread(app, txid):
                 # relida acima.
                 pagamento_final = extensions.data_manager.get_pix_payment(txid) or {}
                 extensions.data_manager.rodar_payment_token(
+                    pagamento_final.get('media_user_id') or media_user_id)
+
+                _libertar_indicacoes_retidas(
                     pagamento_final.get('media_user_id') or media_user_id)
 
                 logger.info(f"Processamento do pagamento para TXID {mask_token(txid)} concluído com sucesso.")

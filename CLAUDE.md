@@ -1856,6 +1856,54 @@ pagamento pertencem aí, não no gateway.
 Os webhooks só funcionam com `APP_BASE_URL` preenchido: é a partir dele que as
 URLs de retorno são construídas.
 
+#### Indique e Ganhe: a recompensa é RETIDA até quem indicou pagar
+
+🛡️ **Quem ainda não é assinante não recebe já.** A indicação conta e fica
+registada — o mérito de ter trazido alguém é de quem indicou —, mas a entrega
+espera até ele próprio ter um pagamento confirmado. Sem isto, uma conta de
+TESTE acumulava dias e crédito sem nunca pagar: num servidor de contas locais
+ela não custa nada de criar e nada a liga à mesma pessoa, que é exatamente a
+fraqueza que o CLAUDE.md já nota no anti-abuso de períodos de teste.
+
+⚠️ **A pergunta é `user_has_completed_payment`, e NÃO "está em teste".** As duas
+quase sempre coincidem, mas é a do pagamento que a mensagem promete a quem lê
+("liberado quando você fizer o pagamento") — e quem recebeu acesso à mão, sem
+nunca pagar, está na mesma situação. Uma renovação por cupom de 100% conta: ela
+grava um pagamento de valor 0.
+
+⚠️ **Não há tabela nova: o `referral_rewarded` a FALSO É o "por entregar".** Ao
+reter, `reward_referrer_on_payment` sai ANTES do `claim_referral_reward` —
+marcá-lo ali queimava a única oportunidade que aquele indicado tem de gerar
+prémio, e a recompensa nunca mais saía.
+
+🎁 **O mesmo pagamento tem dois papéis**, e por isso há duas chamadas lado a
+lado em `_process_successful_payment`: em `reward_referrer_on_payment` quem
+paga é o INDICADO (e quem recebe é outra pessoa); em
+`liberar_recompensas_retidas` quem paga é o INDICADOR, e o que se procura é o
+que ele já ganhou enquanto ainda não podia receber. Ela reentra no caminho
+normal em vez de repetir as regras — a reserva do direito, o teto de
+recompensas e a notificação ficam num sítio só.
+
+⚠️ **E corre DEPOIS do `update_pix_payment_status(txid, 'CONCLUIDA')` e do
+commit.** A condição é lida da tabela dos pagamentos: feita antes, este
+pagamento ainda não lá estava e a recompensa ficava retida exatamente pela
+razão que ele acabou de resolver — até à renovação seguinte.
+
+🔔 **E quem espera tem de saber porquê.** `get_referral_stats` devolve
+`pode_receber` e `retidas`, e o cartão da "Minha Conta" mostra o aviso: sem
+ele, a página dizia "Confirmado" ao lado de um saldo que nunca crescia.
+`retidas` conta só os indicados que JÁ pagaram — um que ainda não pagou não é
+uma recompensa à espera, é uma indicação por confirmar, e essa já está no
+`pending`.
+
+🐛 **E `add_days_to_subscription` passou a acabar o teste** (`_clear_trial_data`,
+como a renovação já fazia). Dar vencimento deixando o `end_trial_job` de pé era
+dar e tirar em silêncio: à hora marcada ele bloqueava a conta com o motivo
+`trial_expired`, apagando na prática os dias atribuídos — e como o cartão da
+página de utilizadores mostra a etiqueta de teste no `else` do
+`if (user.expiration_date)`, essa pessoa desaparecia também da aba e do
+contador de testes.
+
 🐛 **O link curto do mesmo destino é REUTILIZADO, nunca recriado.**
 `create_short_link` apagava os links antigos do mesmo destino "para evitar
 duplicações", e com isso matava o link que a pessoa já tinha recebido. Não era

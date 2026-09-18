@@ -37,10 +37,16 @@ def configurar(monkeypatch):
 def cenario(app_context, configurar):
     """Dois utilizadores: o 1 indicou o 2."""
     configurar()
-    dm = FakeDataManager(profiles={
-        1: {"media_user_id": 1, "username": "ana", "referral_code": "ABCD2345"},
-        2: {"media_user_id": 2, "username": "bruno"},
-    })
+    dm = FakeDataManager(
+        profiles={
+            1: {"media_user_id": 1, "username": "ana", "referral_code": "ABCD2345"},
+            2: {"media_user_id": 2, "username": "bruno"},
+        },
+        # ⚠️ Quem indica já pagou: sem isto a recompensa fica RETIDA (ver o
+        # `TestRecompensaRetida`) e todos os testes de entrega falhariam por um
+        # motivo que não é o deles.
+        paid_users=[1],
+    )
     subs = SubscriptionManagerEspiao()
     return ReferralManager(data_manager=dm, subscription_manager=subs), dm, subs
 
@@ -165,10 +171,13 @@ class TestRecompensa:
 
     def test_credito_e_somado_ao_saldo(self, app_context, configurar):
         configurar(REFERRAL_REWARD_TYPE="credit", REFERRAL_REWARD_CREDIT=5.0)
-        dm = FakeDataManager(profiles={
-            1: {"media_user_id": 1, "username": "ana", "referral_credit": 2.5},
-            2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
-        })
+        dm = FakeDataManager(
+            profiles={
+                1: {"media_user_id": 1, "username": "ana", "referral_credit": 2.5},
+                2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
+            },
+            paid_users=[1],
+        )
 
         resultado = ReferralManager(dm).reward_referrer_on_payment(2)
 
@@ -204,10 +213,13 @@ class TestRecompensa:
 
     def test_sem_subscription_manager_nao_rebenta(self, app_context, configurar):
         configurar()
-        dm = FakeDataManager(profiles={
-            1: {"media_user_id": 1, "username": "ana"},
-            2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
-        })
+        dm = FakeDataManager(
+            profiles={
+                1: {"media_user_id": 1, "username": "ana"},
+                2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
+            },
+            paid_users=[1],
+        )
 
         resultado = ReferralManager(dm, subscription_manager=None).reward_referrer_on_payment(2)
 
@@ -215,10 +227,13 @@ class TestRecompensa:
 
     def test_recompensa_de_zero_dias_nao_faz_nada(self, app_context, configurar):
         configurar(REFERRAL_REWARD_DAYS=0)
-        dm = FakeDataManager(profiles={
-            1: {"media_user_id": 1, "username": "ana"},
-            2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
-        })
+        dm = FakeDataManager(
+            profiles={
+                1: {"media_user_id": 1, "username": "ana"},
+                2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
+            },
+            paid_users=[1],
+        )
         subs = SubscriptionManagerEspiao()
 
         assert ReferralManager(dm, subs).reward_referrer_on_payment(2)["rewarded"] is False
@@ -227,11 +242,14 @@ class TestRecompensa:
     def test_limite_de_recompensas_por_utilizador(self, app_context, configurar):
         """Com o teto atingido, quem indica deixa de acumular novas recompensas."""
         configurar(REFERRAL_MAX_REWARDS_PER_USER=1)
-        dm = FakeDataManager(profiles={
-            1: {"media_user_id": 1, "username": "ana"},
-            2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": True},
-            3: {"media_user_id": 3, "username": "carla", "referred_by": 1, "referral_rewarded": False},
-        })
+        dm = FakeDataManager(
+            profiles={
+                1: {"media_user_id": 1, "username": "ana"},
+                2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": True},
+                3: {"media_user_id": 3, "username": "carla", "referred_by": 1, "referral_rewarded": False},
+            },
+            paid_users=[1],
+        )
         subs = SubscriptionManagerEspiao()
 
         resultado = ReferralManager(dm, subs).reward_referrer_on_payment(3)
@@ -252,10 +270,13 @@ class TestRecompensa:
             def add_days_to_subscription(self, media_user_id, days):
                 raise RuntimeError("Plex indisponível")
 
-        dm = FakeDataManager(profiles={
-            1: {"media_user_id": 1, "username": "ana"},
-            2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
-        })
+        dm = FakeDataManager(
+            profiles={
+                1: {"media_user_id": 1, "username": "ana"},
+                2: {"media_user_id": 2, "username": "bruno", "referred_by": 1, "referral_rewarded": False},
+            },
+            paid_users=[1],
+        )
 
         resultado = ReferralManager(dm, SubscriptionManagerQueRebenta()).reward_referrer_on_payment(2)
 
@@ -332,3 +353,142 @@ class TestConsumeCredit:
         configurar()
 
         assert ReferralManager(FakeDataManager()).consume_credit(999, 5.0) == 0.0
+
+
+class TestRecompensaRetida:
+    """🎁 A recompensa só é ENTREGUE a quem já é assinante.
+
+    A indicação conta e fica registada — o mérito de ter trazido alguém é de
+    quem indicou. O que espera é a entrega, até ele próprio pagar. Sem isto,
+    uma conta de TESTE (que num servidor de contas locais não custa nada de
+    criar e nada liga à mesma pessoa) acumulava dias e crédito sem nunca pagar.
+    """
+
+    def _cenario(self, configurar, quem_pagou):
+        configurar()
+        dm = FakeDataManager(
+            profiles={
+                1: {"media_user_id": 1, "username": "ana", "referral_code": "ABCD2345"},
+                2: {"media_user_id": 2, "username": "bruno", "referred_by": 1,
+                    "referral_rewarded": False},
+            },
+            paid_users=quem_pagou,
+        )
+        subs = SubscriptionManagerEspiao()
+        return ReferralManager(dm, subs), dm, subs
+
+    def test_quem_ainda_nao_pagou_nao_recebe_agora(self, app_context, configurar):
+        gestor, _dm, subs = self._cenario(configurar, quem_pagou=[2])
+
+        resultado = gestor.reward_referrer_on_payment(2)
+
+        assert resultado["rewarded"] is False
+        assert resultado["retida"] is True
+        assert subs.chamadas == []
+
+    def test_a_oportunidade_fica_intacta(self, app_context, configurar):
+        """O `referral_rewarded` a FALSO É o estado "por entregar".
+
+        Marcá-lo ao reter queimava a única oportunidade que este indicado tem de
+        gerar prémio, e a recompensa nunca mais sairia.
+        """
+        gestor, dm, _subs = self._cenario(configurar, quem_pagou=[2])
+
+        gestor.reward_referrer_on_payment(2)
+
+        assert dm.profiles["2"]["referral_rewarded"] is False
+
+    def test_o_pagamento_de_quem_indicou_liberta_a_recompensa(self, app_context, configurar):
+        gestor, dm, subs = self._cenario(configurar, quem_pagou=[2])
+        gestor.reward_referrer_on_payment(2)
+
+        # Ana paga: é agora que o que ela já tinha ganho lhe é entregue.
+        dm.paid_users.add("1")
+        resultado = gestor.liberar_recompensas_retidas(1)
+
+        assert resultado["entregues"] == ["bruno"]
+        assert subs.chamadas == [(1, 7)]
+        assert dm.profiles["2"]["referral_rewarded"] is True
+
+    def test_nada_e_libertado_antes_de_quem_indicou_pagar(self, app_context, configurar):
+        gestor, _dm, subs = self._cenario(configurar, quem_pagou=[2])
+
+        assert gestor.liberar_recompensas_retidas(1)["entregues"] == []
+        assert subs.chamadas == []
+
+    def test_um_indicado_que_nao_pagou_nao_e_uma_recompensa_retida(self, app_context, configurar):
+        """"Por confirmar" e "por entregar" são coisas diferentes.
+
+        Bruno nunca pagou: não há prémio nenhum à espera, há uma indicação que
+        ainda não converteu — e essa já está contada nos `pending`.
+        """
+        gestor, _dm, subs = self._cenario(configurar, quem_pagou=[1])
+
+        assert gestor.liberar_recompensas_retidas(1)["entregues"] == []
+        assert subs.chamadas == []
+
+    def test_libertar_duas_vezes_nao_paga_a_dobrar(self, app_context, configurar):
+        gestor, dm, subs = self._cenario(configurar, quem_pagou=[2])
+        gestor.reward_referrer_on_payment(2)
+        dm.paid_users.add("1")
+
+        gestor.liberar_recompensas_retidas(1)
+        segunda = gestor.liberar_recompensas_retidas(1)
+
+        assert segunda["entregues"] == []
+        assert subs.chamadas == [(1, 7)]
+
+    def test_o_teto_de_recompensas_continua_a_valer_ao_libertar(self, app_context, configurar):
+        """A libertação passa pelo caminho normal — e por todas as regras dele."""
+        configurar(REFERRAL_MAX_REWARDS_PER_USER=1)
+        dm = FakeDataManager(
+            profiles={
+                1: {"media_user_id": 1, "username": "ana"},
+                2: {"media_user_id": 2, "username": "bruno", "referred_by": 1,
+                    "referral_rewarded": True},
+                3: {"media_user_id": 3, "username": "carla", "referred_by": 1,
+                    "referral_rewarded": False},
+            },
+            paid_users=[1, 3],
+        )
+        subs = SubscriptionManagerEspiao()
+
+        resultado = ReferralManager(dm, subs).liberar_recompensas_retidas(1)
+
+        assert resultado["entregues"] == []
+        assert subs.chamadas == []
+        assert dm.profiles["3"]["referral_rewarded"] is False
+
+    def test_uma_falha_ao_libertar_nunca_derruba_o_pagamento(self, app_context, configurar):
+        configurar()
+
+        class DataManagerQueRebenta(FakeDataManager):
+            def get_users_referred_by(self, media_user_id):
+                raise RuntimeError("base de dados indisponível")
+
+        dm = DataManagerQueRebenta(
+            profiles={1: {"media_user_id": 1, "username": "ana"}},
+            paid_users=[1],
+        )
+
+        assert ReferralManager(dm).liberar_recompensas_retidas(1) == {
+            "success": False, "entregues": []
+        }
+
+    def test_o_resumo_diz_que_a_recompensa_esta_retida(self, app_context, configurar):
+        """É daqui que sai o aviso da página da conta."""
+        gestor, dm, _subs = self._cenario(configurar, quem_pagou=[2])
+        gestor.reward_referrer_on_payment(2)
+
+        stats = gestor.get_referral_stats(1)
+
+        assert stats["pode_receber"] is False
+        assert stats["retidas"] == 1
+
+    def test_quem_ja_pagou_nao_ve_o_aviso(self, app_context, configurar):
+        gestor, _dm, _subs = self._cenario(configurar, quem_pagou=[1, 2])
+
+        stats = gestor.get_referral_stats(1)
+
+        assert stats["pode_receber"] is True
+        assert stats["retidas"] == 0

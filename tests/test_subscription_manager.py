@@ -288,6 +288,27 @@ class TestAddDaysToSubscription:
         assert job["run_date"] == nova
         assert job["args"] == [1]
 
+    def test_dar_vencimento_acaba_o_periodo_de_teste(self, manager):
+        """🐛 Dar dias sem apagar o teste era dar e tirar em silêncio.
+
+        O `end_trial_job` ficava de pé e, à hora marcada, bloqueava a conta com
+        o motivo `trial_expired` — apagando na prática os dias acabados de
+        atribuir. E o cartão da página de utilizadores mostra a etiqueta de
+        teste no `else` do `if (user.expiration_date)`, por isso essa pessoa
+        desaparecia também da aba e do contador de testes, sem erro nenhum.
+        """
+        manager.scheduler.jobs["trial_1"] = {}
+        manager.data_manager.profiles["1"].update({
+            "trial_end_date": "2026-01-01T00:00:00", "trial_job_id": "trial_1",
+        })
+
+        manager.add_days_to_subscription(1, 7)
+
+        perfil = manager.data_manager.profiles["1"]
+        assert perfil["trial_end_date"] is None
+        assert perfil["trial_job_id"] is None
+        assert "trial_1" in manager.scheduler.removidos
+
 
 class TestRenewSubscription:
     def test_renovacao_mensal_completa(self, manager):

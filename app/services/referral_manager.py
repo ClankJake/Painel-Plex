@@ -201,6 +201,25 @@ class ReferralManager:
                 logger.warning(f"[Referral] Quem indicou (ID {referrer_id}) já não tem perfil. Indicação ignorada.")
                 return {"success": False, "rewarded": False}
 
+            # 🛡️ Quem ainda não pagou nada NÃO recebe agora — fica RETIDO.
+            #
+            # A indicação conta e é registada: o mérito de ter trazido alguém é
+            # dele. O que espera é a entrega, até ele próprio virar assinante.
+            # Sem isto, uma conta de TESTE — que num servidor de contas locais
+            # não custa nada de criar e nada liga à mesma pessoa — podia
+            # acumular dias e crédito sem nunca pagar.
+            #
+            # ⚠️ E NÃO se chama o `claim_referral_reward` aqui: é o
+            # `referral_rewarded` a FALSO que guarda o "por entregar". Marcá-lo
+            # agora queimava a única oportunidade que este indicado tem de gerar
+            # prémio, e a recompensa nunca mais sairia.
+            if not self._ja_pagou(referrer_id):
+                logger.info(
+                    f"[Referral] Recompensa de '{referrer_profile.get('username')}' fica retida: "
+                    "ele ainda não tem nenhum pagamento confirmado. Será entregue quando pagar."
+                )
+                return {"success": True, "rewarded": False, "retida": True, "referrer_id": referrer_id}
+
             if self._reward_limit_reached(config, referrer_id):
                 return {"success": True, "rewarded": False, "message": "Limite de recompensas atingido."}
 
@@ -265,6 +284,71 @@ class ReferralManager:
                     )
             return {"success": False, "rewarded": False}
 
+    def _ja_pagou(self, media_user_id):
+        """Esta pessoa já tem algum pagamento confirmado?
+
+        ⚠️ É esta a pergunta, e não "está em teste". As duas quase sempre
+        coincidem, mas a que interessa é a do PAGAMENTO, porque é ela que a
+        mensagem promete ("liberado quando você fizer o pagamento") e porque
+        quem recebeu acesso à mão, sem nunca pagar, está exatamente na mesma
+        situação de quem está em teste. Uma renovação por cupom de 100% conta:
+        ela grava um pagamento de valor 0, que é passar pelo fluxo na mesma.
+        """
+        return bool(self.data_manager.user_has_completed_payment(media_user_id))
+
+    def liberar_recompensas_retidas(self, referrer_id):
+        """Entrega as recompensas que ficaram à espera de este utilizador pagar.
+
+        🎁 É a segunda metade do `reward_referrer_on_payment`, e corre no mesmo
+        momento — um pagamento confirmado. A diferença é o PAPEL de quem paga:
+        ali ele é o INDICADO (e quem recebe é outra pessoa), aqui ele é o
+        INDICADOR, e o que se procura é o que ele já ganhou enquanto ainda não
+        podia receber.
+
+        Uma retida é um indicado com `referral_rewarded` a FALSO que já tem
+        pagamento confirmado — a mesma condição que `reward_referrer_on_payment`
+        usou para decidir reter. Não há tabela nova: o estado já estava lá.
+        """
+        entregues = []
+        try:
+            config = load_or_create_config()
+            if not config.get("REFERRAL_ENABLED", False):
+                return {"success": False, "entregues": []}
+
+            # ⚠️ Corre DEPOIS de o pagamento estar gravado, por isso esta
+            # verificação já vê o pagamento que a acabou de desbloquear.
+            if not self._ja_pagou(referrer_id):
+                return {"success": True, "entregues": []}
+
+            for indicado in self.data_manager.get_users_referred_by(referrer_id):
+                if indicado.get('referral_rewarded'):
+                    continue
+
+                indicado_id = indicado.get('media_user_id')
+                if not indicado_id or not self._ja_pagou(indicado_id):
+                    # Ainda não é uma recompensa: o indicado é que não pagou.
+                    continue
+
+                # ⚠️ Passa pelo caminho normal, que já sabe reservar o direito
+                # (o UPDATE condicional contra o pagamento processado duas
+                # vezes), verificar o teto de recompensas e notificar. Repetir
+                # essas três regras aqui era criar a segunda cópia que diverge
+                # no primeiro ajuste.
+                resultado = self.reward_referrer_on_payment(indicado_id)
+                if resultado.get('rewarded'):
+                    entregues.append(indicado.get('username'))
+
+            if entregues:
+                logger.info(
+                    f"[Referral] Recompensas retidas entregues a {referrer_id} "
+                    f"agora que ele pagou: {', '.join(str(u) for u in entregues)}."
+                )
+            return {"success": True, "entregues": entregues}
+
+        except Exception as e:
+            logger.error(f"[Referral] Falha ao libertar as recompensas retidas: {e}", exc_info=True)
+            return {"success": False, "entregues": entregues}
+
     # ------------------------------------------------------------------
     # CONSULTA
     # ------------------------------------------------------------------
@@ -277,6 +361,27 @@ class ReferralManager:
         referred = self.data_manager.get_users_referred_by(media_user_id)
         confirmed = [r for r in referred if r.get('referral_rewarded')]
 
+        # 🎁 **Quem ainda não pagou não recebe já — e tem de o saber.** A
+        # indicação conta e fica registada; o que espera é a entrega, até ele
+        # próprio virar assinante (ver `reward_referrer_on_payment`). Sem isto,
+        # a página mostrava "indicação confirmada" a alguém que não ia ver
+        # recompensa nenhuma aparecer, e não havia onde perceber porquê.
+        pode_receber = self._ja_pagou(media_user_id)
+
+        # ⚠️ Só se conta o que está mesmo retido — um indicado que ainda não
+        # pagou não é uma recompensa à espera, é uma indicação por confirmar, e
+        # já está no `pending`. E só se pergunta quando há algo retido: com
+        # `pode_receber`, a resposta seria zero à custa de uma consulta por
+        # indicado.
+        retidas = 0
+        if not pode_receber:
+            retidas = sum(
+                1 for r in referred
+                if not r.get('referral_rewarded')
+                and r.get('media_user_id')
+                and self._ja_pagou(r.get('media_user_id'))
+            )
+
         balance = round(float(profile.get('referral_credit') or 0), 2)
         # Crédito já comprometido em cobranças abertas: mostrá-lo como disponível
         # levaria o utilizador a contar duas vezes com o mesmo dinheiro.
@@ -285,6 +390,8 @@ class ReferralManager:
         return {
             "enabled": bool(config.get("REFERRAL_ENABLED", False)),
             "code": profile.get('referral_code'),
+            "pode_receber": pode_receber,
+            "retidas": retidas,
             "reward_type": config.get("REFERRAL_REWARD_TYPE", "days"),
             "reward_days": int(config.get("REFERRAL_REWARD_DAYS", 0) or 0),
             "reward_credit": float(config.get("REFERRAL_REWARD_CREDIT", 0) or 0),
