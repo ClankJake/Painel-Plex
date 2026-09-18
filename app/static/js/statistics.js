@@ -251,6 +251,25 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>`;
     };
 
+    /**
+     * O lugar da análise pessoal enquanto ela não chega.
+     *
+     * Espelha a forma do que vem a seguir — quatro cartões e dois gráficos —
+     * para a página não saltar quando a resposta entrar.
+     */
+    const esqueletoDaAnalisePessoal = () => {
+        const cartao = `<div class="h-24 rounded-xl bg-gray-200 dark:bg-gray-700/60"></div>`;
+
+        return `
+            <div class="animate-pulse bg-white dark:bg-gray-800/50 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 space-y-6" aria-hidden="true">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">${cartao.repeat(4)}</div>
+                <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                    <div class="lg:col-span-3 h-80 rounded-xl bg-gray-200 dark:bg-gray-700/60"></div>
+                    <div class="lg:col-span-2 h-80 rounded-xl bg-gray-200 dark:bg-gray-700/60"></div>
+                </div>
+            </div>`;
+    };
+
     const renderRecommendations = (sections, reason) => {
         if (!dom.recommendationsSection || !dom.recommendationsContainer) return;
 
@@ -694,17 +713,58 @@ document.addEventListener('DOMContentLoaded', () => {
     // inteiro. São informação a mais, não a espinha da página: cada uma pede o
     // que é seu e aparece quando chegar.
 
+    // ⚠️ **Soltar um pedido do fluxo principal abre uma corrida.** Mexer no
+    // filtro de dias depressa (30 → 90 → 30) deixa dois em voo, e o mais LENTO
+    // pode chegar em ÚLTIMO: a página ficava com os números de um período que
+    // já não é o escolhido, sem erro nenhum e sem nada que o denunciasse.
+    // Cada carregamento tira a sua vez e só escreve se ainda for o mais
+    // recente a ter sido pedido.
+    const ultimoPedido = { novidades: 0, analise: 0 };
+
     const carregarNovidades = async (days) => {
         if (!dom.newlyAddedSection) return;
+        const aMinhaVez = ++ultimoPedido.novidades;
+
         try {
             const resposta = await fetchAPI(`${urls.recentlyAddedUrl}?days=${days}`);
+            if (aMinhaVez !== ultimoPedido.novidades) return;
             if (resposta.success) renderNewlyAdded(resposta.media);
             else dom.newlyAddedSection.classList.add('hidden');
         } catch (error) {
             // Uma falha aqui esconde a secção e mais nada: as estatísticas —
             // que são o que a pessoa veio ver — já estão na página.
+            if (aMinhaVez !== ultimoPedido.novidades) return;
             dom.newlyAddedSection.classList.add('hidden');
         }
+    };
+
+    /**
+     * A análise pessoal (cartões, gráficos, nível e conquistas) do próprio.
+     *
+     * ⚡ Era a SEGUNDA chamada a segurar a página: o `mainFetch` esperava por
+     * ela antes de mostrar o `statsContainer`, por isso o pódio e o ranking —
+     * que já tinham chegado na primeira — ficavam à espera de um pedido que
+     * não é deles.
+     *
+     * ⚠️ Escreve num elemento SOLTO e só o troca no fim, como o modal já fazia.
+     * É o que permite descartar uma resposta que chegou tarde sem deixar a
+     * página meio escrita: enquanto ela não chega, o que está na página é o
+     * esqueleto, e não uma análise a ser montada por partes.
+     */
+    const carregarAnalisePessoal = async (days) => {
+        if (!dom.personalAnalysis) return;
+        const aMinhaVez = ++ultimoPedido.analise;
+
+        dom.personalAnalysis.innerHTML = esqueletoDaAnalisePessoal();
+
+        const destino = document.createElement('div');
+        // `renderUserAnalysis` trata dos erros dele: uma falha aqui escreve a
+        // sua própria mensagem no lugar da análise, e não no `errorContainer`
+        // que apagaria a página inteira.
+        await renderUserAnalysis(currentUser.id, currentUser.username, days, destino);
+
+        if (aMinhaVez !== ultimoPedido.analise) return;
+        dom.personalAnalysis.replaceChildren(destino);
     };
 
     const carregarRecomendacoes = async () => {
@@ -757,8 +817,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 renderMainChart(state.allUsersData);
             } else {
-                await renderUserAnalysis(currentUser.id, currentUser.username, days, dom.personalAnalysis);
-
                 if (dom.leaderboardList) {
                     if (state.allUsersData.length === 0) {
                         dom.leaderboardList.innerHTML = `<p class="text-center text-gray-500 dark:text-gray-400">${i18n.noOneWatched}</p>`;
@@ -808,7 +866,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // usam a janela longa que o administrador configurou e ignoram este
         // filtro. Voltar a pedi-las a cada mudança era pagar a chamada mais
         // cara do painel para receber exatamente a mesma resposta.
-        if (currentUser.role !== 'admin') carregarNovidades(dom.daysFilter.value);
+        if (currentUser.role !== 'admin') {
+            carregarNovidades(dom.daysFilter.value);
+            carregarAnalisePessoal(dom.daysFilter.value);
+        }
     });
 
     document.body.addEventListener('click', (e) => { 
@@ -856,6 +917,7 @@ document.addEventListener('DOMContentLoaded', () => {
         mainFetch(dom.daysFilter.value);
         if (currentUser.role !== 'admin') {
             carregarNovidades(dom.daysFilter.value);
+            carregarAnalisePessoal(dom.daysFilter.value);
             carregarRecomendacoes();
         }
     }

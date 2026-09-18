@@ -1062,14 +1062,28 @@ só resolve com a MAIS LENTA. As estatísticas já tinham chegado e ninguém as
 via: o `statsContainer` ficava escondido, com o spinner à frente, até o motor
 responder. E ele lê o histórico do servidor INTEIRO. Recomendações e novidades
 são informação a mais, não a espinha da página: cada uma tem agora a sua função
-(`carregarRecomendacoes`, `carregarNovidades`), pede o que é seu e aparece
-quando chegar. ⚠️ Enquanto não chega há um esqueleto, e a secção é mostrada JÁ:
-escondê-la até à resposta fazia o resto da página saltar para baixo quando ela
-entrasse. ⚠️ E uma falha delas esconde a secção e mais nada — nunca o
+(`carregarRecomendacoes`, `carregarNovidades`, `carregarAnalisePessoal`), pede o
+que é seu e aparece quando chegar. ⚠️ Enquanto não chega há um esqueleto, e a
+secção é mostrada JÁ: escondê-la até à resposta fazia o resto da página saltar
+para baixo quando ela entrasse. ⚠️ E uma falha delas esconde a secção e mais nada — nunca o
 `errorContainer`, que diria a quem está a ler as suas estatísticas que a página
 falhou quando ela está inteira. ⚠️ O filtro de dias já NÃO as volta a pedir:
 elas usam a janela longa do administrador e ignoram-no, por isso cada mudança
 de período pagava a chamada mais cara do painel para receber a mesma resposta.
+
+⚠️ **A análise pessoal era a SEGUNDA a segurar a página** — o pódio e o ranking
+já tinham chegado no pedido das estatísticas e ficavam à espera de um pedido que
+não é deles. Saiu do `mainFetch` pelo mesmo caminho.
+
+⚠️ **E soltar um pedido do fluxo principal ABRE UMA CORRIDA.** Mexer no filtro
+depressa (30 → 90 → 30) deixa dois em voo, e o mais LENTO pode chegar em
+ÚLTIMO: a página ficava com os números de um período que já não é o escolhido,
+sem erro nenhum e sem nada que o denunciasse. Cada carregamento tira a sua vez
+(`ultimoPedido`) e só escreve se ainda for o mais recente a ter sido pedido.
+⚠️ A análise pessoal é montada num elemento SOLTO e só trocada no fim — como o
+modal já fazia —, que é o que permite descartar uma resposta tardia sem deixar
+a página meio escrita: até lá o que se vê é o esqueleto, e não uma análise a
+ser montada por partes.
 
 ⚡ **E o índice deixou de ser construído dentro de um pedido.** Era um
 `@cache.memoize` de 30 minutos, o que quer dizer sem tranca nenhuma: à hora a
