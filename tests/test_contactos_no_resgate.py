@@ -61,7 +61,7 @@ class TestOQueFicaGravado:
             })
             perfil = extensions.data_manager.get_user_profile(ALVO)
 
-        assert sorted(gravados) == ['discord', 'telegram', 'whatsapp']
+        assert sorted(gravados.gravados) == ['discord', 'telegram', 'whatsapp']
         assert perfil['name'] == 'Ana'
         assert perfil['phone_number'] == '5521999998888'
         assert perfil['telegram_user'] == '123456789'
@@ -85,7 +85,7 @@ class TestOQueFicaGravado:
             gravados = _guardar(ALVO, {'telegram': '123'}, TELEGRAM_ENABLED=False)
             perfil = extensions.data_manager.get_user_profile(ALVO)
 
-        assert gravados == []
+        assert gravados.gravados == ()
         assert not perfil.get('telegram_user')
 
     def test_o_discord_sem_webhook_conta_como_desligado(self, app, db_session):
@@ -94,7 +94,7 @@ class TestOQueFicaGravado:
             _perfil(ALVO, 'ana')
             gravados = _guardar(ALVO, {'discord': '123'}, DISCORD_WEBHOOK_URL='')
 
-        assert gravados == []
+        assert gravados.gravados == ()
 
     def test_o_telefone_e_guardado_so_com_digitos(self, app, db_session):
         """O destinatário é `{phone_number}@s.whatsapp.net`."""
@@ -115,23 +115,20 @@ class TestDuasPessoasNoMesmoContacto:
     tiver.
     """
 
-    @pytest.mark.parametrize('canal, coluna, valor', [
-        ('whatsapp', 'phone_number', '5521999998888'),
-        ('telegram', 'telegram_user', '123456789'),
-        ('discord', 'discord_user_id', '987654321098765432'),
+    @pytest.mark.parametrize('canal, coluna, valor, rotulo', [
+        ('whatsapp', 'phone_number', '5521999998888', 'WhatsApp'),
+        ('telegram', 'telegram_user', '123456789', 'Telegram'),
+        ('discord', 'discord_user_id', '987654321098765432', 'Discord'),
     ])
-    def test_o_contacto_de_outra_pessoa_e_recusado(self, app, db_session, canal, coluna, valor):
-        from app.services.contactos_do_resgate import ContactoEmUso
-
+    def test_o_contacto_de_outra_pessoa_e_recusado(self, app, db_session, canal, coluna, valor, rotulo):
         with app.app_context():
             _perfil(OUTRA, 'joana', **{coluna: valor})
             _perfil(ALVO, 'ana')
 
-            with pytest.raises(ContactoEmUso):
-                _guardar(ALVO, {canal: valor})
-
+            resultado = _guardar(ALVO, {canal: valor})
             perfil = extensions.data_manager.get_user_profile(ALVO)
 
+        assert resultado.conflito == rotulo
         assert not perfil.get(coluna), "nada pode ficar gravado quando a recusa acontece"
 
     def test_regravar_o_proprio_contacto_nao_e_conflito(self, app, db_session):
@@ -139,20 +136,24 @@ class TestDuasPessoasNoMesmoContacto:
             _perfil(ALVO, 'ana', phone_number='5521999998888')
             gravados = _guardar(ALVO, {'whatsapp': '5521999998888'})
 
-        assert gravados == ['whatsapp']
+        assert gravados.gravados == ('whatsapp',)
 
-    def test_a_recusa_nao_diz_de_quem_e(self, app, db_session):
-        """🛡️ Quem preenche não tem de ficar a saber quem mais está no painel."""
-        from app.services.contactos_do_resgate import ContactoEmUso
+    def test_a_recusa_leva_o_ROTULO_e_mais_nada(self, app, db_session):
+        """🛡️ Duas coisas de uma vez.
 
+        Quem preenche não tem de ficar a saber quem mais está no painel — e o
+        que o serviço devolve é um RÓTULO, não texto nem um objeto de erro. Era
+        uma exceção cuja `str()` a rota punha no corpo da resposta, e o CodeQL
+        marcou-o numa rota pública (alertas 88, 89 e 90 do PR #44).
+        """
         with app.app_context():
             _perfil(OUTRA, 'joana', telegram_user='123')
             _perfil(ALVO, 'ana')
-            with pytest.raises(ContactoEmUso) as erro:
-                _guardar(ALVO, {'telegram': '123'})
+            resultado = _guardar(ALVO, {'telegram': '123'})
 
-        assert 'joana' not in str(erro.value)
-        assert OUTRA not in str(erro.value)
+        assert resultado.conflito == 'Telegram'
+        assert 'joana' not in str(resultado)
+        assert OUTRA not in str(resultado)
 
 
 class TestOsCanaisOferecidos:
@@ -307,3 +308,48 @@ class TestOResgateNuncaCai:
         with app.test_request_context('/'):
             invites_module._preparar_recolha_de_contactos({'success': False})
             assert 'resgate_recente' not in session
+
+
+class TestNadaDeDentroSaiNaResposta:
+    """🛡️ CodeQL, alertas 88/89/90 do PR #44.
+
+    As rotas do resgate devolviam `str(e)` de uma exceção no corpo da resposta:
+    "stack trace information flows to this location and may be exposed to an
+    external user". Hoje não vazava nada — as mensagens eram todas `_()`
+    escritas à mão —, mas estas rotas são PÚBLICAS e o padrão estava a uma
+    edição natural de vazar: bastava alguém escrever
+    `raise VinculoIndisponivel(f"... {e}")` para o erro da API do Telegram, com
+    o endereço que ele traz, ir no corpo de uma resposta HTTP.
+
+    Hoje o serviço devolve um MOTIVO e a rota é dona do texto — o mesmo idioma
+    do `ESTADO_HTTP`, que já traduz um motivo num sítio só.
+    """
+
+    def test_nenhuma_rota_do_resgate_devolve_o_texto_de_uma_excecao(self):
+        import re
+        from pathlib import Path
+
+        fonte = Path('app/blueprints/api/invites.py').read_text(encoding='utf-8')
+        # Só as LINHAS de código: o comentário que explica isto tem de poder
+        # nomear o padrão que descreve.
+        codigo = '\n'.join(
+            linha for linha in fonte.splitlines()
+            if not linha.lstrip().startswith('#')
+        )
+        suspeitas = re.findall(r'"message":\s*(?:str|repr|f")[^,\n]*', codigo)
+        assert suspeitas == [], (
+            "uma `message` montada a partir de uma exceção põe o que vem de "
+            f"baixo numa resposta pública: {suspeitas}"
+        )
+
+    def test_os_servicos_devolvem_motivo_e_nao_texto(self):
+        """O serviço não tem de saber escrever para uma pessoa."""
+        from app.services import telegram_vinculo
+        from app.services.contactos_do_resgate import Resultado
+
+        # Um rótulo de canal, não uma frase nem um objeto de erro.
+        assert Resultado(conflito='WhatsApp').conflito == 'WhatsApp'
+        # Códigos, não frases.
+        for motivo in (telegram_vinculo.SEM_TELEGRAM, telegram_vinculo.OCUPADO,
+                       telegram_vinculo.FALHOU):
+            assert ' ' not in motivo, f"'{motivo}' parece uma frase, e a frase é da rota"

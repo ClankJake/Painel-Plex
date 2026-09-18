@@ -136,13 +136,15 @@ class TestAProcuraDoStart:
         ])
         _com_bot(monkeypatch, bot)
 
-        assert telegram_vinculo.procurar_chat(LIGADO, 'abc123') == '222'
+        assert telegram_vinculo.procurar_chat(LIGADO, 'abc123').chat_id == '222'
 
     def test_o_codigo_de_outra_pessoa_nao_serve(self, app, monkeypatch):
         from app.services import telegram_vinculo
 
         _com_bot(monkeypatch, BotFalso([AtualizacaoFalsa('/start outro', 111)]))
-        assert telegram_vinculo.procurar_chat(LIGADO, 'abc123') is None
+        procura = telegram_vinculo.procurar_chat(LIGADO, 'abc123')
+        assert procura.chat_id is None and procura.motivo is None, \
+            'sem motivo quer dizer "ainda não chegou", que não é "não dá"'
 
     def test_le_SEM_offset_para_nao_consumir_as_atualizacoes(self, app, monkeypatch):
         """🛡️ É isto que impede o painel de roubar o que o bot do
@@ -180,17 +182,33 @@ class TestAProcuraDoStart:
         erro = ApiTelegramException('getUpdates', None, {'error_code': 409, 'description': 'Conflict'})
         _com_bot(monkeypatch, BotFalso(erro=erro))
 
-        with pytest.raises(telegram_vinculo.VinculoIndisponivel):
-            telegram_vinculo.procurar_chat(LIGADO, 'abc123')
+        assert telegram_vinculo.procurar_chat(LIGADO, 'abc123').motivo == telegram_vinculo.OCUPADO
 
-    def test_sem_telegram_configurado_e_indisponivel_e_nao_um_None(self, app, monkeypatch):
+    def test_sem_telegram_configurado_o_motivo_diz_qual_e(self, app, monkeypatch):
         """"Ainda não chegou" e "não dá" são respostas diferentes: a página
         precisa da distinção para dizer a coisa certa a quem está à espera."""
         from app.services import telegram_vinculo
 
         _com_bot(monkeypatch, None)
-        with pytest.raises(telegram_vinculo.VinculoIndisponivel):
-            telegram_vinculo.procurar_chat(LIGADO, 'abc123')
+        assert telegram_vinculo.procurar_chat(LIGADO, 'abc123').motivo == \
+            telegram_vinculo.SEM_TELEGRAM
+
+    def test_o_erro_de_baixo_nunca_sai_no_motivo(self, app, monkeypatch):
+        """🛡️ O motivo é um CÓDIGO, e a frase é da rota.
+
+        O que o cliente do Telegram levanta pode trazer o endereço da API e o
+        que mais lá estiver; ele vai para o log e não para a resposta. Era uma
+        exceção cuja `str()` a rota devolvia, e o CodeQL marcou-a numa rota
+        PÚBLICA (alerta 89 do PR #44).
+        """
+        from app.services import telegram_vinculo
+
+        _com_bot(monkeypatch, BotFalso(erro=RuntimeError('https://api.telegram.org/botSEGREDO/x')))
+        resultado = telegram_vinculo.procurar_chat(LIGADO, 'abc123')
+
+        assert resultado.motivo == telegram_vinculo.FALHOU
+        assert 'SEGREDO' not in str(resultado)
+        assert 'api.telegram.org' not in str(resultado)
 
 
 class TestOQueOPainelNuncaFaz:

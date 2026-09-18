@@ -33,8 +33,7 @@ painel DIZ isso, em vez de tentar tomar o lugar dele.
 
 import logging
 import time
-
-from flask_babel import gettext as _
+from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +48,27 @@ PREFIXO = '/start'
 _nome_em_cache = {}
 
 
-class VinculoIndisponivel(Exception):
-    """Não dá para vincular agora, e a mensagem diz porquê."""
+# Os motivos por que não dá. 🛡️ São CÓDIGOS e não frases: a frase é da rota,
+# que é quem fala com a pessoa. Isto era uma exceção cuja `str()` a rota
+# devolvia no corpo da resposta, e o CodeQL marcou-o (alerta 89 do PR #44).
+# Hoje não vazava nada, mas a rota é PÚBLICA e o padrão estava a uma edição
+# natural de vazar: bastava alguém escrever `raise VinculoIndisponivel(f"... {e}")`
+# para o erro da API do Telegram ir para o corpo da resposta.
+SEM_TELEGRAM = 'sem_telegram'
+OCUPADO = 'ocupado'
+FALHOU = 'falhou'
+
+
+class Resultado(NamedTuple):
+    """O chat encontrado, ou o motivo por que não dá.
+
+    ⚠️ `chat_id=None` e `motivo=None` juntos querem dizer "ainda não chegou",
+    que NÃO é a mesma coisa que "não dá" — e a página precisa da distinção para
+    dizer a coisa certa a quem está à espera de ter tocado em Começar.
+    """
+
+    chat_id: str = None
+    motivo: str = None
 
 
 def _bot(config):
@@ -98,19 +116,14 @@ def link_de_vinculo(config, codigo):
 
 
 def procurar_chat(config, codigo):
-    """O `chat.id` de quem mandou `/start <codigo>`, ou None se ainda não veio.
-
-    Levanta `VinculoIndisponivel` quando não é "ainda não" mas sim "não dá" —
-    a diferença que a página precisa de saber para dizer a coisa certa a quem
-    está à espera.
-    """
+    """O `chat.id` de quem mandou `/start <codigo>`, ou o motivo de não dar."""
     from telebot.apihelper import ApiTelegramException
 
     bot = _bot(config)
     if not bot:
-        raise VinculoIndisponivel(_("O Telegram não está configurado neste painel."))
+        return Resultado(motivo=SEM_TELEGRAM)
     if not codigo:
-        return None
+        return Resultado()
 
     try:
         # ⚠️ Sem `offset` (não confirma nada, ver o cabeçalho) e sem espera
@@ -128,15 +141,14 @@ def procurar_chat(config, codigo):
                 "ou outro bot a usar este token. O vínculo pelo painel não pode "
                 "funcionar enquanto isso durar."
             )
-            raise VinculoIndisponivel(_(
-                "Não foi possível falar com o bot agora. Peça ao administrador "
-                "para vincular o seu Telegram."
-            ))
+            return Resultado(motivo=OCUPADO)
+        # ⚠️ O erro de baixo vai para o LOG e não para a resposta: ele pode
+        # trazer o endereço da API e o que mais o cliente lá puser.
         logger.warning(f"Falha a ler as atualizações do Telegram: {e}")
-        raise VinculoIndisponivel(_("Não foi possível falar com o bot agora. Tente de novo."))
+        return Resultado(motivo=FALHOU)
     except Exception as e:
         logger.warning(f"Falha a ler as atualizações do Telegram: {e}")
-        raise VinculoIndisponivel(_("Não foi possível falar com o bot agora. Tente de novo."))
+        return Resultado(motivo=FALHOU)
 
     procurado = f"{PREFIXO} {codigo}"
     for atualizacao in reversed(atualizacoes or []):
@@ -147,6 +159,7 @@ def procurar_chat(config, codigo):
         chat = getattr(mensagem, 'chat', None)
         chat_id = getattr(chat, 'id', None)
         if chat_id is not None:
-            return str(chat_id)
+            return Resultado(chat_id=str(chat_id))
 
-    return None
+    # Nem chat nem motivo: "ainda não chegou".
+    return Resultado()

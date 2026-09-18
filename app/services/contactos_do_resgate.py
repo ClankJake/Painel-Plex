@@ -23,8 +23,7 @@ pagamento, que funciona para quem o tiver.
 """
 
 import logging
-
-from flask_babel import gettext as _
+from typing import NamedTuple
 
 from .media_server.invitations import (
     CANAIS_DO_RESGATE,
@@ -43,8 +42,26 @@ logger = logging.getLogger(__name__)
 COMPRIMENTO_MAXIMO_DO_NOME = 80
 
 
-class ContactoEmUso(Exception):
-    """O ID pertence a outra conta. Quem chama transforma isto num 409."""
+class Resultado(NamedTuple):
+    """O que aconteceu, sem uma linha de texto para uma pessoa ler.
+
+    🛡️ **A mensagem é da ROTA, e o motivo é daqui.** Isto era uma exceção cuja
+    `str()` a rota devolvia no corpo da resposta, e o CodeQL marcou-o (alertas
+    88, 89 e 90 do PR #44): "stack trace information flows to this location and
+    may be exposed to an external user". Hoje não vazava nada — as mensagens
+    eram todas `_()` escritas à mão —, mas estas rotas são PÚBLICAS e o padrão
+    está a uma edição natural de vazar: bastava alguém escrever
+    `raise ContactoEmUso(f"... {e}")` para o erro de baixo ir para o corpo da
+    resposta.
+
+    É também o idioma que o painel já usa: o `ESTADO_HTTP` carrega o MOTIVO de
+    uma recusa e deixa a `message` para quem fala com a pessoa.
+    """
+
+    gravados: tuple = ()
+    # O RÓTULO do canal em conflito ('WhatsApp'), ou None. É um rótulo e não um
+    # objeto de erro precisamente para não haver nada de dentro a escapar.
+    conflito: str = None
 
 
 def _valor_do_canal(canal, dados):
@@ -64,7 +81,7 @@ def _valor_do_canal(canal, dados):
 
 
 def guardar_contactos(data_manager, media_user_id, dados, config):
-    """Grava no perfil os contactos escolhidos. Devolve os canais gravados.
+    """Grava no perfil os contactos escolhidos. Devolve um `Resultado`.
 
     ⚠️ Só se escreve o que veio no pedido: um canal ausente não é um canal a
     APAGAR. A pessoa pode preencher só o WhatsApp e voltar mais tarde à "Minha
@@ -78,7 +95,7 @@ def guardar_contactos(data_manager, media_user_id, dados, config):
     """
     perfil = data_manager.get_user_profile(media_user_id)
     if not perfil:
-        return []
+        return Resultado()
 
     mudancas = {}
 
@@ -99,18 +116,17 @@ def guardar_contactos(data_manager, media_user_id, dados, config):
 
         dono = data_manager.get_user_profile_by_contacto(canal.canal, valor)
         if dono and not same_user(dono.get('media_user_id'), media_user_id):
-            # 🛡️ Não se diz DE QUEM é: quem preenche o formulário não tem de
-            # ficar a saber que aquele número já está no painel, nem de quem.
-            raise ContactoEmUso(
-                _("Este contato de %(canal)s já está vinculado a outra conta.",
-                  canal=canal.rotulo)
-            )
+            # 🛡️ Sai o RÓTULO do canal e mais nada: quem preenche o formulário
+            # não tem de ficar a saber que aquele número já está no painel, nem
+            # de quem. E nada se grava quando há conflito — nem os outros
+            # canais —, para a recusa ser inteira e não meia gravação.
+            return Resultado(conflito=canal.rotulo)
 
         mudancas[canal.no_perfil] = valor
         gravados.append(canal.canal)
 
     if not mudancas:
-        return []
+        return Resultado()
 
     perfil.update(mudancas)
     data_manager.set_user_profile(media_user_id, perfil)
@@ -118,4 +134,4 @@ def guardar_contactos(data_manager, media_user_id, dados, config):
         f"Contactos escolhidos no resgate por '{perfil.get('username')}': "
         f"{', '.join(gravados) or 'apenas o nome'}."
     )
-    return gravados
+    return Resultado(gravados=tuple(gravados))

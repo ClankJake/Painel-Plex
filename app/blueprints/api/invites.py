@@ -18,7 +18,7 @@ from ...utils.log_sanitizer import mask_code
 from ...utils.enderecos import endereco_publico
 from ...services import audit
 from ...services import telegram_vinculo
-from ...services.contactos_do_resgate import ContactoEmUso, guardar_contactos
+from ...services.contactos_do_resgate import guardar_contactos
 from ...services.media_server.invitations import (
     CONTACTOS, ESTADO_HTTP, PEDIDO_INVALIDO,
     canais_ativos_no_resgate, convite_esgotado, convite_expirado,
@@ -649,6 +649,37 @@ def _resgate_da_sessao():
     return marca
 
 
+def _mensagem_do_motivo(motivo):
+    """A frase que a pessoa lê, a partir do MOTIVO que o serviço devolveu.
+
+    🛡️ O texto vive aqui e não no serviço, e isso não é arrumação: enquanto a
+    rota devolvia `str(e)` de uma exceção, o CodeQL marcava-a (alertas 88, 89 e
+    90) — "stack trace information may be exposed to an external user". Hoje não
+    vazava nada, mas estas rotas são PÚBLICAS e bastava alguém escrever
+    `raise ...(f"... {e}")` para o erro de baixo ir no corpo da resposta. É o
+    mesmo idioma do `ESTADO_HTTP`, que já traduz um motivo num sítio só.
+    """
+    return {
+        telegram_vinculo.SEM_TELEGRAM: _("O Telegram não está configurado neste painel."),
+        telegram_vinculo.OCUPADO: _(
+            "Não foi possível falar com o bot agora. Peça ao administrador "
+            "para vincular o seu Telegram."),
+    }.get(motivo, _("Não foi possível falar com o bot agora. Tente de novo."))
+
+
+def _conflito_de_contacto(rotulo):
+    """A recusa de um contacto que já é de outra conta.
+
+    🛡️ Entra o RÓTULO do canal e mais nada: quem preenche não tem de ficar a
+    saber que aquele número já está no painel, nem de quem.
+    """
+    return jsonify({
+        "success": False,
+        "message": _("Este contato de %(canal)s já está vinculado a outra conta.",
+                     canal=rotulo),
+    }), 409
+
+
 @invites_api_bp.route('/claim/contacts', methods=['POST'])
 @limiter.limit("10 per minute", override_defaults=False)
 @validate_json(ContactosDoResgateSchema)
@@ -663,17 +694,17 @@ def guardar_contactos_do_resgate(validated_data):
 
     dados = validated_data.dict() if hasattr(validated_data, 'dict') else validated_data.model_dump()
 
-    try:
-        gravados = guardar_contactos(
-            data_manager, marca['media_user_id'], dados, load_or_create_config())
-    except ContactoEmUso as e:
+    resultado = guardar_contactos(
+        data_manager, marca['media_user_id'], dados, load_or_create_config())
+
+    if resultado.conflito:
         # 409: o pedido está certo, é o estado que não deixa — a mesma
         # distinção que o `ESTADO_HTTP` faz no resto deste ficheiro.
-        return jsonify({"success": False, "message": str(e)}), 409
+        return _conflito_de_contacto(resultado.conflito)
 
     return jsonify({
         "success": True,
-        "canais": gravados,
+        "canais": list(resultado.gravados),
         "message": _("Pronto! Vamos avisar você por aí."),
     })
 
@@ -695,30 +726,28 @@ def vincular_telegram_do_resgate():
         }), 403
 
     config = load_or_create_config()
+    procura = telegram_vinculo.procurar_chat(config, marca.get('codigo_telegram'))
 
-    try:
-        chat_id = telegram_vinculo.procurar_chat(config, marca.get('codigo_telegram'))
-    except telegram_vinculo.VinculoIndisponivel as e:
-        return jsonify({"success": False, "message": str(e)}), 503
+    if procura.motivo:
+        return jsonify({"success": False, "message": _mensagem_do_motivo(procura.motivo)}), 503
 
-    if not chat_id:
+    if not procura.chat_id:
         return jsonify({
             "success": True, "vinculado": False,
             "message": _("Ainda não recebemos nada. Toque em Começar no bot e tente de novo."),
         })
 
-    try:
-        guardar_contactos(
-            data_manager, marca['media_user_id'], {'telegram': chat_id}, config)
-    except ContactoEmUso as e:
-        return jsonify({"success": False, "message": str(e)}), 409
+    resultado = guardar_contactos(
+        data_manager, marca['media_user_id'], {'telegram': procura.chat_id}, config)
+    if resultado.conflito:
+        return _conflito_de_contacto(resultado.conflito)
 
     # A confirmação é a prova de que o canal funciona mesmo: se o envio falhar,
     # o vínculo continua gravado (o id está certo) mas fica no log porquê.
     try:
         notifier_manager._send_telegram_notification(
             _("✅ Pronto! Você vai receber os avisos do seu acesso por aqui."),
-            chat_id, request_id='vinculo', config=config,
+            procura.chat_id, request_id='vinculo', config=config,
         )
     except Exception as e:
         logger.warning(f"Telegram vinculado, mas a confirmação não foi entregue: {e}")
