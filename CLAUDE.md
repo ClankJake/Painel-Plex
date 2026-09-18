@@ -72,6 +72,10 @@ pytest -k proration                      # por expressão
 pytest -m integration                    # só os que criam a app Flask + BD
 pytest --cov=app --cov-report=term-missing   # o que o CI executa
 
+# A /statistics a correr mesmo, num Chromium (salta sem Playwright/browser/dist)
+pip install playwright && python -m playwright install chromium
+npm run build && pytest tests/test_estatisticas_no_navegador.py
+
 # Frontend — nada em app/static/dist/ está versionado, é preciso gerar
 npm run build          # CSS + bibliotecas (socket.io, chart.js) — é o que falta
                        # a quem vê 'io is not defined' no navegador
@@ -1104,6 +1108,19 @@ mais um observador a uma fila que já não está na página — e uma análise
 descartada pelo guarda da corrida é destruída em vez de ficar com gráficos
 vivos sobre um elemento que ninguém vai ver. E o `themeChanged` passou a
 alcançar os gráficos do modal, que antes ficavam com as cores do tema anterior.
+
+📌 **E três destas coisas só se veem num NAVEGADOR**
+(`tests/test_estatisticas_no_navegador.py`): se um gráfico do Chart.js continua
+vivo, se um `ResizeObserver` foi desligado, e quanto tempo a página demora mesmo
+a aparecer. Ele carrega a `/statistics` real num Chromium — o JavaScript é o do
+repositório e o template é o renderizado pelo Jinja; o que é falso são só as
+respostas HTTP, e a das recomendações demora três segundos de propósito, que é o
+número que dá sentido à pergunta "a página esperou por elas?". ⚠️ Ele SALTA onde
+não houver Playwright, Chromium ou `app/static/dist/`, e `PAINEL_EXIGE_NAVEGADOR=1`
+transforma o salto numa falha — a mesma regra do `PAINEL_EXIGE_DIST`. ⚠️ E as
+"novidades" do teste são TRÊS de propósito: a verificação das setas precisa que o
+conteúdo caiba numa janela larga e transborde numa estreita, e com capas a mais a
+seta fica ativa em qualquer largura e o teste passa sem provar nada.
 
 ⚡ **E o índice deixou de ser construído dentro de um pedido.** Era um
 `@cache.memoize` de 30 minutos, o que quer dizer sem tranca nenhuma: à hora a
