@@ -966,10 +966,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (dom.daysFilter) {
         mainFetch(dom.daysFilter.value);
+
+        // 🎯 As recomendações são de QUEM ESTÁ A VER, e o dono do servidor
+        // também assiste: a rota devolve sempre as do próprio. Ficavam de fora
+        // só porque a secção vivia dentro da visão do utilizador comum.
+        carregarRecomendacoes();
+
         if (currentUser.role !== 'admin') {
             carregarNovidades(dom.daysFilter.value);
             carregarAnalisePessoal(dom.daysFilter.value);
-            carregarRecomendacoes();
         }
     }
 });

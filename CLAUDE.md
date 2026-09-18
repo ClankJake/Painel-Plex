@@ -1075,6 +1075,20 @@ falhou quando ela está inteira. ⚠️ O filtro de dias já NÃO as volta a ped
 elas usam a janela longa do administrador e ignoram-no, por isso cada mudança
 de período pagava a chamada mais cara do painel para receber a mesma resposta.
 
+⚠️ **O cartão é do dono do servidor TAMBÉM, e o que o escondia era o
+template.** A rota sempre soube responder-lhe — ela devolve as recomendações de
+QUEM PEDE, e o administrador tem histórico como toda a gente (é o
+`ids_do_painel()` que junta as reproduções dele ao id do painel). Mas a secção
+vivia dentro do `{% else %}` da visão do utilizador comum, por isso os ids que
+o `statistics.js` procura nem existiam na página dele. A marcação está agora em
+`partials/recomendacoes.html`, incluída pelas DUAS visões: duas cópias
+divergiam ao primeiro ajuste, e dois `id="recommendations-section"` na mesma
+página fariam o `getElementById` escolher um deles. ⚠️ `{% include %}` e não
+`{% import %}` — um macro importado não vê o contexto, e os textos passam todos
+por `_()`. As "Novidades" e a análise pessoal continuam só na visão do
+utilizador comum: o administrador tem o pódio e o ranking completo no lugar
+delas.
+
 ⚠️ **A análise pessoal era a SEGUNDA a segurar a página** — o pódio e o ranking
 já tinham chegado no pedido das estatísticas e ficavam à espera de um pedido que
 não é deles. Saiu do `mainFetch` pelo mesmo caminho.
