@@ -16,6 +16,7 @@ except ImportError:
 
 from .config import load_or_create_config, CONFIG_DIR
 from .locks import single_instance_job
+from .utils.identity import same_user
 
 logger = logging.getLogger(__name__)
 
@@ -95,16 +96,70 @@ def expiration_notification_job():
                     description=f"notificar vencimento para '{user_info.get('username', media_user_id)}'"
                 )
 
+def _conta_removida_do_servidor(media_user_id):
+    """O servidor RESPONDEU e aquela conta já não está lá?
+
+    ⚠️ **`get_user_by_id` devolve `None` a duas perguntas diferentes**: "essa
+    conta já não existe" e "não consigo falar com o servidor" — com a ligação
+    em baixo, a lista de utilizadores vem vazia (ou a `None`) e toda a gente
+    parece ter desaparecido. Confundi-las dá erros opostos: dar a conta por
+    removida durante uma falha de rede fecha o teste de quem ainda o está a
+    usar; nunca a dar por removida deixa a varredura a reencontrar, para
+    sempre, contas que já não existem.
+
+    Quem desempata é a lista INTEIRA: se vier com gente, o servidor respondeu e
+    a ausência é real. Vazia, não se sabe — e não saber não é saber que não
+    existe.
+    """
+    from . import extensions
+
+    try:
+        utilizadores = extensions.media_server.get_all_users() or []
+    except Exception as e:
+        logger.debug(
+            f"Não foi possível confirmar se o ID '{media_user_id}' ainda está no servidor: {e}"
+        )
+        return False
+
+    if not utilizadores:
+        return False
+
+    return not any(same_user(u.get('id'), media_user_id) for u in utilizadores)
+
+
+def _fechar_teste_de_conta_removida(media_user_id):
+    """Fecha no painel o teste de uma conta que já não existe no servidor.
+
+    É a mesma limpeza que o `removal_job` já faz quando encontra este caso: o
+    perfil passa a `inactive` — que é como o painel escreve "esta conta não tem
+    acesso" — e o `trial_job_id` sai, porque a tarefa datada a que ele aponta é
+    precisamente esta. O `trial_end_date` FICA: é história, e é por ele que se
+    percebe, meses depois, que aquela pessoa esteve em teste.
+    """
+    from . import extensions
+
+    try:
+        if not extensions.data_manager.get_user_profile(media_user_id):
+            return
+        extensions.data_manager.set_user_profile(
+            media_user_id, {'status': 'inactive', 'trial_job_id': None}
+        )
+    except Exception as e:
+        logger.error(
+            f"Falha ao fechar no painel o período de teste do ID '{media_user_id}': {e}"
+        )
+
+
 def end_trial_job(media_user_id):
     """Tarefa dinâmica para finalizar períodos de teste."""
     if not _app: return
     with _app.test_request_context('/'):
         from . import extensions
         user_info = extensions.media_server.get_user_by_id(media_user_id)
-        user_identifier = user_info['username'] if user_info else f"ID '{media_user_id}'"
-        logger.info(f"Fim do período de teste para '{user_identifier}'. Acionando o bloqueio.")
-        
+
         if user_info:
+            user_identifier = user_info['username']
+            logger.info(f"Fim do período de teste para '{user_identifier}'. Acionando o bloqueio.")
             success = _execute_with_retry(
                 action=lambda: extensions.media_server.block_user(media_user_id, reason='trial_expired'),
                 description=f"bloquear usuário por fim de teste '{user_identifier}'"
@@ -115,8 +170,30 @@ def end_trial_job(media_user_id):
                     extensions.notifier_manager.send_trial_end_notification(user_info, profile)
                     profile['trial_job_id'] = None
                     extensions.data_manager.set_user_profile(media_user_id, profile)
+            return
+
+        # 🐛 **A conta já não existe, e sem fechar o teste deste lado isto nunca
+        # acabava.** Quem remove uma conta (`removal_job`, a remoção manual)
+        # APAGA também a linha de `blocked_users`, por isso a trava do "já
+        # bloqueado" da varredura não apanhava estes perfis: eles continuavam
+        # com `trial_end_date` no passado, sem `expiration_date` e sem bloqueio,
+        # que é exatamente o que a varredura procura. Resultado: dois WARNING
+        # por perfil de 15 em 15 minutos, para sempre, sobre contas removidas há
+        # meses — e não havia nada a fazer sobre eles, porque não há nada para
+        # bloquear.
+        if _conta_removida_do_servidor(media_user_id):
+            logger.warning(
+                f"O utilizador ID '{media_user_id}' já não existe no servidor de média: não há "
+                "nada para bloquear. A fechar o período de teste no painel."
+            )
+            _fechar_teste_de_conta_removida(media_user_id)
         else:
-            logger.warning(f"O usuário '{media_user_id}' não foi encontrado durante a tarefa de fim de teste.")
+            # O servidor pode só não estar a responder. Aqui não se toca no
+            # perfil: a varredura volta a passar daqui a quinze minutos, que é
+            # para isso que ela existe.
+            logger.warning(
+                f"O usuário '{media_user_id}' não foi encontrado durante a tarefa de fim de teste."
+            )
 
 @single_instance_job('trial_sweep_job')
 def trial_sweep_job():
@@ -171,6 +248,15 @@ def trial_sweep_job():
             # fechou. Repetir seria bloquear outra vez e avisar outra vez, de
             # quinze em quinze minutos, para sempre.
             if extensions.data_manager.get_blocked_user(media_user_id):
+                continue
+
+            # 🐛 **E um perfil `inactive` também já não tem acesso** — só que a
+            # linha de bloqueio dele não existe: quem remove a conta
+            # (`removal_job`, a remoção manual) apaga-a ao limpar o registo
+            # local, e a trava de cima deixava passar todos esses. Eram contas
+            # removidas há meses a reaparecer aqui de quinze em quinze minutos,
+            # com dois WARNING cada, sem nada que se lhes pudesse fazer.
+            if perfil.get('status') == 'inactive':
                 continue
 
             logger.warning(
