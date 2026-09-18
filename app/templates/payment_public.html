@@ -108,12 +108,53 @@
                             <img id="user-thumb" src="https://placehold.co/128x128/1F2937/E5E7EB?text=?" alt="Avatar" class="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-white dark:border-[#1e293b] shadow-xl object-cover">
                         </div>
                         
+                        {# 🐛 **Eram dois estados, e o terceiro ia parar ao errado.** Quem
+                           está em TESTE não tem `expiration_date` — só `trial_end_date` —,
+                           por isso caía no ramo do assinante em dia: uma etiqueta verde a
+                           dizer "Acesso Ativo", sem data nenhuma por baixo, numa página
+                           cujo único botão é o de pagar. `teste` vem do servidor
+                           (`estado_do_teste`) e vale 'a_decorrer', 'terminado' ou nada. #}
                         {% if is_reactivation %}
                         <div class="inline-block px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
-                            {{ _('Acesso Suspenso') }}
+                            {{ _('Período de Teste Encerrado') if teste else _('Acesso Suspenso') }}
                         </div>
                         <h2 class="text-2xl font-black text-gray-900 dark:text-white tracking-tight" id="user-username">{{ _('Olá, %(username)s!', username=username) }}</h2>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm">{{ _('Sua assinatura terminou. Efetue o pagamento abaixo para reativar seu acesso instantaneamente e voltar a assistir.') }}</p>
+                        {# ⚠️ "Sua assinatura terminou" é falso para quem nunca assinou: a
+                           conta dele acabou de sair de um período de teste. #}
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm">
+                            {%- if teste -%}
+                            {{ _('Seu período de teste terminou. Faça o pagamento abaixo para ativar seu acesso e continuar assistindo.') }}
+                            {%- else -%}
+                            {{ _('Sua assinatura terminou. Efetue o pagamento abaixo para reativar seu acesso instantaneamente e voltar a assistir.') }}
+                            {%- endif -%}
+                        </p>
+                        {% elif teste == 'a_decorrer' %}
+                        <div class="inline-block px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
+                            {{ _('Período de Teste') }}
+                        </div>
+                        <h2 class="text-2xl font-black text-gray-900 dark:text-white tracking-tight" id="user-username"></h2>
+                        <p class="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1">
+                            {%- if fim_do_periodo_de_teste -%}
+                            {{ _('Seu teste termina em %(date)s', date=fim_do_periodo_de_teste) }}
+                            {%- else -%}
+                            {{ _('Assine abaixo para manter seu acesso quando o teste terminar.') }}
+                            {%- endif -%}
+                        </p>
+                        {% elif teste == 'terminado' %}
+                        {# O teste já passou da hora e a conta ainda não foi bloqueada — a
+                           tarefa datada corre a seguir, ou a varredura de 15 em 15 minutos.
+                           Dizer "Acesso Ativo" aqui era prometer o que está a acabar. #}
+                        <div class="inline-block px-3 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
+                            {{ _('Período de Teste Encerrado') }}
+                        </div>
+                        <h2 class="text-2xl font-black text-gray-900 dark:text-white tracking-tight" id="user-username"></h2>
+                        <p class="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1">
+                            {%- if fim_do_periodo_de_teste -%}
+                            {{ _('Seu teste terminou em %(date)s', date=fim_do_periodo_de_teste) }}
+                            {%- else -%}
+                            {{ _('Seu período de teste terminou.') }}
+                            {%- endif -%}
+                        </p>
                         {% else %}
                         <div class="inline-block px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
                             {{ _('Acesso Ativo') }}

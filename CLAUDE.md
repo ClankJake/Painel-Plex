@@ -2039,6 +2039,36 @@ ou de um `fromisoformat()`, onde o que se queria apanhar cabia em
 `(ValueError, TypeError)`. `tests/test_erros_engolidos.py` percorre o `app/` e
 recusa que volte a haver um.
 
+#### A página pública de pagamento: quatro estados, não dois
+
+🐛 **A quem estava em TESTE, a página `/pay/<token>` dizia "Acesso Ativo".**
+Ela tinha dois ramos — reativação (o perfil está `inactive`) e tudo o resto — e
+quem está em teste não tem `expiration_date`, só `trial_end_date`: caía no ramo
+do assinante em dia. Uma etiqueta verde a dizer que está tudo bem, e por baixo
+uma linha VAZIA (a do vencimento, preenchida pelo JavaScript a partir de um
+campo que ali nunca existe), numa página cujo único botão é o de pagar. ⚠️ E o
+estado seguinte mentia ao contrário: bloqueada a conta no fim do teste, a página
+dizia **"Sua assinatura terminou"** a quem nunca assinou.
+
+São quatro: assinante em dia, teste a decorrer, teste terminado (a tarefa datada
+ainda não correu) e acesso suspenso — este com duas frases, conforme o que
+terminou tenha sido um teste ou uma assinatura. ⚠️ **A data do teste leva a
+HORA** e é formatada no SERVIDOR, no fuso do painel: um teste mede-se em horas,
+e "termina em 20/09/2026" não diz a quem lê quando fica sem acesso.
+
+📌 **Quem responde "isto é um teste?" é `app/utils/periodo_de_teste.py`**, e são
+duas perguntas parecidas que não são a mesma: `teste_a_decorrer()` (a data ainda
+não passou — o que o painel sempre chamou `is_on_trial`, e por onde a página de
+utilizadores conta a aba "Em teste") e `estado_do_teste()`, que diz que TIPO de
+conta é — e que ignora quem já tem `expiration_date`, porque essa passou a
+assinante e o `trial_end_date` que ficou para trás é história (a mesma regra do
+`trial_sweep_job`). A leitura estava copiada em três rotas de `api/users.py`,
+cada uma com o seu `try/except` à volta do mesmo `fromisoformat`.
+
+⚠️ E esta página carrega o Tailwind pelo **CDN** (`cdn.tailwindcss.com`), ao
+contrário do resto do painel: as classes dela não precisam de estar no
+`output.css`, mas também não se veem sem rede de saída no navegador de quem paga.
+
 #### A data de vencimento: o fuso é de quem escolhe
 
 🐛 **A hora de parede não diz que instante é.** O formulário de vencimento

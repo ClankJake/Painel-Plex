@@ -24,6 +24,7 @@ from ...services.password_reset import servidor_repoe_palavras_passe
 from ...services import audit
 from ...utils.identity import normalize_user_id, same_user
 from ...services.data_manager import get_app_timezone
+from ...utils.periodo_de_teste import teste_a_decorrer
 from ..auth import MAX_PALAVRA_PASSE, MIN_PALAVRA_PASSE
 
 logger = logging.getLogger(__name__)
@@ -176,13 +177,7 @@ def get_account_details():
     # de onde o cabeçalho (base.html) o lê em todas as outras páginas.
     thumb = _avatar_atualizado(media_user_id)
 
-    is_on_trial = False
-    if trial_end_date_iso := profile.get('trial_end_date'):
-        try:
-            if datetime.fromisoformat(trial_end_date_iso) > datetime.now(timezone.utc):
-                is_on_trial = True
-        except (ValueError, TypeError): 
-            pass
+    is_on_trial = teste_a_decorrer(profile)
 
     # A "Minha Conta" do administrador não tem assinatura, nem vencimento, nem
     # limite de telas — ele é o dono do servidor. Em vez de mostrar campos
@@ -203,7 +198,7 @@ def get_account_details():
         "expiration_info": expiration_info, 
         "is_blocked": is_blocked_info is not None, 
         "block_reason": is_blocked_info.get('block_reason') if is_blocked_info else None,
-        "trial_end_date": trial_end_date_iso,
+        "trial_end_date": profile.get('trial_end_date'),
         "is_on_trial": is_on_trial,
         "hide_from_leaderboard": profile.get('hide_from_leaderboard', False),
         "notification_settings": {
@@ -425,12 +420,7 @@ def user_profile_route(media_user_id):
         profile = extensions.data_manager.get_user_profile(media_user_id)
         config = load_or_create_config()
         
-        is_on_trial = False
-        if trial_end_date_iso := profile.get('trial_end_date'):
-            try:
-                if datetime.fromisoformat(trial_end_date_iso) > datetime.now(timezone.utc):
-                    is_on_trial = True
-            except (ValueError, TypeError): pass
+        is_on_trial = teste_a_decorrer(profile)
 
         return jsonify({
             "success": True, "profile": profile, "is_on_trial": is_on_trial,
@@ -990,12 +980,7 @@ def _sync_plex_and_local_profiles(all_plex_users_list, admin_username):
               final_status = 'active'
               extensions.data_manager.set_user_profile(media_user_id, {'status': 'active'})
 
-        is_on_trial = False
-        if trial_end_date_str := profile.get('trial_end_date'):
-            try:
-                if datetime.fromisoformat(trial_end_date_str) > datetime.now(timezone.utc):
-                    is_on_trial = True
-            except (ValueError, TypeError): pass
+        is_on_trial = teste_a_decorrer(profile)
 
         # 🐛 Um perfil vindo de um painel antigo pode não ter `payment_token`: a
         # coluna nasceu depois dele e só é preenchida quando o perfil é gravado.
