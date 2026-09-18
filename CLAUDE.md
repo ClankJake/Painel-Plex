@@ -57,6 +57,27 @@ fazia-a deixar de reconhecer as ANTIGAS. Ela aceita agora as duas grafias
 (`/cup(om|ão)|coupon/i`), que é o que um histórico com anos de uso tem lá
 dentro.
 
+🐛 **E a varredura corria toda sem `re.I`, o que escondia dezoito textos.** Ela
+era assim por causa de TRÊS marcas em que a maiúscula é o que as distingue de
+português do Brasil correto — o rótulo "A guardar...", o botão "Guardar", e o
+particípio "aceite" ("Aceite o seu convite" é o IMPERATIVO e está certo). O
+preço era todo o resto: "Utilizador não encontrado", "Painel de Controlo",
+"Limite de Utilizações", "Otimização da Base de Dados", "Fã do Realizador",
+"Subscrição incompleta" e o "INSERIR CUPÃO" de dois botões — e o `[Cc]up` do
+cupão era o remendo que se tinha posto sobre este buraco, uma marca de cada vez.
+Hoje a maiúscula é uma propriedade DA MARCA (`SENSIVEIS`) e não da varredura.
+⚠️ E o `está a <verbo>` só valia para os verbos em `-ar`: "está a correr" e
+"está a decorrer" passavam, pela mesma razão que o rótulo já tinha corrigido.
+
+⚠️ **E nem tudo o que soa europeu é europeu.** "o seu nome", "a sua conta" são
+português do Brasil correto e ficam como estão — há trinta e cinco no painel.
+O que saiu foi o que é mesmo de lá: "Si" como tratamento (→ "Você"), "gerir"
+(→ "gerenciar"), "definições" de um programa (→ "configurações"), "de momento"
+(→ "no momento"), "Expira a:" (a regência; → "Expira em:") e a ênclise com
+presente ("grava-se" → "é salvo"). ⚠️ E "Subscrição" de web push não virou
+"assinatura": essa palavra, neste painel, é o plano que se paga — o termo
+brasileiro aqui é "inscrição".
+
 ## Comandos
 
 ```bash

@@ -30,6 +30,21 @@ PASTAS = ('app/templates', 'app/blueprints', 'app/services', 'app/utils')
 # "A enviar...", "descarregue filmes", "ficheiro de backup".
 PASTAS_JS = ('app/static/js',)
 
+# ⚠️ **A maiúscula escondia dezoito textos.** A varredura corria toda sem
+# `re.I` por causa de TRÊS marcas em que a maiúscula é o que as distingue de
+# português do Brasil correto (o rótulo "A guardar...", o botão "Guardar", e o
+# particípio "aceite"). O preço era todo o resto: "Utilizador não encontrado",
+# "Painel de Controlo", "Limite de Utilizações", "Fã do Realizador", "INSERIR
+# CUPÃO" — e o `[Cc]up` do cupão era o remendo que se tinha posto sobre este
+# buraco, uma marca de cada vez.
+#
+# Hoje a maiúscula é uma propriedade DA MARCA (`SENSIVEIS`), e não da varredura:
+# o que precisa dela declara-o, e todo o resto apanha as duas formas.
+#
+# ⚠️ O particípio "aceite" é o caso que obriga a isto a existir: "Aceite o seu
+# convite" é o IMPERATIVO de aceitar, português do Brasil correto, e uma
+# varredura sem maiúsculas recusá-lo-ia.
+
 # Cada marca vem com a forma brasileira, para a mensagem de erro dizer logo o
 # que escrever em vez de mandar procurar.
 MARCAS = [
@@ -44,7 +59,9 @@ MARCAS = [
     (r'\bcontactos?\b', 'contato'),
     (r'(?<!com)\bpartilh\w*', 'compartilhar / compartilhamento'),
     # O gerúndio: em pt-PT "está a guardar", no Brasil "está guardando".
-    (r'\bestá a [a-zç]+ar\b', 'está + gerúndio ("está salvando")'),
+    # ⚠️ As três conjugações, pela mesma razão do rótulo mais abaixo: só com
+    # `-ar`, um "está a correr" ou um "está a decorrer" passava à vontade.
+    (r'\bestá a [a-zà-ú]+[aei]r\b', 'está + gerúndio ("está salvando")'),
     # Só o RÓTULO de carregamento: "obriga o usuário a entrar" é português do
     # Brasil correto e não pode ser apanhado aqui.
     #
@@ -78,8 +95,9 @@ MARCAS = [
     # ⚠️ O "cupão" entrou por TODO o lado — a página financeira, as respostas
     # da API e as notificações de renovação que chegam a quem paga — porque
     # nunca esteve nesta lista. É a palavra mais repetida do painel a seguir a
-    # "usuário".
-    (r'\b[Cc]up(ão|ões)\b', 'cupom / cupons'),
+    # "usuário". (O `[Cc]` que aqui estava era o remendo da maiúscula; sem ele
+    # o "INSERIR CUPÃO" de dois botões continuava a passar.)
+    (r'\bcup(ão|ões)\b', 'cupom / cupons'),
     # O artigo antes de "certeza" é europeu: no Brasil é "Tem certeza".
     (r'\bTem a certeza\b', 'Tem certeza'),
     # ⚠️ Só o RÓTULO, pela MAIÚSCULA no início — a mesma técnica do "A guardar".
@@ -98,7 +116,23 @@ MARCAS = [
     # Quem dirige um filme: em pt-PT "realizador", no Brasil "diretor". Aparece
     # nas conquistas, que vão por notificação.
     (r'\brealizador(es)?\b', 'diretor / diretores'),
+    # "gerir um perfil" é europeu; no Brasil gerencia-se. ⚠️ "gere" fica de
+    # fora de propósito: é o imperativo de GERAR ("Gere um relatório", "Gere
+    # uma chave no Jellyfin"), que aparece quatro vezes e está certo.
+    (r'\bgeri(r|do|da|dos|das)\b', 'gerenciar / gerenciado'),
+    (r'\bde momento\b', 'no momento'),
+    # As "definições" de um programa são "configurações" — que é como as
+    # próprias Configurações do painel se chamam.
+    (r'\bdefiniç(ão|ões)\b', 'configuração / configurações'),
 ]
+
+# ⚠️ As marcas em que a MAIÚSCULA é o que separa o europeu do brasileiro
+# correto. Tudo o que não estiver aqui é procurado nas duas formas.
+SENSIVEIS = {
+    # "Aceite o seu convite" é o imperativo de aceitar, e está certo; o que se
+    # recusa é o particípio ("convite aceite" -> "convite aceito").
+    r'\baceites?\b',
+}
 
 LITERAL = re.compile(r"_\(\s*(['\"])(.*?)\1", re.S)
 # A alternativa de uma chave de tradução em falta: `i18n.algumaCoisa || 'texto'`.
@@ -150,11 +184,21 @@ def _textos_visiveis():
                     yield nome, linha, achado.group(grupo)
 
 
+def _compilar(marca):
+    """⚠️ A maiúscula é uma propriedade da MARCA, não da varredura.
+
+    As que começam por `^` dependem dela por construção (é o que distingue o
+    rótulo "A guardar..." de "obriga o usuário A ENTRAR"); as outras estão
+    nomeadas em `SENSIVEIS`. Todo o resto procura-se nas duas formas.
+    """
+    if marca.startswith('^') or marca in SENSIVEIS:
+        return re.compile(marca)
+    return re.compile(marca, re.I)
+
+
 @pytest.mark.parametrize('marca, sugestao', MARCAS)
 def test_nenhum_texto_visivel_usa_vocabulario_europeu(marca, sugestao):
-    # ⚠️ Sem `re.I`: há padrões (o rótulo 'A guardar...') em que a
-    # MAIÚSCULA é o que os distingue de português do Brasil correto.
-    padrao = re.compile(marca)
+    padrao = _compilar(marca)
     infratores = [
         f"{nome}:{linha} — {texto[:80]}"
         for nome, linha, texto in _textos_visiveis()
@@ -164,6 +208,26 @@ def test_nenhum_texto_visivel_usa_vocabulario_europeu(marca, sugestao):
     assert infratores == [], (
         f"Use '{sugestao}'. Encontrado em:\n  " + "\n  ".join(infratores[:10])
     )
+
+
+def test_so_o_que_precisa_da_maiuscula_e_que_depende_dela():
+    """🐛 Foi uma varredura inteira sem `re.I` que escondeu dezoito textos.
+
+    Voltar a pôr uma marca comum em `SENSIVEIS` — ou a varredura inteira —
+    abre outra vez o buraco, e a próxima "Utilizador não encontrado" passa.
+    """
+    assert SENSIVEIS <= {marca for marca, _ in MARCAS}, (
+        "há uma marca em SENSIVEIS que já não existe na lista"
+    )
+    # A prova de que a distinção é mesmo precisa: o imperativo passa, o
+    # particípio não.
+    aceite = _compilar(r'\baceites?\b')
+    assert not aceite.search('Aceite o seu convite e comece a assistir.')
+    assert aceite.search('O convite foi aceite.')
+
+    # E a prova de que o resto NÃO depende dela.
+    assert _compilar(r'\butilizador(es)?\b').search('Utilizador não encontrado.')
+    assert _compilar(r'\bcup(ão|ões)\b').search('INSERIR CUPÃO')
 
 
 def test_a_varredura_encontra_mesmo_alguma_coisa():

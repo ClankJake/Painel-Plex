@@ -138,7 +138,7 @@ export function showInviteDetailsModal(details) {
                 ${linha(i18n.libraries, `<span class="truncate block" title="${libList}">${libList}</span>`, 'col-span-2')}
             </div>
             <div class="pt-2">
-                <h4 class="text-sm font-bold text-gray-900 dark:text-white mb-2">${i18n.usageHistory || 'Histórico de Utilização'}:</h4>
+                <h4 class="text-sm font-bold text-gray-900 dark:text-white mb-2">${i18n.usageHistory || 'Histórico de Uso'}:</h4>
                 ${historyHtml}
             </div>
         </div>

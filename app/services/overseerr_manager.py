@@ -634,7 +634,7 @@ class OverseerrManager:
         if not perfil:
             etiqueta = mask_email(email) if email else username_seerr
             logger.info(f"Webhook do Seerr: nenhum utilizador local corresponde a {etiqueta}. Ignorado.")
-            return {"success": True, "message": "Utilizador não encontrado no painel."}
+            return {"success": True, "message": "Usuário não encontrado no painel."}
 
         try:
             extensions.notifier_manager.send_media_request_notification(perfil, dados)

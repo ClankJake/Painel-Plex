@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
                         </div>
-                        <input type="text" id="couponCodeInput" class="w-full py-3 pl-10 pr-3 text-sm font-mono uppercase tracking-wider rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm transition-shadow" placeholder="INSERIR CUPÃO">
+                        <input type="text" id="couponCodeInput" class="w-full py-3 pl-10 pr-3 text-sm font-mono uppercase tracking-wider rounded-xl border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white shadow-sm transition-shadow" placeholder="INSERIR CUPOM">
                     </div>
                     <button id="applyCouponBtn" class="btn bg-gray-800 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white px-6 font-bold shadow-md rounded-xl transition-colors">Aplicar</button>
                 </div>

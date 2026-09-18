@@ -123,7 +123,7 @@ class PushManager:
         chaves = (subscricao or {}).get('keys') or {}
         p256dh, auth = chaves.get('p256dh'), chaves.get('auth')
         if not (endpoint and p256dh and auth):
-            raise ValueError("Subscrição incompleta: faltam o endereço ou as chaves.")
+            raise ValueError("Inscrição incompleta: faltam o endereço ou as chaves.")
 
         return self.data_manager.registar_push_subscription(
             media_user_id, endpoint, p256dh, auth, device_label=device_label)
