@@ -456,3 +456,69 @@ class TestOQueVemDoGitHubEEscapado:
         # ⚠️ O compilador procura nomes de classes LITERAIS: uma classe montada
         # em tempo de execução nunca chega ao CSS, e o cartão ficava sem cor.
         assert not re.search(r'(bg|text|border)-\$\{', CODIGO)
+
+
+class TestAPublicacaoDaImagem:
+    """A imagem do Docker sai por RELEASE, e a versão dela é a da tag.
+
+    ⚠️ **Antes ela era publicada a cada push para a branch `stable`**, que é a
+    tag que o README manda pôr no docker-compose: quem reiniciasse o contentor
+    a meio de um dia de trabalho levava com o que estava a ser feito, e não com
+    uma versão que alguém decidiu publicar. Hoje a imagem só se move quando se
+    cria uma tag `v*` — a mesma que a aba "Sobre" lê como "a última release".
+
+    🐛 **E é por isso que o build confere a versão.** Uma tag `v22.4` sobre um
+    código que ainda diz `22.3` publicava uma imagem que mente sobre si própria,
+    e o sintoma não aparecia no build: aparecia meses depois, em cada painel
+    atualizado, a anunciar para sempre uma atualização que já está instalada.
+
+    📌 O workflow é lido como TEXTO, e não com um parser de YAML, para não
+    acrescentar uma dependência ao projeto por causa de um teste — é o que o
+    `test_referencias_do_javascript.py` já faz com o outro workflow.
+    """
+
+    @property
+    def _workflow(self):
+        return (RAIZ / '.github/workflows/docker-publish.yml').read_text(encoding='utf-8')
+
+    def _sem_comentarios(self, texto):
+        # Os comentários deste projeto CITAM o que está errado para explicar
+        # porquê ("corria a cada push para a branch stable"), e uma varredura
+        # que os leia acusa a própria explicação.
+        return re.sub(r'^\s*#.*$', '', texto, flags=re.M)
+
+    def test_dispara_com_uma_tag_de_release(self):
+        gatilhos = self._sem_comentarios(self._workflow)
+
+        assert re.search(r'push:\s*\n\s*tags:\s*\n\s*-\s*[\'"]v\*[\'"]', gatilhos), (
+            'O workflow deixou de disparar nas tags `v*`.'
+        )
+
+    def test_NAO_dispara_a_cada_push_para_a_branch(self):
+        gatilhos = self._sem_comentarios(self._workflow)
+
+        assert 'branches:' not in gatilhos, (
+            'O workflow voltou a publicar a imagem a cada push de branch. '
+            'A imagem que o README manda usar não pode mudar fora de uma release.'
+        )
+
+    def test_continua_a_publicar_a_tag_que_o_README_manda_usar(self):
+        # ⚠️ Deixar de a publicar não parte o build: parte as instalações que
+        # já existem, em silêncio, e só se nota quando alguém repara que o
+        # painel não atualiza há meses.
+        readme = (RAIZ / 'README.md').read_text(encoding='utf-8')
+        etiqueta = re.search(r'ghcr\.io/clankjake/painel-plex:([a-z0-9._-]+)', readme)
+        assert etiqueta, 'O README deixou de dizer que imagem usar.'
+
+        assert f'value={etiqueta.group(1)}' in self._workflow, (
+            f"O README manda usar a tag '{etiqueta.group(1)}' e o workflow já não a publica."
+        )
+
+    def test_o_build_confere_a_versao_do_codigo_contra_a_tag(self):
+        workflow = self._sem_comentarios(self._workflow)
+
+        assert 'app/versao.py' in workflow and 'package.json' in workflow, (
+            'O passo que compara a tag com a versão do código desapareceu. '
+            'Sem ele, uma release publica uma imagem que mente sobre a versão '
+            'que tem lá dentro — e isso só se vê no painel de quem instalou.'
+        )

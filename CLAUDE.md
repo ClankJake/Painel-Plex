@@ -1462,6 +1462,24 @@ ABRIR, como a Auditoria — mas, ao contrário dela, **não** se recarrega a cad
 abertura: a versão instalada não muda sozinha, e o botão "Verificar
 atualizações" (que salta a cache com `?forcar=1`) está ali para quem insistir.
 
+⚠️ **E a imagem do Docker passou a sair por RELEASE** (`docker-publish.yml`
+dispara em `push: tags: v*`). Antes corria a cada push para a branch `stable` —
+que é a tag que o README manda pôr no docker-compose —, por isso quem
+reiniciasse o contentor a meio de um dia de trabalho levava com o que estava a
+ser feito, e não com uma versão que alguém decidiu publicar. A tag `stable`
+FICA (tirá-la não parte o build, parte em silêncio as instalações que já
+existem); junta-se-lhe o número da versão e a `latest`, e uma pré-release
+(`v23.0-beta`) publica só o número.
+
+🐛 **E o build CONFERE que a tag é a versão do código**, porque o contrário só
+se descobre longe daqui: uma tag `v22.4` sobre um código que ainda diz `22.3`
+publica uma imagem que mente sobre si própria, e o sintoma aparece meses depois
+em cada painel atualizado, a anunciar para sempre uma atualização que já está
+instalada. ⚠️ O `type=match` do metadata-action é usado em vez do `type=semver`
+pela mesma família de razão: as tags aqui são `v22.3`, sem o terceiro número, e
+o semver exige `major.minor.patch` — o passo era saltado com um aviso e a
+imagem saía sem a tag da versão.
+
 #### O `payment_token` é uma credencial portadora, e agora expira
 
 🛡️ Quem tiver o link `/pay/<token>` vê o nome e o vencimento de quem lá está e
