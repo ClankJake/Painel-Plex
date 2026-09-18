@@ -13,7 +13,7 @@ Um teste compara os dois (`tests/test_aba_sobre.py`): duas versões que divergem
 são piores do que nenhuma, porque uma delas está a mentir.
 """
 
-VERSAO = "22.4"
+VERSAO = "22.5"
 
 # O repositório de onde saem as releases. Fica AQUI e não no config.json de
 # propósito: é ele que diz a que endereço o painel vai bater de dentro da rede,
