@@ -81,6 +81,55 @@ CONTACTOS = (
 )
 
 
+class CanalDoResgate(NamedTuple):
+    """Um canal que a PESSOA pode preencher logo a seguir a resgatar."""
+
+    canal: str            # 'whatsapp'
+    no_perfil: str        # a coluna em `user_profiles`
+    interruptor: str      # a chave do config que o liga
+    rotulo: str           # o que ela lê numa mensagem de erro
+
+
+# ⚠️ **Este mapa não é o `CONTACTOS`, e a diferença é real.** O `CONTACTOS` são
+# os canais que um BOT pode pré-atribuir a um convite, e por isso cada um tem
+# uma coluna em `invitations`. Estes são os que a pessoa pode preencher no fim
+# do resgate — o WhatsApp está aqui e não lá, porque não há
+# `invitations.phone_number` para o pré-atribuir.
+#
+# 🔔 **Porque é que isto existe**: `resolver_contactos_do_convite` só grava
+# contacto quando o convite foi gerado por um bot PARA alguém. Quem entra por um
+# link público ficava com o perfil sem contacto nenhum — e aí todas as
+# notificações do painel morrem em silêncio, porque `_prepare_and_send` exige um
+# `telegram_id`, um `phone_number` ou um `discord_user_id` para sequer tentar.
+# Não é só o aviso de fim de teste: é o lembrete de vencimento (diário), a
+# confirmação de renovação, a reativação, a reposição da palavra-passe, as
+# credenciais de uma conta recriada e o aviso em massa. E o link de pagamento
+# viaja dentro deles.
+CANAIS_DO_RESGATE = (
+    CanalDoResgate('whatsapp', 'phone_number', 'WHATSAPP_ENABLED', 'WhatsApp'),
+    CanalDoResgate('telegram', 'telegram_user', 'TELEGRAM_ENABLED', 'Telegram'),
+    CanalDoResgate('discord', 'discord_user_id', 'DISCORD_ENABLED', 'Discord'),
+)
+
+
+def canais_ativos_no_resgate(config):
+    """Os canais que o painel consegue mesmo usar, para a página só pedir esses.
+
+    ⚠️ Ligado não chega: o Discord precisa do webhook do canal, sem o qual
+    `_prepare_and_send` nunca o considera. Pedir um ID que não vai ser usado é
+    pior do que não o pedir — foi o mesmo engano do cartão do Tautulli a
+    aparecer num assistente de Jellyfin.
+    """
+    ativos = []
+    for canal in CANAIS_DO_RESGATE:
+        if not config.get(canal.interruptor):
+            continue
+        if canal.canal == 'discord' and not config.get('DISCORD_WEBHOOK_URL'):
+            continue
+        ativos.append(canal)
+    return ativos
+
+
 def normalizar_contacto(valor):
     """O ID como texto e sem espaços, ou None.
 

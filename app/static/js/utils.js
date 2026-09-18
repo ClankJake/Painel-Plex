@@ -337,6 +337,122 @@ export function formatarData(valor, { ausente = '' } = {}) {
  * que `sanitizeHTML`, definida no topo deste ficheiro, a utilize.
  */
 /**
+ * =====================================================================
+ * O TELEFONE E O CÓDIGO DO PAÍS
+ * =====================================================================
+ *
+ * 📌 Vive aqui porque são DOIS os sítios que o pedem — a "Minha Conta" e o fim
+ * do resgate de um convite — e a regra é a mesma. Uma segunda cópia divergiria
+ * da primeira no primeiro ajuste, que foi o que aconteceu às três cópias do
+ * `formatDateTime` e às quatro do escapador.
+ *
+ * O painel guarda o telefone **só com dígitos** (`_normalizar_telefone`, em
+ * `models.py`, e `validar_telefone`, nos schemas): o que está na base de dados
+ * é `5521999999999`, sem o `+` e sem separadores.
+ *
+ * 🐛 REGRESSÃO REAL: a caixa da "Minha Conta" comparava o número guardado com o
+ * código do país TAL COMO ele aparece na lista — `'5521999999999'.startsWith('+55')`
+ * —, que é sempre falso porque o `+` nunca chega a ser gravado. Nenhum país
+ * correspondia, o ramo de recurso punha o número INTEIRO no campo nacional, e
+ * gravar outra vez escrevia `555521999999999` no perfil: 15 dígitos, dentro do
+ * limite do `validar_telefone`, aceite sem uma queixa. Como o destinatário do
+ * WhatsApp é `{phone_number}@s.whatsapp.net`, a pessoa deixava de receber
+ * qualquer aviso e o painel continuava a dizer que tinha enviado.
+ */
+export const PAISES = [
+    { name: 'Brasil', code: '55' }, { name: 'Portugal', code: '351' },
+    { name: 'Angola', code: '244' }, { name: 'Moçambique', code: '258' },
+    { name: 'Cabo Verde', code: '238' }, { name: 'EUA/Canadá', code: '1' },
+    { name: 'Reino Unido', code: '44' }, { name: 'Espanha', code: '34' },
+    { name: 'França', code: '33' }, { name: 'Alemanha', code: '49' }
+];
+
+export const soDigitos = (valor) => String(valor ?? '').replace(/\D/g, '');
+
+/**
+ * O número tem o formato NACIONAL esperado (logo, não traz código de país)?
+ *
+ * ⚠️ Nem todo o número guardado TEM DDI: o campo do administrador, na página de
+ * utilizadores, é uma caixa de texto solta, e o `normalize_phone` do
+ * `notifier_manager` só acrescenta o código no momento do ENVIO — não reescreve
+ * o perfil. Por isso `11999999999` está lá tal e qual, e cortar-lhe os
+ * primeiros dígitos por parecerem um código de país ("+1") daria um número
+ * truncado com a bandeira errada.
+ *
+ * A heurística é a MESMA do backend, de propósito: para o Brasil (55) são 10
+ * dígitos (fixo com DDD) ou 11 (celular, sempre com o 9 na terceira posição),
+ * com o DDD entre 11 e 99.
+ */
+export function temFormatoNacional(digitos, ddiPadrao) {
+    if (!ddiPadrao) return false;
+    if (digitos.length !== 10 && digitos.length !== 11) return false;
+    const ddd = Number(digitos.slice(0, 2));
+    if (!(ddd >= 11 && ddd <= 99)) return false;
+    if (ddiPadrao === '55' && digitos.length === 11 && digitos[2] !== '9') return false;
+    return true;
+}
+
+/**
+ * Separa o número guardado em (código do país, parte nacional), para os dois
+ * campos que a pessoa vê. Devolve sempre os dois — a caixa nunca fica por
+ * escolher.
+ */
+export function separarCodigoDoPais(numeroGuardado, codigosConhecidos, ddiPadrao) {
+    const digitos = soDigitos(numeroGuardado);
+    if (!digitos) return { codigo: ddiPadrao, numero: '' };
+
+    if (temFormatoNacional(digitos, ddiPadrao)) {
+        return { codigo: ddiPadrao, numero: digitos };
+    }
+
+    // ⚠️ Do prefixo MAIS LONGO para o mais curto: `351` tem de ser testado
+    // antes de `1` e de `44`, ou o país errado ganha e o número fica truncado.
+    const candidatos = codigosConhecidos.slice().sort((a, b) => b.length - a.length);
+    for (const ddi of candidatos) {
+        if (digitos.startsWith(ddi) && digitos.length > ddi.length) {
+            return { codigo: ddi, numero: digitos.slice(ddi.length) };
+        }
+    }
+
+    // Não reconhecido: fica inteiro no campo, com o DDI padrão à frente. É o
+    // comportamento menos destrutivo — não se corta o que não se percebeu.
+    return { codigo: ddiPadrao, numero: digitos };
+}
+
+/**
+ * A lista de países para a caixa, com o DDI padrão do painel garantidamente lá.
+ *
+ * ⚠️ Sem o acrescentar, um `WHATSAPP_DEFAULT_COUNTRY_CODE` fora desta lista
+ * curta fazia o `select.value = ...` não encontrar a opção, FALHAR EM SILÊNCIO
+ * e a caixa ficar no primeiro país — o número gravado ganhava o DDI de outro.
+ */
+export function paisesComOPadrao(ddiPadrao) {
+    const paises = PAISES.slice();
+    if (ddiPadrao && !paises.some(p => p.code === ddiPadrao)) {
+        paises.unshift({ name: `+${ddiPadrao}`, code: ddiPadrao });
+    }
+    return paises;
+}
+
+/**
+ * Junta o que está nos dois campos no número que se grava.
+ *
+ * 🐛 Escrever o número já com o DDI não pode dar o DDI a dobrar — era isso que
+ * acontecia a quem gravasse a "Minha Conta" com o campo como ela o mostrava
+ * antes da correção, e o resultado passava no limite de 15 dígitos, portanto
+ * sem erro nenhum a avisar. ⚠️ `temFormatoNacional` é o travão: um celular de
+ * Santa Maria (`55999999999`) começa por "55" e ali o 55 é o DDD.
+ */
+export function juntarTelefone(codigoDoPais, textoDoCampo, ddiPadrao) {
+    const ddi = soDigitos(codigoDoPais) || soDigitos(ddiPadrao);
+    let nacional = soDigitos(textoDoCampo);
+    if (ddi && nacional.startsWith(ddi) && !temFormatoNacional(nacional, ddi)) {
+        nacional = nacional.slice(ddi.length);
+    }
+    return { ddi, nacional, completo: nacional ? `${ddi}${nacional}` : '' };
+}
+
+/**
  * Acrescenta o DESLOCAMENTO do navegador a uma data-hora local.
  * `'2026-09-05T23:59'` → `'2026-09-05T23:59:00-03:00'`.
  *

@@ -34,6 +34,10 @@ import pytest
 RAIZ = Path(__file__).resolve().parent.parent
 ACCOUNT_JS = RAIZ / 'app' / 'static' / 'js' / 'account.js'
 ACCOUNT_HTML = RAIZ / 'app' / 'templates' / 'account.html'
+# 📌 A regra MUDOU DE CASA: vive no `utils.js` desde que a página de convite
+# passou a pedir o mesmo telefone no fim do resgate. Duas cópias divergiriam no
+# primeiro ajuste, que é o que já aconteceu ao `formatDateTime` e ao escapador.
+UTILS_JS = RAIZ / 'app' / 'static' / 'js' / 'utils.js'
 
 precisa_de_node = pytest.mark.skipif(
     shutil.which('node') is None, reason="precisa do Node para correr o JavaScript"
@@ -67,10 +71,11 @@ def _correr_no_node(corpo, *argumentos):
     sua própria cópia das regras. O que se extrai é o bloco puro do ficheiro,
     entre o `soDigitos` e o `initContactForm` (que já toca no DOM).
     """
-    fonte = ACCOUNT_JS.read_text(encoding='utf-8')
-    inicio = fonte.index('const soDigitos')
-    fim = fonte.index('const initContactForm')
-    script = fonte[inicio:fim] + corpo
+    fonte = UTILS_JS.read_text(encoding='utf-8')
+    inicio = fonte.index('export const soDigitos')
+    fim = fonte.index('export function paisesComOPadrao')
+    # O `export` sai: o bloco corre como um módulo solto, sem quem o importe.
+    script = fonte[inicio:fim].replace('export ', '') + corpo
 
     resultado = subprocess.run(
         ['node', '--input-type=module', '-e', script, '--', *argumentos],
@@ -85,7 +90,7 @@ def test_o_codigo_do_pais_nao_e_comparado_com_o_sinal_de_mais():
     O número guardado nunca tem `+`: comparar com ele é o bug original, e é um
     `startsWith` que não dá erro nenhum — só devolve sempre falso.
     """
-    fonte = ACCOUNT_JS.read_text(encoding='utf-8')
+    fonte = UTILS_JS.read_text(encoding='utf-8') + ACCOUNT_JS.read_text(encoding='utf-8')
     assert 'startsWith(c.code)' not in fonte, (
         "O código do país está a ser comparado com o número guardado, que só "
         "tem dígitos — compare dígitos com dígitos."
@@ -107,6 +112,8 @@ def test_o_ddi_padrao_das_configuracoes_chega_ao_formulario():
     assert 'data-config-default-country-code' in html
     assert 'WHATSAPP_DEFAULT_COUNTRY_CODE' in html
     assert 'state.config.defaultCountryCode' in ACCOUNT_JS.read_text(encoding='utf-8')
+    assert 'paisesComOPadrao' in ACCOUNT_JS.read_text(encoding='utf-8'), (
+        'a página da conta tem de usar o helper partilhado, não uma cópia local')
 
 
 @precisa_de_node

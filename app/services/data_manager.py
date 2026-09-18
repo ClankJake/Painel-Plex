@@ -676,9 +676,15 @@ class DataManager:
         A comparação é feita como texto e sem espaços, porque o ID pode chegar
         como número (de um bot) ou como string (de um formulário).
         """
+        # ⚠️ O WhatsApp entrou aqui quando a página de convite passou a pedir
+        # o número: o telefone tem de ser tão único como os outros, porque é
+        # por ele que o `/pay/<token>` viaja — e esse link funciona para quem o
+        # tiver. Duas pessoas no mesmo número é o mesmo problema de sempre,
+        # noutro canal.
         colunas = {
             'telegram': UserProfile.telegram_user,
             'discord': UserProfile.discord_user_id,
+            'whatsapp': UserProfile.phone_number,
         }
         coluna = colunas.get(canal)
         if coluna is None or valor is None or str(valor).strip() == "":

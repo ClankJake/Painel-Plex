@@ -218,6 +218,31 @@ class UpdateAccountProfileSchema(BaseModel):
     _telefone = validator('phone_number', allow_reuse=True)(validar_telefone)
 
 
+class ContactosDoResgateSchema(BaseModel):
+    """O que a página de convite envia depois de um resgate bem-sucedido.
+
+    ⚠️ Os nomes aqui são os dos CANAIS (`whatsapp`, `telegram`, `discord`) e
+    não os das colunas do perfil (`phone_number`, `telegram_user`,
+    `discord_user_id`). A tradução é do `CANAIS_DO_RESGATE` — a mesma razão de
+    o `CONTACTOS` existir: os dois lados nunca se chamaram igual, e já houve
+    código a ler uma coluna que não existe e a parecer funcionar por causa de
+    um `or` à frente.
+
+    Todos são opcionais: preencher só um canal é uma escolha legítima, e o que
+    não vier fica como está (ver `guardar_contactos`).
+    """
+
+    name: Optional[str] = None
+    whatsapp: Optional[str] = None
+    telegram: Optional[str] = None
+    discord: Optional[str] = None
+
+    # O mesmo validador dos outros formulários: só dígitos, 8 a 15, com o
+    # código do país. Aqui ele serve para o 400 sair com a frase certa em vez
+    # de o número ser gravado num formato que o envio não entende.
+    _telefone = validator('whatsapp', allow_reuse=True)(validar_telefone)
+
+
 class CreateCouponSchema(BaseModel):
     """
     Validação da criação de cupões.

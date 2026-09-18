@@ -3,7 +3,8 @@
  * Lógica para a página de resgate de convites.
  */
 
-import { setButtonLoading, restoreButton, escapeHTML, buildPinCheckUrl, lerConfiguracaoDoScript } from './utils.js';
+import { setButtonLoading, restoreButton, escapeHTML, buildPinCheckUrl, lerConfiguracaoDoScript,
+         soDigitos, paisesComOPadrao, juntarTelefone } from './utils.js';
 
 // --- INICIALIZAÇÃO ---
 const scriptTag = document.getElementById('invite-script');
@@ -162,6 +163,8 @@ function showImprovedOnboarding(userData) {
             </ol>
         </div>
 
+        ${secaoDeContatos(userData)}
+
         <div class="mt-8 text-left border-t border-gray-200 dark:border-gray-700/50 pt-6">
             <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 text-center">${i18n.enjoyAnywhere}</h2>
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-center">
@@ -172,6 +175,184 @@ function showImprovedOnboarding(userData) {
             </div>
         </div>
     `;
+
+    ligarSecaoDeContatos(userData);
+}
+
+// ==========================================
+// OS CONTATOS, NO FIM DO RESGATE
+// ==========================================
+//
+// 🔔 Quem entra por um link PÚBLICO fica sem contato nenhum: o painel só resolve
+// os que um bot pré-atribuiu ao convite. Sem contato, `_prepare_and_send` não
+// tem por onde tentar e TODAS as notificações morrem em silêncio — e não é só o
+// fim do teste: é o lembrete de vencimento (diário), a renovação, a reativação,
+// a redefinição de senha, as credenciais de uma conta recriada e o aviso em
+// massa. O link de pagamento viaja dentro deles.
+//
+// ⚠️ Por isso aparece em TODO resgate, e não só nos de teste: `trial_duration_minutes`
+// é 0 por padrão, e num convite normal não há teste nenhum — mas é justamente
+// essa pessoa que vai ter vencimento e link de pagamento depois. O que muda com
+// `is_trial` é só a frase.
+
+const CAMPOS_POR_CANAL = {
+    whatsapp: 'contact-whatsapp',
+    telegram: 'contact-telegram',
+    discord: 'contact-discord',
+};
+
+function secaoDeContatos(userData) {
+    const canais = userData.contact_channels || [];
+    if (!canais.length) return '';
+
+    const ddiPadrao = soDigitos(config.defaultCountryCode) || '55';
+    const paises = paisesComOPadrao(ddiPadrao);
+
+    const explicacao = userData.is_trial
+        ? (i18n.contactsWhyTrial || 'Para avisarmos você quando o período de teste terminar.')
+        : (i18n.contactsWhy || 'Para avisarmos você do vencimento e enviarmos o link de pagamento.');
+
+    const campo = 'w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white';
+    const rotulo = 'block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1';
+
+    const whatsappHtml = canais.includes('whatsapp') ? `
+        <div>
+            <label for="contact-whatsapp" class="${rotulo}">${escapeHTML(i18n.contactsWhatsapp || 'WhatsApp')}</label>
+            <div class="flex">
+                <select id="contact-country" class="p-2.5 text-sm rounded-l-lg border border-r-0 bg-gray-50 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    ${paises.map(p => `<option value="${p.code}">${escapeHTML(p.name)} (+${p.code})</option>`).join('')}
+                </select>
+                <input type="tel" id="contact-whatsapp" inputmode="tel" maxlength="20"
+                       placeholder="21999998888" class="${campo} rounded-l-none">
+            </div>
+        </div>` : '';
+
+    // ⚠️ O Telegram NÃO tem campo de texto, e não é esquecimento: o painel manda
+    // `chat_id = telegram_id or telegram_user` direto para a API, e um @username
+    // não endereça uma conversa privada — só um canal. E mesmo com o id numérico
+    // certo, um bot não pode INICIAR uma conversa: enquanto a pessoa não abrir o
+    // bot e tocar em Começar, qualquer envio devolve 403. O botão resolve os
+    // dois de uma vez: ela toca, o Telegram abre o bot, e o `/start <código>`
+    // que ele recebe traz o chat.id que o painel precisa.
+    const telegramHref = canais.includes('telegram') ? safeUrl(userData.telegram_link) : null;
+    const telegramHtml = telegramHref ? `
+        <div>
+            <span class="${rotulo}">${escapeHTML(i18n.contactsTelegram || 'Telegram')}</span>
+            <div class="flex flex-wrap gap-2">
+                <a href="${telegramHref}" target="_blank" rel="noopener noreferrer" id="contact-telegram-open"
+                   class="btn bg-sky-600 hover:bg-sky-500 text-white text-sm px-4 py-2 rounded-lg">
+                    ${escapeHTML(i18n.contactsTelegramOpen || 'Abrir o bot no Telegram')}
+                </a>
+                <button type="button" id="contact-telegram-check"
+                        class="btn bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-sm px-4 py-2 rounded-lg">
+                    ${escapeHTML(i18n.contactsTelegramCheck || 'Já toquei em Começar')}
+                </button>
+            </div>
+            <p id="contact-telegram-status" class="text-xs text-gray-500 dark:text-gray-400 mt-1"></p>
+        </div>` : '';
+
+    const discordHtml = canais.includes('discord') ? `
+        <div>
+            <label for="contact-discord" class="${rotulo}">${escapeHTML(i18n.contactsDiscord || 'ID de usuário do Discord')}</label>
+            <input type="text" id="contact-discord" maxlength="32" inputmode="numeric"
+                   placeholder="123456789012345678" class="${campo}">
+        </div>` : '';
+
+    return `
+        <div class="mt-8 text-left border-t border-gray-200 dark:border-gray-700/50 pt-6" id="contact-section">
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-1 text-center">${escapeHTML(i18n.contactsTitle || 'Como falamos com você?')}</h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4 text-center">${escapeHTML(explicacao)}</p>
+            <div class="space-y-4">
+                <div>
+                    <label for="contact-name" class="${rotulo}">${escapeHTML(i18n.contactsName || 'Seu nome')}</label>
+                    <input type="text" id="contact-name" maxlength="80" autocomplete="name" class="${campo}">
+                </div>
+                ${whatsappHtml}
+                ${discordHtml}
+                ${telegramHtml}
+            </div>
+            <button type="button" id="contact-save"
+                    class="btn bg-green-600 hover:bg-green-500 text-white w-full mt-4 py-2.5 rounded-lg font-semibold">
+                ${escapeHTML(i18n.contactsSave || 'Salvar')}
+            </button>
+            <p id="contact-status" class="text-sm text-center mt-2"></p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 text-center mt-2">${escapeHTML(i18n.contactsLater || 'Você pode preencher isso depois, em Minha Conta.')}</p>
+        </div>`;
+}
+
+function aviso(elemento, texto, erro = false) {
+    if (!elemento) return;
+    elemento.textContent = texto;
+    elemento.className = `text-sm text-center mt-2 ${erro ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`;
+}
+
+function ligarSecaoDeContatos(userData) {
+    const botao = document.getElementById('contact-save');
+    if (!botao) return;
+
+    const estado = document.getElementById('contact-status');
+    const ddiPadrao = soDigitos(config.defaultCountryCode) || '55';
+
+    botao.addEventListener('click', async () => {
+        const original = botao.textContent;
+        botao.disabled = true;
+        botao.textContent = i18n.contactsSaving || 'Salvando...';
+
+        const corpo = { name: document.getElementById('contact-name')?.value.trim() || '' };
+
+        const pais = document.getElementById('contact-country');
+        const telefone = document.getElementById(CAMPOS_POR_CANAL.whatsapp);
+        if (pais && telefone) {
+            // 📌 A junção é a do `utils.js`, a mesma da "Minha Conta": um número
+            // digitado já com o DDI não pode ganhar outro à frente.
+            corpo.whatsapp = juntarTelefone(pais.value, telefone.value, ddiPadrao).completo;
+        }
+
+        const discord = document.getElementById(CAMPOS_POR_CANAL.discord);
+        if (discord) corpo.discord = discord.value.trim();
+
+        try {
+            const resposta = await fetch(urls.claimContacts, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(corpo),
+            });
+            const resultado = await resposta.json();
+            aviso(estado, resultado.message || '', !resultado.success);
+        } catch {
+            aviso(estado, i18n.contactsFail || 'Não foi possível salvar agora.', true);
+        } finally {
+            botao.disabled = false;
+            botao.textContent = original;
+        }
+    });
+
+    const verificar = document.getElementById('contact-telegram-check');
+    if (!verificar) return;
+
+    const estadoTelegram = document.getElementById('contact-telegram-status');
+    verificar.addEventListener('click', async () => {
+        const original = verificar.textContent;
+        verificar.disabled = true;
+        verificar.textContent = i18n.contactsChecking || 'Verificando...';
+
+        try {
+            const resposta = await fetch(urls.claimTelegram, { method: 'POST' });
+            const resultado = await resposta.json();
+            // ⚠️ `vinculado: false` num 200 é "ainda não chegou", e não um erro:
+            // a pessoa pode simplesmente não ter tocado em Começar ainda.
+            aviso(estadoTelegram, resultado.message || '', !resultado.success);
+            estadoTelegram.classList.add('text-xs');
+            if (resultado.vinculado) verificar.disabled = true;
+            else verificar.textContent = original;
+        } catch {
+            aviso(estadoTelegram, i18n.contactsFail || 'Não foi possível salvar agora.', true);
+            verificar.textContent = original;
+        } finally {
+            if (!verificar.disabled) verificar.textContent = original;
+            verificar.disabled = false;
+        }
+    });
 }
 
 
