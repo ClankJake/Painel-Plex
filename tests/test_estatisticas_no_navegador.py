@@ -56,24 +56,34 @@ window.ResizeObserver = class extends Real {
 """
 
 
-def _dentro_de(pasta, alvo):
-    """`alvo` se ele estiver mesmo DENTRO de `pasta`; `None` se escapar.
+def _ficheiros_servidos(pagina_html):
+    """O que este servidor aceita servir, indexado pelo caminho EXATO do pedido.
 
-    🛡️ **O caminho vem do PEDIDO, e juntá-lo à raiz é uma travessia de
-    diretórios**: um `GET /static/../../../../etc/hostname` saía da pasta e o
-    servidor devolvia o ficheiro, com 200. Isto vive só dentro de um pytest,
-    ligado ao localhost e numa porta efémera — mas o padrão é o mesmo que
-    estaria errado em produção, e um teste que existe para provar que o painel
-    está bem não é sítio para o deixar escrito.
+    🛡️ **Um índice, e não um caminho montado a partir do pedido.** A primeira
+    versão juntava o que vinha no `GET` à raiz do repositório, e um
+    `GET /static/../../../../etc/hostname` devolvia o ficheiro, com 200 — foi o
+    CodeQL a apanhá-lo, e reproduziu-se antes de se corrigir.
 
-    ⚠️ Compara-se depois de `resolve()`: é ele que come os `..`, e sem isso a
-    verificação olharia para um caminho que ainda não é o que vai ser aberto.
+    ⚠️ **Confinar não chegou.** Resolver o caminho e exigir que ele ficasse
+    debaixo de `app/static` fecha mesmo o buraco, mas deixa o padrão de pé: o
+    destino continua a ser CONSTRUÍDO a partir do pedido, e a análise estática
+    continua — com razão — a lê-lo como tal. Um guarda que só o leitor humano
+    reconhece é um guarda que a próxima pessoa reescreve sem dar por isso.
+
+    Aqui o pedido ESCOLHE uma entrada da lista e nunca define um destino novo,
+    que é a mesma regra que o painel já aplica aos serviços de push e à
+    `ALLOWED_IMAGE_HOSTS` do proxy de imagens.
     """
-    try:
-        resolvido = alvo.resolve()
-    except OSError:  # pragma: no cover - caminho impossível de resolver
-        return None
-    return resolvido if resolvido.is_relative_to(pasta.resolve()) else None
+    servidos = {
+        "/": pagina_html,
+        "/statistics": pagina_html,
+        # O painel serve-o da RAIZ, e é daí que vem o alcance dele.
+        "/service-worker.js": ESTATICOS / "js" / "service-worker.js",
+    }
+    for ficheiro in ESTATICOS.rglob("*"):
+        if ficheiro.is_file():
+            servidos["/static/" + ficheiro.relative_to(ESTATICOS).as_posix()] = ficheiro
+    return servidos
 
 
 def _saltar_ou_falhar(motivo):
@@ -137,6 +147,8 @@ _RECOMENDACOES = {"success": True, "reason": "ok", "sections": [
 
 
 def _construir_servidor(pagina_html):
+    servidos = _ficheiros_servidos(pagina_html)
+
     class Servidor(SimpleHTTPRequestHandler):
         def do_GET(self):
             caminho = self.path.split("?")[0]
@@ -145,17 +157,9 @@ def _construir_servidor(pagina_html):
                 self._api(caminho)
                 return
 
-            if caminho.startswith("/static/"):
-                ficheiro = _dentro_de(ESTATICOS, RAIZ / "app" / caminho.lstrip("/"))
-            elif caminho == "/service-worker.js":
-                # O painel serve-o da RAIZ, e é daí que vem o alcance dele.
-                ficheiro = RAIZ / "app" / "static" / "js" / "service-worker.js"
-            elif caminho in ("/", "/statistics"):
-                ficheiro = pagina_html
-            else:
-                self.send_error(404)
-                return
-
+            # 🛡️ Uma consulta ao índice, e não um caminho construído com o que
+            # veio no pedido — ver `_ficheiros_servidos`.
+            ficheiro = servidos.get(caminho)
             if ficheiro is None or not ficheiro.is_file():
                 self.send_error(404)
                 return
@@ -358,20 +362,35 @@ class TestOServidorDoTesteNaoSaiDaPasta:
     ⚠️ Não precisa de navegador: é sobre o servidor, não sobre a página.
     """
 
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def servidos(tmp_path_factory):
+        return _ficheiros_servidos(tmp_path_factory.mktemp("p") / "statistics.html")
+
     @pytest.mark.parametrize("caminho", [
         "/static/../../../../../../etc/hostname",
         "/static/../config/config.json",
         "/static/js/../../../run.py",
+        "/static/../../app/config.py",
     ])
-    def test_recusa_o_que_esta_fora(self, caminho):
-        assert _dentro_de(ESTATICOS, RAIZ / "app" / caminho.lstrip("/")) is None
+    def test_o_que_esta_fora_nao_esta_no_indice(self, servidos, caminho):
+        assert caminho not in servidos
 
-    def test_e_continua_a_servir_o_que_esta_dentro(self):
-        """Um guarda que recusa tudo passaria neste ficheiro sem servir nada."""
-        dentro = _dentro_de(ESTATICOS, RAIZ / "app" / "static/js/statistics.js")
+    def test_e_o_que_esta_dentro_continua_a_ser_servido(self, servidos):
+        """Um índice vazio passaria os de cima sem servir nada."""
+        assert servidos["/static/js/statistics.js"].is_file()
+        assert servidos["/service-worker.js"].is_file()
+        assert len(servidos) > 20
 
-        assert dentro is not None
-        assert dentro.is_file()
+    def test_tudo_o_que_o_indice_tem_esta_debaixo_de_app_static(self, servidos):
+        """A prova de que a lista não pode crescer para fora sem alguém ver."""
+        fora = [
+            caminho for caminho, ficheiro in servidos.items()
+            if caminho.startswith("/static/")
+            and not ficheiro.resolve().is_relative_to(ESTATICOS.resolve())
+        ]
+
+        assert fora == []
 
 
 def test_sem_erros_de_javascript(pagina):
