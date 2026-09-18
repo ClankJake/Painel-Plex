@@ -6,7 +6,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{{ _('Renovação de Assinatura') }} - {{ app_title }}</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='gold'><path d='M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z'/></svg>">
-    <script src="https://cdn.tailwindcss.com"></script>
+    {# ⚠️ **O CSS vem do BUILD, não do CDN.** Esta era a única página do painel
+       a carregar o `cdn.tailwindcss.com`: um pedido a um terceiro no meio do
+       fluxo de pagamento, que numa rede sem saída deixava quem ia pagar com
+       uma página sem estilo nenhum — e que compilava o CSS no navegador de
+       cada pessoa. O `output.css` já é gerado a partir destes templates e do
+       `app/static/js` (ver o `content` do tailwind.config.js), por isso as
+       classes daqui entram nele sozinhas. ⚠️ Só as LITERAIS: uma classe
+       montada em tempo de execução (`bg-${cor}-500`) funcionava com o CDN e
+       deixa de funcionar aqui — é a mesma regra do resto do painel.
+
+       ⚠️ E o tema escuro passa a seguir a CLASSE (`darkMode: 'class'`, na
+       configuração) em vez da preferência do sistema, que é o padrão do CDN.
+       É o que corrige: o script abaixo escreve a classe `dark` a partir do
+       `localStorage`, e o CSS próprio desta página (`.dark .bg-ambient`) já
+       seguia a classe — só as utilitárias `dark:` é que seguiam o sistema.
+       Quem tivesse o computador em claro e o painel em escuro via metade de
+       cada. #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='dist/output.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
         if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
@@ -29,7 +46,7 @@
         }
 
         /* Notificações Toasts (Estilo Moderno) */
-        .toast { position: fixed; bottom: 2rem; right: 50%; transform: translateX(50%) translateY(100px); padding: 1rem 1.5rem; border-radius: 9999px; color: white; opacity: 0; transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); z-index: 9999; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); font-weight: 500; text-align: center; white-space: nowrap; max-width: 90vw;}
+        .toast { position: fixed; top: auto; bottom: 2rem; right: 50%; transform: translateX(50%) translateY(100px); padding: 1rem 1.5rem; border-radius: 9999px; color: white; opacity: 0; transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); z-index: 9999; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); font-weight: 500; text-align: center; white-space: nowrap; max-width: 90vw;}
         @media (min-width: 640px) { .toast { right: 2rem; transform: translateX(0) translateY(100px); } }
         .toast.show { opacity: 1; transform: translateX(50%) translateY(0); }
         @media (min-width: 640px) { .toast.show { transform: translateX(0) translateY(0); } }

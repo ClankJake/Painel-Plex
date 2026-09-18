@@ -2065,9 +2065,23 @@ assinante e o `trial_end_date` que ficou para trás é história (a mesma regra 
 `trial_sweep_job`). A leitura estava copiada em três rotas de `api/users.py`,
 cada uma com o seu `try/except` à volta do mesmo `fromisoformat`.
 
-⚠️ E esta página carrega o Tailwind pelo **CDN** (`cdn.tailwindcss.com`), ao
-contrário do resto do painel: as classes dela não precisam de estar no
-`output.css`, mas também não se veem sem rede de saída no navegador de quem paga.
+⚠️ **E ela era a ÚNICA do painel a carregar o Tailwind por CDN**
+(`cdn.tailwindcss.com`) — hoje usa o `output.css` do build, como todas as
+outras. Isso custava três coisas: um pedido a um terceiro no meio do fluxo de
+quem vai pagar (numa rede sem saída, a página chegava sem estilo nenhum), a
+compilação do CSS no navegador de cada pessoa, e **uma regra de tema diferente
+da do resto do painel** — o CDN decide o modo escuro pela preferência do
+SISTEMA e a configuração deste projeto decide-o pela CLASSE `dark`, que é a que
+o painel escreve a partir do `localStorage`; o CSS próprio da página
+(`.dark .bg-ambient`) já seguia a classe, por isso quem tivesse o computador em
+claro e o painel em escuro via metade de cada. ⚠️ Em troca, as classes dela têm
+de ser LITERAIS: o `content` do `tailwind.config.js` já varre os templates e o
+`app/static/js`, mas uma classe montada em tempo de execução funcionava com o
+CDN e deixa de funcionar aqui. E o `<style>` local continua a mandar sobre os
+componentes partilhados do `input.css` porque vem depois — a exceção é o que
+ele NÃO redefine, e foi por isso que o `.toast` ganhou um `top: auto`: com o
+`top: 5rem` herdado e o `bottom` próprio, a caixa esticava-se pelo ecrã.
+Dois testes prendem isto (`tests/test_assets_frontend.py`).
 
 #### A data de vencimento: o fuso é de quem escolhe
 
