@@ -479,6 +479,22 @@ class JellyfinStatsApi:
         """Os géneros de um item, que é o que a agregação vem cá buscar."""
         detalhes = self._detalhes([str(rating_key or '')])
         item = detalhes.get(str(rating_key or '')) or {}
+        return self._metadados_do_item(item)
+
+    def get_metadata_batch(self, rating_keys: List[Any]) -> Dict[str, Dict[str, Any]]:
+        """Os mesmos metadados, de vários itens e numa ida só ao servidor.
+
+        ⚡ `_detalhes` sempre soube pedir até 200 ids de uma vez — era o
+        `get_metadata` que lhe entregava um e deitava fora o bloco. As
+        recomendações pediam os géneros de quarenta títulos e isso eram quarenta
+        `GET /Items`, com quem abriu a página à espera da soma de todos.
+        """
+        detalhes = self._detalhes([str(chave) for chave in rating_keys if chave])
+        return {chave: self._metadados_do_item(item) for chave, item in detalhes.items()}
+
+    @staticmethod
+    def _metadados_do_item(item: Dict[str, Any]) -> Dict[str, Any]:
+        """O que a agregação vem cá buscar, seja o pedido de um item ou de muitos."""
         return {
             'genres': [str(g) for g in (item.get('Genres') or [])],
             'title': item.get('Name'),

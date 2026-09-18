@@ -1054,6 +1054,77 @@ que responde 404. Um teste percorre agora todas as rotas que a página chama,
 com uma sessão de administrador, porque corrigi-las uma a uma foi precisamente
 o que não chegou à primeira vez.
 
+#### As recomendações: o cartão carrega sozinho, e o índice não é feito no pedido
+
+⚡ **A página inteira esperava pelo motor de recomendações.** As três chamadas
+iniciais da `/statistics` corriam no mesmo `Promise.all` — e um `Promise.all`
+só resolve com a MAIS LENTA. As estatísticas já tinham chegado e ninguém as
+via: o `statsContainer` ficava escondido, com o spinner à frente, até o motor
+responder. E ele lê o histórico do servidor INTEIRO. Recomendações e novidades
+são informação a mais, não a espinha da página: cada uma tem agora a sua função
+(`carregarRecomendacoes`, `carregarNovidades`), pede o que é seu e aparece
+quando chegar. ⚠️ Enquanto não chega há um esqueleto, e a secção é mostrada JÁ:
+escondê-la até à resposta fazia o resto da página saltar para baixo quando ela
+entrasse. ⚠️ E uma falha delas esconde a secção e mais nada — nunca o
+`errorContainer`, que diria a quem está a ler as suas estatísticas que a página
+falhou quando ela está inteira. ⚠️ O filtro de dias já NÃO as volta a pedir:
+elas usam a janela longa do administrador e ignoram-no, por isso cada mudança
+de período pagava a chamada mais cara do painel para receber a mesma resposta.
+
+⚡ **E o índice deixou de ser construído dentro de um pedido.** Era um
+`@cache.memoize` de 30 minutos, o que quer dizer sem tranca nenhuma: à hora a
+que ele expirava, toda a gente com a página aberta reconstruía-o ao mesmo
+tempo, cada um com a sua leitura do histórico completo, num painel que corre
+com UM worker de propósito. São três coisas, e andam juntas:
+
+- **o `recommendations_warmup_job`** reconstrói-o de 25 em 25 minutos (menos do
+  que os 30 que ele dura, ou ficava sempre uma janela em que quem abre a página
+  é o primeiro a pedi-lo). Aqui não há ninguém à espera;
+- **uma construção de cada vez** (`_construir_indice`), com um `threading.Lock`
+  que o `monkey.patch_all()` do `run.py` torna cooperativo;
+- ⚡ **quem chega a meio leva a CÓPIA ANTERIOR.** Esperar seria correto e seria
+  péssimo: a alternativa a recomendações de há meia hora é uma página parada. A
+  cópia é guardada 24 horas precisamente para existir nesse momento. ⚠️ A
+  tarefa de aquecimento pede-a com `permitir_copia_anterior=False`: ela existe
+  para CONSTRUIR, e aceitar a cópia fazia-a devolver o que já lá estava e
+  deixar a cache expirar na mesma. ⚠️ E a invalidação apaga a cópia TAMBÉM —
+  ela foi construída com os parâmetros antigos, e deixá-la ficar depois de o
+  administrador os mudar era exatamente o bug que
+  `invalidate_recommendations_cache` existe para não haver. Sem `@memoize` não
+  há `delete_memoized` que encontre as chaves, por isso elas são registadas à
+  medida que são escritas.
+
+⚡ **Os metadados eram quarenta idas ao servidor para trazer quarenta vezes o
+mesmo bloco.** O `get_metadata` do Plex e do Jellyfin já pedia um BLOCO inteiro
+(`/library/metadata/k1,k2,...`, `GET /Items?ids=`) e deitava fora tudo menos
+uma linha — e as recomendações chamavam-no uma vez por título. `get_metadata_batch`
+é o caminho para a fonte que o souber dar: **1658 ms → 64 ms** num servidor de
+1500 títulos. ⚠️ Ele é OPCIONAL de propósito, e o despachante do Plex devolve
+`None` quando quem está ativo é o Tautulli, cujo `cmd=get_metadata` é mesmo por
+item: aí os pedidos vão em paralelo (`gevent.pool`, oito de cada vez), que sob
+o worker gevent são **1600 ms → 207 ms**. ⚠️ **`None` e um dicionário vazio
+querem dizer coisas diferentes**: `None` é "não sei responder em lote" e
+segue-se para os pedidos um a um; vazio é "o servidor não conhece nenhum
+destes", e insistir seria repetir a pergunta quarenta vezes para ouvir o mesmo.
+E uma EXCEÇÃO no lote não cai para o caminho individual — a fonte está partida,
+não lenta, e seria trocar uma falha por quarenta.
+
+⚡ **O plano B percorria o catálogo INTEIRO por cada semente** — com quatro
+faixas, dezasseis sementes candidatas e alguns milhares de obras, era o mesmo
+trabalho repetido dezasseis vezes, por utilizador. O `genre_index` (invertido,
+construído uma vez com o índice) dá de uma vez só os candidatos que partilham
+um género com a semente: **4× mais rápido** num servidor onde o plano B é mesmo
+usado, que é o caso para que ele existe. ⚠️ Um índice que ainda esteja na cache
+da versão anterior não o tem, e aí volta-se ao catálogo inteiro: mais lento,
+mesmo resultado, e meia hora depois já não acontece.
+
+⚡ **E as capas eram montadas para TODAS as obras do servidor** — milhares de
+`url_for` e de base64 na construção, para mostrar umas dezenas, e tudo isso a
+engordar o que vai para a cache em disco. O catálogo guarda o `thumb` cru e
+quem monta o URL é `_poster`, já no que vai ser mostrado. ⚠️ Ele aceita o
+`poster_url` como alternativa pela mesma razão do `genre_index`: sem isso, as
+capas desapareciam durante os trinta minutos que faltassem à cache antiga.
+
 #### O Plex sem Tautulli
 
 O Tautulli é opcional. Sem ele, `plex/history.py` lê o histórico e os aparelhos

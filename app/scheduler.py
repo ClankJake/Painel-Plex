@@ -16,9 +16,17 @@ except ImportError:
 
 from .config import load_or_create_config, CONFIG_DIR
 from .locks import single_instance_job
+from .services.stats_manager import VALIDADE_DO_INDICE
 from .utils.identity import same_user
 
 logger = logging.getLogger(__name__)
+
+# ⚡ De quanto em quanto tempo o índice de recomendações é reconstruído fora do
+# pedido. Tem de ser MENOS do que a validade dele, ou fica sempre uma janela em
+# que quem abre a página é o primeiro a pedi-lo — que é o problema que a tarefa
+# existe para não haver.
+VALIDADE_DO_INDICE_EM_MINUTOS = VALIDADE_DO_INDICE // 60
+AQUECIMENTO_DAS_RECOMENDACOES_EM_MINUTOS = 25
 
 # Reduzido de 10s para 5s para evitar Thread Starvation no pool do APScheduler
 MAX_RETRIES = 3
@@ -525,6 +533,51 @@ def backup_job():
         if not filename:
             logger.error("Tarefa 'backup_job' falhou ao gerar o backup automático.")
 
+@single_instance_job('recommendations_warmup_job')
+def recommendations_warmup_job():
+    """
+    Reconstrói o índice de recomendações antes de a cache dele expirar.
+
+    ⚡ **Construí-lo é a chamada mais cara das estatísticas**: o histórico do
+    servidor inteiro, mais os metadados dos títulos mais vistos. Enquanto isso
+    só acontecia DENTRO de um pedido, quem tivesse o azar de abrir a página com
+    a cache fria esperava por ele — e num painel com um worker gevent esperava
+    com ele toda a gente que lá batesse ao mesmo tempo. Aqui não há ninguém à
+    espera, e quando a página é aberta o índice já está pronto.
+
+    Corre mais vezes do que a cache dura (25 minutos contra 30) de propósito: à
+    hora exata da expiração o que se quer é que já esteja lá outro.
+    """
+    if not _app: return
+    with _app.app_context():
+        from . import extensions
+        from .utils.estatisticas import estatisticas_disponiveis
+
+        config = load_or_create_config()
+        # 🔇 Desligadas, ou sem fonte de onde as tirar (um painel Plex sem
+        # servidor à mão, um Jellyfin em baixo): não há nada a aquecer, e
+        # tentar dava um WARNING de 25 em 25 minutos para sempre.
+        if not config.get("RECOMMENDATIONS_ENABLED", True) or not estatisticas_disponiveis():
+            logger.debug("[Recomendações] Sem nada a aquecer: desligadas ou sem fonte.")
+            return
+
+        try:
+            # ⚠️ `permitir_copia_anterior=False`: a tarefa existe para CONSTRUIR.
+            # Aceitar a cópia anterior fazia-a devolver o que já lá estava e
+            # deixar a cache expirar na mesma, na cara de quem abrisse a página.
+            indice = extensions.stats_manager.get_recommendation_index(permitir_copia_anterior=False)
+        except Exception as e:
+            # Falhar aqui não tem consequência nenhuma: o pedido seguinte volta
+            # a tentar pelo caminho de sempre.
+            logger.warning(f"[Recomendações] Não foi possível aquecer o índice: {e}")
+            return
+
+        logger.debug(
+            f"[Recomendações] Índice pronto: {len(indice.get('catalog') or {})} títulos, "
+            f"{len(indice.get('user_items') or {})} utilizadores."
+        )
+
+
 @single_instance_job('sync_xp_job')
 def sync_xp_job():
     """
@@ -659,6 +712,15 @@ def setup_scheduler(app):
         id='sync_xp_job', func=sync_xp_job,
         trigger=CronTrigger(hour=4, minute=30, timezone=tz_str),
         replace_existing=True, misfire_grace_time=3600
+    )
+
+    # ⚡ O índice de recomendações aquecido fora do pedido (ver a tarefa). De 25
+    # em 25 minutos porque a cache dele dura 30: o que se quer é que nunca haja
+    # um instante em que a página seja a primeira a pedi-lo.
+    extensions.scheduler.add_job(
+        id='recommendations_warmup_job', func=recommendations_warmup_job,
+        trigger='interval', minutes=AQUECIMENTO_DAS_RECOMENDACOES_EM_MINUTOS,
+        replace_existing=True, coalesce=True, misfire_grace_time=600
     )
 
     if config.get("IMAGE_CACHE_CLEANUP_ENABLED", False):

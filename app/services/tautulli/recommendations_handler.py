@@ -39,13 +39,21 @@ import logging
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from math import sqrt
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+
+from gevent.pool import Pool
 
 from app.config import load_or_create_config
 from ...utils.identity import normalize_user_ids
 from ...utils.image_proxy import proxied_image_url
 
 logger = logging.getLogger(__name__)
+
+# Quantos pedidos de metadados podem estar em voo ao mesmo tempo quando a fonte
+# não sabe responder em lote (ver `_metadados`). Oito é o suficiente para o
+# tempo total deixar de ser a soma das latências sem transformar a construção
+# do índice numa rajada contra o servidor de média.
+CONCORRENCIA_DE_METADADOS = 8
 
 
 # Valores usados quando a chave ainda não existe no config.json (instalações
@@ -175,9 +183,15 @@ class RecommendationsHandler:
         """
         Lê o histórico global e devolve a estrutura usada pelas recomendações:
 
-        ``catalog``     {chave: {title, year, media_type, rating_key, poster_url, genres}}
+        ``catalog``     {chave: {title, year, media_type, rating_key, thumb, genres}}
         ``user_items``  {user_id: {chave: nº de reproduções}} — TODOS os utilizadores
         ``item_users``  {chave: {user_id, ...}} — apenas os que podem servir de vizinhos
+        ``genre_index`` {género: [chave, ...]} — o índice invertido do plano B
+
+        ⚠️ O catálogo guarda o ``thumb`` CRU, não o URL do proxy: construí-lo
+        para as milhares de obras do servidor, a fim de mostrar umas dezenas,
+        era trabalho deitado fora — e ia inteiro para a cache em disco. Quem o
+        monta é ``_poster``, já no que vai ser mostrado.
 
         ``user_items`` inclui toda a gente porque cada um precisa do seu próprio
         histórico para gerar as "sementes"; ``item_users`` exclui quem pediu
@@ -248,15 +262,31 @@ class RecommendationsHandler:
 
         self._enrich_with_genres(config, catalog, item_users)
 
-        for item in catalog.values():
-            item["poster_url"] = build_poster_url(self.api, item.pop("thumb", None))
-
         return {
             "catalog": catalog,
             "user_items": {user_id: dict(items) for user_id, items in user_items.items()},
             "item_users": {key: set(users) for key, users in item_users.items()},
+            "genre_index": self._indice_de_generos(catalog),
             "days": days,
         }
+
+    @staticmethod
+    def _indice_de_generos(catalog: Dict[str, Dict[str, Any]]) -> Dict[str, List[str]]:
+        """
+        Índice invertido género → obras, construído uma vez por índice.
+
+        ⚡ O plano B percorria o CATÁLOGO INTEIRO por cada semente: com quatro
+        faixas, dezasseis sementes candidatas e alguns milhares de obras, era o
+        mesmo trabalho repetido dezasseis vezes — por utilizador, e a cada vez
+        que a cache dele expirava. Daqui saem de uma vez só os candidatos que
+        partilham pelo menos um género com a semente, que são os únicos que
+        alguma vez poderiam pontuar.
+        """
+        indice: Dict[str, List[str]] = defaultdict(list)
+        for key, item in catalog.items():
+            for genero in item.get("genres") or []:
+                indice[genero].append(key)
+        return dict(indice)
 
     def _get_private_users(self, config: Dict[str, Any], user_ids) -> Set[str]:
         """IDs (como texto) de quem pediu para ficar fora das estatísticas dos outros."""
@@ -293,6 +323,12 @@ class RecommendationsHandler:
         isso limitamos os pedidos de metadados aos itens com mais hipóteses de
         aparecerem — os mais populares. O limite é configurável e ``0`` desliga
         de vez esta etapa (e, com ela, o plano B).
+
+        ⚡ **Era aqui que a construção do índice demorava.** Eram até 40 pedidos
+        de rede, um de cada vez, à espera um do outro — e quem tivesse o azar de
+        abrir a página de estatísticas com a cache fria esperava pela soma de
+        todos eles. Hoje o trabalho é entregue de uma vez a `_metadados`, que
+        escolhe o caminho mais barato que a fonte souber dar.
         """
         limit = _config_int(config, "RECOMMENDATIONS_GENRE_LOOKUP_LIMIT")
         if limit <= 0:
@@ -304,16 +340,69 @@ class RecommendationsHandler:
         ]
         pending.sort(key=lambda key: (-len(item_users.get(key, ())), key))
 
-        for key in pending[:limit]:
-            try:
-                metadata = self.api.get_metadata(catalog[key]["rating_key"]) or {}
-            except Exception as e:
-                logger.debug(f"Metadados indisponíveis para '{key}' nas recomendações: {e}")
-                continue
+        # ⚠️ Pares, e não um dicionário indexado pelo `rating_key`: o catálogo
+        # é indexado por `movie:<id>` / `show:<id>`, por isso duas obras podem
+        # partilhar a mesma chave do servidor — e um dicionário deitava uma
+        # delas fora em silêncio.
+        pedidos: List[Tuple[str, str]] = [(key, catalog[key]["rating_key"]) for key in pending[:limit]]
+        if not pedidos:
+            return
 
+        metadados = self._metadados([rating_key for _key, rating_key in pedidos])
+
+        for key, rating_key in pedidos:
+            metadata = metadados.get(rating_key)
             genres = metadata.get("genres") if isinstance(metadata, dict) else None
             if isinstance(genres, list):
                 catalog[key]["genres"] = [str(g) for g in genres if g]
+
+    def _metadados(self, rating_keys: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Os metadados de vários itens, pelo caminho mais barato que a fonte dê.
+
+        ⚡ **A fonte que sabe responder em LOTE responde de uma vez.** O Plex e o
+        Jellyfin sabem — o `get_metadata` deles já pede um bloco inteiro ao
+        servidor e deita fora tudo menos a linha pedida —, por isso quarenta
+        perguntas eram quarenta idas ao servidor a trazer quarenta vezes os
+        mesmos dados. `get_metadata_batch` é opcional de propósito: uma fonte
+        que não o tenha (o Tautulli, cujo `cmd=get_metadata` é mesmo por item)
+        continua a servir, e os pedidos vão em paralelo — com o worker gevent,
+        cada espera de rede cede a vez à seguinte em vez de as somar todas.
+
+        ⚠️ **`None` e um dicionário vazio querem dizer coisas diferentes.**
+        `None` é "não sei responder em lote" — é o que devolve o despachante do
+        Plex quando quem está ativo é o Tautulli —, e daí segue-se para os
+        pedidos um a um. Vazio é "o servidor não conhece nenhum destes itens", e
+        aí insistir por outro caminho seria repetir a pergunta quarenta vezes
+        para ouvir o mesmo.
+
+        ⚠️ E uma falha nunca derruba o índice: sem géneros perde-se o plano B,
+        que é muito menos mau do que a página de estatísticas inteira em erro.
+        """
+        if not rating_keys:
+            return {}
+
+        em_lote = getattr(self.api, "get_metadata_batch", None)
+        if callable(em_lote):
+            try:
+                resposta = em_lote(rating_keys)
+            except Exception as e:
+                # A fonte está partida, não é lenta: pedir item a item seria
+                # trocar uma falha por quarenta.
+                logger.debug(f"A fonte não respondeu ao pedido de metadados em lote: {e}")
+                return {}
+            if resposta is not None:
+                return {str(chave): valor for chave, valor in resposta.items() if isinstance(valor, dict)}
+
+        def _um(rating_key: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+            try:
+                return rating_key, self.api.get_metadata(rating_key) or {}
+            except Exception as e:
+                logger.debug(f"Metadados indisponíveis para '{rating_key}' nas recomendações: {e}")
+                return rating_key, None
+
+        resultados = Pool(CONCORRENCIA_DE_METADADOS).imap_unordered(_um, rating_keys)
+        return {rating_key: dados for rating_key, dados in resultados if isinstance(dados, dict)}
 
     # ======================================================================
     # RECOMENDAÇÕES DE UM UTILIZADOR
@@ -377,7 +466,7 @@ class RecommendationsHandler:
                     "year": seed["year"],
                     "media_type": seed["media_type"],
                     "rating_key": seed["rating_key"],
-                    "poster_url": seed["poster_url"],
+                    "poster_url": self._poster(seed),
                     "plays": seed_plays,
                 },
                 "source": match_types.pop() if len(match_types) == 1 else "mixed",
@@ -456,9 +545,10 @@ class RecommendationsHandler:
         min_shared = 2 if len(seed_genres) >= 2 else 1
 
         scored = []
-        for key, item in catalog.items():
+        for key in self._candidatos_por_genero(index, seed_genres, min_shared):
             if key == seed_key or key in excluded:
                 continue
+            item = catalog[key]
             genres = {g for g in (item.get("genres") or []) if g}
             shared = seed_genres & genres
             if len(shared) < min_shared:
@@ -476,7 +566,39 @@ class RecommendationsHandler:
         ]
 
     @staticmethod
-    def _format_item(item: Dict[str, Any], match_type: str, score: float,
+    def _candidatos_por_genero(index: Dict[str, Any], seed_genres: Set[str],
+                               min_shared: int) -> Iterable[str]:
+        """
+        As obras que podem vir a pontuar no plano B, sem varrer o catálogo.
+
+        ⚠️ Um índice construído pela versão anterior pode ainda estar na cache,
+        e lá o ``genre_index`` não existe. Nesse caso volta-se ao catálogo
+        inteiro: mais lento, mas com exatamente o mesmo resultado — e meia hora
+        depois já não acontece.
+        """
+        genre_index = index.get("genre_index")
+        if genre_index is None:
+            return list(index.get("catalog") or {})
+
+        partilhados: Counter = Counter()
+        for genero in seed_genres:
+            for key in genre_index.get(genero, ()):
+                partilhados[key] += 1
+
+        return [key for key, quantos in partilhados.items() if quantos >= min_shared]
+
+    def _poster(self, item: Dict[str, Any]) -> Optional[str]:
+        """
+        O URL do proxy para a capa de um item do catálogo.
+
+        ⚠️ O ``poster_url`` é aceite como alternativa porque um índice
+        construído pela versão anterior — que os montava todos na construção —
+        pode ainda estar na cache: sem isto, as capas desapareciam durante os
+        trinta minutos que faltassem para ela expirar.
+        """
+        return build_poster_url(self.api, item.get("thumb")) or item.get("poster_url")
+
+    def _format_item(self, item: Dict[str, Any], match_type: str, score: float,
                      shared_viewers: int = 0, shared_genres: Optional[List[str]] = None) -> Dict[str, Any]:
         """Formata uma recomendação para a API (sem revelar QUEM viu o quê)."""
         return {
@@ -485,7 +607,7 @@ class RecommendationsHandler:
             "year": item["year"],
             "media_type": item["media_type"],
             "rating_key": item["rating_key"],
-            "poster_url": item["poster_url"],
+            "poster_url": self._poster(item),
             "genres": list(item.get("genres") or [])[:3],
             "match_type": match_type,
             "shared_viewers": shared_viewers,

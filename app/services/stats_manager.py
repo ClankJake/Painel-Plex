@@ -1,7 +1,8 @@
 # app/services/stats_manager.py
 
 import logging
-from typing import Dict, Any, Optional, Union
+import threading
+from typing import Dict, Any, Optional, Set, Union
 
 from flask_babel import gettext as _
 from requests.exceptions import RequestException
@@ -13,6 +14,14 @@ from ..config import load_or_create_config
 from ..extensions import cache
 
 logger = logging.getLogger(__name__)
+
+# Quanto tempo vale o índice de recomendações, e quanto tempo a CÓPIA ANTERIOR
+# dele continua a servir enquanto um novo está a ser construído (ver
+# `_construir_indice`). A cópia vive muito mais: ela não é uma segunda cache, é
+# a rede por baixo de quem chega no pior momento possível.
+VALIDADE_DO_INDICE = 1800
+VALIDADE_DA_COPIA_ANTERIOR = 86400
+
 
 class StatsManager:
     """
@@ -34,6 +43,14 @@ class StatsManager:
         self.stats = StatsHandler(self.api_client, data_manager)
         self.recommendations = RecommendationsHandler(self.api_client, data_manager)
         self.data_manager = data_manager
+        # ⚡ Um só de cada vez: ver `_construir_indice`. Sob gevent o
+        # `monkey.patch_all()` do `run.py` troca isto por um lock cooperativo,
+        # por isso quem espera cede a vez em vez de trancar o worker.
+        self._indice_em_construcao = threading.Lock()
+        # As chaves de cache que o índice já ocupou, para a invalidação as saber
+        # apagar: sem `@cache.memoize` não há `delete_memoized` que as encontre,
+        # e o `days` não é sempre o mesmo.
+        self._chaves_do_indice: Set[str] = set()
 
     def _nome_do_utilizador(self, media_user_id: Union[int, str]) -> Optional[str]:
         """O nome de quem se vai calcular as estatísticas.
@@ -67,7 +84,7 @@ class StatsManager:
         cache.delete_memoized(self.get_user_watch_details)
         cache.delete_memoized(self.get_recently_added)
         cache.delete_memoized(self.get_user_devices)
-        cache.delete_memoized(self.get_recommendation_index)
+        self._apagar_o_indice()
         cache.delete_memoized(self._get_recommendations_cached)
         logger.info("Cache de estatísticas do Tautulli invalidado.")
 
@@ -79,7 +96,7 @@ class StatsManager:
         alteração só teria efeito visível até 30 minutos depois, o que parece
         um bug para quem está a afinar as definições.
         """
-        cache.delete_memoized(self.get_recommendation_index)
+        self._apagar_o_indice()
         cache.delete_memoized(self._get_recommendations_cached)
         logger.info("Cache de recomendações invalidada.")
 
@@ -236,17 +253,87 @@ class StatsManager:
     # RECOMENDAÇÕES ("PORQUE ASSISTIU X...")
     # ==========================================
 
-    @cache.memoize(timeout=1800)
-    def get_recommendation_index(self, days: Optional[int] = None) -> Dict[str, Any]:
+    def get_recommendation_index(self, days: Optional[int] = None,
+                                 permitir_copia_anterior: bool = True) -> Dict[str, Any]:
         """
         Índice de co-visualização do servidor inteiro.
 
         É deliberadamente independente do utilizador: construí-lo custa uma
-        chamada pesada ao Tautulli (mais alguns pedidos de metadados) e o
+        chamada pesada à fonte (mais os metadados dos títulos mais vistos) e o
         resultado serve toda a gente. Com 30 minutos de cache, um servidor com
         100 utilizadores paga esse custo duas vezes por hora, não 100.
+
+        ⚠️ **Não é um `@cache.memoize`, e a diferença é o que está entre a
+        cache fria e a página.** O `memoize` não tem tranca nenhuma: à hora a
+        que o índice expirava, TODA a gente que tivesse a página aberta o
+        reconstruía ao mesmo tempo — cada um com a sua leitura do histórico
+        inteiro do servidor, num painel que corre com um worker de propósito.
+        Aqui a construção é uma só, e quem chega a meio dela não fica à espera:
+        leva a cópia anterior (ver `_construir_indice`).
         """
-        return self.recommendations.build_index(days=days)
+        chave = self._chave_do_indice(days)
+        indice = cache.get(chave)
+        if indice is not None:
+            return indice
+        return self._construir_indice(chave, days, permitir_copia_anterior)
+
+    @staticmethod
+    def _chave_do_indice(days: Optional[int]) -> str:
+        # `days` a None não é o mesmo que um número: quer dizer "o que estiver
+        # no config", e é assim que a rota e a tarefa de aquecimento o pedem.
+        return f"recomendacoes:indice:{'config' if days is None else int(days)}"
+
+    def _construir_indice(self, chave: str, days: Optional[int],
+                          permitir_copia_anterior: bool) -> Dict[str, Any]:
+        """
+        Constrói o índice — uma vez, mesmo com vários pedidos a precisarem dele.
+
+        ⚡ **Quem chega com uma construção já a decorrer leva a cópia ANTERIOR.**
+        Esperar seria correto e seria péssimo: o custo é uma leitura do
+        histórico do servidor inteiro, e a alternativa a recomendações de há
+        meia hora é uma página parada. A cópia é guardada por 24 horas
+        precisamente para existir neste momento.
+        """
+        chave_da_copia = f"{chave}:anterior"
+
+        if permitir_copia_anterior and self._indice_em_construcao.locked():
+            anterior = cache.get(chave_da_copia)
+            if anterior is not None:
+                logger.debug("Recomendações: índice a ser construído, a servir a cópia anterior.")
+                return anterior
+
+        with self._indice_em_construcao:
+            # Pode ter ficado pronto enquanto esperávamos pela vez.
+            pronto = cache.get(chave)
+            if pronto is not None:
+                return pronto
+
+            logger.debug(f"Recomendações: a construir o índice (cache fria) para '{days or 'config'}' dias.")
+            indice = self.recommendations.build_index(days=days)
+
+            cache.set(chave, indice, timeout=VALIDADE_DO_INDICE)
+            cache.set(chave_da_copia, indice, timeout=VALIDADE_DA_COPIA_ANTERIOR)
+            self._chaves_do_indice.update((chave, chave_da_copia))
+            return indice
+
+    def _apagar_o_indice(self) -> None:
+        """Esquece o índice, a cópia anterior incluída.
+
+        ⚠️ A cópia TAMBÉM tem de sair. Ela existe para ser servida quando o
+        índice está a ser refeito, e foi construída com os parâmetros ANTIGOS:
+        deixá-la ficar depois de o administrador os mudar era exatamente o bug
+        que `invalidate_recommendations_cache` existe para não haver.
+
+        ⚠️ E a chave por omissão é apagada SEMPRE, esteja ou não no registo. A
+        cache vive em disco e sobrevive a um reinício; o registo é da memória
+        deste processo e nasce vazio — sem isto, mudar as definições logo a
+        seguir a reiniciar o painel não apagava nada, que é precisamente quando
+        alguém está a afinar o motor e a perguntar-se porque é que não muda.
+        """
+        padrao = self._chave_do_indice(None)
+        for chave in self._chaves_do_indice | {padrao, f"{padrao}:anterior"}:
+            cache.delete(chave)
+        self._chaves_do_indice.clear()
 
     @cache.memoize(timeout=900)
     def _get_recommendations_cached(self, media_user_id: str, days: Optional[int] = None) -> Dict[str, Any]:

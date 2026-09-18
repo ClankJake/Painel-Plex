@@ -223,6 +223,34 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     };
 
+    /**
+     * O lugar das faixas enquanto elas não chegam.
+     *
+     * ⚡ A secção era pedida dentro do `Promise.all` do fluxo principal e
+     * SEGURAVA a página inteira: as estatísticas já tinham chegado e ninguém as
+     * via, porque o `statsContainer` só deixava de estar escondido depois de o
+     * motor de recomendações — a chamada mais cara do painel — responder.
+     * Agora carrega sozinha, e o que se mostra entretanto é isto.
+     *
+     * ⚠️ As classes são escritas por extenso: o Tailwind procura nomes LITERAIS
+     * nos ficheiros, e uma classe montada em tempo de execução nunca chega ao
+     * CSS.
+     */
+    const esqueletoDeRecomendacoes = () => {
+        const cartao = `
+            <div class="flex-shrink-0 w-36">
+                <div class="w-36 h-52 rounded-lg bg-gray-200 dark:bg-gray-700/60"></div>
+                <div class="h-3 mt-2 rounded bg-gray-200 dark:bg-gray-700/60"></div>
+                <div class="h-3 mt-1.5 w-2/3 rounded bg-gray-200 dark:bg-gray-700/60"></div>
+            </div>`;
+
+        return `
+            <div class="animate-pulse" aria-hidden="true">
+                <div class="h-4 w-64 max-w-full rounded bg-gray-200 dark:bg-gray-700/60 mb-4"></div>
+                <div class="flex space-x-4 overflow-hidden">${cartao.repeat(6)}</div>
+            </div>`;
+    };
+
     const renderRecommendations = (sections, reason) => {
         if (!dom.recommendationsSection || !dom.recommendationsContainer) return;
 
@@ -235,6 +263,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 dom.recommendationsContainer.innerHTML = `<p class="text-sm text-gray-500 dark:text-gray-400">${escapeHTML(i18n.recommendationsEmpty || '')}</p>`;
                 dom.recommendationsSection.classList.remove('hidden');
             } else {
+                // Esvaziar antes de esconder: o que lá está é o esqueleto, e
+                // deixá-lo pendurado faria a secção reaparecer a fingir que
+                // ainda está a carregar se alguém voltar a mostrá-la.
+                dom.recommendationsContainer.innerHTML = '';
                 dom.recommendationsSection.classList.add('hidden');
             }
             return;
@@ -653,6 +685,54 @@ document.addEventListener('DOMContentLoaded', () => {
     // FLUXO PRINCIPAL (MAIN FETCH)
     // ==========================================
 
+    // ------------------------------------------
+    // SECÇÕES QUE CARREGAM SOZINHAS
+    // ------------------------------------------
+    // ⚡ Estas duas eram pedidas no mesmo `Promise.all` das estatísticas, e o
+    // `Promise.all` só resolve com a mais LENTA: a página ficava no spinner até
+    // o motor de recomendações responder — e ele lê o histórico do servidor
+    // inteiro. São informação a mais, não a espinha da página: cada uma pede o
+    // que é seu e aparece quando chegar.
+
+    const carregarNovidades = async (days) => {
+        if (!dom.newlyAddedSection) return;
+        try {
+            const resposta = await fetchAPI(`${urls.recentlyAddedUrl}?days=${days}`);
+            if (resposta.success) renderNewlyAdded(resposta.media);
+            else dom.newlyAddedSection.classList.add('hidden');
+        } catch (error) {
+            // Uma falha aqui esconde a secção e mais nada: as estatísticas —
+            // que são o que a pessoa veio ver — já estão na página.
+            dom.newlyAddedSection.classList.add('hidden');
+        }
+    };
+
+    const carregarRecomendacoes = async () => {
+        if (!dom.recommendationsSection || !dom.recommendationsContainer) return;
+
+        dom.recommendationsContainer.innerHTML = esqueletoDeRecomendacoes();
+        dom.recommendationsContainer.setAttribute('aria-busy', 'true');
+        dom.recommendationsSection.classList.remove('hidden');
+
+        try {
+            const resposta = await fetchAPI(urls.recommendationsUrl);
+            if (resposta?.success) {
+                renderRecommendations(resposta.sections, resposta.reason);
+            } else {
+                dom.recommendationsContainer.innerHTML = '';
+                dom.recommendationsSection.classList.add('hidden');
+            }
+        } catch (error) {
+            // Silenciosa de propósito: recomendações são um extra, e um erro
+            // vermelho por causa delas dizia à pessoa que a página falhou
+            // quando ela está inteira.
+            dom.recommendationsContainer.innerHTML = '';
+            dom.recommendationsSection.classList.add('hidden');
+        } finally {
+            dom.recommendationsContainer.removeAttribute('aria-busy');
+        }
+    };
+
     const mainFetch = async (days) => {
         // 🛡️ CORREÇÃO DE LAYOUT: Forçar display Flex e classes de centralização Tailwind para o spinner
         dom.loadingIndicator.style.display = 'flex';
@@ -662,26 +742,8 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.errorContainer.classList.add('hidden');
         
         try {
-            const dataPromise = fetchAPI(`${urls.statsUrl}?days=${days}`);
-
-            if (currentUser.role !== 'admin') {
-                const newlyAddedPromise = fetchAPI(`${urls.recentlyAddedUrl}?days=${days}`);
-                // 🎯 As recomendações não dependem do filtro de dias (usam a janela
-                // longa configurada pelo admin) e falham em silêncio: uma falha aqui
-                // nunca deve impedir as estatísticas de aparecerem.
-                const recommendationsPromise = fetchAPI(urls.recommendationsUrl).catch(() => null);
-
-                const [data, newlyAddedData, recommendationsData] = await Promise.all([
-                    dataPromise, newlyAddedPromise, recommendationsPromise
-                ]);
-
-                state.allUsersData = data.stats;
-                if (newlyAddedData.success) renderNewlyAdded(newlyAddedData.media);
-                if (recommendationsData?.success) renderRecommendations(recommendationsData.sections, recommendationsData.reason);
-            } else {
-                const data = await dataPromise;
-                state.allUsersData = data.stats;
-            }
+            const data = await fetchAPI(`${urls.statsUrl}?days=${days}`);
+            state.allUsersData = data.stats;
 
             if (currentUser.role === 'admin') {
                 renderAdminSummary(state.allUsersData);
@@ -740,7 +802,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // EVENT LISTENERS GLOBAIS
     // ==========================================
 
-    dom.daysFilter?.addEventListener('change', () => mainFetch(dom.daysFilter.value));
+    dom.daysFilter?.addEventListener('change', () => {
+        mainFetch(dom.daysFilter.value);
+        // 🎯 As novidades são do período escolhido; as recomendações NÃO — elas
+        // usam a janela longa que o administrador configurou e ignoram este
+        // filtro. Voltar a pedi-las a cada mudança era pagar a chamada mais
+        // cara do painel para receber exatamente a mesma resposta.
+        if (currentUser.role !== 'admin') carregarNovidades(dom.daysFilter.value);
+    });
 
     document.body.addEventListener('click', (e) => { 
         const clickable = e.target.closest('[data-plex-user-id]'); 
@@ -783,5 +852,11 @@ document.addEventListener('DOMContentLoaded', () => {
        });
     });
 
-    if (dom.daysFilter) mainFetch(dom.daysFilter.value);
+    if (dom.daysFilter) {
+        mainFetch(dom.daysFilter.value);
+        if (currentUser.role !== 'admin') {
+            carregarNovidades(dom.daysFilter.value);
+            carregarRecomendacoes();
+        }
+    }
 });
