@@ -343,6 +343,14 @@ class JellyfinAccountManager(InvitationLifecycle):
         # servidor.
         return {
             **gravado,
+            # 🐛 **Estava EM FALTA e o sintoma era mudo.** O `invite.js` decide
+            # com `if (isTrial && userData.payment_token)` se mostra o botão de
+            # pagamento no fim do resgate, e `is_trial` nunca vinha daqui — o
+            # `user_data` do Jellyfin é o perfil gravado, que tem
+            # `trial_end_date` e não esta chave. Num painel Jellyfin, quem
+            # resgatava um convite de TESTE via a data de fim e não via como
+            # pagar. O backend do Plex sempre a mandou.
+            'is_trial': minutos > 0,
             'server_url': self.conn.api.base_url,
             'overseerr_access': acesso_aos_pedidos,
             'overseerr_url': endereco_dos_pedidos if endereco_dos_pedidos and acesso_aos_pedidos else None,

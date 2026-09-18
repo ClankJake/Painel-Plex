@@ -30,6 +30,33 @@ infinitivo, que é o que define a forma, e a família do "registo" é apanhada
 pelo 'r' que a distingue de "registro" (`regist(?!r)`), o que inclui as formas
 que ninguém se lembraria de listar.
 
+⚠️ **E o maior buraco era uma palavra que nunca esteve na lista: "cupão".**
+Estava em 22 sítios visíveis — a página financeira inteira, as respostas da API
+e as notificações de renovação que chegam a quem paga. Entraram com ela mais
+oito marcas: "Tem a certeza" (o artigo é europeu), o RÓTULO "Guardar/Gravar"
+(pela maiúscula inicial, como o "A guardar" — o verbo "guardar" no meio de uma
+frase é brasileiro correto), a vogal fechada (`bónus`→`bônus`), "em falta",
+"ao fim de", "consoante", "ligação" (no Brasil é uma chamada; a rede tem
+"conexão") e "realizador" (→ "diretor", que aparece nas conquistas).
+
+⚠️ **Três coisas visíveis que a varredura não via, e agora vê**: uma mensagem
+de API que não passa por `_()` (`"message": "Cupão apagado com sucesso."`, que
+o painel mostra num toast), a mensagem de um `raise ValueError` de validador
+(sai no corpo do 400, por baixo do campo) e o texto escrito À MÃO dentro da
+marcação do JavaScript — `<p>Nenhum cupão ativo ou criado.</p>` e
+`title="Apagar Cupão"`. Do JS lê-se o que é TEXTO (entre `>` e `<`, ou num
+`title`/`alt`/`placeholder`) e não toda a string do ficheiro: um nome de classe
+do Tailwind não é uma frase.
+
+🐛 **E uma dessas palavras estava presa a uma comparação.** A descrição de uma
+renovação por cupom de 100% é gravada em TEXTO FIXO (`payments.py`), fica na
+base de dados e nunca é reescrita; o `financial.js` decidia o rótulo do plano
+com `descricao.includes('cupão')`. Corrigir a palavra no servidor fazia a
+verificação deixar de reconhecer as renovações NOVAS, e corrigi-la só no JS
+fazia-a deixar de reconhecer as ANTIGAS. Ela aceita agora as duas grafias
+(`/cup(om|ão)|coupon/i`), que é o que um histórico com anos de uso tem lá
+dentro.
+
 ## Comandos
 
 ```bash
@@ -388,6 +415,85 @@ por onde lhe falar. A mesma família do `agendar_fim_do_teste` e do
 `resolver_indicacao_pendente`. ⚠️ Ele revalida no RESGATE: entre gerar o
 convite e usá-lo o ID pode ter passado a ser de outra pessoa, e nesse caso o
 registo prossegue — o que se ignora é só o vínculo.
+
+🔔 **E o resgate PERGUNTA por onde falar com quem acabou de entrar.**
+`resolver_contactos_do_convite` só resolve o que um bot pré-atribuiu ao convite;
+quem entra por um link público ficava com o perfil vazio, e aí
+`_prepare_and_send` não tem por onde tentar e todas as notificações morrem em
+silêncio. ⚠️ **Não é só o aviso de fim de teste**: `trial_duration_minutes` é 0
+por omissão, por isso num convite normal não há teste nenhum (nem sequer
+`expiration_date`) — mas é essa pessoa que vai ter vencimento e link de
+pagamento. Por isso a recolha corre em TODO resgate, e o que muda com
+`is_trial` é só a frase.
+
+`CANAIS_DO_RESGATE` (ao lado do `CONTACTOS`) diz o que se pode pedir, e
+`contactos_do_resgate.py` grava. ⚠️ **Os dois mapas não são o mesmo**: o
+WhatsApp está no primeiro e não no segundo, porque não há
+`invitations.phone_number` para o pré-atribuir — juntá-los faria
+`resolver_contactos_do_convite` ler uma coluna que não existe. E só se pede o
+canal que o painel consegue mesmo usar (`canais_ativos_no_resgate`: o Discord
+ligado sem `DISCORD_WEBHOOK_URL` não conta), pela mesma razão do cartão do
+Tautulli num assistente de Jellyfin.
+
+🛡️ **A autorização é a SESSÃO do navegador que resgatou**, e a escolha não é
+indiferente: a pessoa ainda não tem sessão de utilizador, e o que NÃO pode
+servir é o `payment_token` que a resposta do resgate também leva — ele viaja por
+Telegram e WhatsApp e fica no histórico dessas conversas para sempre, por isso
+quem apanhasse um link antigo passaria a poder apontar as notificações de outra
+pessoa (e com elas o link de pagamento) para si. A marca vale duas horas e sai
+do cookie quando expira. 🛡️ E a regra dos contactos duplicados vale MAIS aqui do
+que na criação do convite: ali quem escreve o ID é o administrador, aqui é quem
+acabou de entrar, num formulário público — daí `phone_number` ter entrado no
+`get_user_profile_by_contacto`.
+
+⚠️ **E isto nunca derruba o resgate**: a conta já existe quando corre, e o link
+do Telegram monta-se com uma chamada de rede. Sem o `try`, um bot fora do ar
+fazia a pessoa ver um erro depois de a conta estar criada — e tentar de novo
+dava "você já resgatou este convite".
+
+#### O Telegram é o único que um formulário digitado não resolve
+
+⚠️ Por **duas** razões independentes, e as duas têm de cair ao mesmo tempo:
+
+1. o painel manda `chat_id = telegram_id or telegram_user` direto para a API, e
+   um `@username` **não endereça uma conversa privada** — só um canal. O que
+   serve ali é o id NUMÉRICO do chat, que a pessoa não conhece;
+2. mesmo com o id certo, **um bot não pode iniciar uma conversa**: enquanto ela
+   não abrir o bot e tocar em "Começar", qualquer envio devolve 403.
+
+É por isso que o `telegram_id` dos convites vem sempre de um bot que JÁ falou
+com a pessoa. O WhatsApp e o Discord não têm nada disto (um número vira
+`{phone}@s.whatsapp.net`; o Discord publica no canal do webhook a mencionar o
+id), e é por isso que só este canal tem um módulo — `telegram_vinculo.py`.
+
+O deep link `t.me/<bot>?start=<codigo>` resolve os dois: ela toca (ponto 2) e o
+`/start <codigo>` que o bot recebe traz o `chat.id` (ponto 1).
+
+🛡️ **E lê-se com `getUpdates` SEM offset, de propósito.** O Telegram só descarta
+o que já foi lido quando é chamado com um offset maior; sem ele devolve o que
+está pendente e não confirma nada. É isso que permite ao painel ler **sem roubar
+as atualizações de um bot que o administrador já tenha no mesmo token** — e este
+painel tem uma API de convites para bots, por isso o caso não é hipotético. Com
+um webhook registado o Telegram responde 409, e aí o painel DIZ que não dá:
+nunca um `deleteWebhook`, que partiria em silêncio o bot de quem administra. Há
+um teste que recusa essas duas chamadas.
+
+⚠️ O `long_polling_timeout` é 0 porque isto corre DENTRO de um pedido HTTP num
+painel com um worker gevent. E "ainda não chegou" (200 com `vinculado: false`)
+não é o mesmo que "não dá" (503): a página precisa da distinção para dizer a
+coisa certa a quem está à espera.
+
+🐛 **E o `is_trial` faltava no `user_data` do Jellyfin.** O `invite.js` decide
+com `if (isTrial && userData.payment_token)` se mostra o botão de pagamento no
+fim do resgate, e o `user_data` do Jellyfin é o perfil gravado — que tem
+`trial_end_date` e não essa chave. Num painel Jellyfin, quem resgatava um
+convite de TESTE via a data de fim e não via como pagar.
+
+🐛 **E o texto do e-mail no formulário de registo mentia**: dizia "Usado para
+avisos de vencimento e para recuperar seu acesso", e as duas afirmações eram
+falsas — o painel nunca enviou e-mail (não há SMTP em lado nenhum) e o link de
+redefinição vai pelos contactos registados. O e-mail serve para encontrar a
+pessoa no Seerr, e é isso que ele passa a dizer.
 
 🔔 **Um convite resgatado avisa o administrador por push**
 (`send_invite_claimed_admin_notification`, com o seu interruptor
@@ -1822,6 +1928,53 @@ se reinicia a si próprio por sinal. Havia quatro, todos à volta de um `int()`
 ou de um `fromisoformat()`, onde o que se queria apanhar cabia em
 `(ValueError, TypeError)`. `tests/test_erros_engolidos.py` percorre o `app/` e
 recusa que volte a haver um.
+
+#### A data de vencimento: o fuso é de quem escolhe
+
+🐛 **A hora de parede não diz que instante é.** O formulário de vencimento
+mandava `2026-09-05T23:59` e o painel fazia `datetime.fromisoformat(...)`, que
+devolve uma data INGÉNUA — e o `astimezone(timezone.utc)` a seguir assume o
+fuso do SISTEMA. Num contentor sem `TZ` definido, que é o padrão do Docker,
+isso é UTC: um administrador no Brasil que marcasse as 23:59 ficava com o
+vencimento às 20:59 dele.
+
+E deslizava a CADA gravação, sempre no mesmo sentido, porque o modal reabre com
+`new Date(expiration_date)` e mostra a hora já convertida para o fuso de quem
+olha:
+
+    volta 1: guardado 23:59Z  ->  o campo mostra 20:59
+    volta 2: guardado 20:59Z  ->  o campo mostra 17:59
+    volta 3: guardado 17:59Z  ->  o campo mostra 14:59
+
+⚠️ Não era incondicional, e é por isso que sobreviveu tanto tempo: com
+`TZ=America/Sao_Paulo` no contentor o servidor e o navegador concordavam. O
+painel ASSUMIA isso (`get_app_timezone` diz "lê o fuso forçado no
+docker-compose") sem nada o obrigar, e a falha era muda.
+
+Hoje o navegador manda o DESLOCAMENTO (`comDeslocamentoLocal`, em `utils.js`) e
+`_momento_do_vencimento` (`api/users.py`) lê um instante inequívoco. Quatro
+coisas que isso obriga:
+
+- ⚠️ **uma data SEM deslocamento continua a ser aceite**, e lida no fuso do
+  painel — é o que chega de um navegador com o JavaScript antigo em cache, e
+  recusá-la trocava um erro de três horas por um erro a gravar;
+- ⚠️ **o deslocamento é o daquela DATA, não o de hoje**: onde há horário de
+  verão os dois não são o mesmo, por isso pergunta-se ao `Date` construído com
+  ela e nunca ao `new Date()` de agora;
+- ⚠️ **a hora universal é do PAINEL, o dia é de quem escolheu.**
+  `UNIVERSAL_EXPIRATION_TIME` é a mesma hora para toda a gente (é a que os
+  `CronTrigger` usam), e quando está ligada o campo da hora aparece desativado
+  — a pessoa só escolhe o DIA;
+- ⚠️ **o `billing_day` é o dia da PESSOA.** 05/09 às 23:59 no Brasil é 06/09 em
+  UTC: ancorar a faturação no 6 mudava o dia da cobrança de toda a gente que
+  marcasse uma hora depois das 21:00.
+
+⚠️ E o teste que guarda isto não pode importar o blueprint no topo do módulo:
+`app/blueprints/auth.py` captura `media_server` e `data_manager` **por valor**,
+e um import na RECOLHA do pytest acontece antes de a fixture `app` correr o
+`create_app()` — o `auth.py` fica com `data_manager = None` para o resto do
+processo, e quem rebenta são os testes do LOGIN, que não têm nada a ver com
+isto. A fixture `app` é de âmbito *session* e não volta a importá-lo.
 
 ### Tarefas de fundo
 

@@ -9,6 +9,7 @@
 // por isso não há aqui nenhuma lista de chaves fixa a envelhecer.
 
 import { i18n, urls } from './config.js';
+import { escapeHTML } from '../utils.js';
 import * as api from './api.js';
 
 const LIST_ID = 'online-media-sources-list';
@@ -52,11 +53,9 @@ function renderAccountWarning(sources, accountRead) {
     if (unverified) unverified.classList.toggle('hidden', accountRead !== false);
 }
 
-function escapeHtml(value) {
-    return String(value).replace(/[&<>"']/g, (c) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[c]));
-}
+// 📌 Era uma re-implementação do `escapeHTML` do `utils.js`, igual hoje e
+// livre de divergir amanhã — que foi o que aconteceu à cópia do `financial.js`.
+const escapeHtml = (value) => escapeHTML(value);
 
 /**
  * Desenha as caixas de seleção. `sources` é [{key, label, selected}].

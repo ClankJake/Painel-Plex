@@ -188,10 +188,22 @@ class UpdateProfileSchema(BaseModel):
     
     @validator('expiration_datetime_local')
     def validate_expiration_datetime(cls, v):
+        """Aceita `YYYY-MM-DDTHH:MM`, com ou sem deslocamento.
+
+        ⚠️ **Com deslocamento é a forma boa** (`2026-09-05T23:59:00-03:00`): é
+        ela que diz QUE INSTANTE a pessoa escolheu. Sem ele o painel tem de
+        adivinhar o fuso, e adivinhava o do servidor — num contentor sem `TZ`
+        isso é UTC, e um vencimento marcado para as 23:59 no Brasil ficava três
+        horas mais cedo, a deslizar outras três a cada gravação (ver
+        `_momento_do_vencimento`, em `api/users.py`).
+
+        A forma sem deslocamento CONTINUA a ser aceite, e é lida no fuso do
+        painel: é o que chega de um navegador com o JavaScript antigo em cache,
+        e recusá-la trocaria um erro de três horas por um erro a gravar.
+        """
         if v is None:
             return v
         try:
-            # Tenta analisar o formato esperado (YYYY-MM-DDTHH:MM)
             datetime.fromisoformat(v)
             return v
         except (ValueError, TypeError):
@@ -204,6 +216,31 @@ class UpdateAccountProfileSchema(BaseModel):
     phone_number: Optional[str] = None
 
     _telefone = validator('phone_number', allow_reuse=True)(validar_telefone)
+
+
+class ContactosDoResgateSchema(BaseModel):
+    """O que a página de convite envia depois de um resgate bem-sucedido.
+
+    ⚠️ Os nomes aqui são os dos CANAIS (`whatsapp`, `telegram`, `discord`) e
+    não os das colunas do perfil (`phone_number`, `telegram_user`,
+    `discord_user_id`). A tradução é do `CANAIS_DO_RESGATE` — a mesma razão de
+    o `CONTACTOS` existir: os dois lados nunca se chamaram igual, e já houve
+    código a ler uma coluna que não existe e a parecer funcionar por causa de
+    um `or` à frente.
+
+    Todos são opcionais: preencher só um canal é uma escolha legítima, e o que
+    não vier fica como está (ver `guardar_contactos`).
+    """
+
+    name: Optional[str] = None
+    whatsapp: Optional[str] = None
+    telegram: Optional[str] = None
+    discord: Optional[str] = None
+
+    # O mesmo validador dos outros formulários: só dígitos, 8 a 15, com o
+    # código do país. Aqui ele serve para o 400 sair com a frase certa em vez
+    # de o número ser gravado num formato que o envio não entende.
+    _telefone = validator('whatsapp', allow_reuse=True)(validar_telefone)
 
 
 class CreateCouponSchema(BaseModel):
@@ -229,17 +266,17 @@ class CreateCouponSchema(BaseModel):
     def validate_code(cls, v):
         codigo = (v or '').strip().upper()
         if not codigo:
-            raise ValueError("O código do cupão não pode estar vazio.")
+            raise ValueError("O código do cupom não pode estar vazio.")
         # Um código com espaços ou ';' seria impossível de escrever no formulário
         # de pagamento e sujaria o relatório CSV.
         if any(c.isspace() for c in codigo) or ';' in codigo:
-            raise ValueError("O código do cupão não pode conter espaços nem ';'.")
+            raise ValueError("O código do cupom não pode conter espaços nem ';'.")
         return codigo
 
     @validator('value')
     def validate_value(cls, v, values):
         if values.get('discount_type') == 'percentage' and v > 100:
-            raise ValueError("Um desconto em percentagem não pode ser superior a 100.")
+            raise ValueError("Um desconto em porcentagem não pode ser superior a 100.")
         return round(float(v), 2)
 
     @validator('expires_at')

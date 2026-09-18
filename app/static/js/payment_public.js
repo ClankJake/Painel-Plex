@@ -24,13 +24,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     let authWindow = null;
     let pinCheckIntervalAuth = null;
 
-    // --- FUNÇÕES DE SEGURANÇA E UTILIDADE ---
-    const sanitizeHTML = (str) => {
-        if (str == null) return '';
-        const temp = document.createElement('div');
-        temp.textContent = str;
-        return temp.innerHTML;
-    };
+    // 🐛 Havia aqui uma CÓPIA local do `sanitizeHTML`, usada num sítio só: a
+    // escapar o código do cupão ANTES de o enviar. O ficheiro já importa o
+    // `escapeHTML` partilhado, e é esse que escapa onde é preciso — ao
+    // ESCREVER HTML, e não à entrada.
 
     // --- LÓGICA DE PAGAMENTO ---
     function renderPaymentInfo(prices, providers) {
@@ -85,7 +82,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         paymentSection.innerHTML = `
             ${optionsHtml}
             
-            <!-- Secção de Cupão Premium -->
+            <!-- Seção de Cupom Premium -->
             <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700/50">
                 <label for="couponCodeInput" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider">Código Promocional</label>
                 <div class="flex gap-2">
@@ -144,7 +141,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Validar Cupão
         applyCouponBtn?.addEventListener('click', async () => {
-            const code = sanitizeHTML(couponInput.value.trim().toUpperCase());
+            // ⚠️ O código vai para uma comparação no servidor
+            // (`func.upper(Coupon.code) == ...`), não para HTML: um cupão
+            // "PROMO&VERAO" era enviado como "PROMO&AMP;VERAO" e a pessoa via
+            // "cupom inválido" depois de o escrever exatamente como recebeu.
+            const code = couponInput.value.trim().toUpperCase();
             const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
             if (!code || !selectedPlan) return;
 

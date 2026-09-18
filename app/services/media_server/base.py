@@ -502,7 +502,7 @@ class MediaServerBackend(Protocol):
         🛡️ A palavra-passe entra por aqui e não sai: nem para o log, nem para a
         resposta.
         """
-        return {"success": False, "message": "Este servidor não gere palavras-passe."}
+        return {"success": False, "message": "Este servidor não gerencia senhas."}
 
     # ⚠️ A ÚNICA porta para mudar o limite de telas de alguém. Grava o perfil e,
     # onde houver quem o imponha (no Jellyfin, o plugin StreamLimiter), leva-o

@@ -240,7 +240,7 @@ class PlexUserManager:
             # 1. Obtém o ID da partilha e configurações atuais usando o endpoint V2
             share_data = self._get_share_data(media_user_id)
             if not share_data:
-                raise ValueError("Partilha não encontrada na API da Plex. O utilizador já aceitou o convite?")
+                raise ValueError("Compartilhamento não encontrado na API da Plex. O usuário já aceitou o convite?")
                 
             shared_server_id = share_data.get("id")
             

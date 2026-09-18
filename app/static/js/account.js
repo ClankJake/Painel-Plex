@@ -1,18 +1,14 @@
-import { fetchAPI, showToast, createModal, copyToClipboard, lerConfiguracaoDoScript, escapeHTML } from './utils.js';
+import { fetchAPI, showToast, createModal, copyToClipboard, lerConfiguracaoDoScript, escapeHTML,
+         soDigitos, separarCodigoDoPais, paisesComOPadrao, juntarTelefone } from './utils.js';
 
 // ==========================================
 // SEGURANÇA E UTILITÁRIOS
 // ==========================================
 
-/**
- * Sanitiza entradas do utilizador para prevenir XSS (Cross-Site Scripting).
- */
-const sanitizeHTML = (str) => {
-    if (!str) return '';
-    const temp = document.createElement('div');
-    temp.textContent = str;
-    return temp.innerHTML;
-};
+// 🐛 Havia aqui uma CÓPIA local do `sanitizeHTML`, e ela divergia da do
+// `utils.js`: esta passava por `textContent`, que não escapa aspas. A mesma
+// armadilha das três cópias do `formatDateTime`. Quem escapa é o `escapeHTML`
+// partilhado, no momento de ESCREVER HTML — nunca à entrada (ver abaixo).
 
 // ==========================================
 // CONFIGURAÇÃO, ESTADO E CACHE DOM
@@ -22,6 +18,7 @@ const state = {
     currentUser: null,
     urls: {},
     i18n: {},
+    config: {},
     pollingIntervalId: null,
     validatedCouponCode: null,
     historySearchTimeout: null,
@@ -57,6 +54,7 @@ const initializeConfigAndDOM = () => {
     const configuracao = lerConfiguracaoDoScript('account-script');
     Object.assign(state.i18n, configuracao.i18n);
     Object.assign(state.urls, configuracao.urls);
+    Object.assign(state.config, configuracao.config);
 };
 
 // ==========================================
@@ -323,7 +321,7 @@ const renderPaymentHistory = (payments) => {
                     ${payments.map(p => {
                         const isOk = p.status === 'CONCLUIDA';
                         const badgeClass = isOk ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300';
-                        const couponHtml = p.coupon_code ? `<span class="ml-2 px-2 py-0.5 text-[10px] uppercase font-bold rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800" title="Cupão: ${p.coupon_code}">🏷️ ${p.coupon_code}</span>` : '';
+                        const couponHtml = p.coupon_code ? `<span class="ml-2 px-2 py-0.5 text-[10px] uppercase font-bold rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800" title="Cupom: ${p.coupon_code}">🏷️ ${p.coupon_code}</span>` : '';
                         
                         return `
                             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
@@ -714,7 +712,11 @@ const bindPaymentEvents = (providers) => {
 
     // Validar Cupão
     applyCouponBtn?.addEventListener('click', async () => {
-        const code = sanitizeHTML(couponInput.value.trim().toUpperCase());
+        // ⚠️ Sem `sanitizeHTML`: o código vai para uma comparação
+        // (`func.upper(Coupon.code) == ...`), não para HTML. Um cupão
+        // "PROMO&VERAO" — que a criação aceita — era enviado como
+        // "PROMO&AMP;VERAO" e devolvia "cupom inválido" a quem o escreveu certo.
+        const code = couponInput.value.trim().toUpperCase();
         const selectedPlan = document.querySelector('input[name="payment-plan"]:checked');
         if (!code || !selectedPlan || !state.currentUser) return;
 
@@ -868,36 +870,36 @@ const startPaymentPolling = (txid) => {
 // FORMULÁRIO DE CONTACTOS
 // ==========================================
 
+// 📌 A lista de países, a separação do DDI e a junção dos dois campos vivem
+// no `utils.js`: a página de convite pede o mesmo telefone no fim do resgate,
+// e duas cópias da mesma regra divergem no primeiro ajuste — foi o que
+// aconteceu às três do `formatDateTime` e às quatro do escapador.
+
 const initContactForm = (details) => {
     if (!document.getElementById('contact-details-form')) return;
 
-    const countries = [
-        { name: 'Brasil', code: '+55' }, { name: 'Portugal', code: '+351' },
-        { name: 'Angola', code: '+244' }, { name: 'Moçambique', code: '+258' },
-        { name: 'Cabo Verde', code: '+238' }, { name: 'EUA/Canadá', code: '+1' },
-        { name: 'Reino Unido', code: '+44' }, { name: 'Espanha', code: '+34' },
-        { name: 'França', code: '+33' }, { name: 'Alemanha', code: '+49' }
-    ];
+    // O padrão é o das Configurações de WhatsApp (`WHATSAPP_DEFAULT_COUNTRY_CODE`),
+    // que é o mesmo que o envio usa — duas respostas diferentes para "de que país
+    // é este número" no mesmo painel seria pedir outro bug como este.
+    const ddiPadrao = soDigitos(state.config.defaultCountryCode) || '55';
+    const countries = paisesComOPadrao(ddiPadrao);
 
     const select = document.getElementById('countryCode');
-    select.innerHTML = countries.map(c => `<option value="${c.code}">${c.name} (${c.code})</option>`).join('');
+    select.innerHTML = countries.map(
+        c => `<option value="${c.code}">${escapeHTML(c.name)} (+${c.code})</option>`
+    ).join('');
+
+    const phoneInput = document.getElementById('profilePhone');
+    const codigosConhecidos = countries.map(c => c.code);
 
     if (details) {
         document.getElementById('profileName').value = details.name || '';
         document.getElementById('profileTelegram').value = details.telegram_user || '';
         document.getElementById('profileDiscord').value = details.discord_user_id || '';
-        
-        const fullPhone = details.phone_number || '';
-        const phoneInput = document.getElementById('profilePhone');
-        
-        const match = countries.slice().sort((a, b) => b.code.length - a.code.length).find(c => fullPhone.startsWith(c.code));
-        if (match) {
-            select.value = match.code;
-            phoneInput.value = fullPhone.substring(match.code.length);
-        } else {
-            phoneInput.value = fullPhone.replace(/\D/g, '');
-            select.value = '+55'; // Default fallback
-        }
+
+        const separado = separarCodigoDoPais(details.phone_number, codigosConhecidos, ddiPadrao);
+        select.value = separado.codigo;
+        phoneInput.value = separado.numero;
     }
 
     document.getElementById('saveContactDetails').addEventListener('click', async (e) => {
@@ -907,15 +909,34 @@ const initContactForm = (details) => {
         btn.textContent = state.i18n.saving;
 
         try {
-            const phone = document.getElementById('profilePhone').value.replace(/\D/g, '');
+            const { nacional, completo } = juntarTelefone(
+                select.value, phoneInput.value, ddiPadrao);
+
+            // 🐛 Estes três campos iam para o servidor escapados em HTML
+            // (`sanitizeHTML`), e escapar À ENTRADA grava a entidade: quem se
+            // chama "Ana & Bia" ficava com `Ana &amp; Bia` na base de dados, e
+            // com mais um `amp;` a cada gravação. Esse `name` é o `{name}` dos
+            // modelos de notificação, por isso o que chegava ao WhatsApp de
+            // quem paga era literalmente "Ana &amp; Bia".
+            //
+            // ⚠️ Não se perde defesa nenhuma: o painel escapa quando ESCREVE
+            // HTML (`escapeHTML`, que o `test_escape_de_nomes_no_javascript.py`
+            // obriga) e o Jinja escapa sozinho. Nenhum destes três campos chega
+            // a `innerHTML` em lado nenhum — só a `.value` de um `<input>`. A
+            // prova de que o escape era acidental é a página de utilizadores,
+            // que sempre gravou os MESMOS campos em cru.
             const payload = {
-                name: sanitizeHTML(document.getElementById('profileName').value),
-                telegram_user: sanitizeHTML(document.getElementById('profileTelegram').value),
-                discord_user_id: sanitizeHTML(document.getElementById('profileDiscord').value),
-                phone_number: phone ? `${document.getElementById('countryCode').value}${phone}` : '',
+                name: document.getElementById('profileName').value.trim(),
+                telegram_user: document.getElementById('profileTelegram').value.trim(),
+                discord_user_id: document.getElementById('profileDiscord').value.trim(),
+                phone_number: completo,
             };
             const result = await fetchAPI(state.urls.updateAccountProfileUrl, 'POST', payload);
             showToast(result.message, result.success ? 'success' : 'error');
+            // O campo passa a mostrar o que ficou GRAVADO: se o DDI a dobrar foi
+            // desfeito acima, a caixa tem de o refletir, ou a gravação seguinte
+            // parte outra vez do texto antigo.
+            phoneInput.value = nacional;
         } catch (error) {
             showToast(error.message, 'error');
         } finally {
@@ -1009,13 +1030,13 @@ const fetchWatchHistory = async (page = 1, search = '') => {
                                     <div class="flex items-center">
                                         <img src="${item.poster_url}" class="w-10 h-14 object-cover rounded shadow-sm mr-4" alt="Poster" onerror="this.src='https://placehold.co/80x120/1F2937/E5E7EB?text=NO+ART'">
                                         <div>
-                                            <div class="text-sm font-bold text-gray-900 dark:text-white">${sanitizeHTML(item.title)}</div>
-                                            <div class="text-xs text-gray-500 dark:text-gray-400">${sanitizeHTML(item.subtitle)}</div>
+                                            <div class="text-sm font-bold text-gray-900 dark:text-white">${escapeHTML(item.title)}</div>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400">${escapeHTML(item.subtitle)}</div>
                                         </div>
                                     </div>
                                 </td>
                                 <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${item.date}</td>
-                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${sanitizeHTML(item.player)}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${escapeHTML(item.player)}</td>
                                 <td class="px-4 py-3 whitespace-nowrap text-sm font-mono font-medium ${item.percent_complete === 100 ? 'text-green-500' : 'text-yellow-600'}">${item.percent_complete}%</td>
                             </tr>
                         `).join('')}
@@ -1136,7 +1157,10 @@ const initGlobalEventListeners = () => {
         searchInput.addEventListener('input', (e) => {
             clearTimeout(state.historySearchTimeout);
             state.historySearchTimeout = setTimeout(() => {
-                fetchWatchHistory(1, sanitizeHTML(e.target.value));
+                // ⚠️ O termo vai num `encodeURIComponent` da query string.
+                // Escapá-lo aqui fazia uma busca por "Tom & Jerry" pedir
+                // "Tom &amp; Jerry" ao servidor, que não devolvia nada.
+                fetchWatchHistory(1, e.target.value);
             }, 500);
         });
     }

@@ -41,7 +41,7 @@ def list_coupons():
         return jsonify({"success": True, "coupons": coupons})
     except Exception as e:
         logger.error(f"Erro ao listar cupões: {e}", exc_info=True)
-        return jsonify({"success": False, "message": "Falha ao obter lista de cupões."}), 500
+        return jsonify({"success": False, "message": _("Falha ao obter a lista de cupons.")}), 500
 
 @coupons_api_bp.route('/create', methods=['POST'])
 @login_required
@@ -51,7 +51,7 @@ def create_coupon(validated_data):
     # A procura é agora indiferente a maiúsculas/minúsculas, por isso 'promo25'
     # deixa de poder coexistir com 'PROMO25' como se fossem cupões diferentes.
     if data_manager.get_coupon_by_code(validated_data.code):
-        return jsonify({"success": False, "message": _("Este código de cupão já existe.")}), 409
+        return jsonify({"success": False, "message": _("Este código de cupom já existe.")}), 409
 
     try:
         coupon_details = {
@@ -67,12 +67,12 @@ def create_coupon(validated_data):
         new_coupon = data_manager.create_coupon(coupon_details)
         audit.registar('cupao.criar', alvo_tipo='cupao',
                        alvo_id=(new_coupon or {}).get('id'), detalhes=coupon_details)
-        return jsonify({"success": True, "coupon": new_coupon, "message": _("Cupão criado com sucesso.")})
+        return jsonify({"success": True, "coupon": new_coupon, "message": _("Cupom criado com sucesso.")})
     except (ValueError, TypeError) as e:
-        return jsonify({"success": False, "message": f"Dados inválidos: {e}"}), 400
+        return jsonify({"success": False, "message": _("Dados inválidos: %(erro)s", erro=e)}), 400
     except Exception as e:
         logger.error(f"Erro ao criar cupão: {e}", exc_info=True)
-        return jsonify({"success": False, "message": "Falha ao criar cupão."}), 500
+        return jsonify({"success": False, "message": _("Falha ao criar o cupom.")}), 500
 
 @coupons_api_bp.route('/delete/<int:coupon_id>', methods=['POST'])
 @login_required
@@ -83,12 +83,12 @@ def delete_coupon(coupon_id):
         if data_manager.delete_coupon(coupon_id):
             audit.registar('cupao.apagar', alvo_tipo='cupao', alvo_id=coupon_id,
                            detalhes={'cupao': anterior})
-            return jsonify({"success": True, "message": "Cupão apagado com sucesso."})
+            return jsonify({"success": True, "message": _("Cupom apagado com sucesso.")})
         else:
-            return jsonify({"success": False, "message": "Cupão não encontrado."}), 404
+            return jsonify({"success": False, "message": _("Cupom não encontrado.")}), 404
     except Exception as e:
         logger.error(f"Erro ao apagar cupão {coupon_id}: {e}", exc_info=True)
-        return jsonify({"success": False, "message": "Falha ao apagar cupão."}), 500
+        return jsonify({"success": False, "message": _("Falha ao apagar o cupom.")}), 500
 
 @coupons_api_bp.route('/toggle/<int:coupon_id>', methods=['POST'])
 @login_required
@@ -100,10 +100,10 @@ def toggle_coupon(coupon_id):
             status = "ativado" if updated_coupon['is_active'] else "desativado"
             audit.registar('cupao.alternar_estado', alvo_tipo='cupao', alvo_id=coupon_id,
                            detalhes={'depois': updated_coupon['is_active']})
-            return jsonify({"success": True, "coupon": updated_coupon, "message": f"Cupão {status} com sucesso."})
+            return jsonify({"success": True, "coupon": updated_coupon, "message": _("Cupom %(estado)s com sucesso.", estado=status)})
         else:
-            return jsonify({"success": False, "message": "Cupão não encontrado."}), 404
+            return jsonify({"success": False, "message": _("Cupom não encontrado.")}), 404
     except Exception as e:
         logger.error(f"Erro ao alternar o estado do cupão {coupon_id}: {e}", exc_info=True)
-        return jsonify({"success": False, "message": "Falha ao alterar o estado do cupão."}), 500
+        return jsonify({"success": False, "message": _("Falha ao alterar o estado do cupom.")}), 500
 

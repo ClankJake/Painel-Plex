@@ -92,7 +92,7 @@ class ReferralManager:
             return {"success": False, "message": _("O sistema de indicações está desativado.")}
 
         if not referral_code:
-            return {"success": False, "message": _("Código de indicação em falta.")}
+            return {"success": False, "message": _("Código de indicação ausente.")}
 
         referrer = self.data_manager.get_user_profile_by_referral_code(str(referral_code).strip().upper())
         if not referrer:

@@ -212,7 +212,13 @@
     data-i18n-username="{{ _('Usuário') }}"
     data-i18n-password="{{ _('Senha') }}"
     data-i18n-email-optional="{{ _('E-mail (opcional)') }}"
-    data-i18n-email-help="{{ _('Usado para avisos de vencimento e para recuperar seu acesso.') }}"
+    {# 🐛 Este texto dizia "Usado para avisos de vencimento e para recuperar seu
+       acesso." — e as DUAS afirmações eram falsas: o painel nunca enviou e-mail
+       (não há SMTP em lado nenhum) e o link de redefinição vai pelos contatos
+       registrados. O e-mail serve para encontrar a pessoa no Seerr, e é isso
+       que ele passa a dizer. Quem avisa do vencimento são os contatos que a
+       seção do fim do resgate recolhe. #}
+    data-i18n-email-help="{{ _('Opcional. Usado para identificar você nos pedidos de mídia.') }}"
     data-i18n-create-and-redeem="{{ _('Criar conta e resgatar') }}"
     data-i18n-creating="{{ _('Criando a conta...') }}"
     data-i18n-password-too-short="{{ _('A senha precisa ter pelo menos 6 caracteres.') }}"
@@ -222,6 +228,27 @@
        JavaScript, que pede `stepLocal1`, recebia `undefined`. Era o que esta
        secção mostrava, escrito por extenso. Há um teste que guarda a regra
        (`tests/test_assets_frontend.py`). #}
+    {# A seção de contatos do fim do resgate. Ela aparece em TODO resgate: o
+       aviso de fim de teste é só o primeiro de vários, e num convite sem teste
+       (que é o padrão) o que a pessoa perderia era o lembrete de vencimento e o
+       link de pagamento. #}
+    data-url-claim-contacts="{{ url_for('invites_api.guardar_contactos_do_resgate') }}"
+    data-url-claim-telegram="{{ url_for('invites_api.vincular_telegram_do_resgate') }}"
+    data-config-default-country-code="{{ config.WHATSAPP_DEFAULT_COUNTRY_CODE or '55' }}"
+    data-i18n-contacts-title="{{ _('Como falamos com você?') }}"
+    data-i18n-contacts-why="{{ _('Para avisarmos você do vencimento e enviarmos o link de pagamento.') }}"
+    data-i18n-contacts-why-trial="{{ _('Para avisarmos você quando o período de teste terminar.') }}"
+    data-i18n-contacts-name="{{ _('Seu nome') }}"
+    data-i18n-contacts-whatsapp="{{ _('WhatsApp') }}"
+    data-i18n-contacts-discord="{{ _('ID de usuário do Discord') }}"
+    data-i18n-contacts-telegram="{{ _('Telegram') }}"
+    data-i18n-contacts-telegram-open="{{ _('Abrir o bot no Telegram') }}"
+    data-i18n-contacts-telegram-check="{{ _('Já toquei em Começar') }}"
+    data-i18n-contacts-save="{{ _('Salvar') }}"
+    data-i18n-contacts-saving="{{ _('Salvando...') }}"
+    data-i18n-contacts-checking="{{ _('Verificando...') }}"
+    data-i18n-contacts-fail="{{ _('Não foi possível salvar agora.') }}"
+    data-i18n-contacts-later="{{ _('Você pode preencher isso depois, em Minha Conta.') }}"
     data-i18n-how-to-start-local="{{ _('Como começar') }}"
     data-i18n-what-is-local="{{ _('O %(servidor)s guarda os filmes e as séries compartilhados com você e permite assistir no computador, no celular ou na TV. Sua conta é criada aqui mesmo, em três passos.', servidor=media_server.name) }}"
     data-i18n-step-local-one="{{ _('Escolha abaixo o usuário e a senha da sua conta no %(servidor)s.', servidor=media_server.name) }}"

@@ -1,4 +1,4 @@
-import { fetchAPI, showToast, createModal, lerConfiguracaoDoScript } from './utils.js';
+import { fetchAPI, showToast, createModal, lerConfiguracaoDoScript, escapeHTML } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
@@ -35,12 +35,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. FUNÇÕES DE UTILIDADE
     // ==========================================
     
-    const sanitizeHTML = (str) => {
-        if (str == null || str === '') return '';
-        const temp = document.createElement('div');
-        temp.textContent = str;
-        return temp.innerHTML;
-    };
+    // 🐛 Esta era uma CÓPIA local que passava por `textContent`, e por isso
+    // NÃO escapava aspas — e o resultado dela é interpolado DENTRO de
+    // atributos: `title="Cupom Utilizado: ${safeCoupon}"` e
+    // `data-code="${safeCode}"`. Um código de cupão com `"` (a criação só
+    // recusa espaços e ';') fechava o atributo ali: o botão de apagar ficava
+    // com o código truncado — apagava o cupão errado ou nenhum — e o resto do
+    // texto passava a ser marcação. É exatamente o que já tinha acontecido com
+    // os títulos das bibliotecas no `users_modules/ui.js`.
+    //
+    // 📌 Delega no `utils.js`, que escapa `& < > " '`. Uma segunda
+    // implementação diverge da primeira e ninguém dá por isso.
+    const sanitizeHTML = (str) => escapeHTML(str);
 
     const formatCurrency = (value) => {
         return (Number(value) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -238,14 +244,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     let planDescription = actualScreens > 0 ? `${actualScreens} Tela(s)` : 'Plano Padrão';
                     
+                    // ⚠️ A descrição é gravada em TEXTO FIXO pelo servidor
+                    // (`Renovação Cupom 100% (...)`, em `payments.py`), fica na base de
+                    // dados e nunca é reescrita. Ela dizia "Cupão" — português europeu
+                    // —, e corrigir a palavra no servidor fazia esta verificação deixar
+                    // de reconhecer as renovações NOVAS; corrigi-la só aqui fazia-a
+                    // deixar de reconhecer as ANTIGAS, que continuam na tabela. Aceita
+                    // as duas, que é o que um histórico com anos de uso tem lá dentro.
+                    const mencionaCupom = (texto) => /cup(om|ão)|coupon/i.test(texto || '');
+
                     // Se foi uma renovação manual e tem descrição customizada do admin
-                    if ((!tx.screens || tx.screens === 0) && safeDesc && !safeDesc.toLowerCase().includes('cupão') && !safeDesc.toLowerCase().includes('coupon')) {
+                    if ((!tx.screens || tx.screens === 0) && safeDesc && !mencionaCupom(safeDesc)) {
                         planDescription = actualScreens > 0 ? `Manual: ${actualScreens} Tela(s)` : safeDesc;
-                    } else if (safeDesc && (safeDesc.toLowerCase().includes('cupão') || safeDesc.toLowerCase().includes('coupon'))) {
+                    } else if (safeDesc && mencionaCupom(safeDesc)) {
                         planDescription = safeDesc;
                     }
 
-                    const couponHtml = safeCoupon && !planDescription.toLowerCase().includes('cupão')
+                    const couponHtml = safeCoupon && !mencionaCupom(planDescription)
                         ? `<span class="px-2.5 py-0.5 text-xs font-bold rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800" title="Cupom Utilizado: ${safeCoupon}">🏷️ ${safeCoupon}</span>`
                         : '';
                     
@@ -404,7 +419,7 @@ document.addEventListener('DOMContentLoaded', () => {
             dom.couponsListContainer.innerHTML = `
                 <div class="flex flex-col items-center justify-center py-10 text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
                     <svg class="w-12 h-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"></path></svg>
-                    <p class="font-medium">Nenhum cupão ativo ou criado.</p>
+                    <p class="font-medium">Nenhum cupom ativo ou criado.</p>
                 </div>`;
             return;
         }
@@ -438,7 +453,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                       <input type="checkbox" data-action="toggle-coupon" data-id="${c.id}" class="sr-only peer" ${c.is_active ? 'checked' : ''}>
                                       <div class="w-9 h-5 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-500 shadow-inner"></div>
                                     </label>
-                                    <button data-action="delete-coupon" data-id="${c.id}" data-code="${safeCode}" title="Apagar Cupão" class="text-gray-400 hover:text-red-500 transition-colors p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                                    <button data-action="delete-coupon" data-id="${c.id}" data-code="${safeCode}" title="Apagar Cupom" class="text-gray-400 hover:text-red-500 transition-colors p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
                                         <svg class="w-5 h-5 pointer-events-none" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
                                     </button>
                                 </td>
@@ -466,10 +481,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (deleteBtn) {
                 const { id, code } = deleteBtn.dataset;
                 const safeCode = sanitizeHTML(code);
-                const message = `${i18n.confirmDeleteCoupon || 'Tem a certeza que deseja apagar o cupão'} <strong class="text-gray-900 dark:text-white">${safeCode}</strong>? ${i18n.actionCannotBeUndone || 'Ação irreversível.'}`;
+                const message = `${i18n.confirmDeleteCoupon || 'Tem certeza que deseja apagar o cupom'} <strong class="text-gray-900 dark:text-white">${safeCode}</strong>? ${i18n.actionCannotBeUndone || 'Ação irreversível.'}`;
                 
                 showConfirmationModal({
-                    title: 'Apagar Cupão', message: message, confirmText: i18n.confirmDeleteButton || 'Sim, Apagar', 
+                    title: 'Apagar Cupom', message: message, confirmText: i18n.confirmDeleteButton || 'Sim, Apagar', 
                     confirmClass: 'bg-red-600 hover:bg-red-500 text-white',
                     onConfirm: async () => {
                         try {

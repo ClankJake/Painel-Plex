@@ -101,7 +101,7 @@ def chave_de_api_necessaria(escopo):
                 )
                 return jsonify({
                     "success": False,
-                    "message": _("Chave de API inválida ou em falta."),
+                    "message": _("Chave de API inválida ou ausente."),
                 }), 401
 
             return f(*args, **kwargs)

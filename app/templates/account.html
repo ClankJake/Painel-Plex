@@ -497,6 +497,10 @@
 <script id="account-script"
         type="module" 
         src="{{ url_for('static', filename='js/account.js') }}"
+        {# O mesmo código do país que o envio de WhatsApp usa (`normalize_phone`):
+           duas respostas diferentes para "de que país é este número" no mesmo
+           painel foi exatamente o que pôs o DDI duas vezes à vista aqui. #}
+        data-config-default-country-code="{{ config.WHATSAPP_DEFAULT_COUNTRY_CODE or '55' }}"
         data-get-account-details-url="{{ url_for('users_api.get_account_details') }}"
         data-get-account-requests-url="{{ url_for('users_api.get_account_requests') }}"
         data-update-account-profile-url="{{ url_for('users_api.update_account_profile') }}"

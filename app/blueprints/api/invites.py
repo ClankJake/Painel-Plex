@@ -2,20 +2,27 @@
 
 import logging
 
-from flask import Blueprint, jsonify, request
+import secrets
+from datetime import datetime, timedelta, timezone
+
+from flask import Blueprint, jsonify, request, session
 from flask_babel import gettext as _
 from flask_login import login_required
 
+from ...config import load_or_create_config
 from ...extensions import media_server, limiter, data_manager, notifier_manager
 from ..auth import admin_required
 from .decorators import validate_json, chave_de_api_necessaria
-from .schemas import CreateInviteSchema, CreateInviteBotSchema
+from .schemas import ContactosDoResgateSchema, CreateInviteSchema, CreateInviteBotSchema
 from ...utils.log_sanitizer import mask_code
 from ...utils.enderecos import endereco_publico
 from ...services import audit
+from ...services import telegram_vinculo
+from ...services.contactos_do_resgate import guardar_contactos
 from ...services.media_server.invitations import (
     CONTACTOS, ESTADO_HTTP, PEDIDO_INVALIDO,
-    convite_esgotado, convite_expirado, normalizar_contacto,
+    canais_ativos_no_resgate, convite_esgotado, convite_expirado,
+    normalizar_contacto,
 )
 
 logger = logging.getLogger(__name__)
@@ -534,4 +541,218 @@ def claim_invite_route():
 
     resultado = media_server.claim_invitation(data.get('code'), conta)
     _registar_resgate(data.get('code'), resultado, getattr(conta, 'username', ''))
+
+    # ⚠️ **Isto NUNCA pode derrubar o resgate.** A conta já existe e o acesso à
+    # mídia — que é o que interessa — já foi dado; o que vem a seguir é só
+    # oferecer o passo dos contactos, e monta o link do Telegram com uma chamada
+    # de rede (`getMe`). Um bot fora do ar faria a pessoa ver um erro depois de
+    # a conta estar criada, e tentar de novo daria "você já resgatou este
+    # convite". É a mesma decisão do `_dar_acesso_aos_pedidos` e do aviso ao
+    # administrador, logo acima.
+    try:
+        _preparar_recolha_de_contactos(resultado)
+    except Exception as e:
+        logger.warning(f"Não foi possível preparar a recolha de contactos: {e}")
+
     return jsonify(resultado)
+
+
+def _preparar_recolha_de_contactos(resultado):
+    """Diz à página que contactos pedir, e marca a sessão para os aceitar.
+
+    ⚠️ Corre para TODO resgate, e não só para os de teste.
+    `trial_duration_minutes` é 0 por omissão: num convite normal não há
+    `trial_end_date` nem sequer `expiration_date`, portanto o aviso de fim de
+    teste nunca dispara — mas é exatamente essa pessoa que vai ter vencimento e
+    link de pagamento mais tarde. Pedir só nos convites de teste fechava a
+    metade mais pequena do problema.
+
+    🔒 Os canais ATIVOS são o que se diz, e mais nada: nem o token do bot, nem
+    o endereço do webhook do Discord. Quem lê isto acabou de ganhar acesso, mas
+    a página continua a ser pública.
+    """
+    if not resultado.get('success'):
+        return
+
+    user_data = resultado.setdefault('user_data', {})
+    codigo = _marcar_resgate_na_sessao(user_data.get('media_user_id'))
+    if not codigo:
+        # Sem identidade não há a quem gravar contactos: o resgate segue na
+        # mesma (a conta já existe), só não se oferece o passo.
+        logger.warning(
+            "O resgate não devolveu um media_user_id: a recolha de contactos fica de fora.")
+        return
+
+    config = load_or_create_config()
+    user_data['contact_channels'] = [c.canal for c in canais_ativos_no_resgate(config)]
+    if 'telegram' in user_data['contact_channels']:
+        user_data['telegram_link'] = telegram_vinculo.link_de_vinculo(config, codigo)
+
+
+# ==========================================
+# OS CONTACTOS ESCOLHIDOS NO FIM DO RESGATE
+# ==========================================
+#
+# 🔔 Quem entra por um link PÚBLICO fica sem contacto nenhum:
+# `resolver_contactos_do_convite` só resolve o que um bot pré-atribuiu ao
+# convite. Sem contacto, `_prepare_and_send` não tem por onde tentar e todas as
+# notificações morrem em silêncio — o lembrete de vencimento (diário), a
+# renovação, a reativação, a reposição da palavra-passe, as credenciais de uma
+# conta recriada e o aviso em massa. O `/pay/<token>` viaja dentro deles.
+#
+# 🛡️ **A autorização é a SESSÃO de quem acabou de resgatar**, e a escolha não é
+# indiferente. A pessoa ainda não tem sessão de utilizador (no Plex nem sempre
+# passa a ter), por isso alguma coisa tem de dizer de quem são estes contactos —
+# e essa coisa NÃO pode ser o `payment_token` que a resposta do resgate também
+# leva: ele viaja por Telegram e WhatsApp e fica no histórico dessas conversas
+# para sempre, portanto quem apanhasse um link antigo passaria a poder apontar
+# as notificações de outra pessoa (e com elas o link de pagamento) para si.
+# A marca fica num cookie assinado pelo painel, no navegador que fez o resgate,
+# e vale pouco tempo.
+CHAVE_DO_RESGATE = 'resgate_recente'
+VALIDADE_DO_RESGATE = timedelta(hours=2)
+
+
+def _marcar_resgate_na_sessao(media_user_id):
+    """Guarda quem acabou de resgatar, para os passos seguintes da página."""
+    if not media_user_id:
+        return None
+
+    codigo = secrets.token_urlsafe(9)
+    session[CHAVE_DO_RESGATE] = {
+        'media_user_id': str(media_user_id),
+        'codigo_telegram': codigo,
+        'em': datetime.now(timezone.utc).isoformat(),
+    }
+    return codigo
+
+
+def _resgate_da_sessao():
+    """Quem resgatou neste navegador, se ainda for recente. Senão, None."""
+    marca = session.get(CHAVE_DO_RESGATE) or {}
+    media_user_id = marca.get('media_user_id')
+    if not media_user_id:
+        return None
+
+    try:
+        quando = datetime.fromisoformat(marca.get('em', ''))
+    except (ValueError, TypeError):
+        return None
+
+    if datetime.now(timezone.utc) - quando > VALIDADE_DO_RESGATE:
+        # ⚠️ Passado o prazo a marca sai do cookie: deixá-la lá seria uma chave
+        # de escrita a envelhecer num navegador partilhado. Quem chegar tarde
+        # preenche os contactos na "Minha Conta", que pede a sessão a sério.
+        session.pop(CHAVE_DO_RESGATE, None)
+        return None
+
+    return marca
+
+
+def _mensagem_do_motivo(motivo):
+    """A frase que a pessoa lê, a partir do MOTIVO que o serviço devolveu.
+
+    🛡️ O texto vive aqui e não no serviço, e isso não é arrumação: enquanto a
+    rota devolvia `str(e)` de uma exceção, o CodeQL marcava-a (alertas 88, 89 e
+    90) — "stack trace information may be exposed to an external user". Hoje não
+    vazava nada, mas estas rotas são PÚBLICAS e bastava alguém escrever
+    `raise ...(f"... {e}")` para o erro de baixo ir no corpo da resposta. É o
+    mesmo idioma do `ESTADO_HTTP`, que já traduz um motivo num sítio só.
+    """
+    return {
+        telegram_vinculo.SEM_TELEGRAM: _("O Telegram não está configurado neste painel."),
+        telegram_vinculo.OCUPADO: _(
+            "Não foi possível falar com o bot agora. Peça ao administrador "
+            "para vincular o seu Telegram."),
+    }.get(motivo, _("Não foi possível falar com o bot agora. Tente de novo."))
+
+
+def _conflito_de_contacto(rotulo):
+    """A recusa de um contacto que já é de outra conta.
+
+    🛡️ Entra o RÓTULO do canal e mais nada: quem preenche não tem de ficar a
+    saber que aquele número já está no painel, nem de quem.
+    """
+    return jsonify({
+        "success": False,
+        "message": _("Este contato de %(canal)s já está vinculado a outra conta.",
+                     canal=rotulo),
+    }), 409
+
+
+@invites_api_bp.route('/claim/contacts', methods=['POST'])
+@limiter.limit("10 per minute", override_defaults=False)
+@validate_json(ContactosDoResgateSchema)
+def guardar_contactos_do_resgate(validated_data):
+    """Grava o nome e os contactos que a pessoa escolheu dar."""
+    marca = _resgate_da_sessao()
+    if not marca:
+        return jsonify({
+            "success": False,
+            "message": _("Esta página expirou. Entre na sua conta para preencher os contatos."),
+        }), 403
+
+    dados = validated_data.dict() if hasattr(validated_data, 'dict') else validated_data.model_dump()
+
+    resultado = guardar_contactos(
+        data_manager, marca['media_user_id'], dados, load_or_create_config())
+
+    if resultado.conflito:
+        # 409: o pedido está certo, é o estado que não deixa — a mesma
+        # distinção que o `ESTADO_HTTP` faz no resto deste ficheiro.
+        return _conflito_de_contacto(resultado.conflito)
+
+    return jsonify({
+        "success": True,
+        "canais": list(resultado.gravados),
+        "message": _("Pronto! Vamos avisar você por aí."),
+    })
+
+
+@invites_api_bp.route('/claim/telegram', methods=['POST'])
+@limiter.limit("20 per minute", override_defaults=False)
+def vincular_telegram_do_resgate():
+    """Procura o `/start <codigo>` que a pessoa acabou de mandar ao bot.
+
+    ⚠️ Devolve 200 com `vinculado: false` enquanto não encontra: "ainda não
+    chegou" não é um erro do pedido, e a página precisa de distinguir isso de
+    "não dá" para dizer a coisa certa a quem está à espera.
+    """
+    marca = _resgate_da_sessao()
+    if not marca:
+        return jsonify({
+            "success": False,
+            "message": _("Esta página expirou. Entre na sua conta para preencher os contatos."),
+        }), 403
+
+    config = load_or_create_config()
+    procura = telegram_vinculo.procurar_chat(config, marca.get('codigo_telegram'))
+
+    if procura.motivo:
+        return jsonify({"success": False, "message": _mensagem_do_motivo(procura.motivo)}), 503
+
+    if not procura.chat_id:
+        return jsonify({
+            "success": True, "vinculado": False,
+            "message": _("Ainda não recebemos nada. Toque em Começar no bot e tente de novo."),
+        })
+
+    resultado = guardar_contactos(
+        data_manager, marca['media_user_id'], {'telegram': procura.chat_id}, config)
+    if resultado.conflito:
+        return _conflito_de_contacto(resultado.conflito)
+
+    # A confirmação é a prova de que o canal funciona mesmo: se o envio falhar,
+    # o vínculo continua gravado (o id está certo) mas fica no log porquê.
+    try:
+        notifier_manager._send_telegram_notification(
+            _("✅ Pronto! Você vai receber os avisos do seu acesso por aqui."),
+            procura.chat_id, request_id='vinculo', config=config,
+        )
+    except Exception as e:
+        logger.warning(f"Telegram vinculado, mas a confirmação não foi entregue: {e}")
+
+    return jsonify({
+        "success": True, "vinculado": True,
+        "message": _("Telegram vinculado!"),
+    })

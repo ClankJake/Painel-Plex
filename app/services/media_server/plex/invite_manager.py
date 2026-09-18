@@ -295,6 +295,11 @@ class PlexInviteManager(InvitationLifecycle):
 
         return {
             "username": plex_account.username,
+            # ⚠️ Vai na resposta porque a página precisa de dizer ao painel DE
+            # QUEM são os contactos que ela vai recolher a seguir. O backend do
+            # Jellyfin já o mandava (o `user_data` dele é o perfil inteiro);
+            # este montava o dicionário à mão e deixava-o de fora.
+            "media_user_id": plex_account.id,
             "expiration_date": expiration_date,
             "is_trial": is_trial,
             "payment_token": new_profile.get('payment_token'),

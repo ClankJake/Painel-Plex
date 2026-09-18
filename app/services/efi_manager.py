@@ -79,7 +79,7 @@ class EfiManager:
         if self.efi:
             return {"status": "ONLINE", "message": _("Serviço ativo e credenciais configuradas.")}
         
-        return {"status": "OFFLINE", "message": _("Serviço ativado, mas as credenciais são inválidas ou estão em falta.")}
+        return {"status": "OFFLINE", "message": _("Serviço ativado, mas as credenciais são inválidas ou estão ausentes.")}
 
     def configure_webhook(self) -> None:
         """Configura a URL de Webhook na API da Efí para receber notificações de pagamento."""
