@@ -1,23 +1,23 @@
 # .github/workflows/docker-publish.yml
 
-# Nome do workflow que aparecerá no separador "Actions" do seu repositório
+# Nome do workflow que aparecerá no separador "Actions" do repositório
 name: Build and Publish Docker Image to GHCR
 
 # Define quando este workflow deve ser executado
 on:
-  # Executa sempre que houver um push para a branch 'stable'.
-  # 'stable' é a branch padrão do repositório — não existe 'main' aqui, e por
-  # isso este workflow só corria manualmente.
-  #
-  # A tag publicada é 'stable' (o nome da branch), que é a que o README manda
-  # usar. NÃO é publicada uma tag 'latest': o metadata-action usa
-  # 'flavor: latest=auto' por omissão, e nesse modo o 'latest' só é aplicado a
-  # tags semver, não a pushes de branch. Para passar a publicar 'latest' seria
-  # preciso acrescentar 'flavor: latest=true' ao passo de metadados.
+  # ⚠️ **Publica-se por RELEASE, não por push.** Antes isto corria a cada push
+  # para a branch 'stable', o que fazia a imagem que o README manda usar mudar
+  # a meio de um trabalho: quem reiniciasse o contentor nesse dia levava com o
+  # que estava a ser feito, e não com uma versão que alguém decidiu publicar.
+  # Agora a imagem só se move quando se cria uma tag de release ('v22.3'), que
+  # é também a fonte da versão que o painel mostra na aba "Sobre".
   push:
-    branches:
-      - stable
-  # Permite que execute este workflow manualmente a partir da interface do GitHub
+    tags:
+      - 'v*'
+  # E continua a poder ser executado à mão a partir da interface do GitHub —
+  # é o caminho para reconstruir a imagem sem publicar uma versão nova (uma
+  # correção na imagem base, um build que falhou por rede). A partir da branch
+  # 'stable' ele reconstrói a tag 'stable', e não toca na 'latest'.
   workflow_dispatch:
 
 # Define as permissões necessárias para o job
@@ -36,17 +36,39 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Configurar QEMU para emulação de múltiplas arquiteturas
+      # 2. A versão do código tem de ser a da tag
+      #
+      # ⚠️ **Uma imagem que mente sobre a própria versão é pior do que não ter
+      # versão nenhuma.** A aba "Sobre" lê o `app/versao.py` e compara-o com a
+      # última release publicada aqui: com a tag 'v22.4' sobre um código que
+      # ainda diz '22.3', todos os painéis atualizados passariam a anunciar
+      # para sempre uma atualização que já está instalada. Falhar o build é
+      # barato — corrige-se a versão, refaz-se a tag; o outro caminho só se
+      # descobre no painel de quem instalou.
+      - name: Conferir que a versão do código é a da tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          da_tag="${GITHUB_REF_NAME#v}"
+          do_codigo="$(python3 -c "import re,pathlib; print(re.search(r'VERSAO = \"([^\"]+)\"', pathlib.Path('app/versao.py').read_text()).group(1))")"
+          do_npm="$(python3 -c "import json,pathlib; print(json.loads(pathlib.Path('package.json').read_text())['version'])")"
+          echo "tag=$da_tag  app/versao.py=$do_codigo  package.json=$do_npm"
+          if [ "$da_tag" != "$do_codigo" ] || [ "$da_tag" != "$do_npm" ]; then
+            echo "::error::A tag '$GITHUB_REF_NAME' não corresponde à versão do código." \
+                 "Atualize app/versao.py e package.json para '$da_tag' antes de criar a tag."
+            exit 1
+          fi
+
+      # 3. Configurar QEMU para emulação de múltiplas arquiteturas
       # Este passo é essencial para construir imagens para ARM em uma máquina AMD64.
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # 3. Configurar o Docker Buildx
+      # 4. Configurar o Docker Buildx
       # Buildx é a ferramenta que permite a construção de imagens multi-plataforma.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 4. Login no GitHub Container Registry (ghcr.io)
+      # 5. Login no GitHub Container Registry (ghcr.io)
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -54,14 +76,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. Extrair metadados da imagem (nome e tag)
+      # 6. Extrair metadados da imagem (nome e tags)
+      #
+      # ⚠️ A tag **'stable' FICA**, e é o que impede esta mudança de partir as
+      # instalações que já existem: é ela que o README manda pôr no
+      # docker-compose. O que muda é o momento em que ela se move — passa a ser
+      # uma release, e não um push qualquer.
+      #
+      # ⚠️ E o 'type=match' é usado em vez do 'type=semver' de propósito: as
+      # tags deste repositório são 'v22.3', sem o terceiro número, e o semver
+      # exige major.minor.patch — o passo era SALTADO com um aviso, e a imagem
+      # saía sem a tag da versão.
+      #
+      # Uma pré-release ('v23.0-beta') publica só o número: quem segue
+      # 'stable' ou 'latest' não é levado para lá sem o pedir.
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/clankjake/painel-plex
+          flavor: latest=false
+          tags: |
+            type=match,pattern=v(.*),group=1
+            type=ref,event=branch
+            type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
 
-      # 6. Construir e Enviar a Imagem Docker Multi-Plataforma
+      # 7. Construir e Enviar a Imagem Docker Multi-Plataforma
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:

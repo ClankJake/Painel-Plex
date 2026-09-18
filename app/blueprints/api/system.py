@@ -274,6 +274,7 @@ def api_settings():
             'RENEWAL_PRICE', 'EFI_ENABLED', 'MERCADOPAGO_ENABLED',
             'GATES2B_ENABLED', 'GATES2B_AUTH_TOKEN', 'GATES2B_MIN_AMOUNT',
             'TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE', 'WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE',
+            'TELEGRAM_TRIAL_EXTENDED_MESSAGE_TEMPLATE', 'WEBHOOK_TRIAL_EXTENDED_MESSAGE_TEMPLATE',
             # Só se usam num servidor de contas locais: é a mensagem que leva a
             # palavra-passe NOVA de uma conta que teve de ser criada de novo.
             'TELEGRAM_CREDENTIALS_MESSAGE_TEMPLATE', 'WEBHOOK_CREDENTIALS_MESSAGE_TEMPLATE',
@@ -301,7 +302,7 @@ def api_settings():
             'RECOMMENDATIONS_MIN_CO_OCCURRENCE', 'RECOMMENDATIONS_MAX_SECTIONS', 'RECOMMENDATIONS_ITEMS_PER_SECTION',
             'RECOMMENDATIONS_RESPECT_PRIVACY', 'RECOMMENDATIONS_GENRE_LOOKUP_LIMIT',
             'BULK_SEND_INTERVAL_SECONDS',
-            'WHATSAPP_ENABLED', 'WHATSAPP_PROVIDER', 'WHATSAPP_API_URL', 'WHATSAPP_API_KEY', 'WHATSAPP_INSTANCE', 'WHATSAPP_DEFAULT_COUNTRY_CODE', 'WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE', 'WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE', 'WHATSAPP_RENEWAL_MESSAGE_TEMPLATE', 'WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE', 'WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE', 'WHATSAPP_BULK_MESSAGE_TEMPLATE',
+            'WHATSAPP_ENABLED', 'WHATSAPP_PROVIDER', 'WHATSAPP_API_URL', 'WHATSAPP_API_KEY', 'WHATSAPP_INSTANCE', 'WHATSAPP_DEFAULT_COUNTRY_CODE', 'WHATSAPP_CUSTOM_PAYLOAD_TEMPLATE', 'WHATSAPP_EXPIRATION_MESSAGE_TEMPLATE', 'WHATSAPP_RENEWAL_MESSAGE_TEMPLATE', 'WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE', 'WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE', 'WHATSAPP_TRIAL_EXTENDED_MESSAGE_TEMPLATE', 'WHATSAPP_BULK_MESSAGE_TEMPLATE',
             'TELEGRAM_MEDIA_REQUEST_MESSAGE_TEMPLATE', 'WHATSAPP_MEDIA_REQUEST_MESSAGE_TEMPLATE', 'DISCORD_MEDIA_REQUEST_MESSAGE_TEMPLATE',
             'PRORATION_ENABLED', 'PRORATION_MIN_CHARGE', 'PRORATION_MIN_DAYS', 'PRORATION_FREE_BELOW_MINIMUM',
             'REFERRAL_ENABLED', 'REFERRAL_REWARD_TYPE', 'REFERRAL_REWARD_DAYS', 'REFERRAL_REWARD_CREDIT',
@@ -325,6 +326,7 @@ def api_settings():
             'UNIVERSAL_EXPIRATION_ENABLED', 'UNIVERSAL_EXPIRATION_TIME',
             'DISCORD_ENABLED', 'DISCORD_WEBHOOK_URL', 'DISCORD_EXPIRATION_MESSAGE_TEMPLATE',
             'DISCORD_RENEWAL_MESSAGE_TEMPLATE', 'DISCORD_REACTIVATION_MESSAGE_TEMPLATE', 'DISCORD_TRIAL_END_MESSAGE_TEMPLATE',
+            'DISCORD_TRIAL_EXTENDED_MESSAGE_TEMPLATE',
             'STREAM_CHECK_INTERVAL_SECONDS', 'TERMINATION_MSG_BLOCKED_MANUAL', 'TERMINATION_MSG_BLOCKED_EXPIRED',
             'TERMINATION_MSG_BLOCKED_TRIAL_EXPIRED', 'TERMINATION_MSG_SCREEN_LIMIT', 'SCREEN_LIMIT_TERMINATION_STRATEGY',
             'FORCE_STREAM_TERMINATION',
@@ -340,6 +342,7 @@ def api_settings():
             'PUSH_RENEWAL_TITLE_TEMPLATE', 'PUSH_RENEWAL_MESSAGE_TEMPLATE',
             'PUSH_REACTIVATION_TITLE_TEMPLATE', 'PUSH_REACTIVATION_MESSAGE_TEMPLATE',
             'PUSH_TRIAL_END_TITLE_TEMPLATE', 'PUSH_TRIAL_END_MESSAGE_TEMPLATE',
+            'PUSH_TRIAL_EXTENDED_TITLE_TEMPLATE', 'PUSH_TRIAL_EXTENDED_MESSAGE_TEMPLATE',
             'PUSH_BULK_TITLE_TEMPLATE', 'PUSH_BULK_MESSAGE_TEMPLATE',
             'PUSH_MEDIA_REQUEST_TITLE_TEMPLATE', 'PUSH_MEDIA_REQUEST_MESSAGE_TEMPLATE',
             'PUSH_MEDIA_PENDING_TITLE_TEMPLATE', 'PUSH_MEDIA_PENDING_MESSAGE_TEMPLATE',
@@ -647,6 +650,91 @@ def estado_do_processo():
         "success": True,
         "boot_id": _marca_de_arranque(),
         "media_server_type": getattr(_ext.media_server, 'SERVER_TYPE', None),
+    })
+
+
+@system_api_bp.route('/about')
+@login_required
+@admin_required
+def sobre_o_painel():
+    """O que a aba "Sobre" mostra sem depender de ninguém: versão e fuso.
+
+    ⚠️ **O fuso é o do AGENDADOR, e é essa a pergunta que interessa.** As
+    tarefas datadas (fim de teste, vencimento, hora universal de expiração) são
+    marcadas nele, e uma data escrita às 23:59 no Brasil já apareceu gravada
+    para as 20:59 por causa de um contentor sem `TZ` — a falha era muda, e
+    perceber que o painel corria em UTC exigia entrar no contentor. Aqui está
+    dito, com a hora que ele tem neste momento ao lado.
+
+    A release mais recente NÃO vem por aqui: ela depende do GitHub e é um
+    pedido de rede. A aba abre com isto, que é instantâneo, e vai buscar a
+    outra à parte — assim uma rede fechada não deixa a aba em branco.
+    """
+    from ...versao import REPOSITORIO, URL_DAS_RELEASES, VERSAO
+
+    nome_do_fuso = _get_safe_timezone()
+    try:
+        agora = datetime.now(pytz.timezone(nome_do_fuso))
+    except Exception:
+        # Um nome que o pytz não conheça não pode derrubar a aba inteira: o
+        # que se perde é a hora de exemplo, não a versão nem o diagnóstico.
+        nome_do_fuso, agora = 'UTC', datetime.now(pytz.UTC)
+
+    return jsonify({
+        "success": True,
+        "versao": VERSAO,
+        "repositorio": REPOSITORIO,
+        "url_das_releases": URL_DAS_RELEASES,
+        "fuso": {
+            "nome": nome_do_fuso,
+            # De onde ele veio. `TZ` é o que o docker-compose força; sem ela, o
+            # painel lê o do sistema — e são coisas diferentes de corrigir.
+            "origem": 'TZ' if os.environ.get('TZ') else 'sistema',
+            "tz_ambiente": os.environ.get('TZ') or "",
+            "deslocamento": agora.strftime('%z'),
+            # Já formatada, e de propósito: o que isto responde é "que horas
+            # são PARA O PAINEL". Mandar um instante fazia o navegador
+            # convertê-lo para o fuso de quem olha, que é exatamente a
+            # diferença que esta linha existe para mostrar.
+            "agora": agora.strftime('%d/%m/%Y %H:%M:%S'),
+        },
+    })
+
+
+@system_api_bp.route('/latest-release')
+@login_required
+@admin_required
+def ultima_release_publicada():
+    """A última release do GitHub, para dizer se há atualização.
+
+    ⚠️ **Responde 200 mesmo quando não consegue saber.** Não conseguir falar
+    com o GitHub não é um erro do painel — há instalações sem rede de saída —,
+    e um 500 aqui pintava a aba de vermelho por causa de uma informação que é
+    um extra. Quem chama recebe `disponivel: false` e diz "não foi possível
+    verificar", que é diferente de "está atualizado".
+    """
+    from ...services import atualizacoes
+    from ...versao import VERSAO, ha_atualizacao
+
+    release = atualizacoes.ultima_release(
+        forcar=request.args.get('forcar', type=str) in ('1', 'true', 'sim'))
+
+    if not release:
+        return jsonify({"success": True, "disponivel": False, "versao_instalada": VERSAO})
+
+    return jsonify({
+        "success": True,
+        "disponivel": True,
+        "versao_instalada": VERSAO,
+        "versao": release["versao"],
+        "etiqueta": release["etiqueta"],
+        "nome": release["nome"],
+        "url": release["url"],
+        "publicada_em": release["publicada_em"],
+        # Quem decide é o SERVIDOR: a comparação é por números e não por texto
+        # (`22.10` é posterior a `22.3`, e em ordem alfabética não seria), e
+        # repeti-la no JavaScript era ter duas ideias de qual versão é a nova.
+        "ha_atualizacao": ha_atualizacao(VERSAO, release["versao"]),
     })
 
 

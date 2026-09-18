@@ -6,7 +6,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{{ _('Renovação de Assinatura') }} - {{ app_title }}</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='gold'><path d='M12.0001 1.5C11.3001 1.5 10.7301 2.01 10.6501 2.71L9.50006 12.35L4.08006 15.2C3.36006 15.65 3.11006 16.59 3.56006 17.31C3.88006 17.84 4.48006 18.15 5.12006 18.15H6.28006L8.47006 22.29C8.91006 23.12 9.87006 23.57 10.7601 23.36C11.6501 23.15 12.3001 22.35 12.3001 21.42V14.88L17.5301 17.9C18.1501 18.25 18.8901 18.06 19.3501 17.48L21.8201 13.94C22.2801 13.36 22.1801 12.55 21.6501 12.01L15.2701 5.68C14.7301 5.14 13.8801 5.21 13.4301 5.76L12.3001 7.15V2.85C12.3001 2.1 11.7001 1.5 12.0001 1.5Z'/></svg>">
-    <script src="https://cdn.tailwindcss.com"></script>
+    {# ⚠️ **O CSS vem do BUILD, não do CDN.** Esta era a única página do painel
+       a carregar o `cdn.tailwindcss.com`: um pedido a um terceiro no meio do
+       fluxo de pagamento, que numa rede sem saída deixava quem ia pagar com
+       uma página sem estilo nenhum — e que compilava o CSS no navegador de
+       cada pessoa. O `output.css` já é gerado a partir destes templates e do
+       `app/static/js` (ver o `content` do tailwind.config.js), por isso as
+       classes daqui entram nele sozinhas. ⚠️ Só as LITERAIS: uma classe
+       montada em tempo de execução (`bg-${cor}-500`) funcionava com o CDN e
+       deixa de funcionar aqui — é a mesma regra do resto do painel.
+
+       ⚠️ E o tema escuro passa a seguir a CLASSE (`darkMode: 'class'`, na
+       configuração) em vez da preferência do sistema, que é o padrão do CDN.
+       É o que corrige: o script abaixo escreve a classe `dark` a partir do
+       `localStorage`, e o CSS próprio desta página (`.dark .bg-ambient`) já
+       seguia a classe — só as utilitárias `dark:` é que seguiam o sistema.
+       Quem tivesse o computador em claro e o painel em escuro via metade de
+       cada. #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='dist/output.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
         if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
@@ -29,7 +46,7 @@
         }
 
         /* Notificações Toasts (Estilo Moderno) */
-        .toast { position: fixed; bottom: 2rem; right: 50%; transform: translateX(50%) translateY(100px); padding: 1rem 1.5rem; border-radius: 9999px; color: white; opacity: 0; transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); z-index: 9999; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); font-weight: 500; text-align: center; white-space: nowrap; max-width: 90vw;}
+        .toast { position: fixed; top: auto; bottom: 2rem; right: 50%; transform: translateX(50%) translateY(100px); padding: 1rem 1.5rem; border-radius: 9999px; color: white; opacity: 0; transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); z-index: 9999; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); font-weight: 500; text-align: center; white-space: nowrap; max-width: 90vw;}
         @media (min-width: 640px) { .toast { right: 2rem; transform: translateX(0) translateY(100px); } }
         .toast.show { opacity: 1; transform: translateX(50%) translateY(0); }
         @media (min-width: 640px) { .toast.show { transform: translateX(0) translateY(0); } }
@@ -108,12 +125,53 @@
                             <img id="user-thumb" src="https://placehold.co/128x128/1F2937/E5E7EB?text=?" alt="Avatar" class="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-white dark:border-[#1e293b] shadow-xl object-cover">
                         </div>
                         
+                        {# 🐛 **Eram dois estados, e o terceiro ia parar ao errado.** Quem
+                           está em TESTE não tem `expiration_date` — só `trial_end_date` —,
+                           por isso caía no ramo do assinante em dia: uma etiqueta verde a
+                           dizer "Acesso Ativo", sem data nenhuma por baixo, numa página
+                           cujo único botão é o de pagar. `teste` vem do servidor
+                           (`estado_do_teste`) e vale 'a_decorrer', 'terminado' ou nada. #}
                         {% if is_reactivation %}
                         <div class="inline-block px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
-                            {{ _('Acesso Suspenso') }}
+                            {{ _('Período de Teste Encerrado') if teste else _('Acesso Suspenso') }}
                         </div>
                         <h2 class="text-2xl font-black text-gray-900 dark:text-white tracking-tight" id="user-username">{{ _('Olá, %(username)s!', username=username) }}</h2>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm">{{ _('Sua assinatura terminou. Efetue o pagamento abaixo para reativar seu acesso instantaneamente e voltar a assistir.') }}</p>
+                        {# ⚠️ "Sua assinatura terminou" é falso para quem nunca assinou: a
+                           conta dele acabou de sair de um período de teste. #}
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm">
+                            {%- if teste -%}
+                            {{ _('Seu período de teste terminou. Faça o pagamento abaixo para ativar seu acesso e continuar assistindo.') }}
+                            {%- else -%}
+                            {{ _('Sua assinatura terminou. Efetue o pagamento abaixo para reativar seu acesso instantaneamente e voltar a assistir.') }}
+                            {%- endif -%}
+                        </p>
+                        {% elif teste == 'a_decorrer' %}
+                        <div class="inline-block px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
+                            {{ _('Período de Teste') }}
+                        </div>
+                        <h2 class="text-2xl font-black text-gray-900 dark:text-white tracking-tight" id="user-username"></h2>
+                        <p class="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1">
+                            {%- if fim_do_periodo_de_teste -%}
+                            {{ _('Seu teste termina em %(date)s', date=fim_do_periodo_de_teste) }}
+                            {%- else -%}
+                            {{ _('Assine abaixo para manter seu acesso quando o teste terminar.') }}
+                            {%- endif -%}
+                        </p>
+                        {% elif teste == 'terminado' %}
+                        {# O teste já passou da hora e a conta ainda não foi bloqueada — a
+                           tarefa datada corre a seguir, ou a varredura de 15 em 15 minutos.
+                           Dizer "Acesso Ativo" aqui era prometer o que está a acabar. #}
+                        <div class="inline-block px-3 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
+                            {{ _('Período de Teste Encerrado') }}
+                        </div>
+                        <h2 class="text-2xl font-black text-gray-900 dark:text-white tracking-tight" id="user-username"></h2>
+                        <p class="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1">
+                            {%- if fim_do_periodo_de_teste -%}
+                            {{ _('Seu teste terminou em %(date)s', date=fim_do_periodo_de_teste) }}
+                            {%- else -%}
+                            {{ _('Seu período de teste terminou.') }}
+                            {%- endif -%}
+                        </p>
                         {% else %}
                         <div class="inline-block px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
                             {{ _('Acesso Ativo') }}

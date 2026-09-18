@@ -214,3 +214,58 @@ def test_o_carregador_unico_existe_e_e_exportado():
         'O carregador único saiu do utils.js. Sem ele, o guarda que impede '
         'leitores à mão deixa de ter alternativa a oferecer.'
     )
+
+
+# ⚠️ **A procura é uma EXPRESSÃO REGULAR e não um `'...' in texto`**, e a razão
+# é de fora: o CodeQL lê um nome de domínio dentro de um `in` como uma
+# verificação de endereço mal feita ("Incomplete URL substring sanitization",
+# gravidade alta) e reprovava a análise deste PR por causa deste guarda. Aqui
+# não se valida endereço nenhum — procura-se uma menção dentro do TEXTO de um
+# template —, mas uma análise vermelha que não é um problema ensina a ignorar
+# as que são. Os pontos vão escapados, senão o aviso trocava de nome
+# ("Incomplete regular expression for hostnames").
+CDN_DO_TAILWIND = re.compile(r'cdn\.tailwindcss\.com')
+
+
+def test_nenhum_template_carrega_o_tailwind_por_CDN():
+    """⚠️ **O CSS vem do BUILD, e de mais lado nenhum.**
+
+    A página pública de pagamento era a única a carregar
+    `https://cdn.tailwindcss.com`, e isso custava três coisas: um pedido a um
+    terceiro no meio do fluxo de quem vai pagar (numa rede sem saída, a página
+    chegava sem estilo nenhum), a compilação do CSS no navegador de cada
+    pessoa, e uma regra de tema DIFERENTE da do resto do painel — o CDN decide
+    o modo escuro pela preferência do sistema, e a configuração deste projeto
+    decide-o pela classe `dark`, que é a que o painel escreve.
+
+    O `output.css` já é gerado a partir dos templates e do `app/static/js`
+    (ver o `content` do tailwind.config.js), por isso não há nada a ganhar em
+    trocar — só a perder, e em silêncio: com o CDN, uma classe montada em tempo
+    de execução funciona, e passa a não funcionar assim que alguém tire o CDN.
+    """
+    # ⚠️ Os comentários `{# ... #}` ficam de fora: os deste projeto CITAM o que
+    # está errado para explicar porquê, e uma varredura que os leia acusa
+    # exatamente a explicação de ser o problema que ela descreve.
+    com_cdn = [
+        template.relative_to(RAIZ).as_posix()
+        for template in sorted(TEMPLATES.rglob('*.html'))
+        if CDN_DO_TAILWIND.search(re.sub(
+            r'\{#.*?#\}', '', template.read_text(encoding='utf-8'), flags=re.S))
+    ]
+
+    assert com_cdn == [], (
+        'Estes templates carregam o Tailwind por CDN:\n  ' + '\n  '.join(com_cdn)
+        + "\n\nUse o CSS do build: "
+          "<link rel=\"stylesheet\" href=\"{{ url_for('static', filename='dist/output.css') }}\">"
+    )
+
+
+def test_a_pagina_de_pagamento_carrega_o_css_do_build():
+    """O guarda de cima só diz o que NÃO pode; este diz o que tem de haver.
+
+    Sem ele, apagar a linha do CDN e não pôr nada no lugar passava — e a página
+    por onde entra o dinheiro ficava sem estilo nenhum.
+    """
+    pagina = (TEMPLATES / 'payment_public.html').read_text(encoding='utf-8')
+
+    assert "filename='dist/output.css'" in pagina

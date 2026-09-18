@@ -10,6 +10,7 @@ import { i18n, fieldMap, urls } from './config.js';
 import { initGamificationSubtabs, addLevelRow, collectLevelsFromEditor, collectResetMonths, loadSeasonStatus, handleManualSeasonReset } from './gamification.js';
 import { collectOnlineMediaSources } from './online_media.js';
 import { initAuditListeners } from './audit.js';
+import { ligarOuvintesDoSobre } from './about.js';
 import { initApiKeys } from './api_keys.js';
 import { showToast, fetchAPI, setButtonLoading, restoreButton as restoreButtonState, escapeHTML } from '../utils.js';
 import { aguardarReinicio } from '../reinicio.js';
@@ -589,6 +590,11 @@ export function initializeEventListeners() {
     // mais um pedido a cada abertura das Configurações, para uma aba que
     // quase sempre ninguém abre.
     initAuditListeners();
+
+    // --- Sobre ---
+    // Mesma divisão da auditoria: o ouvinte do botão fica ligado já, o
+    // conteúdo só é buscado quando a aba abre.
+    ligarOuvintesDoSobre();
 
     // --- Gamificação: sub-abas, editor de níveis e temporadas de XP ---
     initGamificationSubtabs();

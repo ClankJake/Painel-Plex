@@ -1413,6 +1413,73 @@ mas guarda o nível de log no `LOG_LEVEL`, por isso escondê-lo lá tirava a ún
 forma de o mudar. Um teste confirma que nenhuma aba marcada assim contém um id
 que esteja no `fieldMap`.
 
+#### A aba "Sobre": a versão, o fuso, e a última release
+
+⚠️ **O painel não sabia dizer que versão era.** As entregas saem por releases do
+GitHub (`v22.3`, `v22.2`, ...) e nada no código o registava: quem reportava um
+problema tinha de adivinhar pela data da imagem. A fonte da verdade é
+`app/versao.py` (`VERSAO`), atualizada À MÃO ao publicar — e o `package.json`
+diz a mesma coisa, com um teste a compará-los (`tests/test_aba_sobre.py`): duas
+versões que divergem são piores do que nenhuma, porque uma delas mente.
+
+⚠️ **A comparação é NUMÉRICA, e é a razão de haver um módulo para isto.**
+`'22.10' < '22.3'` em ordem alfabética, por isso o painel diria "está
+atualizado" no dia em que saísse a 22.10. `comparar()` lê os pedaços como
+números, come o `v` da etiqueta e completa com zeros (`22.3` == `22.3.0`). E
+quem decide é o SERVIDOR: repetir a regra no JavaScript era ter duas ideias de
+qual versão é a nova.
+
+⚠️ **E o FUSO estava no mesmo escuro.** Ele já custou um bug de três horas em
+cada data de vencimento (ver `_momento_do_vencimento`), e descobrir que o
+contentor corria em UTC exigia entrar nele. A aba mostra o fuso do painel ao
+lado do do navegador, diz se veio da variável `TZ` ou foi detectado do sistema,
+e avisa quando os dois não batem certo — as tarefas datadas correm no do painel.
+
+São **duas rotas** e não uma, de propósito: `GET /api/system/about` não fala com
+ninguém de fora e é o que abre a aba (num painel sem rede de saída ela continua
+útil); `GET /api/system/latest-release` é que vai ao GitHub. Quatro decisões em
+`app/services/atualizacoes.py`:
+
+- 🛡️ **o endereço é uma CONSTANTE do código** (`versao.REPOSITORIO`), nunca uma
+  definição do config.json: o painel faz este pedido de DENTRO da rede onde
+  corre, e um endereço editável fazia de uma sessão de administrador tomada uma
+  forma de o apontar a um serviço interno — o mesmo SSRF que a lista de serviços
+  de push e a `ALLOWED_IMAGE_HOSTS` já existem para fechar;
+- ⚠️ **não conseguir verificar responde 200**, com `disponivel: false`. Há
+  painéis sem rede de saída, e "não sei" é diferente de "está atualizado" — a
+  aba tem três estados e não dois. Um 500 aqui pintava de vermelho a página por
+  causa de uma informação que é um extra;
+- ⚠️ **a falha NÃO fica em cache** (o sucesso fica seis horas). Guardar um "não
+  sei" deixava o painel a dizer que não consegue verificar muito depois de a
+  rede ter voltado: é a mesma regra da deteção dos plugins do Jellyfin;
+- 🛡️ **o `html_url` da release é confirmado, não copiado**. Ele vem de fora e
+  acaba num `href` na página de um administrador: o que não for
+  `https://github.com/...` é trocado pela página de releases, e tudo o que se
+  escreve com ele passa por `escapeHTML`.
+
+A aba marca-se `data-somente-leitura` (não há nada para salvar) e é carregada ao
+ABRIR, como a Auditoria — mas, ao contrário dela, **não** se recarrega a cada
+abertura: a versão instalada não muda sozinha, e o botão "Verificar
+atualizações" (que salta a cache com `?forcar=1`) está ali para quem insistir.
+
+⚠️ **E a imagem do Docker passou a sair por RELEASE** (`docker-publish.yml`
+dispara em `push: tags: v*`). Antes corria a cada push para a branch `stable` —
+que é a tag que o README manda pôr no docker-compose —, por isso quem
+reiniciasse o contentor a meio de um dia de trabalho levava com o que estava a
+ser feito, e não com uma versão que alguém decidiu publicar. A tag `stable`
+FICA (tirá-la não parte o build, parte em silêncio as instalações que já
+existem); junta-se-lhe o número da versão e a `latest`, e uma pré-release
+(`v23.0-beta`) publica só o número.
+
+🐛 **E o build CONFERE que a tag é a versão do código**, porque o contrário só
+se descobre longe daqui: uma tag `v22.4` sobre um código que ainda diz `22.3`
+publica uma imagem que mente sobre si própria, e o sintoma aparece meses depois
+em cada painel atualizado, a anunciar para sempre uma atualização que já está
+instalada. ⚠️ O `type=match` do metadata-action é usado em vez do `type=semver`
+pela mesma família de razão: as tags aqui são `v22.3`, sem o terceiro número, e
+o semver exige `major.minor.patch` — o passo era saltado com um aviso e a
+imagem saía sem a tag da versão.
+
 #### O `payment_token` é uma credencial portadora, e agora expira
 
 🛡️ Quem tiver o link `/pay/<token>` vê o nome e o vencimento de quem lá está e
@@ -1648,6 +1715,19 @@ Configurações mantém o que lá tem: um padrão só vale para quem não escolh
 `{invite_link}` deixou de ser "o link do convite do Plex" e passou a ser "o
 endereço para voltar a aceder" — é o `link` que `restaurar_acesso` devolve, e
 muda por servidor.
+
+🔔 **Estender o período de teste avisa quem está em teste** (o evento
+`trial_extended`, com texto nos cinco canais). Era a única mudança de acesso que
+o painel fazia em silêncio: o administrador estendia, o `end_trial_job` era
+remarcado, e do outro lado a pessoa continuava a contar com a data antiga — o
+único aviso que alguma vez lhe chegava sobre o teste era o do FIM, que é a má
+notícia. ⚠️ **A hora faz parte da data aqui**, ao contrário do vencimento de uma
+assinatura: um teste estende-se por horas ou minutos, e "vai até 20/09/2026"
+sobre uma extensão de duas horas não diz a quem lê quando é que fica sem acesso.
+⚠️ E avisar **nunca derruba a extensão** — quando isto corre, o teste já está
+estendido e a tarefa já foi remarcada —, mas a resposta da rota diz ao
+administrador se o aviso saiu (`notificado`, e a mensagem do toast), porque um
+aviso que não saiu não pode parecer que saiu.
 
 #### As notificações push: um quinto canal, com um destinatário diferente
 
@@ -1976,6 +2056,50 @@ se reinicia a si próprio por sinal. Havia quatro, todos à volta de um `int()`
 ou de um `fromisoformat()`, onde o que se queria apanhar cabia em
 `(ValueError, TypeError)`. `tests/test_erros_engolidos.py` percorre o `app/` e
 recusa que volte a haver um.
+
+#### A página pública de pagamento: quatro estados, não dois
+
+🐛 **A quem estava em TESTE, a página `/pay/<token>` dizia "Acesso Ativo".**
+Ela tinha dois ramos — reativação (o perfil está `inactive`) e tudo o resto — e
+quem está em teste não tem `expiration_date`, só `trial_end_date`: caía no ramo
+do assinante em dia. Uma etiqueta verde a dizer que está tudo bem, e por baixo
+uma linha VAZIA (a do vencimento, preenchida pelo JavaScript a partir de um
+campo que ali nunca existe), numa página cujo único botão é o de pagar. ⚠️ E o
+estado seguinte mentia ao contrário: bloqueada a conta no fim do teste, a página
+dizia **"Sua assinatura terminou"** a quem nunca assinou.
+
+São quatro: assinante em dia, teste a decorrer, teste terminado (a tarefa datada
+ainda não correu) e acesso suspenso — este com duas frases, conforme o que
+terminou tenha sido um teste ou uma assinatura. ⚠️ **A data do teste leva a
+HORA** e é formatada no SERVIDOR, no fuso do painel: um teste mede-se em horas,
+e "termina em 20/09/2026" não diz a quem lê quando fica sem acesso.
+
+📌 **Quem responde "isto é um teste?" é `app/utils/periodo_de_teste.py`**, e são
+duas perguntas parecidas que não são a mesma: `teste_a_decorrer()` (a data ainda
+não passou — o que o painel sempre chamou `is_on_trial`, e por onde a página de
+utilizadores conta a aba "Em teste") e `estado_do_teste()`, que diz que TIPO de
+conta é — e que ignora quem já tem `expiration_date`, porque essa passou a
+assinante e o `trial_end_date` que ficou para trás é história (a mesma regra do
+`trial_sweep_job`). A leitura estava copiada em três rotas de `api/users.py`,
+cada uma com o seu `try/except` à volta do mesmo `fromisoformat`.
+
+⚠️ **E ela era a ÚNICA do painel a carregar o Tailwind por CDN**
+(`cdn.tailwindcss.com`) — hoje usa o `output.css` do build, como todas as
+outras. Isso custava três coisas: um pedido a um terceiro no meio do fluxo de
+quem vai pagar (numa rede sem saída, a página chegava sem estilo nenhum), a
+compilação do CSS no navegador de cada pessoa, e **uma regra de tema diferente
+da do resto do painel** — o CDN decide o modo escuro pela preferência do
+SISTEMA e a configuração deste projeto decide-o pela CLASSE `dark`, que é a que
+o painel escreve a partir do `localStorage`; o CSS próprio da página
+(`.dark .bg-ambient`) já seguia a classe, por isso quem tivesse o computador em
+claro e o painel em escuro via metade de cada. ⚠️ Em troca, as classes dela têm
+de ser LITERAIS: o `content` do `tailwind.config.js` já varre os templates e o
+`app/static/js`, mas uma classe montada em tempo de execução funcionava com o
+CDN e deixa de funcionar aqui. E o `<style>` local continua a mandar sobre os
+componentes partilhados do `input.css` porque vem depois — a exceção é o que
+ele NÃO redefine, e foi por isso que o `.toast` ganhou um `top: auto`: com o
+`top: 5rem` herdado e o `bottom` próprio, a caixa esticava-se pelo ecrã.
+Dois testes prendem isto (`tests/test_assets_frontend.py`).
 
 #### A data de vencimento: o fuso é de quem escolhe
 

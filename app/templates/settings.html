@@ -73,6 +73,7 @@
                 <button type="button" data-tab="conexoes" class="tab-button">{{ _('Conexões') }}</button>
                 <button type="button" data-tab="logs" class="tab-button">{{ _('Logs') }}</button>
                 <button type="button" data-tab="auditoria" class="tab-button">{{ _('Auditoria') }}</button>
+                <button type="button" data-tab="sobre" class="tab-button">{{ _('Sobre') }}</button>
             </nav>
         </div>
 
@@ -87,6 +88,7 @@
             {% include "settings/tabs/connections.html" %}
             {% include "settings/tabs/logs.html" %}
             {% include "settings/tabs/audit.html" %}
+            {% include "settings/tabs/about.html" %}
         </div>
         
     </div>
@@ -222,6 +224,23 @@
     data-urls-clear-logs="{{ url_for('system_api.clear_logs') }}"
     data-urls-get-logs="{{ url_for('system_api.get_logs') }}"
     data-urls-audit-logs="{{ url_for('system_api.get_audit_logs') }}"
+    data-urls-about="{{ url_for('system_api.sobre_o_painel') }}"
+    data-urls-latest-release="{{ url_for('system_api.ultima_release_publicada') }}"
+    data-i18n-sobre-verificando="{{ _('Verificando...') }}"
+    data-i18n-sobre-verificando-detalhe="{{ _('Consultando as versões publicadas no GitHub.') }}"
+    data-i18n-sobre-sem-verificacao="{{ _('Não foi possível verificar') }}"
+    data-i18n-sobre-sem-verificacao-detalhe="{{ _('O painel não conseguiu falar com o GitHub. Isso não afeta nada do que ele faz.') }}"
+    data-i18n-sobre-atualizacao-disponivel="{{ _('Atualização disponível') }}"
+    data-i18n-sobre-nova-versao="{{ _('Há uma versão mais recente:') }}"
+    data-i18n-sobre-atualizado="{{ _('Você está na versão mais recente') }}"
+    data-i18n-sobre-ultima-publicada="{{ _('Última publicada:') }}"
+    data-i18n-sobre-ver-novidades="{{ _('Ver o que mudou') }}"
+    data-i18n-sobre-ver-no-github="{{ _('Ver as versões no GitHub') }}"
+    data-i18n-sobre-agora-no-painel="{{ _('Agora:') }}"
+    data-i18n-sobre-fuso-da-variavel="{{ _('Definido pela variável TZ:') }}"
+    data-i18n-sobre-fuso-do-sistema="{{ _('Detectado do sistema (a variável TZ não está definida).') }}"
+    data-i18n-sobre-fusos-diferentes="{{ _('O painel e este navegador estão em fusos diferentes') }}"
+    data-i18n-sobre-fusos-diferentes-detalhe="{{ _('As tarefas automáticas e a hora universal de expiração seguem o fuso do painel. Se quiser que os dois coincidam, defina a variável TZ no docker-compose.') }}"
     data-i18n-audit-falha="{{ _('Não foi possível carregar a auditoria.') }}"
     data-i18n-audit-vazio-lista="{{ _('Nenhuma ação registrada ainda.') }}"
     data-i18n-audit-ver-detalhes="{{ _('Ver detalhes') }}"

@@ -1,0 +1,73 @@
+{#
+  A aba "Sobre": que versão é esta, e em que fuso horário ela corre.
+
+  ⚠️ **As duas perguntas estavam sem resposta dentro do painel.** As entregas
+  são feitas por releases do GitHub e nada no código registava a versão — quem
+  reportava um problema tinha de adivinhar pela data da imagem. E o fuso já
+  custou um bug de três horas nas datas de vencimento (ver `_momento_do_vencimento`,
+  em `api/users.py`): descobrir que o contentor corria em UTC exigia entrar nele.
+
+  ⚠️ `data-somente-leitura` esconde o botão "Salvar Alterações" enquanto esta
+  aba está aberta — aqui não há nada para salvar. É uma DECLARAÇÃO e não uma
+  dedução: a aba tem botões, e "tem controles?" daria a resposta errada.
+#}
+<div id="tab-sobre" class="tab-content hidden" data-somente-leitura="true">
+
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <svg class="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            {{ _('Sobre') }}
+        </h2>
+        <p class="text-gray-500 dark:text-gray-400 mt-1 text-sm">{{ _('A versão que está rodando, se há uma mais recente publicada, e o fuso horário que o painel usa para marcar vencimentos e tarefas.') }}</p>
+    </div>
+
+    <div class="space-y-6">
+
+        <!-- Versão e atualização -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+                <div>
+                    <span class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ _('Versão instalada') }}</span>
+                    <span id="sobre-versao" class="block mt-1 text-3xl font-black text-gray-900 dark:text-white">—</span>
+                    <span id="sobre-repositorio" class="block mt-1 text-xs text-gray-500 dark:text-gray-400"></span>
+                </div>
+                <button type="button" id="sobre-verificar" class="btn justify-center bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-2 w-full sm:w-auto">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    {{ _('Verificar atualizações') }}
+                </button>
+            </div>
+
+            {# O estado do que foi verificado. Nasce vazio e é escrito pelo
+               script: antes da resposta não há nada de verdadeiro a dizer. #}
+            <div id="sobre-atualizacao" class="mt-5"></div>
+        </div>
+
+        <!-- Fuso horário -->
+        <div class="bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 rounded-2xl border border-gray-200 dark:border-gray-700/50">
+            <span class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ _('Fuso horário') }}</span>
+
+            <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="p-4 rounded-xl bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700/50">
+                    <span class="block text-xs font-semibold text-gray-500 dark:text-gray-400">{{ _('No painel') }}</span>
+                    <span id="sobre-fuso-nome" class="block mt-1 text-lg font-bold text-gray-900 dark:text-white">—</span>
+                    <span id="sobre-fuso-agora" class="block mt-1 text-sm text-gray-600 dark:text-gray-300"></span>
+                    <span id="sobre-fuso-origem" class="block mt-2 text-xs text-gray-500 dark:text-gray-400"></span>
+                </div>
+                <div class="p-4 rounded-xl bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700/50">
+                    <span class="block text-xs font-semibold text-gray-500 dark:text-gray-400">{{ _('Neste navegador') }}</span>
+                    <span id="sobre-navegador-fuso" class="block mt-1 text-lg font-bold text-gray-900 dark:text-white">—</span>
+                    <span id="sobre-navegador-agora" class="block mt-1 text-sm text-gray-600 dark:text-gray-300"></span>
+                </div>
+            </div>
+
+            {# 🐛 Os dois lados desacordados são um bug de verdade, e não um
+               detalhe: a data de vencimento escolhida no navegador é lida pelo
+               painel, e um contentor sem `TZ` já fez "23:59 no Brasil" virar
+               "20:59". Por isso o aviso aparece quando eles divergem. #}
+            <div id="sobre-fuso-aviso" class="mt-4"></div>
+
+            <p class="mt-4 text-xs text-gray-500 dark:text-gray-400">{{ _('O painel usa este fuso para agendar o fim dos períodos de teste, os vencimentos e as tarefas automáticas. Para mudá-lo, defina a variável TZ no docker-compose e reinicie o contêiner.') }}</p>
+        </div>
+
+    </div>
+</div>

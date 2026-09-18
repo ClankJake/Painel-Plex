@@ -5,12 +5,14 @@ from datetime import datetime, timezone
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session
 from flask_login import login_required, current_user
 from flask_babel import get_locale, gettext as _
+from tzlocal import get_localzone
 
 from ..models import UserProfile, agora_utc
 from .auth import admin_required  # Otimizado: Importação direta do módulo irmão auth.py
 from ..config import is_configured, load_or_create_config
 from .. import extensions
 from ..utils.log_sanitizer import mask_token
+from ..utils.periodo_de_teste import estado_do_teste, fim_do_teste
 
 main_bp = Blueprint('main', __name__)
 logger = logging.getLogger(__name__)
@@ -262,7 +264,22 @@ def payment_page(token):
 
     username = profile.username
     is_reactivation = (profile.status == 'inactive')
-    
+
+    # 🐛 **A quem estava em TESTE, a página dizia "Acesso Ativo".** Quem está em
+    # teste não tem `expiration_date` — só `trial_end_date` —, por isso caía no
+    # ramo que existe para um assinante em dia: uma etiqueta verde a dizer que
+    # está tudo bem, sem data nenhuma por baixo (a linha do vencimento é
+    # preenchida a partir de um campo que ali é sempre vazio), numa página cujo
+    # único botão é o de pagar. Era o oposto do que a pessoa foi lá fazer.
+    teste = estado_do_teste(profile)
+    fim_do_periodo_de_teste = None
+    if teste:
+        fim = fim_do_teste(profile)
+        if fim:
+            # ⚠️ No fuso do PAINEL e com a HORA: um teste mede-se em horas, e
+            # "termina em 20/09/2026" não diz a quem lê quando fica sem acesso.
+            fim_do_periodo_de_teste = fim.astimezone(get_localzone()).strftime('%d/%m/%Y às %H:%M')
+
     logger.info(f"Página de pagamento pública acedida para o perfil '{username}' (Status: {profile.status}).")
 
     if not is_reactivation and profile.expiration_date:
@@ -329,4 +346,7 @@ def payment_page(token):
         except (ValueError, TypeError) as e:
              logger.error(f"Erro ao processar cálculos de datas de expiração no portal de pagamentos para '{username}': {e}")
 
-    return render_template('payment_public.html', token=token, username=username, is_reactivation=is_reactivation, current_year=agora_utc().year)
+    return render_template('payment_public.html', token=token, username=username,
+                           is_reactivation=is_reactivation, teste=teste,
+                           fim_do_periodo_de_teste=fim_do_periodo_de_teste,
+                           current_year=agora_utc().year)

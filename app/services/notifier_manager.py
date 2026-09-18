@@ -120,6 +120,7 @@ DEFAULT_TEMPLATES = {
     "TELEGRAM_RENEWAL_MESSAGE_TEMPLATE": "✅ *Renovação Confirmada*\n\nOlá {name}!\nSua assinatura foi renovada com sucesso.\nNovo vencimento: *{new_date}*.",
     "TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE": "✅ *Conta Reativada*\n\nOlá {name}!\nSua assinatura foi renovada e sua conta reativada com sucesso.\nNovo vencimento: *{new_date}*\n\nPara voltar a acessar, use o link abaixo:\n{invite_link}",
     "TELEGRAM_TRIAL_END_MESSAGE_TEMPLATE": "⌛ *Fim do Período de Teste*\n\n{name}, seu período de teste terminou.\nPara manter seu acesso, realize a renovação no botão abaixo:",
+    "TELEGRAM_TRIAL_EXTENDED_MESSAGE_TEMPLATE": "⏳ *Período de Teste Estendido*\n\nOlá {name}!\nSeu período de teste no {server_name} foi estendido.\nAgora ele vai até *{new_date}*.\n\nBom entretenimento!",
     # A conta teve de ser criada de novo no servidor e a palavra-passe é nova.
     # ⚠️ Não há forma de recuperar a antiga, nem de pedir uma à pessoa: ela não
     # está a ver o painel, está a pagar. É por isto que este evento existe.
@@ -129,12 +130,14 @@ DEFAULT_TEMPLATES = {
     "DISCORD_RENEWAL_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Renovação Confirmada!", "description": "Olá **{username}**! ✅\\n\\nSua assinatura foi renovada com sucesso. Seu novo vencimento é em **{new_date}**.\\n\\nObrigado e aproveite!", "color": 65280}]}',
     "DISCORD_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Conta Reativada!", "description": "Olá **{username}**! ✅\\n\\nSua assinatura foi reativada com sucesso. Seu novo vencimento é em **{new_date}**.\\n\\n[Clique aqui para voltar a acessar]({invite_link})", "color": 65280}]}',
     "DISCORD_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Terminou", "description": "Olá **{username}**! ⌛\\n\\nSeu período de teste gratuito terminou. Para continuar com acesso, por favor, [clique aqui para renovar]({payment_link}).", "color": 16711680}]}',
+    "DISCORD_TRIAL_EXTENDED_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Período de Teste Estendido", "description": "Olá **{username}**! ⏳\\n\\nSeu período de teste no **{server_name}** foi estendido e agora vai até **{new_date}**.", "color": 16753920}]}',
     "DISCORD_CREDENTIALS_MESSAGE_TEMPLATE": '{"content": "<@{discord_user_id}>", "embeds": [{"title": "Acesso Restaurado", "description": "Olá **{username}**! 🔑\\n\\nSua conta no **{server_name}** foi criada novamente, por isso a senha mudou.\\n\\nUsuário: `{new_username}`\\nSenha: `{new_password}`\\n\\nTroque a senha assim que puder.", "color": 3447003}]}',
     "DISCORD_PASSWORD_RESET_MESSAGE_TEMPLATE": "{\"content\": \"<@{discord_user_id}>\", \"embeds\": [{\"title\": \"Redefinir a senha\", \"description\": \"Olá **{username}**! 🔑\\n\\nVocê pediu para redefinir a senha da sua conta no **{server_name}**.\\n\\n[Clique aqui para escolher uma nova]({reset_link})\\n\\nO link vale {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem.\", \"color\": 3447003}]}",
     "WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE": '{"content": "Atenção: O acesso de {username} expira em {days} dias. Para renovar, acesse: {payment_link}"}',
     "WEBHOOK_RENEWAL_MESSAGE_TEMPLATE": '{"content": "✅ A assinatura de {username} foi renovada. Novo vencimento: {new_date}."}',
     "WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE": '{"content": "✅ A assinatura de {username} foi reativada. Novo vencimento: {new_date}. Link de acesso: {invite_link}"}',
     "WEBHOOK_TRIAL_END_MESSAGE_TEMPLATE": '{"content": "O período de teste para {username} terminou. Para renovar, acesse: {payment_link}"}',
+    "WEBHOOK_TRIAL_EXTENDED_MESSAGE_TEMPLATE": '{"content": "⏳ O período de teste de {username} foi estendido até {new_date}."}',
     "WEBHOOK_CREDENTIALS_MESSAGE_TEMPLATE": '{"content": "A conta de {username} foi criada novamente no servidor. Usuário: {new_username} — Senha: {new_password}"}',
     "WEBHOOK_PASSWORD_RESET_MESSAGE_TEMPLATE": "{\"content\": \"{username} pediu para redefinir a senha. Link válido {reset_minutes} min: {reset_link}\"}",
     "TELEGRAM_BULK_MESSAGE_TEMPLATE": "📢 *Aviso do Servidor*\n\nOlá {name},\n\n{message}",
@@ -145,6 +148,7 @@ DEFAULT_TEMPLATES = {
     "WHATSAPP_RENEWAL_MESSAGE_TEMPLATE": "✅ Renovação confirmada!\n\nOlá {name}, sua assinatura foi renovada com sucesso.\nNovo vencimento: {new_date}\n\nBom entretenimento!",
     "WHATSAPP_REACTIVATION_MESSAGE_TEMPLATE": "✅ Conta reativada!\n\nOlá {name}, sua conta foi reativada.\nNovo vencimento: {new_date}\n\nUse o link abaixo para voltar a acessar:\n{invite_link}",
     "WHATSAPP_TRIAL_END_MESSAGE_TEMPLATE": "⌛ Seu período de teste terminou\n\nOlá {name}, esperamos que tenha gostado!\nPara continuar com acesso, faça sua assinatura aqui:\n{payment_link}",
+    "WHATSAPP_TRIAL_EXTENDED_MESSAGE_TEMPLATE": "⏳ Período de teste estendido\n\nOlá {name}, seu período de teste no {server_name} foi estendido.\nAgora ele vai até {new_date}.\n\nBom entretenimento!",
     "WHATSAPP_CREDENTIALS_MESSAGE_TEMPLATE": "🔑 Acesso restaurado\n\nOlá {name}, sua conta no {server_name} foi criada novamente, por isso a senha mudou.\n\nUsuário: {new_username}\nSenha: {new_password}\n\nEntre em {invite_link} e troque a senha assim que puder.",
     "WHATSAPP_PASSWORD_RESET_MESSAGE_TEMPLATE": "🔑 Redefinir a senha\n\nOlá {name}, você pediu para redefinir a senha da sua conta no {server_name}.\n\nAbra este link e escolha uma nova:\n{reset_link}\n\nVale {reset_minutes} minutos e só pode ser usado uma vez. Se não foi você, ignore esta mensagem.",
     "WHATSAPP_BULK_MESSAGE_TEMPLATE": "📢 Aviso do servidor\n\nOlá {name},\n\n{message}",
@@ -185,6 +189,8 @@ DEFAULT_TEMPLATES = {
     "PUSH_REACTIVATION_MESSAGE_TEMPLATE": "Olá {name}, seu acesso ao {server_name} voltou. Novo vencimento: {new_date}.",
     "PUSH_TRIAL_END_TITLE_TEMPLATE": "Seu período de teste terminou",
     "PUSH_TRIAL_END_MESSAGE_TEMPLATE": "{name}, para continuar com acesso ao {server_name}, toque aqui e faça sua assinatura.",
+    "PUSH_TRIAL_EXTENDED_TITLE_TEMPLATE": "Seu período de teste foi estendido",
+    "PUSH_TRIAL_EXTENDED_MESSAGE_TEMPLATE": "{name}, agora seu teste no {server_name} vai até {new_date}.",
     "PUSH_BULK_TITLE_TEMPLATE": "Aviso do servidor",
     "PUSH_BULK_MESSAGE_TEMPLATE": "{message}",
     "PUSH_MEDIA_REQUEST_TITLE_TEMPLATE": "Novo conteúdo solicitado",
@@ -200,6 +206,24 @@ DEFAULT_TEMPLATES = {
     "PUSH_MEDIA_FAILED_TITLE_TEMPLATE": "Falha no pedido",
     "PUSH_MEDIA_FAILED_MESSAGE_TEMPLATE": "Algo deu errado com {title}. Fale com o administrador.",
 }
+
+
+def _data_local(valor, formato='%d/%m/%Y'):
+    """Uma data — objeto ou texto ISO — no fuso de quem a vai ler.
+
+    ⚠️ As datas do painel são guardadas em UTC e lidas por pessoas que vivem
+    noutro fuso. Formatá-las sem converter é o mesmo engano que o campo de
+    vencimento já custou: a hora certa, no fuso errado.
+    """
+    if not isinstance(valor, datetime):
+        try:
+            valor = datetime.fromisoformat(str(valor))
+        except (ValueError, TypeError):
+            return str(valor)[:10]
+    if valor.tzinfo:
+        valor = valor.astimezone(get_localzone())
+    return valor.strftime(formato)
+
 
 def get_greeting():
     current_hour = datetime.now(get_localzone()).hour
@@ -1241,37 +1265,39 @@ class NotifierManager:
             logger.info(f"Notificação de Renovação ignorada para '{user.get('username')}' porque a notificação de Reativação já foi enviada.")
             return
 
-        if isinstance(new_expiration_date, datetime):
-            if new_expiration_date.tzinfo:
-                new_expiration_date = new_expiration_date.astimezone(get_localzone())
-            formatted_date = new_expiration_date.strftime('%d/%m/%Y')
-        else:
-            try:
-                exp_dt = datetime.fromisoformat(str(new_expiration_date))
-                if exp_dt.tzinfo:
-                    exp_dt = exp_dt.astimezone(get_localzone())
-                formatted_date = exp_dt.strftime('%d/%m/%Y')
-            except (ValueError, TypeError):
-                formatted_date = str(new_expiration_date)[:10]
+        formatted_date = _data_local(new_expiration_date)
         self._prepare_and_send('renewal', user, user_profile, {'new_date': formatted_date, 'date': formatted_date})
 
     def send_reactivation_notification(self, user, new_expiration_date, user_profile, invite_link):
-        if isinstance(new_expiration_date, datetime):
-            if new_expiration_date.tzinfo:
-                new_expiration_date = new_expiration_date.astimezone(get_localzone())
-            formatted_date = new_expiration_date.strftime('%d/%m/%Y')
-        else:
-            try:
-                exp_dt = datetime.fromisoformat(str(new_expiration_date))
-                if exp_dt.tzinfo:
-                    exp_dt = exp_dt.astimezone(get_localzone())
-                formatted_date = exp_dt.strftime('%d/%m/%Y')
-            except (ValueError, TypeError):
-                formatted_date = str(new_expiration_date)[:10]
+        formatted_date = _data_local(new_expiration_date)
         self._prepare_and_send('reactivation', user, user_profile, {'new_date': formatted_date, 'date': formatted_date, 'invite_link': invite_link})
 
     def send_trial_end_notification(self, user, user_profile):
         self._prepare_and_send('trial_end', user, user_profile, {})
+
+    def send_trial_extended_notification(self, user, user_profile, novo_fim):
+        """Avisa quem está em teste de que o período foi estendido.
+
+        🔔 **Estender o teste era uma mudança silenciosa.** O administrador
+        clicava em "Estender", o painel remarcava o `end_trial_job` e do outro
+        lado ninguém ficava a saber: a pessoa continuava a contar com a data
+        antiga — e o painel só falava com ela no fim, para dizer que o teste
+        tinha acabado. Ou seja, o único aviso sobre o teste era o de má
+        notícia. Este é o da boa.
+
+        ⚠️ **A hora faz parte da data aqui**, ao contrário do vencimento de uma
+        assinatura: um teste estende-se por horas ou minutos, e "vai até
+        20/09/2026" sobre uma extensão de duas horas não diz nada a quem
+        precisa de saber quando é que fica sem acesso.
+
+        Devolve o resumo da entrega (`{'sent': [...], 'failed': [...]}`) para
+        que a rota diga ao administrador se houve mesmo por onde avisar — um
+        aviso que não saiu não pode parecer que saiu.
+        """
+        fim = _data_local(novo_fim, '%d/%m/%Y às %H:%M')
+        return self._prepare_and_send('trial_extended', user, user_profile, {
+            'new_date': fim, 'date': fim,
+        })
 
     def send_password_reset_notification(self, user, user_profile, link, validade_minutos):
         """Entrega o link para repor a palavra-passe.
