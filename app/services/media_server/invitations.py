@@ -224,6 +224,17 @@ class InvitationLifecycle:
         scheduler.add_job(
             id=id_da_tarefa, func=end_trial_job, args=[media_user_id],
             trigger='date', run_date=quando, replace_existing=True,
+            # 🐛 **Sem isto, o fim do teste era DESCARTADO em silêncio.** O
+            # `misfire_grace_time` do APScheduler é 1 SEGUNDO por omissão, e
+            # esta era a única `add_job` do painel que não o passava — todas as
+            # outras (incluindo o `end_subscription_job`, que é a irmã desta)
+            # dão uma hora. Bastava o painel não estar de pé ao segundo certo
+            # para a tarefa ser dada como perdida e removida: um reinício demora
+            # os 30 segundos do `--graceful-timeout` só a largar as ligações
+            # abertas, e o assistente reinicia-se a si próprio. O teste nunca
+            # acabava, a conta ficava aberta para sempre, e não havia uma linha
+            # de erro — o log do APScheduler diz "was missed by" e mais nada.
+            misfire_grace_time=3600,
         )
         return fim_utc, id_da_tarefa
 

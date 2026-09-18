@@ -2039,6 +2039,31 @@ O envio em massa não corre no pedido HTTP: grava um `Task` na base de dados e o
 `start_background_services()` é idempotente e é chamada tanto pelo `create_app()`
 (se já configurado) como pelo fim do assistente de instalação.
 
+🐛 **Uma tarefa DATADA que não corra na hora marcada desaparece**, e o
+`misfire_grace_time` do APScheduler é UM SEGUNDO por omissão.
+`agendar_fim_do_teste` era a única `add_job` do painel que não o passava — a
+irmã dela, o `end_subscription_job`, dá uma hora. Bastava o painel não estar de
+pé ao segundo certo (um reinício leva os 30 segundos do `--graceful-timeout` só
+a largar as ligações abertas, e o assistente reinicia-se a si próprio) para o
+fim do teste ser dado como perdido: a conta ficava aberta **para sempre**, e o
+log do APScheduler dizia "was missed by" e mais nada.
+
+🐛 **E não havia rede por baixo.** O comentário do índice parcial de
+`trial_end_date` (`app/models.py`) fala das "varreduras diárias:
+`get_all_user_expirations` e `get_all_trial_users`" — a primeira é mesmo usada
+(pelo `get_users_within_notification_window` dos dois backends), a segunda
+estava escrita e **não era chamada de lado nenhum**. O vencimento do teste só
+era imposto noutro sítio: `_enforce_user_status_by_date`, que corre quando um
+administrador grava aquele perfil à mão. O `trial_sweep_job` (de 15 em 15
+minutos, sobre esse índice) fecha-o agora, reentrando no `end_trial_job` em vez
+de repetir o bloqueio, o aviso e a limpeza do `trial_job_id`. Três coisas que
+ele NÃO faz: tocar em quem tem `expiration_date` (passou a assinante, e o
+`trial_end_date` que ficou é história — o mesmo "dar e tirar" do
+`add_days_to_subscription`, visto do outro lado), bloquear quem já está
+bloqueado (seria um aviso de quinze em quinze minutos, para sempre) e ler uma
+data ingénua no fuso do sistema (`replace(tzinfo=utc)`, como os dois backends
+já fazem nestas colunas).
+
 ### Tempo real
 
 Flask-SocketIO em modo **gevent**, com **1 worker** de propósito (ver o `CMD` do

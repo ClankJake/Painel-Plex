@@ -118,6 +118,71 @@ def end_trial_job(media_user_id):
         else:
             logger.warning(f"O usuário '{media_user_id}' não foi encontrado durante a tarefa de fim de teste.")
 
+@single_instance_job('trial_sweep_job')
+def trial_sweep_job():
+    """A rede por baixo do `end_trial_job`: fecha os testes que já venceram.
+
+    🐛 **Esta varredura era dada como existente e nunca tinha sido escrita.**
+    O comentário do índice parcial de `trial_end_date` (`app/models.py`) fala
+    das "varreduras diárias: `get_all_user_expirations` e `get_all_trial_users`"
+    — mas a segunda não era chamada de lado nenhum. O fim de um teste dependia
+    por inteiro de UMA tarefa datada, e uma tarefa datada que não corra na hora
+    marcada desaparece: o `end_subscription_job` tem uma hora de tolerância, o
+    do teste tinha um segundo (corrigido em `agendar_fim_do_teste`), e nem uma
+    hora chega a um contentor que esteve a noite inteira em baixo.
+
+    O resultado era acesso gratuito PERMANENTE, sem erro nenhum: a conta ficava
+    ativa, `is_on_trial` dava falso (a data já passou), a pessoa saía da aba de
+    testes e do contador, e só reaparecia se um administrador abrisse o perfil
+    dela e gravasse — que é o único outro sítio onde o vencimento do teste é
+    imposto (`_enforce_user_status_by_date`).
+
+    Corre de 15 em 15 minutos porque o dano cresce com o tempo: um teste de uma
+    hora fechado só na madrugada seguinte é um dia grátis. É uma consulta só,
+    servida pelo índice parcial que já existe para ela.
+    """
+    if not _app: return
+    with _app.test_request_context('/'):
+        from . import extensions
+
+        agora = datetime.now(timezone.utc)
+        for media_user_id, perfil in extensions.data_manager.get_all_trial_users().items():
+            try:
+                fim = datetime.fromisoformat(perfil.get('trial_end_date'))
+            except (ValueError, TypeError):
+                continue
+
+            # ⚠️ Uma data sem fuso é lida como UTC, que é o que os dois backends
+            # já fazem com as mesmas colunas. Sem isto, o `astimezone` assumiria
+            # o fuso do SISTEMA e o teste fechava horas antes ou depois.
+            if fim.tzinfo is None:
+                fim = fim.replace(tzinfo=timezone.utc)
+            if fim > agora:
+                continue
+
+            # ⚠️ Quem tem vencimento já não está em teste: passou a assinante e
+            # o `trial_end_date` que ficou para trás é história, não uma ordem
+            # de bloqueio. Bloqueá-lo aqui seria o mesmo "dar e tirar" que o
+            # `add_days_to_subscription` fazia ao deixar a tarefa de pé.
+            if perfil.get('expiration_date'):
+                continue
+
+            # Já bloqueado: o `end_trial_job` correu, ou esta varredura já o
+            # fechou. Repetir seria bloquear outra vez e avisar outra vez, de
+            # quinze em quinze minutos, para sempre.
+            if extensions.data_manager.get_blocked_user(media_user_id):
+                continue
+
+            logger.warning(
+                f"O período de teste do utilizador ID {media_user_id} terminou em "
+                f"{perfil.get('trial_end_date')} e a conta continuava aberta: a tarefa "
+                "datada não chegou a correr. A fechar agora."
+            )
+            # Pelo caminho normal, que já sabe bloquear com repetições, avisar a
+            # pessoa e limpar o `trial_job_id`.
+            end_trial_job(media_user_id)
+
+
 def end_subscription_job(media_user_id):
     """Tarefa individual acionada no fim exato da assinatura."""
     if not _app: return
@@ -480,6 +545,17 @@ def setup_scheduler(app):
         id='server_block_import_job', func=server_block_import_job,
         trigger='interval', minutes=5,
         replace_existing=True, coalesce=True, misfire_grace_time=600
+    )
+
+    # 🐛 A rede por baixo das tarefas datadas de fim de teste (ver o
+    # `trial_sweep_job`): uma que não corra na hora marcada desaparece, e sem
+    # isto o teste nunca acabava. De 15 em 15 minutos porque um teste de uma
+    # hora fechado só na madrugada seguinte é um dia grátis; `coalesce` porque
+    # o que interessa é o estado de agora, não quantas voltas se perderam.
+    extensions.scheduler.add_job(
+        id='trial_sweep_job', func=trial_sweep_job,
+        trigger='interval', minutes=15,
+        replace_existing=True, coalesce=True, misfire_grace_time=900
     )
 
     cleanup_time_parts = config.get("CLEANUP_TIME", "03:00").split(':')
