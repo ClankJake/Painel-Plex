@@ -1856,6 +1856,54 @@ pagamento pertencem aí, não no gateway.
 Os webhooks só funcionam com `APP_BASE_URL` preenchido: é a partir dele que as
 URLs de retorno são construídas.
 
+#### Indique e Ganhe: a recompensa é RETIDA até quem indicou pagar
+
+🛡️ **Quem ainda não é assinante não recebe já.** A indicação conta e fica
+registada — o mérito de ter trazido alguém é de quem indicou —, mas a entrega
+espera até ele próprio ter um pagamento confirmado. Sem isto, uma conta de
+TESTE acumulava dias e crédito sem nunca pagar: num servidor de contas locais
+ela não custa nada de criar e nada a liga à mesma pessoa, que é exatamente a
+fraqueza que o CLAUDE.md já nota no anti-abuso de períodos de teste.
+
+⚠️ **A pergunta é `user_has_completed_payment`, e NÃO "está em teste".** As duas
+quase sempre coincidem, mas é a do pagamento que a mensagem promete a quem lê
+("liberado quando você fizer o pagamento") — e quem recebeu acesso à mão, sem
+nunca pagar, está na mesma situação. Uma renovação por cupom de 100% conta: ela
+grava um pagamento de valor 0.
+
+⚠️ **Não há tabela nova: o `referral_rewarded` a FALSO É o "por entregar".** Ao
+reter, `reward_referrer_on_payment` sai ANTES do `claim_referral_reward` —
+marcá-lo ali queimava a única oportunidade que aquele indicado tem de gerar
+prémio, e a recompensa nunca mais saía.
+
+🎁 **O mesmo pagamento tem dois papéis**, e por isso há duas chamadas lado a
+lado em `_process_successful_payment`: em `reward_referrer_on_payment` quem
+paga é o INDICADO (e quem recebe é outra pessoa); em
+`liberar_recompensas_retidas` quem paga é o INDICADOR, e o que se procura é o
+que ele já ganhou enquanto ainda não podia receber. Ela reentra no caminho
+normal em vez de repetir as regras — a reserva do direito, o teto de
+recompensas e a notificação ficam num sítio só.
+
+⚠️ **E corre DEPOIS do `update_pix_payment_status(txid, 'CONCLUIDA')` e do
+commit.** A condição é lida da tabela dos pagamentos: feita antes, este
+pagamento ainda não lá estava e a recompensa ficava retida exatamente pela
+razão que ele acabou de resolver — até à renovação seguinte.
+
+🔔 **E quem espera tem de saber porquê.** `get_referral_stats` devolve
+`pode_receber` e `retidas`, e o cartão da "Minha Conta" mostra o aviso: sem
+ele, a página dizia "Confirmado" ao lado de um saldo que nunca crescia.
+`retidas` conta só os indicados que JÁ pagaram — um que ainda não pagou não é
+uma recompensa à espera, é uma indicação por confirmar, e essa já está no
+`pending`.
+
+🐛 **E `add_days_to_subscription` passou a acabar o teste** (`_clear_trial_data`,
+como a renovação já fazia). Dar vencimento deixando o `end_trial_job` de pé era
+dar e tirar em silêncio: à hora marcada ele bloqueava a conta com o motivo
+`trial_expired`, apagando na prática os dias atribuídos — e como o cartão da
+página de utilizadores mostra a etiqueta de teste no `else` do
+`if (user.expiration_date)`, essa pessoa desaparecia também da aba e do
+contador de testes.
+
 🐛 **O link curto do mesmo destino é REUTILIZADO, nunca recriado.**
 `create_short_link` apagava os links antigos do mesmo destino "para evitar
 duplicações", e com isso matava o link que a pessoa já tinha recebido. Não era
@@ -1990,6 +2038,31 @@ O envio em massa não corre no pedido HTTP: grava um `Task` na base de dados e o
 
 `start_background_services()` é idempotente e é chamada tanto pelo `create_app()`
 (se já configurado) como pelo fim do assistente de instalação.
+
+🐛 **Uma tarefa DATADA que não corra na hora marcada desaparece**, e o
+`misfire_grace_time` do APScheduler é UM SEGUNDO por omissão.
+`agendar_fim_do_teste` era a única `add_job` do painel que não o passava — a
+irmã dela, o `end_subscription_job`, dá uma hora. Bastava o painel não estar de
+pé ao segundo certo (um reinício leva os 30 segundos do `--graceful-timeout` só
+a largar as ligações abertas, e o assistente reinicia-se a si próprio) para o
+fim do teste ser dado como perdido: a conta ficava aberta **para sempre**, e o
+log do APScheduler dizia "was missed by" e mais nada.
+
+🐛 **E não havia rede por baixo.** O comentário do índice parcial de
+`trial_end_date` (`app/models.py`) fala das "varreduras diárias:
+`get_all_user_expirations` e `get_all_trial_users`" — a primeira é mesmo usada
+(pelo `get_users_within_notification_window` dos dois backends), a segunda
+estava escrita e **não era chamada de lado nenhum**. O vencimento do teste só
+era imposto noutro sítio: `_enforce_user_status_by_date`, que corre quando um
+administrador grava aquele perfil à mão. O `trial_sweep_job` (de 15 em 15
+minutos, sobre esse índice) fecha-o agora, reentrando no `end_trial_job` em vez
+de repetir o bloqueio, o aviso e a limpeza do `trial_job_id`. Três coisas que
+ele NÃO faz: tocar em quem tem `expiration_date` (passou a assinante, e o
+`trial_end_date` que ficou é história — o mesmo "dar e tirar" do
+`add_days_to_subscription`, visto do outro lado), bloquear quem já está
+bloqueado (seria um aviso de quinze em quinze minutos, para sempre) e ler uma
+data ingénua no fuso do sistema (`replace(tzinfo=utc)`, como os dois backends
+já fazem nestas colunas).
 
 ### Tempo real
 

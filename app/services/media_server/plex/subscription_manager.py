@@ -62,6 +62,18 @@ class PlexSubscriptionManager:
         new_expiration_date = base_date + timedelta(days=int(days))
 
         profile['expiration_date'] = new_expiration_date.isoformat()
+
+        # 🐛 **Dar vencimento sem apagar o teste era dar e tirar em silêncio.**
+        # Quem estivesse em período de teste ficava com a data nova E com o
+        # `end_trial_job` de pé: à hora marcada ele corria na mesma e bloqueava
+        # a conta com o motivo `trial_expired`, apagando na prática os dias que
+        # tinham acabado de ser atribuídos. E o cartão da página de utilizadores
+        # mostra a etiqueta de teste no `else` do `if (user.expiration_date)`,
+        # por isso essa pessoa desaparecia também da aba e do contador de testes
+        # — sem erro nenhum em lado nenhum. Quem dá vencimento acaba o teste, tal
+        # como a renovação já fazia.
+        self._clear_trial_data(profile, media_user_id)
+
         self.data_manager.set_user_profile(media_user_id, profile)
 
         self._replace_expiration_job(profile, media_user_id, new_expiration_date)

@@ -215,6 +215,13 @@ class FakeDataManager:
                 return profile
         return None
 
+    def get_all_trial_users(self):
+        """Os perfis com data de fim de teste, como a consulta real os devolve."""
+        return {
+            k: v for k, v in self.profiles.items()
+            if (v.get("trial_end_date") or "") != ""
+        }
+
     def get_users_referred_by(self, media_user_id):
         return [p for p in self.profiles.values() if _id(p.get("referred_by")) == _id(media_user_id)]
 
