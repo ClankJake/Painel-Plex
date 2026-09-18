@@ -2188,6 +2188,26 @@ bloqueado (seria um aviso de quinze em quinze minutos, para sempre) e ler uma
 data ingénua no fuso do sistema (`replace(tzinfo=utc)`, como os dois backends
 já fazem nestas colunas).
 
+🐛 **E a rede apanhava quem já não estava cá, de quinze em quinze minutos, para
+sempre.** Uma conta REMOVIDA do servidor deixa para trás um perfil com o
+`trial_end_date` no passado, sem `expiration_date` e **sem linha de bloqueio** —
+quem a remove (`removal_job`, a remoção manual) apaga-a ao limpar o registo
+local. É exatamente o que a varredura procura: ela reencontrava contas removidas
+há meses a cada volta, chamava o `end_trial_job`, que não encontrava ninguém no
+servidor, escrevia um WARNING e não tocava em nada. Dois WARNING por perfil e
+por volta, sem nada que se lhes pudesse fazer — não há nada para bloquear.
+Fecham-se agora dos dois lados: a varredura salta o que está `inactive` (é como
+o painel escreve "esta conta não tem acesso"), e o `end_trial_job` fecha o teste
+no painel quando confirma que a conta já não existe (perfil a `inactive` e
+`trial_job_id` a nulo, a mesma limpeza do `removal_job`; o `trial_end_date` fica,
+é história). ⚠️ **E "não encontrado" são duas respostas diferentes**:
+`get_user_by_id` devolve `None` tanto para uma conta que já não existe como para
+um servidor que não responde — com a ligação em baixo a lista vem vazia e toda a
+gente parece ter desaparecido. Quem desempata é a lista INTEIRA
+(`_conta_removida_do_servidor`): vindo com gente, o servidor respondeu e a
+ausência é real; vazia, não se sabe, não se toca no perfil e a varredura volta a
+tentar daqui a quinze minutos.
+
 ### Tempo real
 
 Flask-SocketIO em modo **gevent**, com **1 worker** de propósito (ver o `CMD` do

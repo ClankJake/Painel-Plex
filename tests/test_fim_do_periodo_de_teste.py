@@ -64,45 +64,59 @@ class TestToleranciaDaTarefaDatada:
         assert 'misfire_grace_time' in fonte
 
 
+@pytest.fixture()
+def correr(app_context, monkeypatch):
+    """Corre o `trial_sweep_job` sobre perfis em memória.
+
+    Devolve `(bloqueados, dm)` — quem foi bloqueado, e o duplo, para o
+    teste poder olhar para o que ficou gravado.
+    """
+    def _correr(profiles, blocked=None, no_servidor=None):
+        from app import scheduler as scheduler_module
+        from app.utils.identity import same_user
+
+        dm = FakeDataManager(profiles=profiles, blocked=blocked)
+        bloqueados = []
+
+        # `no_servidor` é quem o servidor de média diz ter. `None` quer
+        # dizer "toda a gente lá está", que é o caso normal; uma lista
+        # VAZIA é o servidor a não responder, e as duas coisas têm de dar
+        # resultados diferentes.
+        class ServidorEspiao:
+            def get_user_by_id(self, media_user_id):
+                if no_servidor is not None and not any(
+                    same_user(i, media_user_id) for i in no_servidor
+                ):
+                    return None
+                return {'id': media_user_id, 'username': f'u{media_user_id}'}
+
+            def get_all_users(self, force_refresh=False):
+                presentes = dm.profiles if no_servidor is None else no_servidor
+                return [{'id': i, 'username': f'u{i}'} for i in presentes]
+
+            def block_user(self, media_user_id, reason=None):
+                bloqueados.append((media_user_id, reason))
+                dm.blocked[media_user_id] = {'block_reason': reason}
+                return True
+
+        class NotificadorEspiao:
+            def send_trial_end_notification(self, user_info, profile):
+                return True
+
+        from app import extensions
+
+        monkeypatch.setattr(extensions, 'data_manager', dm, raising=False)
+        monkeypatch.setattr(extensions, 'media_server', ServidorEspiao(), raising=False)
+        monkeypatch.setattr(extensions, 'notifier_manager', NotificadorEspiao(), raising=False)
+
+        scheduler_module.trial_sweep_job()
+        return bloqueados, dm
+
+    return _correr
+
+
 class TestVarreduraDosTestesVencidos:
     """A rede por baixo: fecha o que a tarefa datada não fechou."""
-
-    @pytest.fixture()
-    def correr(self, app_context, monkeypatch):
-        """Corre o `trial_sweep_job` sobre perfis em memória.
-
-        Devolve `(bloqueados, dm)` — quem foi bloqueado, e o duplo, para o
-        teste poder olhar para o que ficou gravado.
-        """
-        def _correr(profiles, blocked=None):
-            from app import scheduler as scheduler_module
-
-            dm = FakeDataManager(profiles=profiles, blocked=blocked)
-            bloqueados = []
-
-            class ServidorEspiao:
-                def get_user_by_id(self, media_user_id):
-                    return {'id': media_user_id, 'username': f'u{media_user_id}'}
-
-                def block_user(self, media_user_id, reason=None):
-                    bloqueados.append((media_user_id, reason))
-                    dm.blocked[media_user_id] = {'block_reason': reason}
-                    return True
-
-            class NotificadorEspiao:
-                def send_trial_end_notification(self, user_info, profile):
-                    return True
-
-            from app import extensions
-
-            monkeypatch.setattr(extensions, 'data_manager', dm, raising=False)
-            monkeypatch.setattr(extensions, 'media_server', ServidorEspiao(), raising=False)
-            monkeypatch.setattr(extensions, 'notifier_manager', NotificadorEspiao(), raising=False)
-
-            scheduler_module.trial_sweep_job()
-            return bloqueados, dm
-
-        return _correr
 
     def _perfil(self, minutos_atras, **extra):
         fim = datetime.now(UTC) - timedelta(minutes=minutos_atras)
@@ -172,3 +186,69 @@ class TestVarreduraDosTestesVencidos:
 
         fonte = inspect.getsource(scheduler_module.setup_scheduler)
         assert "id='trial_sweep_job'" in fonte
+
+
+class TestContaQueJaNaoExisteNoServidor:
+    """🐛 A varredura reencontrava para sempre quem já tinha sido removido.
+
+    `end_trial_job` não encontrava a conta, escrevia um WARNING e não tocava em
+    nada — e quem remove uma conta (`removal_job`, a remoção manual) APAGA a
+    linha de `blocked_users`, por isso a trava do "já bloqueado" não apanhava
+    estes perfis. Ficavam com o teste vencido, sem vencimento e sem bloqueio,
+    que é exatamente o que a varredura procura: dois WARNING por perfil de 15
+    em 15 minutos, para sempre, sobre contas removidas há meses.
+    """
+
+    def _perfil_vencido(self, **extra):
+        fim = datetime.now(UTC) - timedelta(days=90)
+        perfil = {
+            "media_user_id": "1", "username": "ana", "status": "active",
+            "trial_end_date": fim.isoformat(), "trial_job_id": "trial_1",
+        }
+        perfil.update(extra)
+        return {1: perfil}
+
+    def test_a_varredura_fecha_o_teste_e_nao_volta_a_encontra_lo(self, correr):
+        perfis = self._perfil_vencido()
+
+        bloqueados, dm = correr(perfis, no_servidor=["9"])
+
+        assert bloqueados == []
+        assert dm.profiles["1"]["status"] == "inactive"
+        assert dm.profiles["1"]["trial_job_id"] is None
+        # O `trial_end_date` fica: é história, e é por ele que se percebe,
+        # meses depois, que aquela pessoa esteve em teste.
+        assert dm.profiles["1"]["trial_end_date"]
+
+        # A volta seguinte, quinze minutos depois, já não tem nada a dizer.
+        bloqueados, dm = correr(perfis, no_servidor=["9"])
+
+        assert bloqueados == []
+        assert dm.profiles["1"]["status"] == "inactive"
+
+    def test_um_perfil_ja_inativo_nao_entra_na_varredura(self, correr):
+        """`inactive` é como o painel escreve "esta conta não tem acesso".
+
+        Quem a removeu apagou também a linha de `blocked_users`, por isso a
+        trava do "já bloqueado" não chega: sem esta, era um bloqueio e um aviso
+        de fim de teste de quinze em quinze minutos sobre quem já saiu.
+        """
+        bloqueados, _dm = correr(self._perfil_vencido(status="inactive"))
+
+        assert bloqueados == []
+
+    def test_o_servidor_em_baixo_nao_fecha_o_teste_de_ninguem(self, correr):
+        """⚠️ Não saber não é saber que não existe.
+
+        Com a ligação em baixo a lista de utilizadores vem vazia e toda a gente
+        parece ter desaparecido. Fechar o teste aqui tirava o acesso a quem
+        ainda o estava a usar; o perfil fica como está e a varredura volta a
+        passar daqui a quinze minutos.
+        """
+        perfis = self._perfil_vencido()
+
+        bloqueados, dm = correr(perfis, no_servidor=[])
+
+        assert bloqueados == []
+        assert dm.profiles["1"]["status"] == "active"
+        assert dm.profiles["1"]["trial_job_id"] == "trial_1"
