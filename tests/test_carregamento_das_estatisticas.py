@@ -148,3 +148,71 @@ class TestOFiltroDeDiasNaoRepedeORecomendador:
         assert "carregarRecomendacoes();" in arranque
         assert "carregarNovidades(" in arranque
         assert "carregarAnalisePessoal(" in arranque
+
+
+class TestCadaSitioEDonoDosSeusGraficos:
+    """🐛 Havia UM espaço para os gráficos e UM para os observadores.
+
+    O modal desenha a MESMA análise que a página (`renderUserAnalysis` serve os
+    dois), e enquanto partilhavam esses espaços globais:
+
+    - abrir a análise de outra pessoa destruía os gráficos da análise da
+      página, e fechar o modal rematava — os dois canvas ficavam em branco até
+      alguém mexer no filtro de dias;
+    - o `closeModal` desligava TODOS os `ResizeObserver`, incluindo os das
+      "Novidades" e os de cada faixa de recomendações: as setas desses
+      carrosséis deixavam de se atualizar ao redimensionar.
+
+    Num painel onde o ranking é clicável para quem não é administrador, bastava
+    espreitar a análise de outra pessoa.
+    """
+
+    def test_os_espacos_globais_deixaram_de_existir(self, js):
+        codigo = "\n".join(
+            linha for linha in js.splitlines() if not linha.lstrip().startswith("*")
+        )
+        assert "state.charts" not in codigo
+        assert "state.observers" not in codigo
+
+    def test_o_modal_tem_o_seu_proprio_contexto(self, js):
+        corpo = _corpo_de(js, "showUserDetailsModal")
+        assert "state.contextos.modal = novoContexto()" in corpo
+        assert "state.contextos.modal)" in corpo, "renderiza fora do contexto do modal"
+
+    def test_fechar_o_modal_leva_so_o_que_o_modal_desenhou(self, js):
+        corpo = _corpo_de(js, "closeModal")
+        assert "destruirContexto(state.contextos.modal)" in corpo
+        for outro in ("pagina", "novidades", "recomendacoes", "analise"):
+            assert f"contextos.{outro}" not in corpo, f"ainda mexe no contexto '{outro}'"
+
+    @pytest.mark.parametrize(
+        "funcao, contexto",
+        [
+            ("renderNewlyAdded", "novidades"),
+            ("renderRecommendations", "recomendacoes"),
+        ],
+    )
+    def test_cada_carrossel_limpa_o_seu_antes_de_redesenhar(self, js, funcao, contexto):
+        """Sem isto, cada mudança de filtro prendia mais um observador a uma
+        fila que já não está na página."""
+        corpo = _corpo_de(js, funcao)
+        assert f"destruirContexto(state.contextos.{contexto})" in corpo
+        assert f"state.contextos.{contexto})" in corpo
+
+    def test_uma_analise_que_chegou_tarde_nao_deixa_graficos_vivos(self, js):
+        """A resposta descartada pelo guarda da corrida criou gráficos na mesma."""
+        corpo = _corpo_de(js, "carregarAnalisePessoal")
+        descarte = corpo[corpo.index("aMinhaVez !== ultimoPedido.analise"):]
+        assert "destruirContexto(contexto)" in descarte[:descarte.index("return")]
+
+    def test_a_analise_anterior_sai_quando_a_nova_entra(self, js):
+        corpo = _corpo_de(js, "carregarAnalisePessoal")
+        assert "destruirContexto(state.contextos.analise)" in corpo
+        assert corpo.index("destruirContexto(state.contextos.analise)") < corpo.index("replaceChildren")
+
+    def test_o_tema_chega_aos_graficos_de_todos_os_sitios(self, js):
+        """Antes só alcançava os três espaços globais — com o modal aberto, os
+        gráficos dele ficavam com as cores do tema anterior."""
+        inicio = js.index("window.addEventListener('themeChanged'")
+        tratador = js[inicio:js.index("\n    });", inicio)]
+        assert "Object.values(state.contextos)" in tratador

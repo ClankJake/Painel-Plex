@@ -1085,6 +1085,26 @@ modal já fazia —, que é o que permite descartar uma resposta tardia sem deix
 a página meio escrita: até lá o que se vê é o esqueleto, e não uma análise a
 ser montada por partes.
 
+🐛 **Havia UM espaço para os gráficos e UM para os observadores, e o modal
+desenha a MESMA análise que a página** (`renderUserAnalysis` serve os dois).
+Duas consequências, as duas silenciosas: abrir a análise de outra pessoa
+destruía os gráficos da análise da PÁGINA — `state.charts.activity` e
+`.contentType` eram os mesmos objetos — e fechar o modal rematava, deixando os
+dois canvas em branco até alguém mexer no filtro de dias; e o `closeModal`
+desligava TODOS os `ResizeObserver` registados, incluindo os das "Novidades" e
+os de cada faixa de recomendações, cujas setas deixavam de se atualizar ao
+redimensionar. Num painel onde o ranking é clicável para quem não é
+administrador, bastava espreitar a análise de outra pessoa.
+
+Cada sítio é agora dono do que lá está (`novoContexto` / `destruirContexto`, um
+por destino: o gráfico do administrador, as novidades, as recomendações, a
+análise pessoal e o modal), e `destruirContexto` leva só isso. ⚠️ Cada um
+limpa o SEU antes de se redesenhar — sem isso, cada mudança de filtro prendia
+mais um observador a uma fila que já não está na página — e uma análise
+descartada pelo guarda da corrida é destruída em vez de ficar com gráficos
+vivos sobre um elemento que ninguém vai ver. E o `themeChanged` passou a
+alcançar os gráficos do modal, que antes ficavam com as cores do tema anterior.
+
 ⚡ **E o índice deixou de ser construído dentro de um pedido.** Era um
 `@cache.memoize` de 30 minutos, o que quer dizer sem tranca nenhuma: à hora a
 que ele expirava, toda a gente com a página aberta reconstruía-o ao mesmo

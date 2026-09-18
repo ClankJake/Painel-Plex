@@ -44,14 +44,44 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     // ESTADO DA APLICAÇÃO
     // ==========================================
+    /**
+     * Um sítio com gráficos e carrosséis próprios.
+     *
+     * 🐛 **Havia UM espaço para os gráficos e UM para os observadores, e o
+     * modal desenha a MESMA análise que a página.** Duas consequências, e as
+     * duas eram silenciosas:
+     *
+     * - abrir a análise de outra pessoa destruía os gráficos da análise da
+     *   página (`state.charts.activity` e `.contentType` eram os mesmos), e
+     *   fechar o modal rematava: os dois canvas da página ficavam em branco
+     *   até alguém mexer no filtro de dias;
+     * - o `closeModal` desligava TODOS os `ResizeObserver` registados —
+     *   incluindo os das "Novidades", os de cada faixa de recomendações e o da
+     *   fila de itens recentes. Os botões das setas deixavam de se atualizar
+     *   ao redimensionar, em carrosséis que nada tinham a ver com o modal.
+     *
+     * Quem abre um sítio destes é dono do que lá está, e é só isso que
+     * `destruirContexto` leva.
+     */
+    const novoContexto = () => ({ charts: {}, observers: [] });
+
+    const destruirContexto = (contexto) => {
+        if (!contexto) return;
+        Object.values(contexto.charts).forEach(chart => chart?.destroy());
+        contexto.charts = {};
+        contexto.observers.forEach(observer => observer.disconnect());
+        contexto.observers = [];
+    };
+
     const state = {
         allUsersData: [],
         currentPage: 1,
-        observers: [], // Guarda os ResizeObservers para os poder destruir
-        charts: {
-            mainBar: null,
-            activity: null,
-            contentType: null
+        contextos: {
+            pagina: novoContexto(),        // o gráfico de barras do administrador
+            novidades: novoContexto(),
+            recomendacoes: novoContexto(),
+            analise: novoContexto(),       // a análise pessoal, na página
+            modal: novoContexto()          // a análise de outra pessoa, no modal
         }
     };
 
@@ -105,7 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     };
 
-    const setupHorizontalScroll = (container, leftBtn, rightBtn) => {
+    const setupHorizontalScroll = (container, leftBtn, rightBtn, contexto) => {
         if (!container || !leftBtn || !rightBtn) return;
         
         const updateScrollButtons = () => {
@@ -120,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const observer = new ResizeObserver(updateScrollButtons);
         observer.observe(container);
-        state.observers.push(observer); // Regista para eventual limpeza
+        contexto.observers.push(observer); // Desligado com o contexto de quem o pediu
         
         updateScrollButtons();
     };
@@ -131,6 +161,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderNewlyAdded = (media) => {
         if (!dom.newlyAddedSection || !dom.newlyAddedContainer) return;
+
+        // O que se desenhou da vez anterior sai antes de ser substituído: sem
+        // isto, cada mudança de filtro deixava mais um `ResizeObserver` preso
+        // a uma fila que já não está na página.
+        destruirContexto(state.contextos.novidades);
 
         if (!media || media.length === 0) {
             dom.newlyAddedSection.classList.add('hidden');
@@ -169,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
         
         dom.newlyAddedSection.classList.remove('hidden');
-        setupHorizontalScroll(dom.newlyAddedContainer, dom.scrollLeftBtn, dom.scrollRightBtn);
+        setupHorizontalScroll(dom.newlyAddedContainer, dom.scrollLeftBtn, dom.scrollRightBtn, state.contextos.novidades);
     };
 
     // ------------------------------------------
@@ -273,6 +308,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const renderRecommendations = (sections, reason) => {
         if (!dom.recommendationsSection || !dom.recommendationsContainer) return;
 
+        destruirContexto(state.contextos.recomendacoes);
+
         if (!sections || sections.length === 0) {
             // Quem já assistiu alguma coisa merece saber PORQUE não há sugestões
             // (o servidor ainda não tem cruzamentos suficientes). Sem histórico
@@ -323,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = document.getElementById(`recommendation-row-${index}`);
             const leftBtn = dom.recommendationsContainer.querySelector(`[data-scroll="left"][data-target="recommendation-row-${index}"]`);
             const rightBtn = dom.recommendationsContainer.querySelector(`[data-scroll="right"][data-target="recommendation-row-${index}"]`);
-            setupHorizontalScroll(row, leftBtn, rightBtn);
+            setupHorizontalScroll(row, leftBtn, rightBtn, state.contextos.recomendacoes);
         });
 
         dom.recommendationsSection.classList.remove('hidden');
@@ -430,12 +467,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderMainChart = (stats) => {
         if (!dom.mainBarChartCanvas) return;
-        if (state.charts.mainBar) state.charts.mainBar.destroy();
+        const contexto = state.contextos.pagina;
+        contexto.charts.mainBar?.destroy();
         
         const colors = getChartColors();
         const top15Users = stats.slice(0, 15);
         
-        state.charts.mainBar = new Chart(dom.mainBarChartCanvas.getContext('2d'), {
+        contexto.charts.mainBar = new Chart(dom.mainBarChartCanvas.getContext('2d'), {
             type: 'bar',
             data: { 
                 labels: top15Users.map(u => u.username), 
@@ -456,12 +494,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    const renderUserActivityChart = (canvas, weeklyDataArray) => {
+    const renderUserActivityChart = (canvas, weeklyDataArray, contexto) => {
         if (!canvas) return;
-        if (state.charts.activity) state.charts.activity.destroy();
+        contexto.charts.activity?.destroy();
         
         const colors = getChartColors();
-        state.charts.activity = new Chart(canvas.getContext('2d'), {
+        contexto.charts.activity = new Chart(canvas.getContext('2d'), {
             type: 'bar',
             data: { 
                 labels: [i18n.sun, i18n.mon, i18n.tue, i18n.wed, i18n.thu, i18n.fri, i18n.sat], 
@@ -482,12 +520,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    const renderUserContentTypeChart = (canvas, contentDataArray) => {
+    const renderUserContentTypeChart = (canvas, contentDataArray, contexto) => {
         if (!canvas) return;
-        if (state.charts.contentType) state.charts.contentType.destroy();
+        contexto.charts.contentType?.destroy();
         
         const colors = getChartColors();
-        state.charts.contentType = new Chart(canvas.getContext('2d'), {
+        contexto.charts.contentType = new Chart(canvas.getContext('2d'), {
             type: 'doughnut',
             data: {
                 labels: [i18n.movies, i18n.episodes],
@@ -507,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // RENDERIZADOR DE ESTATÍSTICAS PESSOAIS (COMPLETO)
     // ==========================================
 
-    const renderUserAnalysis = async (userId, username, days, containerElement) => {
+    const renderUserAnalysis = async (userId, username, days, containerElement, contexto) => {
         try {
             const url = urls.userStatsUrl.replace('/0', `/${userId}`);
             const data = await fetchAPI(`${url}?days=${days}`);
@@ -633,17 +671,18 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
 
             const canvasContent = containerElement.querySelector('#contentTypeChart');
-            renderUserContentTypeChart(canvasContent, [details.movie_count || 0, details.episode_count || 0]);
+            renderUserContentTypeChart(canvasContent, [details.movie_count || 0, details.episode_count || 0], contexto);
             
             if(isOwnerViewing || isAdminViewing) {
                 const canvasActivity = containerElement.querySelector('#activityBarChart');
                 const weeklyData = (details.weekly_activity_js || []).map(s => (s / 3600).toFixed(2));
-                renderUserActivityChart(canvasActivity, weeklyData);
+                renderUserActivityChart(canvasActivity, weeklyData, contexto);
 
                 setupHorizontalScroll(
                     containerElement.querySelector('#recent-items-container'),
                     containerElement.querySelector('#scroll-left-recent-btn'),
-                    containerElement.querySelector('#scroll-right-recent-btn')
+                    containerElement.querySelector('#scroll-right-recent-btn'),
+                    contexto
                 );
             }
 
@@ -671,7 +710,11 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.userDetailsModal.classList.remove('hidden');
         
         const analysisContainer = document.createElement('div');
-        await renderUserAnalysis(userId, username, days, analysisContainer);
+        // O modal anterior pode não ter chegado a ser fechado (clicar noutra
+        // linha com ele aberto); o que ficou para trás sai agora.
+        destruirContexto(state.contextos.modal);
+        state.contextos.modal = novoContexto();
+        await renderUserAnalysis(userId, username, days, analysisContainer, state.contextos.modal);
         
         const modalBody = dom.userDetailsModal.querySelector('#modalBody');
         if(modalBody) {
@@ -687,15 +730,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const closeModal = () => {
         if (!dom.userDetailsModal) return;
-        
-        // Destruição segura de gráficos
-        if (state.charts.activity) state.charts.activity.destroy();
-        if (state.charts.contentType) state.charts.contentType.destroy();
-        
-        // Limpeza CORRIGIDA de Observers (Memory Leak fix)
-        state.observers.forEach(obs => obs.disconnect());
-        state.observers = [];
-        
+
+        // 🐛 Só o que o MODAL desenhou. Isto destruía os gráficos e desligava
+        // os observadores de toda a página — ver `novoContexto`.
+        destruirContexto(state.contextos.modal);
+
         dom.userDetailsModal.classList.add('hidden');
         dom.userDetailsModal.innerHTML = ''; 
     };
@@ -758,12 +797,21 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.personalAnalysis.innerHTML = esqueletoDaAnalisePessoal();
 
         const destino = document.createElement('div');
+        const contexto = novoContexto();
         // `renderUserAnalysis` trata dos erros dele: uma falha aqui escreve a
         // sua própria mensagem no lugar da análise, e não no `errorContainer`
         // que apagaria a página inteira.
-        await renderUserAnalysis(currentUser.id, currentUser.username, days, destino);
+        await renderUserAnalysis(currentUser.id, currentUser.username, days, destino, contexto);
 
-        if (aMinhaVez !== ultimoPedido.analise) return;
+        if (aMinhaVez !== ultimoPedido.analise) {
+            // Chegou tarde e não vai para a página: os gráficos que ela criou
+            // ficariam vivos sobre um elemento que ninguém vai ver.
+            destruirContexto(contexto);
+            return;
+        }
+
+        destruirContexto(state.contextos.analise);
+        state.contextos.analise = contexto;
         dom.personalAnalysis.replaceChildren(destino);
     };
 
@@ -892,7 +940,10 @@ document.addEventListener('DOMContentLoaded', () => {
        if(dom.statsContainer.classList.contains('hidden')) return;
        
        const colors = getChartColors();
-       Object.values(state.charts).forEach(chart => {
+       const todosOsGraficos = Object.values(state.contextos)
+           .flatMap(contexto => Object.values(contexto.charts));
+
+       todosOsGraficos.forEach(chart => {
            if (chart) {
                if(chart.options.scales && chart.options.scales.x) {
                    chart.options.scales.x.ticks.color = colors.textColor;
