@@ -2,7 +2,7 @@
 
 # --- Estágio 1: Build do Frontend ---
 # Usar a imagem base 'bookworm' que é uma versão mais recente do Debian
-FROM node:20-bookworm-slim AS frontend-builder
+FROM node:24-bookworm-slim AS frontend-builder
 
 WORKDIR /build
 

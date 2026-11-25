@@ -2,7 +2,7 @@
 
 ![Status do Projeto](https://img.shields.io/badge/status-ativo-brightgreen)
 ![Servidores](https://img.shields.io/badge/servidores-Plex%20%7C%20Jellyfin-blueviolet)
-![Linguagem](https://img.shields.io/badge/python-3.8%2B-blue)
+![Python de referência](https://img.shields.io/badge/python-3.12-blue)
 ![Framework](https://img.shields.io/badge/flask-2.x-orange)
 [![Build and Publish Docker Image to GHCR](https://github.com/ClankJake/Painel-Plex/actions/workflows/docker-publish.yml/badge.svg?branch=stable)](https://github.com/ClankJake/Painel-Plex/actions/workflows/docker-publish.yml)
 
@@ -180,17 +180,22 @@ As migrações do banco de dados são aplicadas automaticamente no arranque. Sua
 
 Recomendada apenas para quem pretende contribuir com o desenvolvimento.
 
-1.  **Pré-requisitos:** Python 3.8+, Node.js e npm.
+1.  **Pré-requisitos:** Python 3.12 e Node.js 24 com npm, as mesmas versões de
+    referência do Docker e do CI. A suíte Python também roda no CI com Python 3.11.
 2.  **Clone o repositório:**
     ```bash
     git clone https://github.com/ClankJake/Painel-Plex.git
     cd Painel-Plex
     ```
-3.  **Instale as dependências:**
+3.  **Crie um ambiente virtual e instale as dependências:**
     ```bash
-    pip install -r requirements.txt
-    npm install
+    python -m venv .venv
+    source .venv/bin/activate
+    python -m pip install -r requirements-dev.txt
+    npm ci
     ```
+    No Windows (PowerShell), ative com `.\.venv\Scripts\Activate.ps1` no lugar
+    de `source .venv/bin/activate`. O `npm ci` instala as versões do lockfile.
 4.  **Gere os assets do frontend** (CSS e bibliotecas):
     ```bash
     npm run build
@@ -212,14 +217,12 @@ Recomendada apenas para quem pretende contribuir com o desenvolvimento.
 
 A suíte de testes usa **pytest** e roda sem depender de um servidor Plex ou
 Jellyfin, do Tautulli ou de qualquer gateway de pagamento — as integrações
-externas são substituídas por duplos de teste.
+externas são substituídas por duplos de teste. Mantenha o Node no `PATH` para
+executar também os testes JavaScript de fuso horário.
 
 ```bash
-# instala as dependências de desenvolvimento (inclui as de produção)
-pip install -r requirements-dev.txt
-
 # executa todos os testes
-pytest
+python -m pytest
 
 # apenas um ficheiro, ou um teste específico
 pytest tests/test_pricing_manager.py

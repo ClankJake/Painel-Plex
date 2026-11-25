@@ -28,6 +28,7 @@ que é exatamente o caso que partia.
 """
 
 import json
+import os
 import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -157,7 +158,10 @@ class TestODiaDeFaturacao:
         assert escolhido.astimezone(timezone.utc).day == 6
 
 
-@pytest.mark.skipif(shutil.which('node') is None, reason="precisa do Node")
+NODE = shutil.which('node')
+
+
+@pytest.mark.skipif(NODE is None, reason="precisa do Node")
 class TestOLadoDoNavegador:
     """Corre o `comDeslocamentoLocal` REAL, com o Node no fuso do Brasil."""
 
@@ -169,9 +173,9 @@ class TestOLadoDoNavegador:
 console.log(JSON.stringify(JSON.parse(process.argv[1]).map(comDeslocamentoLocal)));
 """
         r = subprocess.run(
-            ['node', '--input-type=module', '-e', script, '--', json.dumps(entradas)],
+            [NODE, '--input-type=module', '-e', script, '--', json.dumps(entradas)],
             capture_output=True, text=True, check=True, cwd=RAIZ,
-            env={'PATH': '/usr/bin:/bin:/usr/local/bin', 'TZ': tz},
+            env={**os.environ, 'TZ': tz},
         )
         return json.loads(r.stdout)
 
