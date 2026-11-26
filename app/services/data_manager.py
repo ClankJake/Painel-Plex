@@ -165,10 +165,34 @@ class DataManager:
     # --- MÉTODOS DE CUPÕES ---
     @db_transaction
     def create_coupon(self, details):
+        """Cria ou restaura um cupão. Devolve None se o código já estiver em uso."""
         detalhes = dict(details)
-        # Guarda sempre na forma canónica, para que a procura por código continue
-        # a funcionar independentemente de como o cupão foi criado.
-        detalhes['code'] = normalize_coupon_code(detalhes.get('code'))
+        codigo = normalize_coupon_code(detalhes.get('code'))
+        detalhes['code'] = codigo
+        existentes = Coupon.query.filter(func.upper(Coupon.code) == codigo)
+        # Um cupão visível tem prioridade sobre qualquer variante antiga apagada.
+        existentes = existentes.order_by(
+            Coupon.deleted_at.is_not(None), Coupon.code != codigo, Coupon.id
+        )
+        candidato = existentes.with_entities(Coupon.id).limit(1).scalar_subquery()
+
+        # Começa pela escrita para serializar criações simultâneas no SQLite.
+        # Ao restaurar a mesma linha, o ID, a contagem e os resgates são preservados.
+        restaurados = Coupon.query.filter(
+            Coupon.id == candidato, Coupon.deleted_at.is_not(None)
+        ).update({
+            Coupon.code: codigo,
+            Coupon.discount_type: detalhes.get('discount_type'),
+            Coupon.value: detalhes.get('value'),
+            Coupon.max_uses: detalhes.get('max_uses', 1),
+            Coupon.expires_at: detalhes.get('expires_at'),
+            Coupon.is_active: detalhes.get('is_active', True),
+            Coupon.deleted_at: None,
+        }, synchronize_session=False)
+        existente = existentes.populate_existing().first()
+        if existente is not None:
+            return self._row_to_dict(existente) if restaurados else None
+
         new_coupon = Coupon(**detalhes)
         db.session.add(new_coupon)
         db.session.flush()
@@ -190,8 +214,9 @@ class DataManager:
             consulta = consulta.filter(Coupon.deleted_at.is_(None))
         return self._row_to_dict(consulta.first())
 
-    def get_all_coupons(self):
-        coupons = (Coupon.query.filter(Coupon.deleted_at.is_(None))
+    def get_all_coupons(self, apagados=False):
+        estado = Coupon.deleted_at.is_not(None) if apagados else Coupon.deleted_at.is_(None)
+        coupons = (Coupon.query.filter(estado)
                    .order_by(Coupon.created_at.desc()).all())
         return [self._row_to_dict(c) for c in coupons]
 
@@ -217,6 +242,35 @@ class DataManager:
             coupon.is_active = False
             return True
         return False
+
+    @db_transaction
+    def edit_coupon(self, coupon_id, code, changes):
+        return Coupon.query.filter(
+            Coupon.id == coupon_id, Coupon.deleted_at.is_(None),
+            func.upper(Coupon.code) == normalize_coupon_code(code)
+        ).update(changes, synchronize_session=False) == 1
+
+    @db_transaction
+    def restore_coupon(self, coupon_id):
+        # Instalações antigas podem ter variantes do código com outra capitalização.
+        from sqlalchemy.orm import aliased
+        outro = aliased(Coupon)
+        em_uso = db.session.query(outro.id).filter(
+            func.upper(outro.code) == func.upper(Coupon.code), outro.deleted_at.is_(None)
+        ).correlate(Coupon).exists()
+        return Coupon.query.filter(
+            Coupon.id == coupon_id, Coupon.deleted_at.is_not(None), ~em_uso
+        ).update({Coupon.deleted_at: None, Coupon.is_active: True}, synchronize_session=False) == 1
+
+    @db_transaction
+    def purge_coupon(self, coupon_id):
+        pagamento = db.session.query(PixPayment.txid).filter(
+            func.upper(PixPayment.coupon_code) == func.upper(Coupon.code)
+        ).correlate(Coupon).exists()
+        return Coupon.query.filter(
+            Coupon.id == coupon_id, Coupon.deleted_at.is_not(None),
+            Coupon.use_count == 0, ~Coupon.usages.any(), ~pagamento
+        ).delete(synchronize_session=False) == 1
 
     @db_transaction
     def toggle_coupon_active(self, coupon_id):

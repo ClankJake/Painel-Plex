@@ -54,6 +54,72 @@ class TestCriacaoPelaAPI:
 
         assert _criar(admin, code="verao").status_code == 409
 
+    @pytest.mark.parametrize("codigo_de_origem", ["DIASOFF", "diasoff"])
+    def test_recria_cupao_apagado_preservando_os_usos(
+        self, admin, data_manager, db_session, codigo_de_origem
+    ):
+        from app.models import Coupon, UserProfile
+
+        cupao = Coupon(code=codigo_de_origem, discount_type="percentage", value=10,
+                       max_uses=5, expires_at=datetime(2027, 1, 1))
+        db_session.add_all([cupao, UserProfile(media_user_id=51, username="bruno")])
+        db_session.commit()
+        cupao_id = cupao.id
+        assert data_manager.record_coupon_usage("DIASOFF", 51) is True
+        assert admin.post(f"/api/coupons/delete/{cupao_id}").status_code == 200
+        assert data_manager.get_coupon_by_code("DIASOFF") is None
+
+        assert admin.post(f"/api/coupons/purge/{cupao_id}").status_code == 409
+        resposta = _criar(admin, code=" diasoff ", discount_type="fixed", value=20, max_uses=30)
+
+        assert resposta.status_code == 200
+        recriado = resposta.get_json()["coupon"]
+        assert recriado["id"] == cupao_id
+        assert recriado["code"] == "DIASOFF"
+        assert recriado["discount_type"] == "fixed"
+        assert recriado["value"] == 20
+        assert recriado["max_uses"] == 30
+        assert recriado["expires_at"] is None
+        assert recriado["is_active"] is True
+        assert recriado["use_count"] == 1
+        assert data_manager.has_user_used_coupon(51, "DIASOFF") is True
+        assert data_manager.record_coupon_usage("DIASOFF", 51) is False
+        assert [cupao["id"] for cupao in data_manager.get_all_coupons()] == [cupao_id]
+        assert _criar(admin, code="DIASOFF").status_code == 409
+
+    def test_editar_restaurar_e_excluir_na_lixeira(self, admin, db_session):
+        cupom = _criar(admin).get_json()["coupon"]
+        base = "/api/coupons"
+        ident = cupom["id"]
+        campos = {"code": "PROMO", "discount_type": "fixed", "value": 7,
+                  "expires_at": "2027-02-28", "max_uses": 30}
+        assert admin.post(f"{base}/edit/{ident}", json=campos).status_code == 200
+        atualizado, = admin.get(f"{base}/list").get_json()["coupons"]
+        assert atualizado["value"] == 7
+        assert atualizado["data_validade"] == "2027-02-28"
+        assert admin.post(f"{base}/purge/{ident}").status_code == 409
+        assert admin.post(f"{base}/delete/{ident}").status_code == 200
+        assert admin.get(f"{base}/list").get_json()["coupons"] == []
+        apagado, = admin.get(f"{base}/list?apagados=1").get_json()["coupons"]
+        assert apagado["id"] == ident
+        assert admin.post(f"{base}/edit/{ident}", json=campos).status_code == 409
+        assert admin.post(f"{base}/restore/{ident}").status_code == 200
+        restaurado, = admin.get(f"{base}/list").get_json()["coupons"]
+        assert restaurado["is_active"] is True
+        assert restaurado["max_uses"] == 30
+        assert admin.post(f"{base}/delete/{ident}").status_code == 200
+        assert admin.post(f"{base}/purge/{ident}").status_code == 200
+        assert admin.get(f"{base}/list?apagados=1").get_json()["coupons"] == []
+
+    def test_exclusao_permanente_preserva_pagamento(self, admin, db_session):
+        from app.models import PixPayment
+        ident = _criar(admin).get_json()["coupon"]["id"]
+        db_session.add(PixPayment(txid="vinculado", media_user_id=1, username="ana", value=10,
+                                  provider="EFI", status="ATIVA", created_at="2026-10-15", coupon_code="promo"))
+        db_session.commit()
+        assert admin.post(f"/api/coupons/delete/{ident}").status_code == 200
+        assert admin.post(f"/api/coupons/purge/{ident}").status_code == 409
+
     @pytest.mark.parametrize("campos", [
         {"value": -50},                       # aumentava o preço a pagar
         {"value": 0},                         # desconto que não desconta

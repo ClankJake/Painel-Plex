@@ -242,7 +242,7 @@
             <div class="xl:col-span-1 bg-white dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700/50 h-fit xl:sticky xl:top-24 z-10">
                 <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
                     <svg class="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                    {{ _('Criar Novo Cupom') }}
+                    <span id="couponFormTitle">{{ _('Criar Novo Cupom') }}</span>
                 </h3>
                 <form id="createCouponForm" class="space-y-5">
                     <div>
@@ -288,9 +288,10 @@
                     <div class="pt-4">
                         <button type="submit" class="btn bg-amber-500 hover:bg-amber-400 text-white w-full py-3.5 rounded-xl shadow-lg shadow-amber-500/20 font-bold transition-all transform hover:-translate-y-0.5 flex justify-center items-center gap-2">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                            {{ _('Gerar Cupom') }}
+                            <span id="couponSubmitLabel">{{ _('Gerar Cupom') }}</span>
                         </button>
                     </div>
+                    <button id="cancelCouponEdit" type="button" hidden>{{ _('Cancelar edição') }}</button>
                 </form>
             </div>
             
@@ -300,6 +301,12 @@
                     <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
                     {{ _('Cupons Ativos e Histórico') }}
                 </h3>
+                <label class="mb-4">{{ _('Mostrar') }}
+                    <select id="couponView" class="ml-2 p-2 rounded dark:bg-gray-900">
+                        <option value="current">{{ _('Cupons cadastrados') }}</option>
+                        <option value="trash">{{ _('Lixeira') }}</option>
+                    </select>
+                </label>
                 <div id="couponsListContainer" class="overflow-x-auto w-full custom-scrollbar">
                     <!-- Tabela inserida por JS -->
                 </div>
@@ -322,6 +329,9 @@
         data-coupons-list-url="{{ url_for('coupons_api.list_coupons') }}"
         data-coupons-create-url="{{ url_for('coupons_api.create_coupon') }}"
         data-coupons-delete-base-url="{{ url_for('coupons_api.delete_coupon', coupon_id=0) }}"
+        data-coupons-edit-base-url="{{ url_for('coupons_api.edit_coupon', coupon_id=0) }}"
+        data-coupons-restore-base-url="{{ url_for('coupons_api.restore_coupon', coupon_id=0) }}"
+        data-coupons-purge-base-url="{{ url_for('coupons_api.purge_coupon', coupon_id=0) }}"
         data-coupons-toggle-base-url="{{ url_for('coupons_api.toggle_coupon', coupon_id=0) }}"
         data-delete-transaction-base-url="{{ url_for('payments_api.delete_payment_route', txid='__TXID__') }}"
         data-i18n-revenue-label="{{ _('Receita') }}"

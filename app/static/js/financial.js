@@ -412,6 +412,36 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    let listedCoupons = [];
+    let editingCouponId = null;
+    let couponRequest = 0;
+    const couponView = document.getElementById('couponView');
+
+    function setCouponEditor(coupon = null) {
+        editingCouponId = coupon?.id ?? null;
+        dom.createCouponForm.reset();
+        const code = document.getElementById('couponCode');
+        code.readOnly = Boolean(coupon);
+        document.getElementById('cancelCouponEdit').hidden = !coupon;
+        document.getElementById('couponFormTitle').textContent = coupon ? 'Editar cupom' : 'Criar Novo Cupom';
+        document.getElementById('couponSubmitLabel').textContent = coupon ? 'Salvar alterações' : 'Gerar Cupom';
+        if (coupon) {
+            code.value = coupon.code;
+            document.getElementById('discountType').value = coupon.discount_type;
+            document.getElementById('maxUses').value = coupon.max_uses;
+            document.getElementById('expiresAt').value = coupon.data_validade || '';
+            const value = document.getElementById('discountValue');
+            value.value = coupon.value;
+            value.focus();
+        }
+    }
+
+    document.getElementById('cancelCouponEdit')?.addEventListener('click', () => setCouponEditor());
+    couponView?.addEventListener('change', () => {
+        setCouponEditor();
+        loadCoupons();
+    });
+
     function renderCouponsTable(coupons) {
         if (!dom.couponsListContainer) return;
 
@@ -419,7 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
             dom.couponsListContainer.innerHTML = `
                 <div class="flex flex-col items-center justify-center py-10 text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
                     <svg class="w-12 h-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"></path></svg>
-                    <p class="font-medium">Nenhum cupom ativo ou criado.</p>
+                    <p class="font-medium">${couponView.value === 'trash' ? 'A lixeira está vazia.' : 'Nenhum cupom cadastrado.'}</p>
                 </div>`;
             return;
         }
@@ -440,7 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${coupons.map(c => {
                             const safeCode = sanitizeHTML(c.code);
                             const discountDisplay = c.discount_type === 'percentage' ? `${c.value}%` : formatCurrency(c.value);
-                            const expireDate = c.expires_at ? new Date(c.expires_at).toLocaleDateString('pt-BR') : 'Sem Validade';
+                            const expireDate = c.data_validade ? c.data_validade.split('-').reverse().join('/') : 'Sem Validade';
                             
                             return `
                             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
@@ -449,13 +479,18 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${c.use_count} / ${c.max_uses > 0 ? c.max_uses : '∞'}</td>
                                 <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${expireDate}</td>
                                 <td class="px-5 py-3 whitespace-nowrap text-sm flex items-center justify-end gap-3">
+                                    ${c.deleted_at ? `
+                                      <button data-action="restore-coupon" data-id="${c.id}">Restaurar e ativar</button>
+                                      <button data-action="purge-coupon" data-id="${c.id}" data-code="${safeCode}" class="text-red-600">Excluir permanentemente</button>
+                                    ` : `
+                                    <button data-action="edit-coupon" data-id="${c.id}">Editar</button>
                                     <label class="relative inline-flex items-center cursor-pointer" title="Ativar/Desativar">
                                       <input type="checkbox" data-action="toggle-coupon" data-id="${c.id}" class="sr-only peer" ${c.is_active ? 'checked' : ''}>
                                       <div class="w-9 h-5 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-500 shadow-inner"></div>
                                     </label>
                                     <button data-action="delete-coupon" data-id="${c.id}" data-code="${safeCode}" title="Apagar Cupom" class="text-gray-400 hover:text-red-500 transition-colors p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
                                         <svg class="w-5 h-5 pointer-events-none" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
-                                    </button>
+                                    </button>`}
                                 </td>
                             </tr>
                         `}).join('')}
@@ -466,10 +501,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function loadCoupons() {
+        const request = ++couponRequest;
+        const url = new URL(urls.couponsListUrl, window.location.href);
+        if (couponView.value === 'trash') url.searchParams.set('apagados', '1');
+        dom.couponsListContainer.textContent = 'Carregando cupons…';
         try {
-            const data = await fetchAPI(urls.couponsListUrl);
-            if (data.success) renderCouponsTable(data.coupons);
+            const data = await fetchAPI(url.toString());
+            if (request === couponRequest && data.success) {
+                listedCoupons = data.coupons;
+                renderCouponsTable(listedCoupons);
+            }
         } catch (error) {
+            if (request !== couponRequest) return;
+            dom.couponsListContainer.textContent = 'Falha ao carregar cupons.';
             showToast(error.message, 'error');
         }
     }
@@ -477,20 +521,42 @@ document.addEventListener('DOMContentLoaded', () => {
     // Delegação de Eventos para a Lista de Cupões
     if (dom.couponsListContainer) {
         dom.couponsListContainer.addEventListener('click', async (e) => {
-            const deleteBtn = e.target.closest('button[data-action="delete-coupon"]');
-            if (deleteBtn) {
-                const { id, code } = deleteBtn.dataset;
+            const button = e.target.closest('button[data-action]');
+            if (!button) return;
+            const { action, id, code } = button.dataset;
+            if (action === 'edit-coupon') {
+                setCouponEditor(listedCoupons.find(c => String(c.id) === id));
+                return;
+            }
+            if (action === 'restore-coupon') {
+                try {
+                    const result = await fetchAPI(urls.couponsRestoreBaseUrl.replace(/0$/, id), 'POST');
+                    showToast(result.message, 'success');
+                    loadCoupons();
+                } catch (error) {
+                    showToast(error.message, 'error');
+                }
+                return;
+            }
+            if (action === 'delete-coupon' || action === 'purge-coupon') {
+                const permanent = action === 'purge-coupon';
+                const url = permanent ? urls.couponsPurgeBaseUrl : urls.couponsDeleteBaseUrl;
                 const safeCode = sanitizeHTML(code);
-                const message = `${i18n.confirmDeleteCoupon || 'Tem certeza que deseja apagar o cupom'} <strong class="text-gray-900 dark:text-white">${safeCode}</strong>? ${i18n.actionCannotBeUndone || 'Ação irreversível.'}`;
-                
+                const title = permanent ? 'Excluir permanentemente' : 'Mover para a lixeira';
+                const message = permanent
+                    ? `Excluir <strong>${safeCode}</strong> definitivamente? Essa ação não pode ser desfeita.`
+                    : `Mover <strong>${safeCode}</strong> para a lixeira? Você poderá restaurar o cupom depois.`;
                 showConfirmationModal({
-                    title: 'Apagar Cupom', message: message, confirmText: i18n.confirmDeleteButton || 'Sim, Apagar', 
+                    title, message, confirmText: title,
                     confirmClass: 'bg-red-600 hover:bg-red-500 text-white',
                     onConfirm: async () => {
                         try {
-                            const result = await fetchAPI(urls.couponsDeleteBaseUrl.replace('0', id), 'POST');
+                            const result = await fetchAPI(url.replace(/0$/, id), 'POST');
                             showToast(result.message, result.success ? 'success' : 'error');
-                            if (result.success) loadCoupons();
+                            if (result.success) {
+                                if (String(editingCouponId) === id) setCouponEditor();
+                                loadCoupons();
+                            }
                         } catch (error) {
                             showToast(error.message, 'error');
                         }
@@ -525,10 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.createCouponForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const button = e.target.querySelector('button[type="submit"]');
-            const originalText = button.textContent;
-            
             button.disabled = true;
-            button.textContent = 'A Criar...';
 
             const payload = {
                 // 2. Garante que o valor enviado para a API está em maiúsculas (Caixa Alta)
@@ -541,17 +604,18 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             try {
-                const result = await fetchAPI(urls.couponsCreateUrl, 'POST', payload);
+                const url = editingCouponId ? urls.couponsEditBaseUrl.replace(/0$/, editingCouponId) : urls.couponsCreateUrl;
+                const result = await fetchAPI(url, 'POST', payload);
                 showToast(result.message, result.success ? 'success' : 'error');
                 if (result.success) {
-                    dom.createCouponForm.reset();
+                    setCouponEditor();
+                    couponView.value = 'current';
                     loadCoupons();
                 }
             } catch (error) {
                 showToast(error.message, 'error');
             } finally {
                 button.disabled = false;
-                button.textContent = originalText;
             }
         });
     }
