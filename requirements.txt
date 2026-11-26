@@ -32,7 +32,7 @@ gevent-websocket
 gunicorn>=25.1.0
 pydantic
 cachelib
-bleach==6.1.0
+bleach==6.4.0
 filelock
 Pillow
 pyTelegramBotAPI
