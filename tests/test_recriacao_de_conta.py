@@ -351,7 +351,7 @@ class TestAEntregaDasCredenciais:
 
         assert 'segredo-novo' in enviadas[0]
         assert 'ana' in enviadas[0]
-        assert 'https://media.exemplo.test' in enviadas[0]
+        assert 'https://media.exemplo.test' in enviadas[0].split()
 
     def test_sem_palavra_passe_nao_se_envia_nada(self, app_context, monkeypatch, config_file):
         # Só se manda a mensagem quando há mesmo uma credencial nova: uma

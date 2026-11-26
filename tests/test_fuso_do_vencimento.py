@@ -269,3 +269,44 @@ class TestPelaRotaReal:
         # O que o modal volta a mostrar a quem gravou: as 23:59 dele.
         mostrado = _o_que_o_navegador_mostra(perfil['expiration_date'], BRASIL)
         assert mostrado.strftime('%Y-%m-%dT%H:%M') == '2030-09-05T23:59'
+
+    def test_salvar_sem_mudar_preserva_o_vencimento_e_os_contatos(
+            self, app, client, db_session, config_file, monkeypatch):
+        from unittest.mock import Mock
+        from app.services import audit
+
+        config_file(IS_CONFIGURED=True, ADMIN_USER='dono', ADMIN_USER_ID=ADMIN,
+                    TELEGRAM_ENABLED=False, DISCORD_ENABLED=False,
+                    UNIVERSAL_EXPIRATION_ENABLED=False)
+        monkeypatch.setattr(extensions, 'media_server', ServidorFalso())
+        registo = Mock()
+        monkeypatch.setattr(audit, 'registar', registo)
+        self._autenticar(client)
+        original = '2030-12-15T23:59:00-03:00'
+        extensions.data_manager.set_user_profile(ALVO, {
+            'username': 'ana', 'expiration_date': original,
+            'expiration_job_id': 'sub_end_original', 'telegram_user': '12345',
+        })
+        rota = f'/api/users/profile/{ALVO}'
+        # Cliente antigo que envia inclusive campos ocultos e o mesmo instante em UTC.
+        resposta = client.post(rota, json={
+            'telegram_user': '', 'discord_user_id': '', 'name': '',
+            'expiration_datetime_local': '2030-12-16T02:59:00+00:00',
+        })
+        assert resposta.status_code == 200
+        registo.assert_not_called()
+
+        # Uma edição parcial não deve limpar o vencimento omitido.
+        assert client.post(rota, json={'name': 'Ana'}).status_code == 200
+        perfil = extensions.data_manager.get_user_profile(ALVO)
+        assert perfil['expiration_date'] == original
+        assert perfil['expiration_job_id'] == 'sub_end_original'
+        assert perfil['telegram_user'] == '12345'
+        assert perfil['discord_user_id'] is None
+        assert set(registo.call_args.kwargs['detalhes']['campos']) == {'name'}
+
+        # Remover explicitamente o vencimento também limpa a referência ao job.
+        assert client.post(rota, json={'expiration_datetime_local': None}).status_code == 200
+        perfil = extensions.data_manager.get_user_profile(ALVO)
+        assert perfil['expiration_date'] is None
+        assert perfil['expiration_job_id'] is None

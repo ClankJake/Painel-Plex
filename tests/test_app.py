@@ -104,6 +104,16 @@ class TestIdioma:
         with client.session_transaction() as sessao:
             assert sessao["language"] == "en"
 
+    def test_retorno_apos_troca_de_idioma(self, client, configurada):
+        interno = 'http://localhost/settings'
+        resposta = client.get('/language/pt_BR', headers={'Referer': interno})
+        assert resposta.location == interno
+        with client.session_transaction() as sessao:
+            assert sessao['language'] == 'pt_BR'
+
+        resposta = client.get('/language/en', headers={'Referer': 'https://example.org/'})
+        assert resposta.location == '/'
+
     def test_idioma_desconhecido_e_ignorado(self, client, configurada):
         client.get("/language/klingon")
 

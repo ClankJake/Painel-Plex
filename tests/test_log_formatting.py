@@ -92,6 +92,10 @@ class TestSummarizeException:
         )
         assert "não foi possível abrir a ligação" in summarize_exception(exc)
 
+    def test_reconhece_o_tipo_mesmo_com_a_mensagem_truncada(self):
+        exc = ConnectionError("Caused by ReadTimeoutError(")
+        assert summarize_exception(exc) == "tempo esgotado à espera da resposta"
+
     def test_usa_o_tipo_da_causa_quando_nao_ha_padrao_conhecido(self):
         causa = requests.exceptions.ConnectTimeout("tempo esgotado")
         try:

@@ -436,26 +436,42 @@ def user_profile_route(media_user_id):
             }
         })
 
-    # Tratamento de POST (Atualização de Perfil)
-    try: 
-        validated_data = UpdateProfileSchema(**request.json)
-    except ValidationError as e: 
+    config = load_or_create_config()
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify(success=False, message=_("Dados inválidos.")), 400
+    payload = dict(payload)
+    for campo, habilitado in {
+        'telegram_user': config.get('TELEGRAM_ENABLED'),
+        'discord_user_id': config.get('DISCORD_ENABLED'),
+        'phone_number': config.get('WHATSAPP_ENABLED') or config.get('WEBHOOK_ENABLED'),
+    }.items():
+        if not habilitado:
+            payload.pop(campo, None)
+    try:
+        validated_data = UpdateProfileSchema(**payload)
+    except ValidationError as e:
         return jsonify({"success": False, "message": _("Dados inválidos."), "errors": {err['loc'][0]: err['msg'] for err in e.errors()}}), 400
 
-    # Compatibilidade Pydantic v1 / v2
-    data = validated_data.dict(exclude_unset=True) if hasattr(validated_data, 'dict') else validated_data.model_dump(exclude_unset=True)
+    data = validated_data.model_dump(exclude_unset=True) if hasattr(validated_data, 'model_dump') else validated_data.dict(exclude_unset=True)
     local_datetime_str = data.pop('expiration_datetime_local', None)
-    
-    profile_to_update = extensions.data_manager.get_user_profile(media_user_id)
-    # Uma CÓPIA, porque `profile_to_update` é mutado logo a seguir: sem ela, a
-    # auditoria comparava o dicionário com ele próprio e nunca via mudança
-    # nenhuma — uma trilha que diz sempre "nada mudou" é pior do que não haver.
-    perfil_antes = dict(profile_to_update or {})
-    profile_to_update.update(data)
+    perfil_antes = extensions.data_manager.get_user_profile(media_user_id) or {}
+    profile_to_update = dict(perfil_antes)
+    for campo, valor in data.items():
+        if (valor or '') != (perfil_antes.get(campo) or ''):
+            profile_to_update[campo] = valor
 
-    _update_manual_expiration_job(media_user_id, username, profile_to_update, local_datetime_str)
-    extensions.data_manager.set_user_profile(media_user_id, profile_to_update)
-    _enforce_user_status_by_date(media_user_id, username, profile_to_update)
+    if 'expiration_datetime_local' in payload:
+        _update_manual_expiration_job(media_user_id, username, profile_to_update, local_datetime_str)
+
+    alteracoes = {k: v for k, v in profile_to_update.items() if v != perfil_antes.get(k)}
+    if not alteracoes:
+        return jsonify(success=True, message=_("Nenhuma alteração no perfil."))
+    if not perfil_antes:
+        alteracoes['username'] = username
+    extensions.data_manager.set_user_profile(media_user_id, alteracoes)
+    if 'expiration_date' in alteracoes:
+        _enforce_user_status_by_date(media_user_id, username, profile_to_update)
 
     logger.info(f"Admin '{current_user.username}' atualizou o perfil de '{username}'.")
     audit.registar('utilizador.editar_perfil', alvo_tipo='utilizador', alvo_id=media_user_id,
@@ -1069,6 +1085,15 @@ def _update_manual_expiration_job(media_user_id, username, profile_to_update, lo
     from ...scheduler import end_subscription_job
 
     if local_datetime_str:
+        escolhido = _momento_do_vencimento(local_datetime_str, load_or_create_config())
+        instante_utc = escolhido.astimezone(timezone.utc)
+        anterior = profile_to_update.get('expiration_date')
+        if anterior:
+            try:
+                if _momento_do_vencimento(anterior, {}).astimezone(timezone.utc) == instante_utc:
+                    return
+            except (ValueError, TypeError):
+                pass  # Uma data antiga inválida pode ser corrigida pelo administrador.
         if profile_to_update.get('trial_end_date'):
             profile_to_update['trial_end_date'] = None
         if profile_to_update.get('trial_job_id'):
@@ -1078,14 +1103,13 @@ def _update_manual_expiration_job(media_user_id, username, profile_to_update, lo
 
     if not local_datetime_str:
         profile_to_update['expiration_date'] = None
-        if old_job_id := profile_to_update.pop('expiration_job_id', None):
+        if old_job_id := profile_to_update.get('expiration_job_id'):
             try: scheduler.remove_job(old_job_id)
             except JobLookupError: pass
+        profile_to_update['expiration_job_id'] = None
     else:
-        escolhido = _momento_do_vencimento(local_datetime_str, load_or_create_config())
-        instante_utc = escolhido.astimezone(timezone.utc)
 
-        if old_job_id := profile_to_update.pop('expiration_job_id', None):
+        if old_job_id := profile_to_update.get('expiration_job_id'):
             try: scheduler.remove_job(old_job_id)
             except JobLookupError: pass
 

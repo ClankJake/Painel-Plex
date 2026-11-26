@@ -521,7 +521,18 @@ export function initializeEventListeners() {
     }
     
     if (dom.reauthPlexButton) dom.reauthPlexButton.onclick = handlePlexAuth;
-    if (dom.languageSelector) dom.languageSelector.addEventListener('change', (e) => window.location.href = `/language/${e.target.value}`);
+    if (dom.languageSelector) {
+        dom.languageSelector.addEventListener('change', () => {
+            switch (dom.languageSelector.value) {
+                case 'pt_BR':
+                    window.location.assign('/language/pt_BR');
+                    break;
+                case 'en':
+                    window.location.assign('/language/en');
+                    break;
+            }
+        });
+    }
     if (dom.toggleLogsButton) dom.toggleLogsButton.addEventListener('click', () => ui.toggleLogUpdates());
     if (dom.clearLogsButton) dom.clearLogsButton.addEventListener('click', ui.clearLogs);
     if (dom.efiUseMtlsCheckbox) dom.efiUseMtlsCheckbox.addEventListener('change', ui.toggleHmacSection);

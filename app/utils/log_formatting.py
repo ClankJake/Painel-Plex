@@ -54,7 +54,7 @@ NETWORK_ERRORS = _REQUESTS_ERRORS + _URLLIB3_ERRORS + (
 # Padrões usados para extrair o essencial das mensagens verbosas da urllib3.
 _HOST_PORT_RE = re.compile(r"host='([^']+)',\s*port=(\d+)")
 _URL_RE = re.compile(r"url:\s*(\S+)")
-_CAUSED_BY_RE = re.compile(r"Caused by\s+(\w+)\(([^)]*)\)")
+_CAUSED_BY_RE = re.compile(r"Caused by\s+(\w+)\(")
 _STATUS_RE = re.compile(r"too many (\d{3}) error responses")
 _TOKEN_RE = re.compile(r"([?&](?:X-Plex-Token|token|api_key|apikey)=)[^&\s\"']+", re.IGNORECASE)
 

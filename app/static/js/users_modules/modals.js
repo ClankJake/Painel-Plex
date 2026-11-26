@@ -726,14 +726,21 @@ export async function showUserProfileModal(user) {
                 ? comDeslocamentoLocal(`${dateValue}T${timeValue}`)
                 : null;
             
-            const profileData = {
-                name: modal.querySelector('#profileName').value.trim(),
-                telegram_user: modal.querySelector('#profileTelegram').value.trim(),
-                discord_user_id: modal.querySelector('#profileDiscord').value.trim(),
-                phone_number: modal.querySelector('#profilePhone').value.trim(),
-                expiration_datetime_local: localDateTimeString
-            };
-            
+            const profileData = {};
+            const fields = [
+                ['name', '#profileName', true],
+                ['telegram_user', '#profileTelegram', notificationSettings.telegram_enabled],
+                ['discord_user_id', '#profileDiscord', notificationSettings.discord_enabled],
+                ['phone_number', '#profilePhone', notificationSettings.webhook_enabled || notificationSettings.whatsapp_enabled]
+            ];
+            for (const [key, selector, enabled] of fields) {
+                const value = modal.querySelector(selector).value.trim();
+                if (enabled && value !== String(profile[key] || '').trim()) profileData[key] = value;
+            }
+            if (dateValue !== expirationDateValue || (dateValue && timeValue !== expirationTimeValue)) {
+                profileData.expiration_datetime_local = localDateTimeString;
+            }
+
             try {
                 const result = await api.updateUserProfile(user.id, profileData);
                 showToast(result.message, result.success ? 'success' : 'error');

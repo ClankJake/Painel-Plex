@@ -587,7 +587,10 @@ def create_app() -> Flask:
     def set_language(lang=None):
         if lang in app.config['LANGUAGES'].keys():
             session['language'] = lang
-        return redirect(request.referrer or url_for('main.index'))
+        origem = request.referrer
+        if origem and origem.startswith(request.host_url):
+            return redirect(origem)
+        return redirect(url_for('main.index'))
 
     @app.route('/manifest.json')
     def serve_manifest():
