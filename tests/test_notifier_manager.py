@@ -150,6 +150,44 @@ class TestResolveSeerrTemplateKey:
                 assert DEFAULT_TEMPLATES.get(resolve_seerr_template_key(canal, evento))
 
 
+@pytest.mark.parametrize("com_resposta", [True, False])
+def test_falha_whatsapp_preserva_diagnostico_sem_expor_dados(
+        notifier, monkeypatch, caplog, com_resposta):
+    import requests
+
+    telefone = "5511988887777"
+    mensagem = "conteudo-privado-de-teste"
+    chave = "credencial-de-teste"
+    config = {
+        "WHATSAPP_INSTANCE": "teste",
+        "WHATSAPP_API_URL": "https://exemplo.test",
+        "WHATSAPP_API_KEY": chave,
+    }
+    tentativas = []
+
+    def falhar(url, **kwargs):
+        tentativas.append(url)
+        if com_resposta:
+            resposta = requests.Response()
+            resposta.status_code = 403
+            resposta._content = f"{telefone} {mensagem} {chave}".encode()
+            raise requests.HTTPError(f"URL privada: {chave}", response=resposta)
+        raise requests.ConnectionError(f"URL privada: {chave}")
+
+    monkeypatch.setattr(notifier._http, "post", falhar)
+    with pytest.raises(notifier_module.NotificationError) as erro:
+        notifier._send_whatsapp_notification(telefone, mensagem, "teste-id", config,
+                                             image_url="https://exemplo.test/capa")
+    assert len(tentativas) == 2
+    assert "teste-id" in caplog.text
+    diagnostico = "HTTP 403" if com_resposta else "Sem resposta do servidor"
+    assert diagnostico in caplog.text and diagnostico in str(erro.value)
+    assert erro.value.__context__ is None
+    for privado in (telefone, mensagem, chave):
+        assert privado not in caplog.text
+        assert privado not in str(erro.value)
+
+
 class TestBuildWhatsappRequest:
     def _config(self, **extra):
         config = {

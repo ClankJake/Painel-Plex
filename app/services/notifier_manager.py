@@ -19,7 +19,7 @@ from urllib3.util.retry import Retry
 from flask_babel import gettext as _
 
 from ..config import load_or_create_config
-from ..utils.log_sanitizer import mask_phone, mask_url_credentials
+from ..utils.log_sanitizer import mask_url_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -658,7 +658,7 @@ class NotifierManager:
         """
         normalized = self.normalize_phone(phone, config)
         if not normalized:
-            logger.warning(f"[ID: {request_id}] Número de WhatsApp inválido, envio ignorado: {mask_phone(phone)}")
+            logger.warning("[ID: %s] Número de WhatsApp inválido, envio ignorado.", request_id)
             raise NotificationError(_("Número de WhatsApp inválido."))
 
         if image_url:
@@ -666,13 +666,10 @@ class NotifierManager:
                 url, headers, payload = self._build_whatsapp_media_request(config, normalized, message, image_url)
                 response = self._http.post(url, json=payload, headers=headers, timeout=HTTP_TIMEOUT)
                 response.raise_for_status()
-                logger.info(f"[ID: {request_id}] Mensagem de WhatsApp COM IMAGEM enviada para {mask_phone(normalized)}.")
+                logger.info("[ID: %s] Mensagem de WhatsApp com imagem enviada.", request_id)
                 return
-            except Exception as e:
-                logger.warning(
-                    f"[ID: {request_id}] Falha ao enviar imagem por WhatsApp ({e}). "
-                    f"A reenviar apenas como texto."
-                )
+            except Exception:
+                logger.warning("[ID: %s] Falha ao enviar imagem por WhatsApp. Reenviando como texto.", request_id)
                 # segue para o envio de texto abaixo
 
         url, headers, payload = self._build_whatsapp_request(config, normalized, message)
@@ -680,24 +677,18 @@ class NotifierManager:
         try:
             response = self._http.post(url, json=payload, headers=headers, timeout=HTTP_TIMEOUT)
             response.raise_for_status()
-            logger.info(f"[ID: {request_id}] Mensagem de WhatsApp enviada para {mask_phone(normalized)}.")
         except requests.exceptions.RequestException as e:
-            # Mesmo cuidado do webhook genérico: 'bool(response)' é False em
-            # qualquer erro HTTP, por isso comparamos explicitamente com None para
-            # não perder o corpo da resposta — que é onde estas APIs explicam o
-            # motivo real da falha (sessão desligada, número inexistente, etc.).
-            if hasattr(e, 'response') and e.response is not None:
-                body = e.response.text.strip() if e.response.text else "(corpo vazio)"
-                # 🔒 O corpo de erro destas APIs costuma ECOAR o número enviado
-                # (ex: {"error":"5521985852539 is not on WhatsApp"}). Sem esta
-                # substituição, o número completo voltaria a aparecer no log mesmo
-                # com o mascaramento aplicado no resto da linha.
-                body = body.replace(normalized, mask_phone(normalized))
-                detail = f"HTTP {e.response.status_code} - {body[:300]}"
+            # O provedor pode ecoar o destinatário, a mensagem e credenciais.
+            if e.response is not None:
+                detail = f"HTTP {e.response.status_code}"
             else:
                 detail = "Sem resposta do servidor (falha de conexão/timeout)"
-            logger.error(f"[ID: {request_id}] Falha no envio de WhatsApp para {mask_phone(normalized)}: {detail}")
-            raise NotificationError(f"WhatsApp: {detail}")
+        else:
+            logger.info("[ID: %s] Mensagem de WhatsApp enviada.", request_id)
+            return
+
+        logger.error("[ID: %s] Falha no envio de WhatsApp: %s", request_id, detail)
+        raise NotificationError(f"WhatsApp: {detail}")
 
     def test_whatsapp_connection(self, phone=None):
         """
