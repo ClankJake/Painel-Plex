@@ -264,13 +264,15 @@ class DataManager:
 
     @db_transaction
     def purge_coupon(self, coupon_id):
-        pagamento = db.session.query(PixPayment.txid).filter(
-            func.upper(PixPayment.coupon_code) == func.upper(Coupon.code)
-        ).correlate(Coupon).exists()
-        return Coupon.query.filter(
-            Coupon.id == coupon_id, Coupon.deleted_at.is_not(None),
-            Coupon.use_count == 0, ~Coupon.usages.any(), ~pagamento
-        ).delete(synchronize_session=False) == 1
+        apagado = Coupon.query.filter(Coupon.id == coupon_id, Coupon.deleted_at.is_not(None))
+        codigo = apagado.with_entities(Coupon.code).scalar_subquery()
+        # O primeiro UPDATE adquire a escrita no SQLite. A desvinculação e a
+        # exclusão só são confirmadas juntas, mesmo quando há uma restauração concorrente.
+        CouponUsage.query.filter(
+            CouponUsage.coupon_id == coupon_id, codigo.is_not(None)
+        ).update({CouponUsage.archived_coupon_code: codigo, CouponUsage.coupon_id: None},
+                 synchronize_session=False)
+        return apagado.delete(synchronize_session=False) == 1
 
     @db_transaction
     def toggle_coupon_active(self, coupon_id):
@@ -303,11 +305,7 @@ class DataManager:
             logger.warning(f"Tentativa de registar o uso de um cupão inválido ('{code}') ou para um utilizador inválido.")
             return False
 
-        ja_registado = db.session.query(CouponUsage.id).filter(
-            CouponUsage.coupon_id == coupon.id,
-            CouponUsage.media_user_id == media_user_id
-        ).first()
-        if ja_registado:
+        if self.has_user_used_coupon(media_user_id, normalizado):
             logger.info(
                 f"Uso do cupão '{coupon.code}' pelo utilizador ID {media_user_id} já estava registado. "
                 "Nada a fazer (registo idempotente)."
@@ -325,8 +323,9 @@ class DataManager:
         normalizado = normalize_coupon_code(code)
         if not normalizado:
             return False
-        usage_exists = db.session.query(CouponUsage.id).join(Coupon).filter(
-            func.upper(Coupon.code) == normalizado,
+        usage_exists = db.session.query(CouponUsage.id).outerjoin(Coupon).filter(
+            (func.upper(Coupon.code) == normalizado) |
+            (func.upper(CouponUsage.archived_coupon_code) == normalizado),
             CouponUsage.media_user_id == media_user_id
         ).first()
         return usage_exists is not None

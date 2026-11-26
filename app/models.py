@@ -159,7 +159,8 @@ class CouponUsage(db.Model):
         db.ForeignKey('user_profiles.media_user_id', ondelete='CASCADE', onupdate='CASCADE'),
         nullable=False, index=True,
     )
-    coupon_id = db.Column(db.Integer, db.ForeignKey('coupons.id'), nullable=False)
+    coupon_id = db.Column(db.Integer, db.ForeignKey('coupons.id'), nullable=True)
+    archived_coupon_code = db.Column(db.String, nullable=True)
     used_at = db.Column(db.DateTime, default=agora_utc)
     __table_args__ = (db.UniqueConstraint('media_user_id', 'coupon_id', name='_user_coupon_uc'),)
 

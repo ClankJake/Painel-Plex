@@ -69,7 +69,6 @@ class TestCriacaoPelaAPI:
         assert admin.post(f"/api/coupons/delete/{cupao_id}").status_code == 200
         assert data_manager.get_coupon_by_code("DIASOFF") is None
 
-        assert admin.post(f"/api/coupons/purge/{cupao_id}").status_code == 409
         resposta = _criar(admin, code=" diasoff ", discount_type="fixed", value=20, max_uses=30)
 
         assert resposta.status_code == 200
@@ -111,14 +110,25 @@ class TestCriacaoPelaAPI:
         assert admin.post(f"{base}/purge/{ident}").status_code == 200
         assert admin.get(f"{base}/list?apagados=1").get_json()["coupons"] == []
 
-    def test_exclusao_permanente_preserva_pagamento(self, admin, db_session):
-        from app.models import PixPayment
+    def test_exclusao_permanente_preserva_pagamento_e_resgate(self, admin, db_session, data_manager):
+        from app.models import Coupon, CouponUsage, PixPayment, UserProfile
         ident = _criar(admin).get_json()["coupon"]["id"]
+        db_session.add(UserProfile(media_user_id=1, username="ana"))
+        db_session.commit()
+        assert data_manager.record_coupon_usage("PROMO", 1)
         db_session.add(PixPayment(txid="vinculado", media_user_id=1, username="ana", value=10,
                                   provider="EFI", status="ATIVA", created_at="2026-10-15", coupon_code="promo"))
         db_session.commit()
         assert admin.post(f"/api/coupons/delete/{ident}").status_code == 200
-        assert admin.post(f"/api/coupons/purge/{ident}").status_code == 409
+        assert admin.post(f"/api/coupons/purge/{ident}").status_code == 200
+        assert db_session.get(Coupon, ident) is None
+        assert db_session.get(PixPayment, "vinculado").coupon_code == "promo"
+        uso = CouponUsage.query.one()
+        assert uso.coupon_id is None
+        assert uso.archived_coupon_code == "PROMO"
+        assert _criar(admin).status_code == 200
+        assert data_manager.has_user_used_coupon(1, "promo")
+        assert not data_manager.record_coupon_usage("PROMO", 1)
 
     @pytest.mark.parametrize("campos", [
         {"value": -50},                       # aumentava o preço a pagar

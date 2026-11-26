@@ -291,7 +291,10 @@
                             <span id="couponSubmitLabel">{{ _('Gerar Cupom') }}</span>
                         </button>
                     </div>
-                    <button id="cancelCouponEdit" type="button" hidden>{{ _('Cancelar edição') }}</button>
+                    <button id="cancelCouponEdit" type="button" hidden class="btn min-h-11 sm:min-h-9 gap-2 rounded-xl px-3 py-2 text-sm shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 [&[hidden]]:hidden w-full border-gray-300 bg-gray-50 text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 focus-visible:outline-gray-500">
+                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                        {{ _('Cancelar edição') }}
+                    </button>
                 </form>
             </div>
             

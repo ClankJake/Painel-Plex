@@ -142,6 +142,6 @@ def restore_coupon(coupon_id):
 @admin_required
 def purge_coupon(coupon_id):
     if not data_manager.purge_coupon(coupon_id):
-        return jsonify(success=False, message=_("Só é possível excluir permanentemente cupons na lixeira sem resgates ou pagamentos vinculados.")), 409
+        return jsonify(success=False, message=_("O cupom precisa estar na lixeira para ser excluído permanentemente.")), 409
     audit.registar('cupao.excluir', alvo_tipo='cupao', alvo_id=coupon_id)
     return jsonify(success=True, message=_("Cupom excluído permanentemente."))

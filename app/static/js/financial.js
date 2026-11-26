@@ -478,12 +478,21 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <td class="px-5 py-3 whitespace-nowrap text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-transparent">${discountDisplay}</td>
                                 <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${c.use_count} / ${c.max_uses > 0 ? c.max_uses : '∞'}</td>
                                 <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">${expireDate}</td>
-                                <td class="px-5 py-3 whitespace-nowrap text-sm flex items-center justify-end gap-3">
+                                <td class="px-5 py-3 whitespace-nowrap text-sm flex items-center justify-end gap-2 ${c.deleted_at ? 'flex-col items-stretch sm:flex-row' : ''}">
                                     ${c.deleted_at ? `
-                                      <button data-action="restore-coupon" data-id="${c.id}">Restaurar e ativar</button>
-                                      <button data-action="purge-coupon" data-id="${c.id}" data-code="${safeCode}" class="text-red-600">Excluir permanentemente</button>
+                                      <button type="button" data-action="restore-coupon" data-id="${c.id}" class="btn min-h-11 sm:min-h-9 gap-2 rounded-xl px-3 py-2 text-sm shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 dark:hover:bg-emerald-900 focus-visible:outline-emerald-500">
+                                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"><path d="M3 4v6h6M3.5 10a8.5 8.5 0 1 1 .8 6"/></svg>
+                                        Restaurar e ativar
+                                    </button>
+                                      <button type="button" data-action="purge-coupon" data-id="${c.id}" data-code="${safeCode}" class="btn min-h-11 sm:min-h-9 gap-2 rounded-xl px-3 py-2 text-sm shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 border-red-200 bg-red-50 text-red-800 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900 focus-visible:outline-red-500">
+                                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"><path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/></svg>
+                                        Excluir permanentemente
+                                    </button>
                                     ` : `
-                                    <button data-action="edit-coupon" data-id="${c.id}">Editar</button>
+                                    <button type="button" data-action="edit-coupon" data-id="${c.id}" class="btn min-h-11 sm:min-h-9 gap-2 rounded-xl px-3 py-2 text-sm shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 dark:hover:bg-amber-900 focus-visible:outline-amber-500">
+                                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"><path d="M15 5l4 4M4 20l4-1 12-12a2.8 2.8 0 0 0-4-4L4 15z"/></svg>
+                                        Editar
+                                    </button>
                                     <label class="relative inline-flex items-center cursor-pointer" title="Ativar/Desativar">
                                       <input type="checkbox" data-action="toggle-coupon" data-id="${c.id}" class="sr-only peer" ${c.is_active ? 'checked' : ''}>
                                       <div class="w-9 h-5 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-500 shadow-inner"></div>
