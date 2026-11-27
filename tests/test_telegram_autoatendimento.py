@@ -160,3 +160,24 @@ def test_bibliotecas_para_o_teste(client, config_bot, monkeypatch):
     monkeypatch.setattr('app.blueprints.api.invites.media_server.get_libraries',
                         lambda: [{'title': 'Filmes'}, {'title': 'Séries'}])
     assert client.get('/api/invites/libraries').json['libraries'] == ['Filmes', 'Séries']
+
+
+def test_exclusao_permanente_libera_um_novo_convite(enviar, client, db_session, monkeypatch):
+    from app.extensions import data_manager
+
+    monkeypatch.setattr('app.extensions.media_server.get_libraries', lambda: [{'title': 'Filmes'}])
+    primeiro = url(enviar('Confirmar teste')).rsplit('/', 1)[-1]
+    data_manager.reserve_invitation_use(primeiro, 'assinante', '22')
+    perfil = UserProfile(media_user_id='22', username='assinante', telegram_user='44', status='inactive')
+    db_session.add(perfil)
+    db_session.commit()
+    assert 'já utilizou' in enviar('Confirmar teste').json['text']
+
+    entrar(client, '1', 'admin')
+    assert client.post('/api/users/delete-permanently', json={'media_user_id': '22'}).json['success']
+    segundo = url(enviar('Confirmar teste')).rsplit('/', 1)[-1]
+    assert segundo != primeiro
+    assert url(enviar('Confirmar teste')).endswith('/' + segundo)
+    assert data_manager.get_invitation(primeiro)['use_count'] == 1
+    data_manager.reserve_invitation_use(segundo, 'assinante', '22')
+    assert 'já utilizou' in enviar('Confirmar teste').json['text']

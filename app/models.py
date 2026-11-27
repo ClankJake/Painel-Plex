@@ -669,3 +669,11 @@ class TelegramVinculo(db.Model):
     chat_id = db.Column(db.String, unique=True)
     desafio = db.Column(db.String, unique=True)
     validade = db.Column(db.DateTime)
+
+
+class ExclusaoDePerfil(db.Model):
+    """Última exclusão permanente, inclusive depois de uma nova inscrição."""
+    __tablename__ = 'exclusoes_de_perfil'
+    media_user_id = db.Column(UserId(), primary_key=True)
+    username = db.Column(db.String, index=True)
+    excluido_em = db.Column(db.DateTime, nullable=False)

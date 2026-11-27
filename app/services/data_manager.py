@@ -14,7 +14,7 @@ from ..extensions import db
 from ..models import (
     Invitation, BlockedUser, UserProfile, PixPayment, Notification, PasswordReset,
     UnlockedAchievement, ShortLink, Coupon, CouponUsage, Task, StreamTerminationLog,
-    PushSubscription
+    PushSubscription, ExclusaoDePerfil, agora_utc
 )
 from sqlalchemy import func, String
 from sqlalchemy.exc import IntegrityError
@@ -1215,6 +1215,8 @@ class DataManager:
     def delete_user_profile(self, media_user_id):
         profile = UserProfile.query.get(media_user_id)
         if profile:
+            db.session.merge(ExclusaoDePerfil(media_user_id=profile.media_user_id,
+                                              username=profile.username, excluido_em=agora_utc()))
             db.session.delete(profile)
             return True
         return False

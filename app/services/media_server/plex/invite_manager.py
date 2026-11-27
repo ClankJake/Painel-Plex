@@ -12,7 +12,9 @@ from plexapi.exceptions import BadRequest, NotFound
 from flask_babel import gettext as _
 from flask import url_for
 from ....utils.log_sanitizer import mask_email, mask_code
-from ..invitations import CREDENCIAIS, PEDIDO_INVALIDO, InvitationLifecycle, recusa
+from ....models import ExclusaoDePerfil
+from ....extensions import db
+from ..invitations import teste_anterior_a_exclusao, CREDENCIAIS, PEDIDO_INVALIDO, InvitationLifecycle, recusa
 
 logger = logging.getLogger(__name__)
 
@@ -232,8 +234,11 @@ class PlexInviteManager(InvitationLifecycle):
 
             id_procurado = str(media_user_id) if media_user_id is not None else None
 
+            exclusao = db.session.get(ExclusaoDePerfil, id_procurado) if id_procurado else None
             for past_invite in invites_list:
                 if past_invite.get("trial_duration_minutes", 0) <= 0:
+                    continue
+                if teste_anterior_a_exclusao(past_invite.get('claimed_at'), exclusao):
                     continue
                 if id_procurado and id_procurado in (past_invite.get('claimed_by_ids') or []):
                     return True

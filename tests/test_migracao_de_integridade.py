@@ -88,6 +88,13 @@ crua.close()
 
 with app.app_context():
     try:
+        upgrade(revision='dcd27a43e891')
+        db.session.execute(text('''
+            INSERT INTO audit_logs (acao, alvo_tipo, alvo_id, timestamp, detalhes)
+            VALUES ('utilizador.apagar_permanentemente', 'utilizador', '999', '2026-09-01',
+                    '{"perfil":{"username":"fantasma"}}')
+        '''))
+        db.session.commit()
         upgrade()
         erro = None
     except Exception as e:
@@ -99,6 +106,7 @@ with app.app_context():
     print('RESULTADO:' + json.dumps({
         'erro': erro,
         'versao': uma('SELECT version_num FROM alembic_version'),
+        'exclusao_anterior': uma("SELECT username FROM exclusoes_de_perfil WHERE media_user_id='999'"),
         'bloqueio_orfao': uma("SELECT COUNT(*) FROM blocked_users WHERE media_user_id='999'"),
         'notificacao_orfa': uma("SELECT COUNT(*) FROM notifications WHERE media_user_id='999'"),
         'pagamento_orfao': uma("SELECT COUNT(*) FROM pix_payments WHERE txid='t-orfao'"),
@@ -138,7 +146,8 @@ def test_as_migracoes_correm_ate_ao_fim(resultado):
     assert resultado['erro'] is None, resultado['erro']
     # A revisão de topo. Muda sempre que entra uma migração nova — e é isso
     # que garante que a nova também correu até ao fim, e não só as anteriores.
-    assert resultado['versao'] == 'dcd27a43e891'
+    assert resultado['versao'] == 'e8d5ac91f230'
+    assert resultado['exclusao_anterior'] == 'fantasma'
 
 
 def test_nao_fica_nenhuma_violacao_de_integridade(resultado):

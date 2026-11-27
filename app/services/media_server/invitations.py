@@ -142,6 +142,18 @@ def normalizar_contacto(valor):
     return str(valor).strip() or None
 
 
+def teste_anterior_a_exclusao(resgate, exclusao):
+    if not resgate or not exclusao:
+        return False
+    try:
+        data = datetime.fromisoformat(resgate)
+    except (TypeError, ValueError):
+        return False
+    if data.tzinfo:
+        data = data.astimezone(timezone.utc).replace(tzinfo=None)
+    return data <= exclusao.excluido_em
+
+
 def convite_expirado(expires_at, code=''):
     """Já passou da validade? Uma data ilegível conta como expirada.
 

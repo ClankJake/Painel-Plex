@@ -351,6 +351,17 @@ class TestAbusoDeTestesPorIdDoPlex:
 
         assert outro["success"] is True
 
+    def test_resgate_depois_de_exclusao_permanente(self, app_context, data_manager):
+        gestor = self._gestor_trial(data_manager)
+        conta = _ContaPlex(77, "ana", "ana@exemplo.pt")
+        for code in ("ANTIGO", "NOVO", "OUTRO"):
+            data_manager.add_invitation(code, detalhes(trial_duration_minutes=60))
+        assert gestor.claim_invitation("ANTIGO", conta)["success"]
+        data_manager.set_user_profile("77", {"username": "ana", "status": "inactive"})
+        assert data_manager.delete_user_profile("77")
+        assert gestor.claim_invitation("NOVO", conta)["success"]
+        assert not gestor.claim_invitation("OUTRO", conta)["success"]
+
     def test_historico_antigo_sem_ids_continua_a_bloquear(self, app_context, data_manager):
         """
         Convites resgatados antes desta alteração não têm IDs guardados.

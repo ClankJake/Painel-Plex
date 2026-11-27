@@ -1,5 +1,6 @@
 """Menu privado do bot de autoatendimento."""
 import hashlib
+import json
 import hmac
 import re
 from datetime import datetime, timezone
@@ -11,8 +12,8 @@ from flask import current_app, url_for
 from sqlalchemy.exc import IntegrityError
 
 from .. import extensions
-from ..models import Invitation, TelegramVinculo, UserProfile, agora_utc
-from .media_server.invitations import convite_expirado
+from ..models import ExclusaoDePerfil, Invitation, TelegramVinculo, UserProfile, agora_utc
+from .media_server.invitations import convite_expirado, teste_anterior_a_exclusao
 from ..utils.periodo_de_teste import estado_do_teste, fim_do_teste
 
 ACOES = {'Solicitar teste': '/teste', 'Renovar acesso': '/renovar',
@@ -68,6 +69,28 @@ def link(label, url):
     return {'inline_keyboard': [[{'text': label, 'url': url}]]}
 
 
+def _resgate_liberado(convite):
+    # Usar o ID do resgate evita liberar um teste só porque a pessoa editou
+    # o contato no perfil. Convites antigos podem conter apenas o username.
+    try:
+        identidades = json.loads(convite.claimed_by_ids or '[]')
+        coluna = ExclusaoDePerfil.media_user_id
+        if not identidades:
+            identidades = json.loads(convite.claimed_by_users or '[]')
+            coluna = ExclusaoDePerfil.username
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(identidades, list):
+        return False
+    pessoas = {str(valor) for valor in identidades if valor}
+    if len(pessoas) < convite.use_count:
+        return False
+    exclusoes = ExclusaoDePerfil.query.filter(coluna.in_(pessoas)).all()
+    liberados = {getattr(e, coluna.key) for e in exclusoes
+                 if teste_anterior_a_exclusao(convite.claimed_at, e)}
+    return pessoas.issubset(liberados)
+
+
 def teste(config, chat, confirmar):
     if not config.get('AUTO_BOT_TRIAL'):
         return 'Os testes estão fechados no momento.', BOTOES
@@ -77,14 +100,15 @@ def teste(config, chat, confirmar):
                 f"Resgate em até {config['AUTO_BOT_VALIDITY']} min.",
                 {'keyboard': [['Confirmar teste'], ['Voltar']], 'resize_keyboard': True})
     historico = Invitation.query.filter_by(telegram_id=chat).order_by(Invitation.created_at.desc())
-    if historico.filter(Invitation.use_count > 0, Invitation.trial_duration_minutes > 0).first():
+    usados = historico.filter(Invitation.use_count > 0, Invitation.trial_duration_minutes > 0)
+    if any(not _resgate_liberado(convite) for convite in usados):
         return 'Este Telegram já utilizou um teste.', BOTOES
     if TelegramVinculo.query.filter_by(chat_id=chat).first() or extensions.data_manager.get_user_profile_by_telegram(chat):
         return 'Você já tem uma conta. Use Minha conta ou Renovar acesso.', BOTOES
     anterior = historico.filter_by(note='Autoatendimento no Telegram').first()
-    if anterior and anterior.deleted_at:
+    if anterior and not anterior.use_count and anterior.deleted_at:
         return 'Seu convite foi revogado. Entre em contato com o suporte.', BOTOES
-    if anterior and not convite_expirado(anterior.expires_at):
+    if anterior and not anterior.use_count and not convite_expirado(anterior.expires_at):
         code = anterior.code
     else:
         # Duas entregas simultâneas da confirmação disputam a mesma chave primária.
