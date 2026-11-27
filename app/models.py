@@ -660,3 +660,12 @@ class StreamTerminationLog(db.Model):
         db.Index('ix_stream_termination_logs_deleted_at', deleted_at,
                  sqlite_where=db.text('deleted_at IS NOT NULL')),
     )
+
+
+class TelegramVinculo(db.Model):
+    __tablename__ = 'telegram_vinculos'
+    media_user_id = db.Column(UserId(), db.ForeignKey('user_profiles.media_user_id',
+                              ondelete='CASCADE', onupdate='CASCADE'), primary_key=True)
+    chat_id = db.Column(db.String, unique=True)
+    desafio = db.Column(db.String, unique=True)
+    validade = db.Column(db.DateTime)

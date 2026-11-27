@@ -612,6 +612,8 @@ def create_app() -> Flask:
     from .blueprints.api.notifications import notifications_api_bp
     from .blueprints.api.coupons import coupons_api_bp
 
+    from .blueprints.telegram import telegram_bp
+    app.register_blueprint(telegram_bp, url_prefix='/api/telegram')
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(redirect_bp)

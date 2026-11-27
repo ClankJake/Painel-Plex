@@ -1,0 +1,25 @@
+<details class="p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+    <summary class="cursor-pointer font-semibold">{{ _('Autoatendimento no Telegram') }}</summary>
+    <div class="grid gap-4 mt-4">
+        <label><input type="checkbox" id="AUTO_BOT_ENABLED"> {{ _('Ativar o menu de autoatendimento') }}</label>
+        <label for="AUTO_BOT_TOKEN">{{ _('Token do bot exclusivo de autoatendimento') }}
+            <input class="block w-full rounded-lg dark:bg-gray-900" id="AUTO_BOT_TOKEN" type="password" autocomplete="new-password">
+        </label>
+        <label for="AUTO_BOT_SUPPORT">{{ _('Contato do suporte no Telegram') }}
+            <input class="block w-full rounded-lg dark:bg-gray-900" id="AUTO_BOT_SUPPORT" placeholder="@suporte">
+        </label>
+        <label><input type="checkbox" id="AUTO_BOT_TRIAL"> {{ _('Aceitar solicitações de teste') }}</label>
+        <label for="AUTO_BOT_LIBRARIES">{{ _('Bibliotecas do teste (um nome por linha)') }}
+            <textarea class="block w-full rounded-lg dark:bg-gray-900" id="AUTO_BOT_LIBRARIES" rows="2"></textarea>
+        </label>
+        <div class="grid sm:grid-cols-3 gap-3">
+            {% for campo, rotulo, maximo in [('AUTO_BOT_DURATION', _('Duração do teste (min)'), 43200), ('AUTO_BOT_VALIDITY', _('Validade do convite (min)'), 10080), ('AUTO_BOT_SCREENS', _('Telas simultâneas'), 6)] %}
+            <label for="{{ campo }}">{{ rotulo }}
+                <input class="block w-full rounded-lg dark:bg-gray-900" id="{{ campo }}" type="number" min="1" max="{{ maximo }}">
+            </label>
+            {% endfor %}
+        </div>
+        <p class="text-sm">{{ _('Salve as alterações e conecte o bot para registrar o endereço HTTPS do painel no Telegram. Repita ao trocar o token ou o endereço.') }}</p>
+        <button class="btn justify-self-start" id="conectar-auto-bot" type="button" data-url="{{ url_for('telegram.conectar') }}">{{ _('Conectar bot salvo') }}</button>
+    </div>
+</details>

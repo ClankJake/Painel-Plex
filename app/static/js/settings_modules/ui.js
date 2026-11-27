@@ -59,8 +59,31 @@ export function populateForm(config) {
             }
         }
     }
-    if (dom.logLevelSelector) dom.logLevelSelector.value = config.LOG_LEVEL || 'INFO';
+    if (dom.logLevelSelector && !dom.logLevelSelector.dataset.savedLevel) {
+        const selector = dom.logLevelSelector;
+        selector.value = config.LOG_LEVEL || 'INFO';
+        if (!selector.value) selector.value = 'INFO';
+        selector.dataset.savedLevel = selector.value;
+        selector.disabled = false;
+    }
     toggleHmacSection();
+}
+
+export async function changeLogLevel() {
+    const selector = dom.logLevelSelector;
+    const level = selector.value;
+    selector.disabled = true;
+    try {
+        const result = await api.saveSettings({ LOG_LEVEL: level });
+        if (!result.success) throw new Error(result.message);
+        selector.dataset.savedLevel = level;
+        showToast(`Nível de log alterado para ${level}.`, 'success');
+    } catch (error) {
+        selector.value = selector.dataset.savedLevel;
+        showToast(error.message || 'Falha ao alterar o nível de log.', 'error');
+    } finally {
+        selector.disabled = false;
+    }
 }
 
 export async function fetchAndDisplayPlexServers() {
@@ -347,22 +370,10 @@ function handleTabChange(clickedButton, navElement, contentContainer, contentSel
     if (!isSubtab) syncTabsSelect();
 }
 
-/**
- * Esconde o botão "Salvar Alterações" nas abas que nada têm para salvar.
- *
- * ⚠️ **Quem decide é a ABA, com `data-somente-leitura`, e não uma dedução
- * daqui.** Deduzir pela presença de campos de formulário dá a resposta errada
- * nas duas pontas: a Auditoria TEM um `<select>` (o filtro por ação) e não
- * grava nada, e a de Logs PARECE só leitura mas guarda o nível de log no
- * `LOG_LEVEL` — esconder o botão lá tirava a única forma de o mudar.
- *
- * Sem isto, ficava um botão verde a pairar por cima de uma lista que não se
- * edita, a levantar a pergunta do que é que ele faria.
- */
 function sincronizarBarraDeGravacao(contentElement) {
     if (!dom.saveBar) return;
     const somenteLeitura = contentElement?.dataset?.somenteLeitura === 'true';
-    dom.saveBar.classList.toggle('hidden', somenteLeitura);
+    dom.saveBar.classList.toggle('hidden', somenteLeitura || contentElement?.dataset?.salvamentoAutomatico === 'true');
 }
 
 /**

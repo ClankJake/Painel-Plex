@@ -84,6 +84,14 @@ def load_or_create_config():
             "WEBHOOK_CREDENTIALS_MESSAGE_TEMPLATE": '{"content": "A conta de {username} foi criada novamente no servidor. Usuário: {new_username} — Senha: {new_password}"}',
             "WEBHOOK_PASSWORD_RESET_MESSAGE_TEMPLATE": '{"content": "{username} pediu para redefinir a senha. Link válido {reset_minutes} min: {reset_link}"}',
             "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}',
+            "AUTO_BOT_ENABLED": False,
+            "AUTO_BOT_TOKEN": '',
+            "AUTO_BOT_SUPPORT": '',
+            "AUTO_BOT_TRIAL": False,
+            "AUTO_BOT_LIBRARIES": '',
+            "AUTO_BOT_DURATION": 120,
+            "AUTO_BOT_VALIDITY": 30,
+            "AUTO_BOT_SCREENS": 1,
             "TELEGRAM_BOT_TOKEN": "",
             "TELEGRAM_CHAT_ID": "", 
             "TELEGRAM_ENABLED": False,
@@ -324,6 +332,14 @@ def load_or_create_config():
             _set_default("WEBHOOK_URL", "")
             _set_default("WEBHOOK_AUTHORIZATION_HEADER", "")
             _set_default("WEBHOOK_ENABLED", False)
+            _set_default("AUTO_BOT_ENABLED", False)
+            _set_default("AUTO_BOT_TOKEN", '')
+            _set_default("AUTO_BOT_SUPPORT", '')
+            _set_default("AUTO_BOT_TRIAL", False)
+            _set_default("AUTO_BOT_LIBRARIES", '')
+            _set_default("AUTO_BOT_DURATION", 120)
+            _set_default("AUTO_BOT_VALIDITY", 30)
+            _set_default("AUTO_BOT_SCREENS", 1)
             _set_default("TELEGRAM_BOT_TOKEN", "")
             _set_default("TELEGRAM_CHAT_ID", "")
             _set_default("TELEGRAM_ENABLED", False)

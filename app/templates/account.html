@@ -130,6 +130,22 @@
 </div>
 
 <div id="accountDetailsContainer" class="hidden animate-fade-in">
+    {% if autoatendimento %}
+    <section class="mb-6 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+        <h2 class="font-semibold">{{ _('Autoatendimento no Telegram') }}</h2>
+        <p class="text-sm mb-3">{{ _('Abra o bot e toque em Iniciar em até 10 minutos para vincular sua conta.') }}</p>
+        <div class="flex gap-4">
+            <form method="post" action="{{ url_for('telegram.vincular') }}">
+                <button class="btn" type="submit">{{ _('Vincular Telegram') }}</button>
+            </form>
+            {% if telegram_vinculado %}
+            <form method="post" action="{{ url_for('telegram.desvincular') }}">
+                <button class="btn" type="submit">{{ _('Desvincular Telegram') }}</button>
+            </form>
+            {% endif %}
+        </div>
+    </section>
+    {% endif %}
     <!-- Banner de Status (Ex: Expirado, Bloqueado) -->
     <div id="status-banner" class="hidden mb-6 transition-all"></div>
 

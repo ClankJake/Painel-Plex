@@ -25,6 +25,7 @@ from ...extensions import media_server, stats_manager, efi_manager, mercado_pago
 # atributo em tempo de execução, quando já está preenchido.
 from ... import extensions as _ext
 from ...config import load_or_create_config, save_app_config, is_configured
+from ...logging_config import LOG_LEVELS, apply_log_level
 from ...models import User
 from ..auth import admin_required, login_required
 from ...services import audit
@@ -246,19 +247,32 @@ def clear_all_termination_logs():
 # CONFIGURAÇÕES DA APLICAÇÃO (SETTINGS)
 # ==========================================
 
+_settings_lock = threading.Lock()
+
+
 @system_api_bp.route('/settings', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def api_settings():
+    # Uma gravação automática e uma manual podem chegar ao mesmo tempo.
+    with _settings_lock:
+        return _handle_settings()
+
+
+def _handle_settings():
     if request.method == 'POST':
         old_config = load_or_create_config()
-        config_to_update = load_or_create_config()
+        config_to_update = old_config.copy()
         new_data = request.json
+        if 'LOG_LEVEL' in new_data and new_data['LOG_LEVEL'] not in tuple(LOG_LEVELS):
+            return jsonify(success=False, message=_("Nível de log inválido.")), 400
         
         fields_to_update = [
             'APP_TITLE', 'LOG_LEVEL', 'DAYS_TO_REMOVE_BLOCKED_USER',
             'EXPIRATION_NOTIFICATION_TIME', 'BLOCK_REMOVAL_TIME', 'WEBHOOK_URL', 'WEBHOOK_ENABLED',
             'WEBHOOK_AUTHORIZATION_HEADER', 'WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE', 'WEBHOOK_RENEWAL_MESSAGE_TEMPLATE', 'WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE',
+            'AUTO_BOT_ENABLED', 'AUTO_BOT_TOKEN', 'AUTO_BOT_SUPPORT', 'AUTO_BOT_TRIAL',
+            'AUTO_BOT_LIBRARIES', 'AUTO_BOT_DURATION', 'AUTO_BOT_VALIDITY', 'AUTO_BOT_SCREENS',
             'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_ENABLED', 'TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE',
             'TELEGRAM_RENEWAL_MESSAGE_TEMPLATE', 'TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE', 'DAYS_TO_NOTIFY_EXPIRATION', 'APP_BASE_URL',
             'TAUTULLI_URL', 'TAUTULLI_API_KEY',
@@ -353,6 +367,7 @@ def api_settings():
         ]
         
         numeric_fields = [
+            'AUTO_BOT_DURATION', 'AUTO_BOT_VALIDITY', 'AUTO_BOT_SCREENS',
             'DAYS_TO_REMOVE_BLOCKED_USER', 'DAYS_TO_NOTIFY_EXPIRATION',
             'CLEANUP_PENDING_PAYMENTS_DAYS', 'IMAGE_CACHE_MAX_AGE_DAYS',
             'PAYMENT_LINK_GRACE_PERIOD_DAYS', 'PAYMENT_TOKEN_VALIDITY_DAYS',
@@ -425,7 +440,12 @@ def api_settings():
             config_to_update['PLEX_TOKEN'] = new_data['plex_token']
             config_to_update['PLEX_URL'] = new_data['plex_url']
             
-        save_app_config(config_to_update)
+        from ...services.telegram_autoatendimento import validar
+        erro_bot = validar(config_to_update)
+        if erro_bot:
+            return jsonify(success=False, message=erro_bot), 400
+        if not save_app_config(config_to_update):
+            return jsonify(success=False, message=_("Não foi possível salvar as configurações.")), 500
         
         # Atualiza a configuração global da App
         app = current_app._get_current_object()
@@ -439,6 +459,9 @@ def api_settings():
         # Agora só recarregamos os serviços cujas credenciais realmente mudaram.
         def _changed(*keys):
             return any(old_config.get(k) != config_to_update.get(k) for k in keys)
+
+        if _changed('LOG_LEVEL'):
+            apply_log_level(app, config_to_update['LOG_LEVEL'])
 
         plex_changed = _changed('PLEX_URL', 'PLEX_TOKEN')
         jellyfin_changed = _changed('JELLYFIN_URL', 'JELLYFIN_API_KEY', 'MEDIA_SERVER_TYPE')
@@ -499,14 +522,6 @@ def api_settings():
         if efi_changed and config_to_update.get("EFI_ENABLED"):
             efi_manager.configure_webhook()
 
-        # Atualização dinâmica do Nível de Logs
-        log_level_map = {'DEBUG': logging.DEBUG, 'INFO': logging.INFO, 'WARNING': logging.WARNING, 'ERROR': logging.ERROR}
-        new_log_level = config_to_update.get('LOG_LEVEL', 'INFO')
-        if new_log_level != old_config.get('LOG_LEVEL'):
-            logging.getLogger().setLevel(log_level_map.get(new_log_level, logging.INFO))
-            app.logger.setLevel(log_level_map.get(new_log_level, logging.INFO))
-            logger.info(f"Nível de log atualizado para {new_log_level}")
-
         # Re-agendamento de Tarefas Inteligente
         def reschedule_job(job_id, config_key, old_config, new_config, trigger_type='cron'):
             new_value = new_config.get(config_key)
@@ -534,7 +549,7 @@ def api_settings():
         # Backup automático: além de reagendar quando o horário muda, também trata
         # a ativação/desativação em tempo real (adiciona ou remove o job na hora,
         # sem precisar reiniciar o serviço).
-        if config_to_update.get('BACKUP_ENABLED'):
+        if _changed('BACKUP_ENABLED', 'BACKUP_TIME') and config_to_update.get('BACKUP_ENABLED'):
             backup_time = config_to_update.get('BACKUP_TIME', '05:00')
             try:
                 hour, minute = map(int, backup_time.split(':')[:2])
@@ -549,7 +564,7 @@ def api_settings():
                 logger.info(f"Tarefa 'backup_job' agendada/atualizada para as {hour:02d}:{minute:02d} ({tz_str}).")
             except Exception as e:
                 logger.error(f"Falha ao agendar a tarefa 'backup_job': {e}", exc_info=True)
-        elif old_config.get('BACKUP_ENABLED'):
+        elif _changed('BACKUP_ENABLED') and old_config.get('BACKUP_ENABLED'):
             try:
                 scheduler.remove_job('backup_job')
                 logger.info("Tarefa 'backup_job' removida (backup automático desativado).")
@@ -586,7 +601,7 @@ def api_settings():
 
     sensitive_keys = [
         'SECRET_KEY', 'PLEX_TOKEN',
-        'TELEGRAM_BOT_TOKEN', 'TAUTULLI_API_KEY', 'EFI_CLIENT_SECRET',
+        'AUTO_BOT_TOKEN', 'TELEGRAM_BOT_TOKEN', 'TAUTULLI_API_KEY', 'EFI_CLIENT_SECRET',
         # 🛡️ A chave da API do Jellyfin é uma credencial de administrador do
         # servidor de média — dá acesso a tudo lá dentro. Era a única que
         # descia em claro para o navegador na resposta das definições.

@@ -7,7 +7,7 @@ from flask_login import login_required, current_user
 from flask_babel import get_locale, gettext as _
 from tzlocal import get_localzone
 
-from ..models import UserProfile, agora_utc
+from ..models import TelegramVinculo, UserProfile, agora_utc
 from .auth import admin_required  # Otimizado: Importação direta do módulo irmão auth.py
 from ..config import is_configured, load_or_create_config
 from .. import extensions
@@ -204,7 +204,10 @@ def settings_page():
 @login_required
 def account_page():
     """Página de gestão da conta, onde o utilizador logado vê o seu status."""
-    return render_template('account.html')
+    autoatendimento = load_or_create_config().get('AUTO_BOT_ENABLED', False) and not current_user.is_admin()
+    vinculo = extensions.db.session.get(TelegramVinculo, current_user.id) if autoatendimento else None
+    return render_template('account.html', autoatendimento=autoatendimento,
+                           telegram_vinculado=bool(vinculo and vinculo.chat_id))
 
 @main_bp.route('/password/forgot')
 def password_forgot_page():

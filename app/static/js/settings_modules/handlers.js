@@ -344,7 +344,6 @@ async function handleSaveSettings(e) {
     // a seleção guardada só porque a lista não apareceu no ecrã.
     const onlineMediaSources = collectOnlineMediaSources();
     if (onlineMediaSources !== null) newConfig.ONLINE_MEDIA_SOURCES_TO_DISABLE = onlineMediaSources;
-    if (dom.logLevelSelector) newConfig.LOG_LEVEL = dom.logLevelSelector.value;
 
     if (settingsData.plex_url && settingsData.plex_token) {
         newConfig.plex_url = settingsData.plex_url;
@@ -492,6 +491,18 @@ async function handlePlexAuth() {
 // --- INICIALIZAÇÃO DE LISTENERS ---
 
 export function initializeEventListeners() {
+    const conectarBot = document.getElementById('conectar-auto-bot');
+    conectarBot?.addEventListener('click', async () => {
+        conectarBot.disabled = true;
+        try {
+            const result = await fetchAPI(conectarBot.dataset.url, 'POST', {});
+            showToast(result.message, 'success');
+        } catch (error) {
+            showToast(error.message, 'error');
+        } finally {
+            conectarBot.disabled = false;
+        }
+    });
     if (dom.form) dom.form.addEventListener('submit', handleSaveSettings);
     
     if (dom.saveBulkTemplatesButton) {
@@ -533,6 +544,7 @@ export function initializeEventListeners() {
             }
         });
     }
+    dom.logLevelSelector?.addEventListener('change', ui.changeLogLevel);
     if (dom.toggleLogsButton) dom.toggleLogsButton.addEventListener('click', () => ui.toggleLogUpdates());
     if (dom.clearLogsButton) dom.clearLogsButton.addEventListener('click', ui.clearLogs);
     if (dom.efiUseMtlsCheckbox) dom.efiUseMtlsCheckbox.addEventListener('change', ui.toggleHmacSection);

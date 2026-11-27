@@ -6,31 +6,38 @@ from .utils.log_formatting import CompactFormatter, RepeatSuppressFilter
 
 logger = logging.getLogger(__name__)
 
+LOG_LEVELS = {
+    'DEBUG': logging.DEBUG, 'INFO': logging.INFO, 'WARNING': logging.WARNING,
+    'ERROR': logging.ERROR, 'CRITICAL': logging.CRITICAL,
+}
+
+
+def apply_log_level(app, log_level):
+    level = LOG_LEVELS.get(log_level, logging.INFO)
+    logging.getLogger().setLevel(level)
+    app.logger.setLevel(level)
+    handler = app.extensions.get('log_file_handler')
+    if handler is None:
+        return
+
+    handler.setLevel(level)
+    handler.setFormatter(CompactFormatter(max_frames=12 if level == logging.DEBUG else 4))
+    for existing in handler.filters[:]:
+        if isinstance(existing, RepeatSuppressFilter):
+            handler.removeFilter(existing)
+    window = app.config.get('LOG_DEDUP_SECONDS', 60)
+    if window and level != logging.DEBUG:
+        handler.addFilter(RepeatSuppressFilter(window_seconds=window))
+
+
 def setup_logging(app, log_level='INFO'):
-    """
-    Configura o sistema de logging da aplicação.
-    Movemos esta lógica para fora do __init__.py para manter a fábrica limpa.
-    """
-    log_level_map = {
-        'DEBUG': logging.DEBUG, 'INFO': logging.INFO,
-        'WARNING': logging.WARNING, 'ERROR': logging.ERROR, 'CRITICAL': logging.CRITICAL,
-    }
-    level = log_level_map.get(log_level, logging.INFO)
-
-    # Em DEBUG queremos ver tudo, inclusive repetições e tracebacks completos:
-    # é nesse modo que se está a investigar um problema.
-    is_debug = level <= logging.DEBUG
-    dedup_window = 0 if is_debug else app.config.get('LOG_DEDUP_SECONDS', 60)
-    max_frames = 12 if is_debug else 4
-
-    formatter = CompactFormatter(max_frames=max_frames)
-
     log_file = app.config.get('LOG_FILE')
 
     if not log_file:
         # Fallback crítico se a config falhar antes deste ponto
         print("CRÍTICO: LOG_FILE não definido. Logs serão apenas no console.")
-        logging.basicConfig(level=level)
+        logging.basicConfig(level=LOG_LEVELS.get(log_level, logging.INFO))
+        apply_log_level(app, log_level)
         return
 
     log_dir = os.path.dirname(log_file)
@@ -42,12 +49,7 @@ def setup_logging(app, log_level='INFO'):
 
     # Handler de Arquivo Rotativo
     file_handler = RotatingFileHandler(log_file, maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8')
-    file_handler.setFormatter(formatter)
-
-    # O filtro vive no handler (e não no logger raiz) para que a contagem de
-    # repetições seja feita sobre a mensagem final, já formatada.
-    if dedup_window:
-        file_handler.addFilter(RepeatSuppressFilter(window_seconds=dedup_window))
+    app.extensions['log_file_handler'] = file_handler
 
     # Configura o logger raiz para capturar logs de todas as bibliotecas
     root_logger = logging.getLogger()
@@ -58,11 +60,10 @@ def setup_logging(app, log_level='INFO'):
         root_logger.removeHandler(handler)
         
     root_logger.addHandler(file_handler)
-    root_logger.setLevel(level)
     
     # Redireciona o logger da app Flask para usar os handlers raiz
     app.logger.handlers = root_logger.handlers
-    app.logger.setLevel(level)
+    apply_log_level(app, log_level)
     app.logger.propagate = False
 
     # Reduz o ruído de bibliotecas barulhentas
