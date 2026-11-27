@@ -21,7 +21,7 @@ BOTOES = {'keyboard': [list(ACOES)[:2], list(ACOES)[2:]], 'resize_keyboard': Tru
 
 
 def segredo(config):
-    return hmac.new(current_app.secret_key.encode(), config['AUTO_BOT_TOKEN'].encode(),
+    return hmac.new(current_app.secret_key.encode(), config['TELEGRAM_BOT_TOKEN'].encode(),
                     hashlib.sha256).hexdigest()
 
 
@@ -35,7 +35,7 @@ def validar(config):
             return 'Selecione uma opção válida de autoatendimento.'
     if not config.get('AUTO_BOT_ENABLED'):
         return None
-    for key in ('AUTO_BOT_TOKEN', 'AUTO_BOT_SUPPORT', 'AUTO_BOT_LIBRARIES', 'APP_BASE_URL'):
+    for key in ('TELEGRAM_BOT_TOKEN', 'AUTO_BOT_SUPPORT', 'AUTO_BOT_LIBRARIES', 'APP_BASE_URL'):
         if not isinstance(config.get(key, ''), str):
             return 'Confira os campos de texto do autoatendimento.'
     try:
@@ -45,9 +45,9 @@ def validar(config):
         return 'Confira a URL pública HTTPS do painel.'
     if base.scheme != 'https' or not base.hostname or base.query or base.fragment or base.username:
         return 'Configure a URL pública HTTPS do painel.'
-    token = config.get('AUTO_BOT_TOKEN') or ''
-    if not re.fullmatch(r'\d+:[A-Za-z0-9_-]{20,}', token) or token == config.get('TELEGRAM_BOT_TOKEN'):
-        return 'Informe um token exclusivo para o bot de autoatendimento.'
+    token = config.get('TELEGRAM_BOT_TOKEN') or ''
+    if not re.fullmatch(r'\d+:[A-Za-z0-9_-]{20,}', token):
+        return 'Confira o Token do Bot na aba Telegram. Copie o token completo fornecido pelo BotFather.'
     if not re.fullmatch(r'@?[A-Za-z][A-Za-z0-9_]{4,31}', config.get('AUTO_BOT_SUPPORT') or ''):
         return 'Informe o nome de usuário do suporte no Telegram.'
     if config.get('AUTO_BOT_TRIAL'):

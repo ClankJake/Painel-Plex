@@ -11,7 +11,7 @@ from app.services.telegram_autoatendimento import segredo
 def config_bot(config_file, db_session):
     return config_file(IS_CONFIGURED=True, ADMIN_USER_ID='1', ADMIN_USER='dono',
                        APP_BASE_URL='https://painel.example', AUTO_BOT_ENABLED=True,
-                       AUTO_BOT_TOKEN='123:' + 'x' * 32, AUTO_BOT_SUPPORT='@suporte',
+                       TELEGRAM_BOT_TOKEN='123:' + 'x' * 32, AUTO_BOT_SUPPORT='@suporte',
                        AUTO_BOT_TRIAL=True, AUTO_BOT_LIBRARIES='Filmes', AUTO_BOT_VALIDITY=30,
                        AUTO_BOT_DURATION=120, AUTO_BOT_SCREENS=1)
 
@@ -102,8 +102,28 @@ def test_registro_do_webhook_e_token_mascarado(config_bot, client, monkeypatch):
     monkeypatch.setattr('app.blueprints.telegram._api', api)
     assert client.post('/api/telegram/conectar').json['success']
     pagina = client.get('/settings')
-    assert pagina.status_code == 200 and b'Conectar bot salvo' in pagina.data
+    assert pagina.status_code == 200 and b'Salvar altera' in pagina.data
     assert chamadas['setWebhook']['secret_token'] == segredo(config_bot)
     assert chamadas['setWebhook']['url'] == 'https://painel.example/api/telegram/webhook'
-    assert client.get('/api/system/settings').json['AUTO_BOT_TOKEN']['is_set']
-    assert client.post('/api/system/settings', json={'TELEGRAM_BOT_TOKEN': config_bot['AUTO_BOT_TOKEN']}).status_code == 400
+    assert client.get('/api/system/settings').json['TELEGRAM_BOT_TOKEN']['is_set']
+    assert client.post('/api/system/settings', json={'TELEGRAM_BOT_TOKEN': '  ' + config_bot['TELEGRAM_BOT_TOKEN'] + '  '}).status_code == 200
+
+
+@pytest.mark.parametrize('auto_ativo', [True, False])
+def test_resgate_recebe_start_pelo_webhook(config_bot, config_file, enviar, monkeypatch, auto_ativo):
+    from app.services import telegram_vinculo
+    config = config_file(TELEGRAM_ENABLED=True, AUTO_BOT_ENABLED=auto_ativo)
+    monkeypatch.setattr(telegram_vinculo, 'nome_do_bot', lambda cfg: 'TesteBot')
+    codigo = 'abc123def456'
+    assert telegram_vinculo.link_de_vinculo(config, codigo).endswith(codigo)
+    assert enviar('/start ' + codigo).json['text'].startswith('Volte ao painel')
+    assert telegram_vinculo.procurar_chat(config, codigo).chat_id == '44'
+
+
+@pytest.mark.parametrize('principal,esperado', [('principal', 'principal'), ('', 'anterior')])
+def test_migracao_do_token_antigo(config_file, principal, esperado):
+    from app.config import load_or_create_config
+    config_file(TELEGRAM_BOT_TOKEN=principal, AUTO_BOT_TOKEN='anterior')
+    atualizado = load_or_create_config()
+    assert atualizado['TELEGRAM_BOT_TOKEN'] == esperado
+    assert 'AUTO_BOT_TOKEN' not in atualizado

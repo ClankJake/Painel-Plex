@@ -291,10 +291,12 @@ async function handleBackupRestore(file) {
     }
 }
 
-async function handleSaveSettings(e) {
+async function handleSaveSettings(e, conectar = null) {
     e.preventDefault();
     if (!dom.saveButton) return;
 
+    if (dom.saveButton.disabled) return;
+    if (conectar) conectar.disabled = true;
     const originalText = dom.saveButton.textContent;
     dom.saveButton.disabled = true;
     dom.saveButton.innerHTML = `${getSpinner()} ${i18n.saving || 'Salvando...'}`;
@@ -303,6 +305,7 @@ async function handleSaveSettings(e) {
     const screenPrices = {};
 
     for (const [id, field] of Object.entries(fieldMap)) {
+        if (conectar && !id.startsWith('AUTO_BOT_') && !['APP_BASE_URL', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_ENABLED', 'TELEGRAM_CHAT_ID'].includes(id)) continue;
         const el = document.getElementById(id);
         if (el) {
             if (field.type === 'price') {
@@ -336,27 +339,43 @@ async function handleSaveSettings(e) {
             }
         }
     }
-    newConfig.SCREEN_PRICES = screenPrices;
-    newConfig.XP_LEVEL_TABLE = collectLevelsFromEditor();
-    newConfig.XP_RESET_MONTHS = collectResetMonths();
-    // `null` = o cartão das fontes de mídia online não chegou a carregar (Plex
-    // offline, por exemplo). Nesse caso não enviamos o campo, para não apagar
-    // a seleção guardada só porque a lista não apareceu no ecrã.
-    const onlineMediaSources = collectOnlineMediaSources();
-    if (onlineMediaSources !== null) newConfig.ONLINE_MEDIA_SOURCES_TO_DISABLE = onlineMediaSources;
+    if (!conectar) {
+        newConfig.SCREEN_PRICES = screenPrices;
+        newConfig.XP_LEVEL_TABLE = collectLevelsFromEditor();
+        newConfig.XP_RESET_MONTHS = collectResetMonths();
+        // `null` = o cartão das fontes de mídia online não chegou a carregar (Plex
+        // offline, por exemplo). Nesse caso não enviamos o campo, para não apagar
+        // a seleção guardada só porque a lista não apareceu no ecrã.
+        const onlineMediaSources = collectOnlineMediaSources();
+        if (onlineMediaSources !== null) newConfig.ONLINE_MEDIA_SOURCES_TO_DISABLE = onlineMediaSources;
 
-    if (settingsData.plex_url && settingsData.plex_token) {
-        newConfig.plex_url = settingsData.plex_url;
-        newConfig.plex_token = settingsData.plex_token;
+        if (settingsData.plex_url && settingsData.plex_token) {
+            newConfig.plex_url = settingsData.plex_url;
+            newConfig.plex_token = settingsData.plex_token;
+        }
     }
 
     try {
         const result = await api.saveSettings(newConfig);
+        if (result.success) {
+            if (conectar) {
+                const token = document.getElementById('TELEGRAM_BOT_TOKEN');
+                if ('TELEGRAM_BOT_TOKEN' in newConfig) {
+                    const length = newConfig.TELEGRAM_BOT_TOKEN.trim().length;
+                    token.dataset.originalLength = String(length);
+                    token.value = '*'.repeat(length);
+                }
+                const bot = await fetchAPI(conectar.dataset.url, 'POST', {});
+                showToast(bot.message, 'success');
+                return;
+            }
+            await ui.loadSettings();
+        }
         showToast(result.message, result.success ? 'success' : 'error');
-        if (result.success) ui.loadSettings();
     } catch (error) {
         showToast(error.message || i18n.unknownError || 'Erro desconhecido.', 'error');
     } finally {
+        if (conectar) conectar.disabled = !document.getElementById('AUTO_BOT_ENABLED').checked;
         dom.saveButton.disabled = false;
         dom.saveButton.textContent = originalText;
     }
@@ -492,16 +511,12 @@ async function handlePlexAuth() {
 
 export function initializeEventListeners() {
     const conectarBot = document.getElementById('conectar-auto-bot');
-    conectarBot?.addEventListener('click', async () => {
-        conectarBot.disabled = true;
-        try {
-            const result = await fetchAPI(conectarBot.dataset.url, 'POST', {});
-            showToast(result.message, 'success');
-        } catch (error) {
-            showToast(error.message, 'error');
-        } finally {
-            conectarBot.disabled = false;
-        }
+    conectarBot?.addEventListener('click', (event) => {
+        handleSaveSettings(event, conectarBot);
+    });
+    const autoAtivo = document.getElementById('AUTO_BOT_ENABLED');
+    autoAtivo?.addEventListener('change', () => {
+        conectarBot.disabled = !autoAtivo.checked;
     });
     if (dom.form) dom.form.addEventListener('submit', handleSaveSettings);
     

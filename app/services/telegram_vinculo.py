@@ -31,6 +31,8 @@ hipotético. Se houver um webhook registado, o Telegram recusa com 409 e o
 painel DIZ isso, em vez de tentar tomar o lugar dele.
 """
 
+import hashlib
+import re
 import logging
 import time
 from typing import NamedTuple
@@ -107,11 +109,31 @@ def nome_do_bot(config):
     return nome
 
 
+def _chave(config, codigo):
+    token = config.get('TELEGRAM_BOT_TOKEN', '')
+    return 'telegram-resgate:' + hashlib.sha256(f'{token}:{codigo}'.encode()).hexdigest()
+
+
+def receber_inicio(config, texto, chat_id):
+    from ..extensions import cache
+    match = re.fullmatch(r'/start ([A-Za-z0-9_-]{12})', texto)
+    if not match:
+        return False
+    chave = _chave(config, match[1])
+    if not cache.get(chave):
+        return False
+    cache.add(chave + ':chat', str(chat_id), timeout=7200)
+    return True
+
+
 def link_de_vinculo(config, codigo):
     """`https://t.me/<bot>?start=<codigo>`, ou None se não houver bot."""
     nome = nome_do_bot(config)
     if not nome or not codigo:
         return None
+    if config.get('TELEGRAM_BOT_TOKEN'):
+        from ..extensions import cache
+        cache.set(_chave(config, codigo), True, timeout=7200)
     return f"https://t.me/{nome}?start={codigo}"
 
 
@@ -125,6 +147,12 @@ def procurar_chat(config, codigo):
     if not codigo:
         return Resultado()
 
+    if config.get('TELEGRAM_BOT_TOKEN'):
+        from ..extensions import cache
+        confirmado = cache.get(_chave(config, codigo) + ':chat')
+        if confirmado:
+            return Resultado(chat_id=confirmado)
+
     try:
         # ⚠️ Sem `offset` (não confirma nada, ver o cabeçalho) e sem espera
         # longa: isto corre DENTRO de um pedido HTTP, num painel com um worker
@@ -133,6 +161,13 @@ def procurar_chat(config, codigo):
         atualizacoes = bot.get_updates(timeout=5, long_polling_timeout=0)
     except ApiTelegramException as e:
         if getattr(e, 'error_code', None) == 409:
+            base = (config.get('APP_BASE_URL') or '').rstrip('/')
+            if base:
+                try:
+                    if bot.get_webhook_info().url == base + '/api/telegram/webhook':
+                        return Resultado()
+                except Exception:
+                    return Resultado(motivo=FALHOU)
             # 🛡️ Há um webhook registado, ou outro processo a fazer polling com
             # o mesmo token. O painel NÃO toma o lugar dele: um `deleteWebhook`
             # aqui partia, em silêncio, o bot que o administrador tem a correr.

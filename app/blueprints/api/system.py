@@ -271,7 +271,7 @@ def _handle_settings():
             'APP_TITLE', 'LOG_LEVEL', 'DAYS_TO_REMOVE_BLOCKED_USER',
             'EXPIRATION_NOTIFICATION_TIME', 'BLOCK_REMOVAL_TIME', 'WEBHOOK_URL', 'WEBHOOK_ENABLED',
             'WEBHOOK_AUTHORIZATION_HEADER', 'WEBHOOK_EXPIRATION_MESSAGE_TEMPLATE', 'WEBHOOK_RENEWAL_MESSAGE_TEMPLATE', 'WEBHOOK_REACTIVATION_MESSAGE_TEMPLATE',
-            'AUTO_BOT_ENABLED', 'AUTO_BOT_TOKEN', 'AUTO_BOT_SUPPORT', 'AUTO_BOT_TRIAL',
+            'AUTO_BOT_ENABLED', 'AUTO_BOT_SUPPORT', 'AUTO_BOT_TRIAL',
             'AUTO_BOT_LIBRARIES', 'AUTO_BOT_DURATION', 'AUTO_BOT_VALIDITY', 'AUTO_BOT_SCREENS',
             'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_ENABLED', 'TELEGRAM_EXPIRATION_MESSAGE_TEMPLATE',
             'TELEGRAM_RENEWAL_MESSAGE_TEMPLATE', 'TELEGRAM_REACTIVATION_MESSAGE_TEMPLATE', 'DAYS_TO_NOTIFY_EXPIRATION', 'APP_BASE_URL',
@@ -401,6 +401,8 @@ def _handle_settings():
                 if isinstance(value, dict) and "is_set" in value:
                     continue
 
+                if field == 'TELEGRAM_BOT_TOKEN' and isinstance(value, str):
+                    value = value.strip()
                 if field in numeric_fields: 
                     # 🚀 OTIMIZAÇÃO: Conversão segura (Evita ValueError e corrupção da DB)
                     try: 
@@ -601,7 +603,7 @@ def _handle_settings():
 
     sensitive_keys = [
         'SECRET_KEY', 'PLEX_TOKEN',
-        'AUTO_BOT_TOKEN', 'TELEGRAM_BOT_TOKEN', 'TAUTULLI_API_KEY', 'EFI_CLIENT_SECRET',
+        'TELEGRAM_BOT_TOKEN', 'TAUTULLI_API_KEY', 'EFI_CLIENT_SECRET',
         # 🛡️ A chave da API do Jellyfin é uma credencial de administrador do
         # servidor de média — dá acesso a tudo lá dentro. Era a única que
         # descia em claro para o navegador na resposta das definições.

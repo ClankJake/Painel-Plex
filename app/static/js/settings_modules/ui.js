@@ -66,6 +66,8 @@ export function populateForm(config) {
         selector.dataset.savedLevel = selector.value;
         selector.disabled = false;
     }
+    const conectar = document.getElementById('conectar-auto-bot');
+    if (conectar) conectar.disabled = !config.AUTO_BOT_ENABLED;
     toggleHmacSection();
 }
 

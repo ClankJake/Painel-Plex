@@ -45,7 +45,6 @@
                 
                 <!-- ================= ABA TELEGRAM ================= -->
                 <div id="subtab-telegram" class="sub-tab-content active space-y-6 input-group animate-fade-in">
-                    {% include 'settings/telegram_autoatendimento.html' %}
                     <!-- Sub-abas internas: separa as mensagens de assinatura das de pedidos.
                          Com 9 campos numa única vista, encontrar o certo obrigava a muita rolagem. -->
                     <nav class="flex gap-2 overflow-x-auto pb-2 msg-subtabs-scroll" data-msg-group="telegram" style="scrollbar-width:none;-webkit-overflow-scrolling:touch;">
@@ -87,6 +86,8 @@
                             <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 leading-tight">{{_('Se preenchido, alertas de erro do sistema e resumos globais serão enviados para este grupo/chat. Notificações de usuários usam o ID configurado no perfil de cada um.')}}</p>
                         </div>
                     </div>
+
+                    {% include 'settings/telegram_autoatendimento.html' %}
 
                     <div class="space-y-5 disablable-input pt-4 border-t border-gray-100 dark:border-gray-700/50 pl-1">
                         <!-- Template Expiração -->

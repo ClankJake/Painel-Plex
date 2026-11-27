@@ -37,7 +37,6 @@ export const fieldMap = {
     'WEBHOOK_CREDENTIALS_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
     'WEBHOOK_PASSWORD_RESET_MESSAGE_TEMPLATE': { type: 'textarea', default: '' },
     'AUTO_BOT_ENABLED': { type: 'checkbox', default: false },
-    'AUTO_BOT_TOKEN': { type: 'password', default: '' },
     'AUTO_BOT_SUPPORT': { type: 'text', default: '' },
     'AUTO_BOT_TRIAL': { type: 'checkbox', default: false },
     'AUTO_BOT_LIBRARIES': { type: 'text', default: '' },

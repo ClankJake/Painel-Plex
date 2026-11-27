@@ -85,7 +85,6 @@ def load_or_create_config():
             "WEBHOOK_PASSWORD_RESET_MESSAGE_TEMPLATE": '{"content": "{username} pediu para redefinir a senha. Link válido {reset_minutes} min: {reset_link}"}',
             "WEBHOOK_BULK_MESSAGE_TEMPLATE": '{"phone": "{phone_number}@s.whatsapp.net", "message": "{message}"}',
             "AUTO_BOT_ENABLED": False,
-            "AUTO_BOT_TOKEN": '',
             "AUTO_BOT_SUPPORT": '',
             "AUTO_BOT_TRIAL": False,
             "AUTO_BOT_LIBRARIES": '',
@@ -333,7 +332,9 @@ def load_or_create_config():
             _set_default("WEBHOOK_AUTHORIZATION_HEADER", "")
             _set_default("WEBHOOK_ENABLED", False)
             _set_default("AUTO_BOT_ENABLED", False)
-            _set_default("AUTO_BOT_TOKEN", '')
+            if config.get("AUTO_BOT_TOKEN") and not config.get("TELEGRAM_BOT_TOKEN"):
+                config["TELEGRAM_BOT_TOKEN"] = config["AUTO_BOT_TOKEN"].strip()
+            _remover_obsoleta("AUTO_BOT_TOKEN")
             _set_default("AUTO_BOT_SUPPORT", '')
             _set_default("AUTO_BOT_TRIAL", False)
             _set_default("AUTO_BOT_LIBRARIES", '')

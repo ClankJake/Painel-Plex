@@ -1,4 +1,4 @@
-"""Rotas para o bot exclusivo de autoatendimento."""
+"""Rotas para o bot de autoatendimento."""
 import hashlib
 import hmac
 import re
@@ -12,6 +12,7 @@ from flask_login import current_user, login_required
 from .auth import admin_required
 from ..config import load_or_create_config
 from ..extensions import db, limiter
+from ..services import telegram_vinculo
 from ..models import TelegramVinculo, UserProfile, agora_utc
 from ..services.telegram_autoatendimento import endereco, responder, segredo
 
@@ -20,7 +21,7 @@ telegram_bp = Blueprint('telegram', __name__)
 
 def _api(config, metodo, **dados):
     try:
-        response = requests.post(f"https://api.telegram.org/bot{config['AUTO_BOT_TOKEN']}/{metodo}",
+        response = requests.post(f"https://api.telegram.org/bot{config['TELEGRAM_BOT_TOKEN']}/{metodo}",
                                  json=dados, timeout=8, allow_redirects=False)
         body = response.json()
         if response.ok and body.get('ok'):
@@ -80,8 +81,7 @@ def desvincular():
 @limiter.exempt
 def receber():
     config = load_or_create_config()
-    if not config.get('AUTO_BOT_ENABLED'):
-        # Confirma e descarta mensagens recebidas enquanto o atendimento está fechado.
+    if not config.get('TELEGRAM_BOT_TOKEN') or not (config.get('AUTO_BOT_ENABLED') or config.get('TELEGRAM_ENABLED')):
         return '', 204
     assinatura = request.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
     if not hmac.compare_digest(assinatura.encode(), segredo(config).encode()):
@@ -94,6 +94,10 @@ def receber():
     texto = msg.get('text')
     if (chat.get('type') != 'private' or not isinstance(chat.get('id'), int)
             or chat['id'] <= 0 or chat['id'] != msg.get('from', {}).get('id') or not isinstance(texto, str)):
+        return '', 204
+    if config.get('TELEGRAM_ENABLED') and telegram_vinculo.receber_inicio(config, texto.strip(), chat['id']):
+        return jsonify(method='sendMessage', chat_id=chat['id'], text='Volte ao painel para confirmar o vínculo.')
+    if not config.get('AUTO_BOT_ENABLED'):
         return '', 204
     resposta, botoes = responder(config, str(chat['id']), texto.strip())
     return jsonify(method='sendMessage', chat_id=chat['id'], text=resposta, reply_markup=botoes)
