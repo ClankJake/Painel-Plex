@@ -1,0 +1,53 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #101719;
+  color: #f1faf7;
+  --accent: #a8ffd5;
+  --surface: #1c292b;
+  --muted: #afc3bf;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; min-width: 0; }
+header {
+  padding: .75rem max(1.25rem, env(safe-area-inset-left));
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid #314244;
+}
+.brand { color: var(--accent); font-size: 1.6rem; font-weight: 800; text-decoration: none; }
+main { max-width: 72rem; margin: auto; padding: 1.25rem 1.25rem 3rem; }
+#welcome {
+  max-width: 42rem; margin: min(10vh, 5rem) auto 0;
+  padding: clamp(1.25rem, 5vw, 3.5rem);
+  background: linear-gradient(145deg, #243b37, var(--surface) 70%);
+  border: 1px solid #39534d; border-radius: 1.5rem;
+}
+#welcome a { display: block; margin-top: 1rem; }
+h1 { font-size: clamp(2rem, 7vw, 3.5rem); line-height: 1.05; margin: .6rem 0 1rem; overflow-wrap: anywhere; }
+p { line-height: 1.55; color: var(--muted); }
+.label { font-weight: 700; color: var(--accent); }
+a { color: var(--accent); }
+button, input, select, .action {
+  min-height: 46px; border: 1px solid #48605d; border-radius: .7rem;
+  padding: .65rem .85rem; background: var(--surface); color: inherit; font: inherit;
+}
+button, select { cursor: pointer; }
+button:disabled { cursor: wait; opacity: .65; }
+.primary { background: var(--accent); color: #10211b; border-color: transparent; font-weight: 700; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.filters { display: flex; flex-wrap: wrap; gap: .8rem; margin-block: 1.5rem; align-items: end; }
+.filters form { display: flex; flex: 1 1 16rem; align-items: end; gap: .55rem; }
+label { display: grid; gap: .35rem; font-size: .9rem; min-width: 0; }
+form label { flex: 1; }
+input, select { width: 100%; min-width: 0; }
+select { max-width: 100%; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); gap: .9rem; }
+.card { text-align: left; padding: 0; display: grid; align-content: start; overflow: hidden; }
+.poster { width: 100%; aspect-ratio: 2/3; object-fit: cover; background: linear-gradient(160deg, #34514c, #172323); display: block; }
+.card strong { padding: .7rem; overflow-wrap: anywhere; }
+video { width: 100%; max-height: 72vh; background: black; border-radius: .8rem; }
+#more, .action { margin-top: 1rem; }
+.action { display: inline-flex; align-items: center; }
+#episodes { display: grid; gap: .5rem; margin-top: 1rem; }
+#episodes button { text-align: left; }

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="Assista à sua biblioteca Plex pelo navegador.">
+  <title>Sala · Plex no navegador</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header><a class="brand" href="./">Sala</a><button id="logout" hidden>Sair</button></header>
+  <main>
+    <section id="welcome">
+      <p class="label">Sua biblioteca Plex</p>
+      <h1>O que vamos assistir?</h1>
+      <p>Entre com sua conta Plex para acessar os filmes e as séries compartilhados com você.</p>
+      <button id="login" class="primary">Entrar com Plex</button>
+      <a id="auth-again" hidden target="_blank" rel="noopener noreferrer">Reabrir login do Plex</a>
+    </section>
+    <p id="status" role="status"></p>
+    <section id="catalog" hidden aria-labelledby="catalog-title">
+      <h1 id="catalog-title">Biblioteca</h1>
+      <div class="filters">
+        <label>Biblioteca <select id="section"></select></label>
+        <form id="search-form"><label>Título <input id="search" type="search" placeholder="Buscar filme ou série"></label><button class="primary">Buscar</button></form>
+      </div>
+      <div id="items" class="grid"></div>
+      <button id="more" hidden>Carregar mais</button>
+    </section>
+    <section id="detail" hidden aria-labelledby="detail-title">
+      <button id="back">Voltar à biblioteca</button>
+      <h1 id="detail-title"></h1>
+      <p id="summary"></p>
+      <video id="video" controls playsinline preload="metadata" hidden></video>
+      <div id="episodes"></div>
+      <a id="web" class="action" target="_blank" rel="noopener noreferrer">Abrir no Plex Web</a>
+    </section>
+  </main>
+</body>
+</html>
