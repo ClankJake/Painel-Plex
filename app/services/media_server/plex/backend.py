@@ -509,7 +509,7 @@ class PlexManager:
             utilizadores_plex = self.users.list_users() or []
         except Exception as e:
             logger.error(f"Não foi possível obter a lista de utilizadores do Plex: {e}", exc_info=True)
-            return {"success": False, "message": str(e), **resumo}
+            return {"success": False, "message": _("Não foi possível consultar os usuários do Plex."), **resumo}
 
         for utilizador in utilizadores_plex:
             resumo["verificados"] += 1

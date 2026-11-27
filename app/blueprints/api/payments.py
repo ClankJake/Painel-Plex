@@ -1103,7 +1103,7 @@ def add_manual_payment_route():
     except Exception as e:
         extensions.db.session.rollback()
         logger.error(f"Erro ao adicionar pagamento manual: {e}", exc_info=True)
-        return jsonify({"success": False, "message": str(e)}), 500
+        return jsonify({"success": False, "message": _("Não foi possível registrar o pagamento manual.")}), 500
 
 @payments_api_bp.route('/financial/delete/<string:txid>', methods=['POST'])
 @login_required

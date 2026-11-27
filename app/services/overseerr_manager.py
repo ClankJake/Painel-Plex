@@ -645,7 +645,7 @@ class OverseerrManager:
             return {"success": True, "message": "Notificação enviada."}
         except Exception as e:
             logger.error(f"Falha ao reencaminhar a notificação de pedido: {e}", exc_info=True)
-            return {"success": False, "message": str(e)}
+            return {"success": False, "message": _("Não foi possível encaminhar a notificação.")}
 
     @staticmethod
     def _avisar_administrador_do_pedido(dados):

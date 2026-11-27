@@ -713,8 +713,8 @@ class NotifierManager:
                 config
             )
             return {"success": True, "message": _("Mensagem de teste enviada com sucesso!")}
-        except Exception as e:
-            return {"success": False, "message": str(e)}
+        except Exception:
+            return {"success": False, "message": _("Falha no teste do WhatsApp. Verifique o número e a configuração do canal.")}
 
     @staticmethod
     def _describe_http_error(e):

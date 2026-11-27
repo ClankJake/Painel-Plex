@@ -157,4 +157,7 @@ class TestAOrdemDoRestauro:
                                content_type='multipart/form-data')
 
         assert resposta.status_code == 400
-        assert "MAIS RECENTE" in resposta.get_json()["message"]
+        assert resposta.get_json() == {
+            "success": False,
+            "message": "Backup inválido ou incompatível com esta versão do painel.",
+        }

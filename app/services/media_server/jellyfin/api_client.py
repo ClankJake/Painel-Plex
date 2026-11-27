@@ -206,9 +206,9 @@ def test_connection(url: str, api_key: str) -> Dict[str, Any]:
     except JellyfinApiError as e:
         if e.status_code in (401, 403):
             return {"success": False, "message": _("O Jellyfin recusou a chave de API. Gere uma nova em Painel de Controle → Chaves de API.")}
-        return {"success": False, "message": str(e)}
-    except Exception as e:
-        return {"success": False, "message": _("Não foi possível contactar o Jellyfin: %(erro)s", erro=describe(e))}
+        return {"success": False, "message": _("Falha na conexão com o Jellyfin.")}
+    except Exception:
+        return {"success": False, "message": _("Não foi possível contactar o Jellyfin.")}
 
 
 def list_administrators(url: str, api_key: str) -> Dict[str, Any]:
@@ -228,10 +228,8 @@ def list_administrators(url: str, api_key: str) -> Dict[str, Any]:
 
     try:
         utilizadores = cliente.get('/Users') or []
-    except JellyfinApiError as e:
-        return {"success": False, "message": str(e), "users": []}
-    except Exception as e:
-        return {"success": False, "message": _("Não foi possível contactar o Jellyfin: %(erro)s", erro=describe(e)), "users": []}
+    except Exception:
+        return {"success": False, "message": _("Não foi possível consultar os usuários do Jellyfin."), "users": []}
 
     return {
         "success": True,

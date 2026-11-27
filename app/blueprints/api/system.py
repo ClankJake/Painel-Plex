@@ -68,7 +68,7 @@ def get_logs():
         return jsonify({"success": True, "logs": _("O arquivo de log ainda não foi criado.")})
     except Exception as e:
         logger.error(f"Erro ao ler o ficheiro de log: {e}")
-        return jsonify({"success": False, "message": str(e)}), 500
+        return jsonify({"success": False, "message": _("Não foi possível ler o arquivo de log.")}), 500
 
 @system_api_bp.route('/logs/clear', methods=['POST'])
 @login_required
@@ -85,7 +85,7 @@ def clear_logs():
         return jsonify({"success": True, "message": _("Arquivo de log limpo com sucesso.")})
     except Exception as e:
         logger.error(f"Erro ao limpar o ficheiro de log: {e}")
-        return jsonify({"success": False, "message": str(e)}), 500
+        return jsonify({"success": False, "message": _("Não foi possível limpar o arquivo de log.")}), 500
 
 @system_api_bp.route('/dashboard-summary')
 @login_required
@@ -774,7 +774,7 @@ def get_plex_servers():
         return jsonify({"success": True, "servers": servers, "token": token, "username": account.username})
     except Exception as e:
         logger.error(f"Erro ao buscar servidores Plex: {e}", exc_info=True)
-        return jsonify({"success": False, "message": str(e)}), 500
+        return jsonify({"success": False, "message": _("Não foi possível buscar os servidores Plex.")}), 500
 
 @system_api_bp.route('/setup/restore-backup', methods=['POST'])
 @limiter.limit("5 per hour")
@@ -821,12 +821,12 @@ def setup_restore_backup():
             alvo_id=getattr(uploaded_file, 'filename', None),
         )
         _restaurar_backup(uploaded_file.stream)
-    except ValueError as e:
+    except ValueError:
         # Validação falhou (ZIP inválido / config.json corrompido) — nada foi alterado.
-        return jsonify({"success": False, "message": str(e)}), 400
+        return jsonify({"success": False, "message": _("Backup inválido ou incompatível com esta versão do painel.")}), 400
     except Exception as e:
         logger.error(f"Erro crítico ao restaurar backup durante o setup: {e}", exc_info=True)
-        return jsonify({"success": False, "message": _("Erro inesperado ao restaurar o backup: %(error)s", error=str(e))}), 500
+        return jsonify({"success": False, "message": _("Falha ao restaurar o backup.")}), 500
 
     _agendar_reinicio("RESTAURO DE BACKUP concluído a partir do assistente de configuração.")
 
@@ -1325,7 +1325,7 @@ def bulk_notify():
         return jsonify({"success": True, "message": _("A tarefa de envio de notificações em massa foi iniciada e está rodando em tempo real!"), "task_id": task_id})
     except Exception as e:
         logger.error(f"Erro na rota bulk-notify: {e}", exc_info=True)
-        return jsonify({"success": False, "message": str(e)}), 500
+        return jsonify({"success": False, "message": _("Não foi possível iniciar o envio de notificações.")}), 500
 
 
 # ==========================================
@@ -1361,7 +1361,7 @@ def test_gates2b_connection():
         return jsonify(result), (200 if result.get('success') else 400)
     except Exception as e:
         logger.error(f"Erro ao testar a ligação à Gates2b: {e}", exc_info=True)
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return jsonify({"success": False, "message": _("Não foi possível testar a conexão com a Gates2b.")}), 500
 
 
 @system_api_bp.route('/test-whatsapp', methods=['POST'])
@@ -1383,7 +1383,7 @@ def test_whatsapp_connection():
         return jsonify(result), (200 if result.get('success') else 400)
     except Exception as e:
         logger.error(f"Erro ao testar a ligação de WhatsApp: {e}", exc_info=True)
-        return jsonify({"success": False, "message": str(e)}), 500
+        return jsonify({"success": False, "message": _("Não foi possível testar a conexão com o WhatsApp.")}), 500
 
 
 @system_api_bp.route('/webhook/overseerr', methods=['POST'])
@@ -1424,7 +1424,7 @@ def overseerr_webhook():
         logger.error(f"Erro ao processar o webhook do Overseerr: {e}", exc_info=True)
         # Devolvemos 200 de propósito: um erro do nosso lado não deve fazer o
         # Overseerr repetir a notificação indefinidamente.
-        return jsonify({"success": False, "message": str(e)}), 200
+        return jsonify({"success": False, "message": _("Falha ao processar a notificação do Overseerr.")}), 200
 
 
 @system_api_bp.route('/sync-profiles', methods=['POST'])
@@ -1454,7 +1454,7 @@ def sync_profiles_route():
         return jsonify(resultado), (200 if resultado.get('success') else 500)
     except Exception as e:
         logger.error(f"Erro ao sincronizar perfis: {e}", exc_info=True)
-        return jsonify({"success": False, "message": str(e)}), 500
+        return jsonify({"success": False, "message": _("Não foi possível sincronizar os perfis.")}), 500
 
 
 # ==========================================
@@ -1565,7 +1565,7 @@ def xp_season_info():
         return jsonify({"success": True, "season": stats_manager.get_season_info()})
     except Exception as e:
         logger.error(f"Erro ao obter informação da temporada de XP: {e}", exc_info=True)
-        return jsonify({"success": False, "message": str(e)}), 500
+        return jsonify({"success": False, "message": _("Não foi possível consultar a temporada de XP.")}), 500
 
 
 @system_api_bp.route('/xp/season/reset', methods=['POST'])
@@ -1583,7 +1583,7 @@ def xp_season_reset():
         return jsonify(result), status
     except Exception as e:
         logger.error(f"Erro ao repor a temporada de XP: {e}", exc_info=True)
-        return jsonify({"success": False, "message": str(e)}), 500
+        return jsonify({"success": False, "message": _("Não foi possível reiniciar a temporada de XP.")}), 500
 
 
 # ==========================================
@@ -1609,7 +1609,7 @@ def backup_download_now():
         )
     except Exception as e:
         logger.error(f"Erro ao gerar backup sob demanda: {e}", exc_info=True)
-        return jsonify({"success": False, "message": _("Falha ao gerar o backup: %(error)s", error=str(e))}), 500
+        return jsonify({"success": False, "message": _("Falha ao gerar o backup.")}), 500
 
 
 @system_api_bp.route('/backup/list', methods=['GET'])
@@ -1621,7 +1621,7 @@ def backup_list():
         return jsonify({"success": True, "backups": _ext.backup_manager.list_backups()})
     except Exception as e:
         logger.error(f"Erro ao listar backups: {e}", exc_info=True)
-        return jsonify({"success": False, "message": str(e)}), 500
+        return jsonify({"success": False, "message": _("Não foi possível listar os backups.")}), 500
 
 
 @system_api_bp.route('/backup/download/<path:filename>', methods=['GET'])
@@ -1647,7 +1647,7 @@ def backup_delete(filename):
         return jsonify({"success": False, "message": _("Backup não encontrado.")}), 404
     except Exception as e:
         logger.error(f"Erro ao apagar backup '{filename}': {e}", exc_info=True)
-        return jsonify({"success": False, "message": str(e)}), 500
+        return jsonify({"success": False, "message": _("Não foi possível excluir o backup.")}), 500
 
 
 @system_api_bp.route('/backup/restore', methods=['POST'])
@@ -1674,12 +1674,12 @@ def backup_restore():
 
     try:
         _restaurar_backup(uploaded_file.stream)
-    except ValueError as e:
+    except ValueError:
         # Erro de validação (ZIP inválido, config.json corrompido, etc.) — seguro, nada foi alterado.
-        return jsonify({"success": False, "message": str(e)}), 400
+        return jsonify({"success": False, "message": _("Backup inválido ou incompatível com esta versão do painel.")}), 400
     except Exception as e:
         logger.error(f"Erro crítico ao restaurar backup: {e}", exc_info=True)
-        return jsonify({"success": False, "message": _("Erro inesperado ao restaurar o backup: %(error)s", error=str(e))}), 500
+        return jsonify({"success": False, "message": _("Falha ao restaurar o backup.")}), 500
 
     _agendar_reinicio(f"RESTAURO DE BACKUP CONCLUÍDO por '{current_user.username}'.")
 

@@ -335,7 +335,7 @@ class StatsHandler:
             }
         except Exception as e:
             logger.error(f"[XP] Falha ao repor o XP da temporada: {e}", exc_info=True)
-            return {"success": False, "message": str(e)}
+            return {"success": False, "message": _("Não foi possível reiniciar a temporada de XP.")}
 
     def _get_achievement_definitions(self, days: int) -> Dict[str, Any]:
         """Retorna as definições dinâmicas de conquistas baseadas nas configurações atuais."""

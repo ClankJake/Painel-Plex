@@ -164,5 +164,5 @@ class TautulliApiClient:
             return {'success': False, 'message': _('Falha de conexão. Verifique a URL e se o servidor Tautulli está online e sem bloqueios de rede.')}
         except Timeout:
             return {'success': False, 'message': _('A conexão expirou. O servidor pode estar sobrecarregado ou offline.')}
-        except Exception as e:
-            return {'success': False, 'message': str(e)}
+        except Exception:
+            return {'success': False, 'message': _('Não foi possível testar a conexão com o Tautulli.')}

@@ -105,13 +105,15 @@ class TestIdioma:
             assert sessao["language"] == "en"
 
     def test_retorno_apos_troca_de_idioma(self, client, configurada):
-        interno = 'http://localhost/settings'
+        interno = 'http://localhost/settings?aba=geral'
         resposta = client.get('/language/pt_BR', headers={'Referer': interno})
-        assert resposta.location == interno
+        assert resposta.location == '/settings'
         with client.session_transaction() as sessao:
             assert sessao['language'] == 'pt_BR'
 
-        resposta = client.get('/language/en', headers={'Referer': 'https://example.org/'})
+    @pytest.mark.parametrize('origem', ['https://example.org/settings', 'http://localhost/outra', ''])
+    def test_origem_desconhecida_retorna_ao_inicio(self, client, configurada, origem):
+        resposta = client.get('/language/en', headers={'Referer': origem})
         assert resposta.location == '/'
 
     def test_idioma_desconhecido_e_ignorado(self, client, configurada):
