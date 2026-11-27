@@ -1,6 +1,7 @@
 """Rotas para o bot de autoatendimento."""
 import hashlib
 import hmac
+import logging
 import re
 import secrets
 from datetime import timedelta
@@ -16,6 +17,7 @@ from ..services import telegram_vinculo
 from ..models import TelegramVinculo, UserProfile, agora_utc
 from ..services.telegram_autoatendimento import endereco, responder, segredo
 
+logger = logging.getLogger(__name__)
 telegram_bp = Blueprint('telegram', __name__)
 
 
@@ -24,10 +26,13 @@ def _api(config, metodo, **dados):
         response = requests.post(f"https://api.telegram.org/bot{config['TELEGRAM_BOT_TOKEN']}/{metodo}",
                                  json=dados, timeout=8, allow_redirects=False)
         body = response.json()
-        if response.ok and body.get('ok'):
-            return body['result']
-    except (requests.RequestException, ValueError):
-        pass
+        if response.ok and isinstance(body, dict) and body.get('ok'):
+            return body.get('result')
+        logger.warning("Telegram recusou %s (HTTP %s).", metodo, response.status_code)
+    except requests.RequestException as exc:
+        logger.warning("Falha na chamada ao Telegram (%s): %s.", metodo, type(exc).__name__)
+    except ValueError:
+        logger.warning("Resposta inválida do Telegram em %s.", metodo)
     return None
 
 
@@ -42,6 +47,7 @@ def conectar():
     if not bot or not _api(config, 'setWebhook', url=endereco(config, 'telegram.receber'),
                            secret_token=segredo(config), allowed_updates=['message']):
         return jsonify(success=False, message='Confira o token e a URL pública HTTPS do painel.'), 502
+    logger.info("Telegram conectado: webhook registrado.")
     return jsonify(success=True, message=f"Bot conectado: @{bot['username']}.")
 
 
@@ -63,6 +69,7 @@ def vincular():
     vinculo.desafio = hashlib.sha256(chave.encode()).hexdigest()
     vinculo.validade = agora_utc() + timedelta(minutes=10)
     db.session.commit()
+    logger.info("Telegram: vínculo iniciado em Minha conta; aguardando confirmação no bot.")
     response = redirect(f"https://t.me/{bot['username']}?start=vincular_{chave}", 303)
     response.headers['Cache-Control'] = 'no-store'
     return response
@@ -74,6 +81,7 @@ def desvincular():
     TelegramVinculo.query.filter_by(media_user_id=current_user.id).delete()
     UserProfile.query.filter_by(media_user_id=current_user.id).update({'telegram_user': None})
     db.session.commit()
+    logger.info("Telegram: vínculo removido em Minha conta.")
     flash('Vínculo de autoatendimento removido.', 'success')
     return redirect(url_for('main.account_page'), 303)
 
@@ -86,6 +94,7 @@ def receber():
         return '', 204
     assinatura = request.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
     if not hmac.compare_digest(assinatura.encode(), segredo(config).encode()):
+        logger.warning("Telegram: webhook recusado por assinatura inválida.")
         abort(403)
     update = request.get_json(silent=True)
     msg = update.get('message') if isinstance(update, dict) else None
@@ -97,8 +106,10 @@ def receber():
             or chat['id'] <= 0 or chat['id'] != msg.get('from', {}).get('id') or not isinstance(texto, str)):
         return '', 204
     if config.get('TELEGRAM_ENABLED') and telegram_vinculo.receber_inicio(config, texto.strip(), chat['id']):
+        logger.info("Telegram: início do vínculo recebido; aguardando confirmação na página do convite.")
         return jsonify(method='sendMessage', chat_id=chat['id'], text='Volte ao painel para confirmar o vínculo.')
     if not config.get('AUTO_BOT_ENABLED'):
         return '', 204
+    logger.debug("Telegram: mensagem privada recebida pelo webhook.")
     resposta, botoes = responder(config, str(chat['id']), texto.strip())
     return jsonify(method='sendMessage', chat_id=chat['id'], text=resposta, reply_markup=botoes)

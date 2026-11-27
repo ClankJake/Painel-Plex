@@ -1,6 +1,7 @@
 """Menu privado do bot de autoatendimento."""
 import hashlib
 import json
+import logging
 import hmac
 import re
 from datetime import datetime, timezone
@@ -15,6 +16,8 @@ from .. import extensions
 from ..models import ExclusaoDePerfil, Invitation, TelegramVinculo, UserProfile, agora_utc
 from .media_server.invitations import convite_expirado, teste_anterior_a_exclusao
 from ..utils.periodo_de_teste import estado_do_teste, fim_do_teste
+
+logger = logging.getLogger(__name__)
 
 ACOES = {'Solicitar teste': '/teste', 'Renovar acesso': '/renovar',
          'Falar com suporte': '/suporte', 'Minha conta': '/conta'}
@@ -93,8 +96,10 @@ def _resgate_liberado(convite):
 
 def teste(config, chat, confirmar):
     if not config.get('AUTO_BOT_TRIAL'):
+        logger.info("Telegram: teste solicitado com a oferta de testes desativada.")
         return 'Os testes estão fechados no momento.', BOTOES
     if not confirmar:
+        logger.debug("Telegram: condições de teste preparadas para confirmação.")
         return (f"Teste de {config['AUTO_BOT_DURATION']} min, com {config['AUTO_BOT_SCREENS']} tela(s). "
                 f"Bibliotecas: {', '.join(bibliotecas(config))}. "
                 f"Resgate em até {config['AUTO_BOT_VALIDITY']} min.",
@@ -102,13 +107,17 @@ def teste(config, chat, confirmar):
     historico = Invitation.query.filter_by(telegram_id=chat).order_by(Invitation.created_at.desc())
     usados = historico.filter(Invitation.use_count > 0, Invitation.trial_duration_minutes > 0)
     if any(not _resgate_liberado(convite) for convite in usados):
+        logger.info("Telegram: novo teste recusado: já existe um resgate anterior.")
         return 'Este Telegram já utilizou um teste.', BOTOES
     if TelegramVinculo.query.filter_by(chat_id=chat).first() or extensions.data_manager.get_user_profile_by_telegram(chat):
+        logger.info("Telegram: novo teste recusado: conta existente.")
         return 'Você já tem uma conta. Use Minha conta ou Renovar acesso.', BOTOES
     anterior = historico.filter_by(note='Autoatendimento no Telegram').first()
     if anterior and not anterior.use_count and anterior.deleted_at:
+        logger.info("Telegram: pedido de teste recusado: convite revogado.")
         return 'Seu convite foi revogado. Entre em contato com o suporte.', BOTOES
     if anterior and not anterior.use_count and not convite_expirado(anterior.expires_at):
+        logger.info("Telegram: convite de teste válido reutilizado.")
         code = anterior.code
     else:
         # Duas entregas simultâneas da confirmação disputam a mesma chave primária.
@@ -118,6 +127,7 @@ def teste(config, chat, confirmar):
                        for lib in extensions.media_server.get_libraries() or [] if lib.get('title')}
         libs = [disponiveis.get(nome.casefold()) for nome in bibliotecas(config)]
         if not libs or not all(libs):
+            logger.warning("Telegram: falha ao emitir convite: bibliotecas do teste indisponíveis.")
             return 'As bibliotecas do teste estão indisponíveis. Fale com o suporte.', BOTOES
         try:
             result = extensions.media_server.create_invitation(
@@ -130,7 +140,11 @@ def teste(config, chat, confirmar):
         if not result.get('success'):
             existente = Invitation.query.filter_by(code=code, telegram_id=chat, deleted_at=None, use_count=0).first()
             if not existente or convite_expirado(existente.expires_at):
+                logger.warning("Telegram: falha ao emitir o convite de teste no servidor de mídia.")
                 return 'Não foi possível emitir o convite. Fale com o suporte.', BOTOES
+            logger.info("Telegram: convite de teste recuperado após solicitação simultânea.")
+        else:
+            logger.info("Telegram: novo convite de teste emitido.")
     return 'Seu convite está pronto.', link('Ativar meu teste', endereco(config, 'main.claim_invite_page', code=code))
 
 
@@ -167,6 +181,7 @@ def vincular_chat_confirmado(media_user_id, chat, desafio=None):
     except IntegrityError:
         session.rollback()
         return 'conflito'
+    logger.info("Telegram: vínculo confirmado e contato salvo no perfil.")
     return 'vinculado'
 
 
@@ -178,7 +193,9 @@ def confirmar_vinculo(chave, chat):
         if resultado == 'vinculado':
             return 'Conta vinculada. Escolha uma opção.', BOTOES
         if resultado == 'conflito':
+            logger.info("Telegram: vínculo recusado: chat já associado a outra conta.")
             return 'Este Telegram já está vinculado a outra conta.', BOTOES
+    logger.info("Telegram: pedido de vínculo recusado: link inválido ou expirado.")
     return 'Link inválido ou expirado. Gere outro em Minha conta no painel.', BOTOES
 
 
@@ -189,16 +206,20 @@ def responder(config, chat, texto):
     if comando in ('/teste', 'Confirmar teste'):
         return teste(config, chat, comando == 'Confirmar teste')
     if comando == '/suporte':
+        logger.info("Telegram: opção de suporte solicitada.")
         return 'Converse com a equipe de suporte.', link('Abrir suporte', 'https://t.me/' + config['AUTO_BOT_SUPPORT'].lstrip('@'))
     if comando not in ('/conta', '/renovar'):
+        logger.debug("Telegram: menu principal preparado.")
         return 'Olá! Como podemos ajudar?', BOTOES
     vinculo = TelegramVinculo.query.filter_by(chat_id=chat).first()
     perfil = extensions.db.session.get(UserProfile, vinculo.media_user_id) if vinculo else None
     if not perfil:
+        logger.info("Telegram: consulta de conta ou renovação requer vínculo com o painel.")
         return ('Acesse Minha conta no painel e toque em Vincular Telegram para confirmar sua identidade.',
                 link('Abrir Minha conta', endereco(config, 'main.account_page')))
     if comando == '/renovar':
         token = extensions.data_manager.garantir_payment_token(perfil.media_user_id)
+        logger.info("Telegram: link de renovação preparado.")
         return 'Consulte as opções de renovação e pague pelo painel.', link(
             'Renovar acesso', endereco(config, 'main.payment_page', token=token))
     situacao = 'Ativa' if perfil.status == 'active' else 'Inativa'
@@ -218,5 +239,6 @@ def responder(config, chat, texto):
             vencimento = fim.astimezone(get_localzone()).strftime('%d/%m/%Y')
         except ValueError:
             vencimento = None
+    logger.info("Telegram: resumo da conta preparado.")
     return (f"Conta: {perfil.username}\nSituação: {situacao}\nVencimento: {vencimento or 'Não definido'}\n"
             f"Telas: {perfil.screen_limit or 'Sem limite'}", BOTOES)

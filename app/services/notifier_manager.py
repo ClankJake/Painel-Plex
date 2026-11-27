@@ -389,6 +389,7 @@ class NotifierManager:
         for attempt in range(max_retries):
             try:
                 action()
+                logger.debug("[ID: %s] Telegram aceitou o envio.", request_id)
                 return
             except telebot.apihelper.ApiTelegramException as e:
                 if e.error_code == 429:
@@ -401,19 +402,19 @@ class NotifierManager:
                     continue
 
                 if e.error_code == 403:
+                    logger.warning("[ID: %s] Telegram recusou o envio: bot bloqueado (403).", request_id)
                     if media_user_id:
-                        logger.warning(f"[ID: {request_id}] Bot bloqueado pelo utilizador {media_user_id}. A remover contacto.")
                         from .. import extensions
                         extensions.data_manager.update_user_profile(media_user_id, {'telegram_id': None, 'telegram_user': None})
                     raise NotificationError(_("O usuário bloqueou o bot no Telegram."))
 
-                logger.error(f"[ID: {request_id}] Erro Telegram: {e.description}")
-                raise NotificationError(f"Telegram: {e.description}")
+                logger.error("[ID: %s] Telegram recusou o envio (código %s).", request_id, e.error_code)
+                raise NotificationError(f"Telegram: falha no envio (código {e.error_code}).") from None
             except NotificationError:
                 raise
             except Exception as e:
-                logger.error(f"[ID: {request_id}] Erro inesperado ao enviar Telegram: {e}")
-                raise NotificationError(f"Telegram: {e}")
+                logger.error("[ID: %s] Falha no envio ao Telegram (%s).", request_id, type(e).__name__)
+                raise NotificationError("Falha de comunicação com o Telegram.") from None
 
         raise NotificationError(
             _("O limite de ritmo do Telegram não permitiu a entrega após %(n)d tentativas.", n=max_retries)
@@ -425,6 +426,7 @@ class NotifierManager:
         if not bot:
             # O canal está ligado mas sem token: comunicar isto como falha evita
             # que o envio em massa contabilize entregas que nunca aconteceram.
+            logger.warning("[ID: %s] Envio ao Telegram indisponível: token ausente.", request_id)
             raise NotificationError(_("O token do bot do Telegram não está configurado."))
         
         html_message = self._convert_md_to_html(message)
@@ -451,6 +453,7 @@ class NotifierManager:
                 ),
                 request_id, media_user_id
             )
+            logger.info("[ID: %s] Telegram aceitou a notificação com imagem.", request_id)
             return
 
         pedacos = self._split_message(html_message, TELEGRAM_MAX_MESSAGE_LEN)
@@ -465,6 +468,8 @@ class NotifierManager:
                 ),
                 request_id, media_user_id
             )
+        if pedacos:
+            logger.info("[ID: %s] Telegram aceitou a notificação de texto (%d parte(s)).", request_id, len(pedacos))
 
     def _sleep(self, seconds):
         """

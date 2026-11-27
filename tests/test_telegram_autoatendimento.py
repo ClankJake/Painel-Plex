@@ -181,3 +181,26 @@ def test_exclusao_permanente_libera_um_novo_convite(enviar, client, db_session, 
     assert data_manager.get_invitation(primeiro)['use_count'] == 1
     data_manager.reserve_invitation_use(segundo, 'assinante', '22')
     assert 'já utilizou' in enviar('Confirmar teste').json['text']
+
+
+def test_log_do_bot_distingue_emissao_e_reuso_sem_expor_o_convite(enviar, monkeypatch, caplog):
+    monkeypatch.setattr('app.extensions.media_server.get_libraries', lambda: [{'title': 'Filmes'}])
+    with caplog.at_level('INFO', logger='app.services.telegram_autoatendimento'):
+        convite = url(enviar('Confirmar teste'))
+        assert url(enviar('Confirmar teste')) == convite
+    assert 'novo convite de teste emitido' in caplog.text
+    assert 'convite de teste válido reutilizado' in caplog.text
+    assert convite.rsplit('/', 1)[-1] not in caplog.text
+
+
+def test_log_de_falha_de_conexao_omite_token(config_bot, monkeypatch, caplog):
+    import requests
+    from app.blueprints.telegram import _api
+
+    def falhar(*args, **kwargs):
+        raise requests.Timeout(config_bot['TELEGRAM_BOT_TOKEN'])
+
+    monkeypatch.setattr('app.blueprints.telegram.requests.post', falhar)
+    assert _api(config_bot, 'getMe') is None
+    assert 'getMe' in caplog.text and 'Timeout' in caplog.text
+    assert config_bot['TELEGRAM_BOT_TOKEN'] not in caplog.text

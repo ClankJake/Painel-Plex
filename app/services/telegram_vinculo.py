@@ -102,7 +102,7 @@ def nome_do_bot(config):
     try:
         nome = (bot.get_me().username or '').strip() or None
     except Exception as e:
-        logger.warning(f"Não foi possível obter o nome do bot do Telegram: {e}")
+        logger.warning(f"Não foi possível obter o nome do bot do Telegram: {type(e).__name__}")
         return None
 
     _nome_em_cache[chave] = (time.monotonic() + VALIDADE_DO_NOME, nome)
@@ -177,12 +177,10 @@ def procurar_chat(config, codigo):
                 "funcionar enquanto isso durar."
             )
             return Resultado(motivo=OCUPADO)
-        # ⚠️ O erro de baixo vai para o LOG e não para a resposta: ele pode
-        # trazer o endereço da API e o que mais o cliente lá puser.
-        logger.warning(f"Falha a ler as atualizações do Telegram: {e}")
+        logger.warning("Falha ao consultar atualizações do Telegram (código %s).", e.error_code)
         return Resultado(motivo=FALHOU)
     except Exception as e:
-        logger.warning(f"Falha a ler as atualizações do Telegram: {e}")
+        logger.warning(f"Falha a ler as atualizações do Telegram: {type(e).__name__}")
         return Resultado(motivo=FALHOU)
 
     procurado = f"{PREFIXO} {codigo}"
