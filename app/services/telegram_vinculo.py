@@ -193,7 +193,7 @@ def procurar_chat(config, codigo):
             continue
         chat = getattr(mensagem, 'chat', None)
         chat_id = getattr(chat, 'id', None)
-        if chat_id is not None:
+        if isinstance(chat_id, int) and chat_id > 0 and getattr(chat, 'type', 'private') == 'private':
             return Resultado(chat_id=str(chat_id))
 
     # Nem chat nem motivo: "ainda não chegou".

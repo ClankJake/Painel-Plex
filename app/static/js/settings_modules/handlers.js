@@ -307,6 +307,7 @@ async function handleSaveSettings(e, conectar = null) {
     for (const [id, field] of Object.entries(fieldMap)) {
         if (conectar && !id.startsWith('AUTO_BOT_') && !['APP_BASE_URL', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_ENABLED', 'TELEGRAM_CHAT_ID'].includes(id)) continue;
         const el = document.getElementById(id);
+        if (id === 'AUTO_BOT_LIBRARIES' && el?.disabled) continue;
         if (el) {
             if (field.type === 'price') {
                 const priceValue = parseFloat(el.value.replace(',', '.'));

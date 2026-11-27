@@ -207,7 +207,7 @@ def account_page():
     autoatendimento = load_or_create_config().get('AUTO_BOT_ENABLED', False) and not current_user.is_admin()
     vinculo = extensions.db.session.get(TelegramVinculo, current_user.id) if autoatendimento else None
     return render_template('account.html', autoatendimento=autoatendimento,
-                           telegram_vinculado=bool(vinculo and vinculo.chat_id))
+                           telegram_vinculado=vinculo.chat_id if vinculo else None)
 
 @main_bp.route('/password/forgot')
 def password_forgot_page():

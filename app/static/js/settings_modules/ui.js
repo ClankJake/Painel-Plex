@@ -8,7 +8,7 @@ import * as dom from './dom.js';
 import * as api from './api.js';
 import { i18n, fieldMap } from './config.js';
 import { settingsData } from './handlers.js';
-import { showToast, escapeHTML } from '../utils.js';
+import { showToast, escapeHTML, fetchAPI } from '../utils.js';
 import { renderLevelEditor, renderResetMonthsGrid } from './gamification.js';
 import { loadOnlineMediaSources } from './online_media.js';
 import { carregar as carregarAuditoria } from './audit.js';
@@ -68,7 +68,53 @@ export function populateForm(config) {
     }
     const conectar = document.getElementById('conectar-auto-bot');
     if (conectar) conectar.disabled = !config.AUTO_BOT_ENABLED;
+    carregarBibliotecasDoTeste();
     toggleHmacSection();
+}
+
+let consultaBibliotecas = 0;
+
+async function carregarBibliotecasDoTeste() {
+    const painel = document.getElementById('bibliotecas-do-teste');
+    if (!painel) return;
+    const consulta = ++consultaBibliotecas;
+    const campo = document.getElementById('AUTO_BOT_LIBRARIES');
+    const lista = painel.querySelector('[data-lista]');
+    const estado = painel.querySelector('[data-estado]');
+    const repetir = painel.querySelector('[data-recarregar]');
+    const selecionadas = campo.value.split('\n').map(nome => nome.trim()).filter(Boolean);
+    campo.disabled = true;
+    lista.replaceChildren();
+    repetir.classList.add('hidden');
+    estado.textContent = 'Carregando bibliotecas…';
+    repetir.onclick = carregarBibliotecasDoTeste;
+    try {
+        const { libraries } = await fetchAPI(painel.dataset.url);
+        if (consulta !== consultaBibliotecas) return;
+        if (!libraries.length) throw new Error();
+        const nomes = new Map(libraries.map(nome => [nome.toLowerCase(), nome]));
+        const ativas = new Set(selecionadas.map(nome => nome.toLowerCase()));
+        for (const nome of selecionadas) {
+            if (!nomes.has(nome.toLowerCase())) nomes.set(nome.toLowerCase(), nome);
+        }
+        for (const [chave, nome] of nomes) {
+            const item = painel.querySelector('template').content.cloneNode(true);
+            item.querySelector('[data-nome]').textContent = libraries.includes(nome) ? nome : nome + ' (indisponível)';
+            const checkbox = item.querySelector('input');
+            checkbox.value = nome;
+            checkbox.checked = ativas.has(chave);
+            lista.append(item);
+        }
+        lista.onchange = () => {
+            campo.value = Array.from(lista.querySelectorAll('input:checked'), el => el.value).join('\n');
+        };
+        campo.disabled = false;
+        estado.textContent = '';
+    } catch {
+        if (consulta !== consultaBibliotecas) return;
+        estado.textContent = 'Nenhuma biblioteca disponível. Verifique a conexão com o servidor de mídia.';
+        repetir.classList.remove('hidden');
+    }
 }
 
 export async function changeLogLevel() {

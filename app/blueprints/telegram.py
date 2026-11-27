@@ -72,6 +72,7 @@ def vincular():
 @login_required
 def desvincular():
     TelegramVinculo.query.filter_by(media_user_id=current_user.id).delete()
+    UserProfile.query.filter_by(media_user_id=current_user.id).update({'telegram_user': None})
     db.session.commit()
     flash('Vínculo de autoatendimento removido.', 'success')
     return redirect(url_for('main.account_page'), 303)

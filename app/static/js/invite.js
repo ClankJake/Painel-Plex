@@ -334,23 +334,22 @@ function ligarSecaoDeContatos(userData) {
     verificar.addEventListener('click', async () => {
         const original = verificar.textContent;
         verificar.disabled = true;
+        let vinculado = false;
         verificar.textContent = i18n.contactsChecking || 'Verificando...';
 
         try {
-            const resposta = await fetch(urls.claimTelegram, { method: 'POST' });
+            const resposta = await fetch(urls.claimTelegram, { method: 'POST', signal: window.AbortSignal?.timeout?.(25000) });
             const resultado = await resposta.json();
             // ⚠️ `vinculado: false` num 200 é "ainda não chegou", e não um erro:
             // a pessoa pode simplesmente não ter tocado em Começar ainda.
             aviso(estadoTelegram, resultado.message || '', !resultado.success);
             estadoTelegram.classList.add('text-xs');
-            if (resultado.vinculado) verificar.disabled = true;
-            else verificar.textContent = original;
+            vinculado = resposta.ok && resultado.success && resultado.vinculado;
         } catch {
-            aviso(estadoTelegram, i18n.contactsFail || 'Não foi possível salvar agora.', true);
-            verificar.textContent = original;
+            aviso(estadoTelegram, i18n.contactsFail || 'Não foi possível confirmar agora. Tente novamente.', true);
         } finally {
-            if (!verificar.disabled) verificar.textContent = original;
-            verificar.disabled = false;
+            verificar.textContent = vinculado ? (i18n.contactsLinked || 'Telegram vinculado') : original;
+            verificar.disabled = Boolean(vinculado);
         }
     });
 }

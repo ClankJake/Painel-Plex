@@ -130,22 +130,6 @@
 </div>
 
 <div id="accountDetailsContainer" class="hidden animate-fade-in">
-    {% if autoatendimento %}
-    <section class="mb-6 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-        <h2 class="font-semibold">{{ _('Autoatendimento no Telegram') }}</h2>
-        <p class="text-sm mb-3">{{ _('Abra o bot e toque em Iniciar em até 10 minutos para vincular sua conta.') }}</p>
-        <div class="flex gap-4">
-            <form method="post" action="{{ url_for('telegram.vincular') }}">
-                <button class="btn" type="submit">{{ _('Vincular Telegram') }}</button>
-            </form>
-            {% if telegram_vinculado %}
-            <form method="post" action="{{ url_for('telegram.desvincular') }}">
-                <button class="btn" type="submit">{{ _('Desvincular Telegram') }}</button>
-            </form>
-            {% endif %}
-        </div>
-    </section>
-    {% endif %}
     <!-- Banner de Status (Ex: Expirado, Bloqueado) -->
     <div id="status-banner" class="hidden mb-6 transition-all"></div>
 
@@ -302,11 +286,24 @@
                             <input type="text" id="profileName" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                         </div>
                         
-                        <div id="telegram-field-container" class="{% if not config.TELEGRAM_ENABLED %}hidden{% endif %}">
+                        <div id="telegram-field-container" class="{% if not config.TELEGRAM_ENABLED and not autoatendimento %}hidden{% endif %}">
                             <label for="profileTelegram" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID de Usuário do Telegram') }}</label>
-                            <input type="text" id="profileTelegram" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Apenas números') }}">
+                            <input type="text" id="profileTelegram" {% if autoatendimento %}value="{{ telegram_vinculado or '' }}" readonly{% endif %} class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Apenas números') }}">
                         </div>
                         
+                        {% if autoatendimento %}
+                        {% if telegram_vinculado %}
+                        <form method="post" action="{{ url_for('telegram.desvincular') }}">
+                            <button class="btn bg-red-600 hover:bg-red-500 text-white shadow-md" type="submit">{{ _('Desvincular Telegram') }}</button>
+                        </form>
+                        {% else %}
+                        <form method="post" action="{{ url_for('telegram.vincular') }}" id="telegram-vincular">
+                            <button class="btn bg-blue-600 hover:bg-blue-500 text-white shadow-md" type="submit">{{ _('Vincular Telegram') }}</button>
+                            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ _('Abra o bot e toque em Iniciar em até 10 minutos para confirmar o vínculo.') }}</p>
+                        </form>
+                        {% endif %}
+                        {% endif %}
+
                         <div id="discord-field-container" class="{% if not config.DISCORD_ENABLED %}hidden{% endif %}">
                             <label for="profileDiscord" class="block mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">{{ _('ID de Usuário do Discord') }}</label>
                             <input type="text" id="profileDiscord" class="w-full p-2.5 text-sm rounded-lg border bg-gray-50 border-gray-300 text-gray-900 focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="{{ _('Ex: 123456789012345678') }}">

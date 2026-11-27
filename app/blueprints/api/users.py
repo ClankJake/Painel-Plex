@@ -225,13 +225,11 @@ def update_account_profile(validated_data):
     media_user_id = normalize_user_id(current_user.id)
     # Sem perfil (o caso do administrador), grava-se um novo em vez de rebentar:
     # o `username` faz falta para o perfil ser reconhecível na base de dados.
-    profile = extensions.data_manager.get_user_profile(media_user_id) or {
-        'media_user_id': media_user_id,
-        'username': current_user.username,
-        'email': current_user.email,
-    }
-    profile.update(data)
-    extensions.data_manager.set_user_profile(media_user_id, profile)
+    if not extensions.data_manager.get_user_profile(media_user_id):
+        data.update(username=current_user.username, email=current_user.email)
+    if load_or_create_config().get('AUTO_BOT_ENABLED') and not current_user.is_admin():
+        data.pop('telegram_user', None)
+    extensions.data_manager.set_user_profile(media_user_id, data)
     return jsonify({"success": True, "message": _("Perfil atualizado com sucesso.")})
 
 @users_api_bp.route('/account/privacy', methods=['POST'])

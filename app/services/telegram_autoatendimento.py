@@ -110,18 +110,51 @@ def teste(config, chat, confirmar):
     return 'Seu convite está pronto.', link('Ativar meu teste', endereco(config, 'main.claim_invite_page', code=code))
 
 
+def vincular_chat_confirmado(media_user_id, chat, desafio=None):
+    """Grava a prova do chat e o destinatário de notificações na mesma transação."""
+    session = extensions.db.session
+    dono = extensions.data_manager.get_user_profile_by_telegram(chat)
+    if dono and dono['media_user_id'] != media_user_id:
+        return 'conflito'
+    try:
+        if desafio:
+            consumido = TelegramVinculo.query.filter(
+                TelegramVinculo.media_user_id == media_user_id, TelegramVinculo.desafio == desafio,
+                TelegramVinculo.validade > agora_utc()
+            ).update({'chat_id': chat, 'desafio': None, 'validade': None}, synchronize_session=False)
+            if not consumido:
+                session.rollback()
+                return 'expirado'
+        else:
+            vinculo = session.get(TelegramVinculo, media_user_id)
+            if vinculo and vinculo.chat_id and vinculo.chat_id != chat:
+                return 'conflito'
+            if not vinculo:
+                vinculo = TelegramVinculo(media_user_id=media_user_id)
+                session.add(vinculo)
+            vinculo.chat_id = chat
+            vinculo.desafio = vinculo.validade = None
+        perfil = session.get(UserProfile, media_user_id)
+        if not perfil:
+            session.rollback()
+            return 'expirado'
+        perfil.telegram_user = chat
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        return 'conflito'
+    return 'vinculado'
+
+
 def confirmar_vinculo(chave, chat):
     digest = hashlib.sha256(chave.encode()).hexdigest()
-    try:
-        atualizados = TelegramVinculo.query.filter(
-            TelegramVinculo.desafio == digest, TelegramVinculo.validade > agora_utc()
-        ).update({'chat_id': chat, 'desafio': None, 'validade': None}, synchronize_session=False)
-        extensions.db.session.commit()
-    except IntegrityError:
-        extensions.db.session.rollback()
-        return 'Este Telegram já está vinculado a outra conta.', BOTOES
-    if atualizados:
-        return 'Conta vinculada. Escolha uma opção.', BOTOES
+    desafio = TelegramVinculo.query.filter_by(desafio=digest).first()
+    if desafio:
+        resultado = vincular_chat_confirmado(desafio.media_user_id, chat, desafio=digest)
+        if resultado == 'vinculado':
+            return 'Conta vinculada. Escolha uma opção.', BOTOES
+        if resultado == 'conflito':
+            return 'Este Telegram já está vinculado a outra conta.', BOTOES
     return 'Link inválido ou expirado. Gere outro em Minha conta no painel.', BOTOES
 
 

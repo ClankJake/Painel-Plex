@@ -915,7 +915,8 @@ const initContactForm = (details) => {
 
     if (details) {
         document.getElementById('profileName').value = details.name || '';
-        document.getElementById('profileTelegram').value = details.telegram_user || '';
+        const telegram = document.getElementById('profileTelegram');
+        telegram.value = details.telegram_user || telegram.defaultValue;
         document.getElementById('profileDiscord').value = details.discord_user_id || '';
 
         const separado = separarCodigoDoPais(details.phone_number, codigosConhecidos, ddiPadrao);
@@ -948,7 +949,9 @@ const initContactForm = (details) => {
             // que sempre gravou os MESMOS campos em cru.
             const payload = {
                 name: document.getElementById('profileName').value.trim(),
-                telegram_user: document.getElementById('profileTelegram').value.trim(),
+                ...(document.getElementById('profileTelegram').readOnly ? {} : {
+                    telegram_user: document.getElementById('profileTelegram').value.trim(),
+                }),
                 discord_user_id: document.getElementById('profileDiscord').value.trim(),
                 phone_number: completo,
             };
@@ -1276,4 +1279,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (dom.errorContainer) dom.errorContainer.classList.remove('hidden');
         showToast(error.message, 'error');
     }
+});
+
+// O navegador pode restaurar a página anterior ao vínculo ao voltar do Telegram.
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted && document.getElementById('telegram-vincular')) window.location.reload();
 });

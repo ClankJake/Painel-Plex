@@ -123,6 +123,13 @@ def _titulos_do_servidor():
     return titulos or None
 
 
+@invites_api_bp.get('/libraries')
+@login_required
+@admin_required
+def bibliotecas_para_convites():
+    return jsonify(libraries=_titulos_do_servidor() or [])
+
+
 def _resolver_bibliotecas(pedidas):
     """Traduz o que foi pedido para a grafia do SERVIDOR.
 
@@ -737,10 +744,18 @@ def vincular_telegram_do_resgate():
             "message": _("Ainda não recebemos nada. Toque em Começar no bot e tente de novo."),
         })
 
-    resultado = guardar_contactos(
-        data_manager, marca['media_user_id'], {'telegram': procura.chat_id}, config)
-    if resultado.conflito:
-        return _conflito_de_contacto(resultado.conflito)
+    if config.get('AUTO_BOT_ENABLED'):
+        from ...services.telegram_autoatendimento import vincular_chat_confirmado
+        resultado = vincular_chat_confirmado(marca['media_user_id'], procura.chat_id)
+        if resultado == 'conflito':
+            return _conflito_de_contacto('Telegram')
+        if resultado != 'vinculado':
+            return jsonify(success=False, message=_("O vínculo expirou. Acesse Minha conta.")), 409
+    else:
+        resultado = guardar_contactos(
+            data_manager, marca['media_user_id'], {'telegram': procura.chat_id}, config)
+        if resultado.conflito:
+            return _conflito_de_contacto(resultado.conflito)
 
     # A confirmação é a prova de que o canal funciona mesmo: se o envio falhar,
     # o vínculo continua gravado (o id está certo) mas fica no log porquê.

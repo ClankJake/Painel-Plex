@@ -82,13 +82,20 @@ def test_vinculo_exige_prova_e_renovacao_usa_o_perfil(enviar, client, db_session
     TelegramVinculo.query.one().validade = agora_utc() - timedelta(seconds=1)
     db_session.commit()
     assert 'expirado' in enviar(expirado).json['text']
+    perfil.telegram_user = None
+    db_session.commit()
     desafio = novo_desafio()
     assert 'Conta vinculada' in enviar(desafio).json['text']
+    assert perfil.telegram_user == '44'
+    pagina = client.get('/account').data
+    assert b'Desvincular Telegram' in pagina and b'>Vincular Telegram<' not in pagina
     assert 'expirado' in enviar(desafio, chat=45).json['text']
     assert '15/12/2026' in enviar('Minha conta').json['text']
     assert url(enviar('/renovar')) == 'https://painel.example/pay/' + perfil.payment_token
     assert url(enviar('/renovar', chat=45)).endswith('/account')
     client.post('/api/telegram/desvincular')
+    assert perfil.telegram_user is None
+    assert b'>Vincular Telegram<' in client.get('/account').data
     assert url(enviar('/conta')).endswith('/account')
 
 
@@ -127,3 +134,29 @@ def test_migracao_do_token_antigo(config_file, principal, esperado):
     atualizado = load_or_create_config()
     assert atualizado['TELEGRAM_BOT_TOKEN'] == esperado
     assert 'AUTO_BOT_TOKEN' not in atualizado
+
+
+def test_convite_confirmado_atualiza_o_perfil_e_o_autoatendimento(client, config_bot, db_session, monkeypatch):
+    from datetime import datetime, timezone
+    from app.services import telegram_vinculo
+
+    perfil = UserProfile(media_user_id='22', username='assinante')
+    db_session.add(perfil)
+    db_session.commit()
+    with client.session_transaction() as sessao:
+        sessao['resgate_recente'] = {
+            'media_user_id': '22', 'codigo_telegram': 'desafio',
+            'em': datetime.now(timezone.utc).isoformat(),
+        }
+    monkeypatch.setattr(telegram_vinculo, 'procurar_chat', lambda *_: telegram_vinculo.Resultado(chat_id='44'))
+    monkeypatch.setattr('app.blueprints.api.invites.notifier_manager._send_telegram_notification', lambda *a, **kw: None)
+    assert client.post('/api/invites/claim/telegram').json['vinculado']
+    assert perfil.telegram_user == TelegramVinculo.query.one().chat_id == '44'
+
+
+def test_bibliotecas_para_o_teste(client, config_bot, monkeypatch):
+    assert client.get('/api/invites/libraries').status_code != 200
+    entrar(client, '1', 'admin')
+    monkeypatch.setattr('app.blueprints.api.invites.media_server.get_libraries',
+                        lambda: [{'title': 'Filmes'}, {'title': 'Séries'}])
+    assert client.get('/api/invites/libraries').json['libraries'] == ['Filmes', 'Séries']
